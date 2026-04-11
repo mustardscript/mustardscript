@@ -63,3 +63,20 @@ Residual risk notes:
   false negatives from the default test-thread stack.
 - In-process addon mode is still best-effort containment only. Use sidecar mode
   plus host-managed OS sandboxing for adversarial deployments.
+
+## Kill and Cancellation Coverage
+
+The current kill/cancellation evidence is intentionally split by deployment
+mode:
+
+- Addon-mode non-cancellation behavior is covered by
+  `tests/node/coverage-audit.test.js`, which verifies that delaying or dropping
+  the caller's immediate await does not inject a guest-visible cancellation
+  signal into a suspended capability flow.
+- Sidecar hard-stop behavior is covered by
+  `crates/jslite-sidecar/tests/protocol.rs`, which forcefully terminates a live
+  sidecar process and verifies that a fresh sidecar can be started cleanly
+  afterward.
+- Cooperative mid-execution cancellation is still architecturally blocked in
+  the core runtime, so there is intentionally no in-band cancellation hook to
+  fuzz or assert yet.

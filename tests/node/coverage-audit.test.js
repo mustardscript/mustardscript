@@ -50,3 +50,28 @@ test('globalThis remains a stable guest-visible object', async () => {
   const result = await runtime.run();
   assert.deepEqual(result, ['object', 3, true]);
 });
+
+test('deferring await does not inject a guest-visible cancellation signal', async () => {
+  const runtime = new Jslite(`
+    const value = fetch_data(2);
+    value + 1;
+  `);
+
+  let calls = 0;
+  let completed = 0;
+  const pending = runtime.run({
+    capabilities: {
+      async fetch_data(value) {
+        calls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        completed += 1;
+        return value;
+      },
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(calls, 1);
+  assert.equal(completed, 1);
+  assert.equal(await pending, 3);
+});
