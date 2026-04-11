@@ -21,6 +21,8 @@ Hard rules:
 - Fail closed on unsupported features.
 - Never revert changes you did not make.
 - Do not stop at partial progress unless you have exhausted all safe, independent work.
+- Large remaining work is not a blocker. If the next incomplete dependency chain is implementable from repo context, continue into it even if it spans multiple files, commits, or phases.
+- Do not stop merely because the remaining work is subsystem-scale (for example GC, exceptions, async runtime, or sidecar kill semantics).
 
 Required workflow:
 1. Audit the current repo against `TODOS.md`.
@@ -41,12 +43,15 @@ Required workflow:
    - keep making as much verified progress as possible
 8. Only stop when one of these is true:
    - everything in `TODOS.md` is complete, verified, and checked off
-   - or no further safe progress is possible without external input or a decision that cannot be inferred from the repo
+   - or every remaining unchecked item is blocked by external verification, missing platform access, or a design decision that genuinely cannot be inferred from the repo
 9. If you end with remaining blockers, leave the repo in a verified state and provide a precise summary of:
    - what was completed
    - what remains blocked
    - why it is blocked
    - what exact next action would unblock it
+10. Before stopping, enumerate every remaining unchecked `TODOS.md` item and classify it as either:
+   - externally blocked, with the exact reason and missing prerequisite
+   - still feasible, in which case you must continue implementing it next
 
 Commit policy:
 - Make multiple logical commits, not one giant final commit.
@@ -65,6 +70,7 @@ Execution expectations:
 - Prefer making reasonable, evidence-based decisions instead of stopping to ask questions.
 - If a blocker affects only one slice of work, continue on every other non-blocked slice.
 - If a later phase has independent work that can be implemented safely without violating earlier design constraints, do that work instead of waiting.
+- If only large feasible subsystems remain, start the earliest one and continue making verified commits until it is complete or a concrete external blocker is encountered.
 - Maintain momentum across docs, core runtime, sidecar, Node binding, tests, CI, and packaging work whenever they can proceed independently.
 - Keep the repo buildable and the test suite passing as you go.
 
