@@ -213,22 +213,22 @@ Exit criteria:
 
 ## Phase 4: Exceptions and Guest-Safe Errors
 
-- [ ] Implement `throw`
-- [ ] Implement `try`, `catch`, and `finally`
-- [ ] Implement VM unwind logic
-- [ ] Define runtime exception types and rendering
-- [ ] Implement guest-visible `Error` objects and supported standard errors
+- [x] Implement `throw`
+- [x] Implement `try`, `catch`, and `finally`
+- [x] Implement VM unwind logic
+- [x] Define runtime exception types and rendering
+- [x] Implement guest-visible `Error` objects and supported standard errors
 - [x] Ensure tracebacks never leak host paths or host internals
 - [x] Decide what stack information is guest-visible
-- [ ] Add nested exception and unwind matrix tests
+- [x] Add nested exception and unwind matrix tests
 - [x] Add diagnostics tests for guest-safe rendering
 
 Exit criteria:
 
-- [ ] Nested exception handling works
-- [ ] Guest-visible errors behave correctly for supported cases
-- [ ] Exception rendering is stable and host-safe
-- [ ] Exception and diagnostics tests pass
+- [x] Nested exception handling works
+- [x] Guest-visible errors behave correctly for supported cases
+- [x] Exception rendering is stable and host-safe
+- [x] Exception and diagnostics tests pass
 
 ## Phase 5: Host Capabilities and Suspension
 

@@ -47,8 +47,10 @@ Host failures cross the boundary with:
 - optional `code`
 - optional `details`
 
-The current runtime renders resumed host failures as guest-safe runtime errors
-using those fields. Guest-visible `Error` objects are not implemented yet.
+Resumed host failures re-enter guest execution as guest-visible error objects
+using those fields. Guest `try` / `catch` can inspect `name`, `message`,
+optional `code`, and optional `details`, and uncaught failures render with the
+same guest-safe summary.
 The Node wrapper rethrows core failures as typed JavaScript errors:
 `JsliteParseError`, `JsliteValidationError`, `JsliteRuntimeError`,
 `JsliteLimitError`, and `JsliteSerializationError`. The original native error is

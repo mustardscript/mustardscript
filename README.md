@@ -30,6 +30,7 @@ The current implementation already supports:
 - parse -> validate -> IR -> bytecode -> VM execution for a synchronous subset
 - `let`/`const`, functions and closures, arrays, plain objects, loops, and
   basic control flow
+- `throw`, `try`/`catch`/`finally`, and guest-visible `Error` objects
 - `Math` and `JSON` built-ins
 - explicit named host capabilities with `start()` / `resume()` suspension
 - deterministic `console.log` / `console.warn` / `console.error` callbacks when
@@ -40,7 +41,6 @@ The current implementation already supports:
 
 The current implementation does **not** yet execute:
 
-- `throw`, `try`, `catch`, or `finally`
 - `async` functions or `await`
 - cancellation, heap limits, call-depth limits, or outstanding-host-call limits
 
@@ -256,6 +256,7 @@ JavaScript.
 - Functions and closures
 - Arrow functions
 - `if`, `switch`, loops, `break`, and `continue`
+- `throw`, `try`, `catch`, and `finally`
 - Common-case destructuring
 - Template literals
 - Optional chaining and nullish coalescing
@@ -265,8 +266,6 @@ JavaScript.
 
 ### Parsed But Not Yet Executable
 
-- `throw`
-- `try`, `catch`, and `finally`
 - `async` functions and `await`
 
 ### Explicitly Out of Scope for v1
@@ -317,6 +316,10 @@ Currently implemented built-ins:
 - `Object`
 - `Array`
 - `String`
+- `Error`
+- `TypeError`
+- `ReferenceError`
+- `RangeError`
 - `Number`
 - `Boolean`
 - `Math`

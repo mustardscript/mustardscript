@@ -31,6 +31,7 @@ extensions are called out explicitly instead of being implied.
 - literals, arrays, and objects
 - `if`, `switch`, `while`, `do...while`, `for`, `break`, and `continue`
 - `return`
+- `throw`, `try`, `catch`, and `finally`
 - common destructuring
 - assignment to identifiers and member expressions
 - member access, calls, and `new` for supported built-ins
@@ -41,8 +42,6 @@ extensions are called out explicitly instead of being implied.
 
 ## Parsed But Not Yet Executable
 
-- `throw`
-- `try`, `catch`, and `finally`
 - `async` functions
 - `await`
 
@@ -65,7 +64,6 @@ extensions are called out explicitly instead of being implied.
 
 ## Explicit Deferrals
 
-- guest-visible `Error` objects and standard error types
 - async runtime and promises
 - full `this` semantics beyond the current basic function-call behavior
 - iterator protocol support
@@ -84,6 +82,9 @@ extensions are called out explicitly instead of being implied.
 - Parse and validation failures preserve guest source spans.
 - Runtime and limit failures render guest-safe tracebacks using guest function
   names and guest source spans.
+- Guest `throw` / `catch` preserves the thrown guest value. Built-in error
+  constructors create guest objects with `name` and `message`, and sanitized
+  host failures may also expose `code` and `details`.
 - Guest-visible stack information is limited to guest function names and guest
   source spans.
 - Current traceback precision is function-level span data rather than
@@ -107,6 +108,10 @@ extensions are called out explicitly instead of being implied.
 - `Object`
 - `Array`
 - `String`
+- `Error`
+- `TypeError`
+- `ReferenceError`
+- `RangeError`
 - `Number`
 - `Boolean`
 - `Math`

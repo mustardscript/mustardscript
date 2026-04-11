@@ -128,6 +128,26 @@ pub enum Instruction {
     Pop,
     Dup,
     Dup2,
+    PushHandler {
+        catch: Option<usize>,
+        finally: Option<usize>,
+    },
+    PopHandler,
+    EnterFinally {
+        exit: usize,
+    },
+    BeginCatch,
+    Throw {
+        span: SourceSpan,
+    },
+    PushPendingJump {
+        target: usize,
+        target_handler_depth: usize,
+        target_scope_depth: usize,
+    },
+    PushPendingReturn,
+    PushPendingThrow,
+    ContinuePending,
     Jump(usize),
     JumpIfFalse(usize),
     JumpIfTrue(usize),
@@ -274,6 +294,8 @@ struct SerializedSnapshot {
 struct ValidationState {
     stack_depth: usize,
     scope_depth: usize,
+    handler_depth: usize,
+    pending_depth: usize,
 }
 
 fn validate_bytecode_program(program: &BytecodeProgram) -> JsliteResult<()> {
@@ -334,11 +356,24 @@ fn validate_function(
             | Instruction::JumpIfFalse(target)
             | Instruction::JumpIfTrue(target)
             | Instruction::JumpIfNullish(target)
+            | Instruction::EnterFinally { exit: target }
+            | Instruction::PushPendingJump { target, .. }
                 if *target >= code_len =>
             {
                 return Err(JsliteError::validation(
                     format!(
                         "bytecode validation failed: function {function_id} instruction {ip} jumps to invalid target {target}"
+                    ),
+                    None,
+                ));
+            }
+            Instruction::PushHandler { catch, finally }
+                if catch.is_some_and(|target| target >= code_len)
+                    || finally.is_some_and(|target| target >= code_len) =>
+            {
+                return Err(JsliteError::validation(
+                    format!(
+                        "bytecode validation failed: function {function_id} instruction {ip} references an invalid exception target"
                     ),
                     None,
                 ));
@@ -353,6 +388,8 @@ fn validate_function(
         ValidationState {
             stack_depth: 0,
             scope_depth: 0,
+            handler_depth: 0,
+            pending_depth: 0,
         },
     )]);
     while let Some((ip, state)) = work.pop_front() {
@@ -360,7 +397,7 @@ fn validate_function(
             if existing != state {
                 return Err(JsliteError::validation(
                     format!(
-                        "bytecode validation failed: function {function_id} instruction {ip} has inconsistent stack or scope depth"
+                        "bytecode validation failed: function {function_id} instruction {ip} has inconsistent validation state: existing={existing:?}, new={state:?}"
                     ),
                     None,
                 ));
@@ -373,6 +410,43 @@ fn validate_function(
         let next_state = apply_validation_effect(function_id, ip, instruction, state)?;
         for successor in validation_successors(ip, instruction, code_len) {
             work.push_back((successor, next_state));
+        }
+        match instruction {
+            Instruction::PushHandler { catch, finally } => {
+                if let Some(target) = catch {
+                    work.push_back((
+                        *target,
+                        ValidationState {
+                            handler_depth: state.handler_depth,
+                            ..state
+                        },
+                    ));
+                } else if let Some(target) = finally {
+                    work.push_back((
+                        *target,
+                        ValidationState {
+                            handler_depth: state.handler_depth,
+                            pending_depth: state.pending_depth + 1,
+                            ..state
+                        },
+                    ));
+                }
+            }
+            Instruction::PushPendingJump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+            } => {
+                work.push_back((
+                    *target,
+                    ValidationState {
+                        scope_depth: *target_scope_depth,
+                        handler_depth: *target_handler_depth,
+                        ..state
+                    },
+                ));
+            }
+            _ => {}
         }
     }
 
@@ -405,7 +479,8 @@ fn apply_validation_effect(
         | Instruction::PushNumber(_)
         | Instruction::PushString(_)
         | Instruction::LoadName(_)
-        | Instruction::MakeClosure { .. } => ValidationState {
+        | Instruction::MakeClosure { .. }
+        | Instruction::BeginCatch => ValidationState {
             stack_depth: state.stack_depth + 1,
             ..state
         },
@@ -503,6 +578,87 @@ fn apply_validation_effect(
                 ..state
             }
         }
+        Instruction::PushHandler { .. } => ValidationState {
+            handler_depth: state.handler_depth + 1,
+            ..state
+        },
+        Instruction::PopHandler => {
+            if state.handler_depth == 0 {
+                return Err(JsliteError::validation(
+                    format!(
+                        "bytecode validation failed: function {function_id} instruction {ip} pops an empty handler stack"
+                    ),
+                    None,
+                ));
+            }
+            ValidationState {
+                handler_depth: state.handler_depth - 1,
+                ..state
+            }
+        }
+        Instruction::EnterFinally { .. } => state,
+        Instruction::Throw { .. } => {
+            require_stack(1)?;
+            state
+        }
+        Instruction::PushPendingJump {
+            target_handler_depth,
+            target_scope_depth,
+            ..
+        } => {
+            if *target_handler_depth > state.handler_depth {
+                return Err(JsliteError::validation(
+                    format!(
+                        "bytecode validation failed: function {function_id} instruction {ip} targets handler depth {target_handler_depth} from depth {}",
+                        state.handler_depth
+                    ),
+                    None,
+                ));
+            }
+            if *target_scope_depth > state.scope_depth {
+                return Err(JsliteError::validation(
+                    format!(
+                        "bytecode validation failed: function {function_id} instruction {ip} targets scope depth {target_scope_depth} from depth {}",
+                        state.scope_depth
+                    ),
+                    None,
+                ));
+            }
+            ValidationState {
+                pending_depth: state.pending_depth + 1,
+                ..state
+            }
+        }
+        Instruction::PushPendingReturn => {
+            require_stack(1)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                pending_depth: state.pending_depth + 1,
+                ..state
+            }
+        }
+        Instruction::PushPendingThrow => {
+            require_stack(1)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                pending_depth: state.pending_depth + 1,
+                ..state
+            }
+        }
+        Instruction::ContinuePending => {
+            if state.pending_depth == 0 {
+                return Err(JsliteError::validation(
+                    format!(
+                        "bytecode validation failed: function {function_id} instruction {ip} resumes without a pending completion"
+                    ),
+                    None,
+                ));
+            }
+            ValidationState {
+                pending_depth: state.pending_depth - 1,
+                ..state
+            }
+        }
         Instruction::Jump(_) => state,
         Instruction::JumpIfFalse(_)
         | Instruction::JumpIfTrue(_)
@@ -545,7 +701,9 @@ fn validation_successors(ip: usize, instruction: &Instruction, code_len: usize) 
             }
             successors
         }
-        Instruction::Return => Vec::new(),
+        Instruction::ContinuePending | Instruction::Throw { .. } | Instruction::Return => {
+            Vec::new()
+        }
         _ if ip + 1 < code_len => vec![ip + 1],
         _ => Vec::new(),
     }
@@ -675,6 +833,129 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
         for value in &frame.stack {
             validate_runtime_value(runtime, value)?;
         }
+        if let Some(value) = &frame.pending_exception {
+            validate_runtime_value(runtime, value)?;
+        }
+        for handler in &frame.handlers {
+            if let Some(catch) = handler.catch
+                && catch >= function.code.len()
+            {
+                return Err(JsliteError::Message {
+                    kind: DiagnosticKind::Serialization,
+                    message: format!(
+                        "snapshot validation failed: frame handler catch target {} is out of range for function {}",
+                        catch, frame.function_id
+                    ),
+                    span: None,
+                    traceback: Vec::new(),
+                });
+            }
+            if let Some(finally) = handler.finally
+                && finally >= function.code.len()
+            {
+                return Err(JsliteError::Message {
+                    kind: DiagnosticKind::Serialization,
+                    message: format!(
+                        "snapshot validation failed: frame handler finally target {} is out of range for function {}",
+                        finally, frame.function_id
+                    ),
+                    span: None,
+                    traceback: Vec::new(),
+                });
+            }
+            if runtime.envs.get(handler.env).is_none() {
+                return Err(JsliteError::Message {
+                    kind: DiagnosticKind::Serialization,
+                    message: format!(
+                        "snapshot validation failed: frame handler references missing environment {:?}",
+                        handler.env
+                    ),
+                    span: None,
+                    traceback: Vec::new(),
+                });
+            }
+            if handler.scope_stack_len > frame.scope_stack.len()
+                || handler.stack_len > frame.stack.len()
+            {
+                return Err(JsliteError::Message {
+                    kind: DiagnosticKind::Serialization,
+                    message: "snapshot validation failed: frame handler restore state exceeds the current frame state".to_string(),
+                    span: None,
+                    traceback: Vec::new(),
+                });
+            }
+        }
+        for completion in &frame.pending_completions {
+            match completion {
+                CompletionRecord::Jump {
+                    target,
+                    target_handler_depth,
+                    target_scope_depth,
+                } => {
+                    if *target >= function.code.len() {
+                        return Err(JsliteError::Message {
+                            kind: DiagnosticKind::Serialization,
+                            message: format!(
+                                "snapshot validation failed: pending jump target {} is out of range for function {}",
+                                target, frame.function_id
+                            ),
+                            span: None,
+                            traceback: Vec::new(),
+                        });
+                    }
+                    if *target_handler_depth > frame.handlers.len() {
+                        return Err(JsliteError::Message {
+                            kind: DiagnosticKind::Serialization,
+                            message: format!(
+                                "snapshot validation failed: pending jump targets handler depth {} but only {} handlers are active",
+                                target_handler_depth,
+                                frame.handlers.len()
+                            ),
+                            span: None,
+                            traceback: Vec::new(),
+                        });
+                    }
+                    if *target_scope_depth > frame.scope_stack.len() {
+                        return Err(JsliteError::Message {
+                            kind: DiagnosticKind::Serialization,
+                            message: format!(
+                                "snapshot validation failed: pending jump targets scope depth {} but only {} scopes are active",
+                                target_scope_depth,
+                                frame.scope_stack.len()
+                            ),
+                            span: None,
+                            traceback: Vec::new(),
+                        });
+                    }
+                }
+                CompletionRecord::Return(value) | CompletionRecord::Throw(value) => {
+                    validate_runtime_value(runtime, value)?;
+                }
+            }
+        }
+        for active in &frame.active_finally {
+            if active.completion_index >= frame.pending_completions.len() {
+                return Err(JsliteError::Message {
+                    kind: DiagnosticKind::Serialization,
+                    message:
+                        "snapshot validation failed: active finally references a missing completion"
+                            .to_string(),
+                    span: None,
+                    traceback: Vec::new(),
+                });
+            }
+            if active.exit >= function.code.len() {
+                return Err(JsliteError::Message {
+                    kind: DiagnosticKind::Serialization,
+                    message: format!(
+                        "snapshot validation failed: active finally exit target {} is out of range for function {}",
+                        active.exit, frame.function_id
+                    ),
+                    span: None,
+                    traceback: Vec::new(),
+                });
+            }
+        }
     }
 
     for cell in runtime.cells.values() {
@@ -743,15 +1024,44 @@ struct Compiler {
 struct CompileContext {
     code: Vec<Instruction>,
     loop_stack: Vec<LoopContext>,
+    active_handlers: Vec<ActiveHandlerContext>,
+    active_finally: Vec<ActiveFinallyContext>,
+    finally_regions: Vec<FinallyRegionContext>,
     scope_depth: usize,
 }
 
 #[derive(Debug, Default)]
 struct LoopContext {
-    break_jumps: Vec<usize>,
-    continue_jumps: Vec<usize>,
+    break_jumps: Vec<ControlTransferPatch>,
+    continue_jumps: Vec<ControlTransferPatch>,
     continue_target: Option<usize>,
+    handler_depth: usize,
     scope_depth: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ActiveHandlerContext {
+    finally_region: Option<usize>,
+    scope_depth: usize,
+}
+
+#[derive(Debug, Default)]
+struct FinallyRegionContext {
+    handler_sites: Vec<usize>,
+    jump_sites: Vec<usize>,
+}
+
+#[derive(Debug, Default)]
+struct ActiveFinallyContext {
+    exit_patch_site: usize,
+    jump_sites: Vec<usize>,
+    scope_depth: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ControlTransferPatch {
+    DirectJump(usize),
+    PendingJump(usize),
 }
 
 impl Compiler {
@@ -908,6 +1218,7 @@ impl Compiler {
                 let exit_jump = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
                 context.code.push(Instruction::Pop);
                 context.loop_stack.push(LoopContext {
+                    handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
                 });
@@ -915,7 +1226,7 @@ impl Compiler {
                 let loop_ctx = context.loop_stack.pop().unwrap_or_default();
                 let continue_target = loop_ctx.continue_target.unwrap_or(loop_start);
                 for jump in loop_ctx.continue_jumps {
-                    self.patch_jump(context, jump, continue_target);
+                    self.patch_control_transfer(context, jump, continue_target);
                 }
                 context.code.push(Instruction::Jump(loop_start));
                 let false_path_ip = context.code.len();
@@ -923,12 +1234,13 @@ impl Compiler {
                 let loop_end = context.code.len();
                 self.patch_jump(context, exit_jump, false_path_ip);
                 for jump in loop_ctx.break_jumps {
-                    self.patch_jump(context, jump, loop_end);
+                    self.patch_control_transfer(context, jump, loop_end);
                 }
             }
             Stmt::DoWhile { body, test, .. } => {
                 let loop_start = context.code.len();
                 context.loop_stack.push(LoopContext {
+                    handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
                 });
@@ -947,10 +1259,10 @@ impl Compiler {
                 self.patch_jump(context, exit_jump, false_path_ip);
                 let loop_ctx = context.loop_stack.pop().unwrap_or_default();
                 for jump in loop_ctx.continue_jumps {
-                    self.patch_jump(context, jump, continue_target);
+                    self.patch_control_transfer(context, jump, continue_target);
                 }
                 for jump in loop_ctx.break_jumps {
-                    self.patch_jump(context, jump, loop_end);
+                    self.patch_control_transfer(context, jump, loop_end);
                 }
             }
             Stmt::For {
@@ -1000,6 +1312,7 @@ impl Compiler {
                     None
                 };
                 context.loop_stack.push(LoopContext {
+                    handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
                 });
@@ -1023,45 +1336,45 @@ impl Compiler {
                 }
                 let loop_ctx = context.loop_stack.pop().unwrap_or_default();
                 for jump in loop_ctx.continue_jumps {
-                    self.patch_jump(context, jump, update_start);
+                    self.patch_control_transfer(context, jump, update_start);
                 }
                 for jump in loop_ctx.break_jumps {
-                    self.patch_jump(context, jump, loop_end);
+                    self.patch_control_transfer(context, jump, loop_end);
                 }
                 context.scope_depth -= 1;
                 context.code.push(Instruction::PopEnv);
             }
             Stmt::Break { span } => {
-                if let Some(loop_ctx) = context.loop_stack.last() {
-                    for _ in loop_ctx.scope_depth..context.scope_depth {
-                        context.code.push(Instruction::PopEnv);
-                    }
-                }
-                let jump = self.emit_jump(context, Instruction::Jump(usize::MAX));
-                if let Some(loop_ctx) = context.loop_stack.last_mut() {
-                    loop_ctx.break_jumps.push(jump);
-                } else {
+                let Some(loop_ctx) = context.loop_stack.last() else {
                     return Err(JsliteError::runtime_at(
                         "`break` used outside of a loop",
                         *span,
                     ));
-                }
+                };
+                let patch =
+                    self.emit_jump_transfer(context, loop_ctx.handler_depth, loop_ctx.scope_depth);
+                context
+                    .loop_stack
+                    .last_mut()
+                    .expect("loop context should still exist")
+                    .break_jumps
+                    .push(patch);
             }
             Stmt::Continue { span } => {
-                if let Some(loop_ctx) = context.loop_stack.last() {
-                    for _ in loop_ctx.scope_depth..context.scope_depth {
-                        context.code.push(Instruction::PopEnv);
-                    }
-                }
-                let jump = self.emit_jump(context, Instruction::Jump(usize::MAX));
-                if let Some(loop_ctx) = context.loop_stack.last_mut() {
-                    loop_ctx.continue_jumps.push(jump);
-                } else {
+                let Some(loop_ctx) = context.loop_stack.last() else {
                     return Err(JsliteError::runtime_at(
                         "`continue` used outside of a loop",
                         *span,
                     ));
-                }
+                };
+                let patch =
+                    self.emit_jump_transfer(context, loop_ctx.handler_depth, loop_ctx.scope_depth);
+                context
+                    .loop_stack
+                    .last_mut()
+                    .expect("loop context should still exist")
+                    .continue_jumps
+                    .push(patch);
             }
             Stmt::Return { value, .. } => {
                 if let Some(value) = value {
@@ -1069,19 +1382,25 @@ impl Compiler {
                 } else {
                     context.code.push(Instruction::PushUndefined);
                 }
-                context.code.push(Instruction::Return);
+                self.emit_return(context);
             }
-            Stmt::Throw { span, .. } => {
-                return Err(JsliteError::runtime_at(
-                    "runtime support for throw/try/catch/finally is not implemented yet",
-                    *span,
-                ));
+            Stmt::Throw { span, value } => {
+                self.compile_expr(context, value)?;
+                if let Some(active_finally) = context.active_finally.last() {
+                    self.emit_scope_cleanup(context, active_finally.scope_depth);
+                    context.code.push(Instruction::PushPendingThrow);
+                    self.emit_jump_to_active_finally_exit(context);
+                } else {
+                    context.code.push(Instruction::Throw { span: *span });
+                }
             }
-            Stmt::Try { span, .. } => {
-                return Err(JsliteError::runtime_at(
-                    "runtime support for try/catch/finally is not implemented yet",
-                    *span,
-                ));
+            Stmt::Try {
+                body,
+                catch,
+                finally,
+                ..
+            } => {
+                self.compile_try(context, body, catch.as_ref(), finally.as_deref())?;
             }
             Stmt::Switch {
                 discriminant,
@@ -1092,6 +1411,7 @@ impl Compiler {
                 let mut case_jumps = Vec::new();
                 let mut default_case_index = None;
                 context.loop_stack.push(LoopContext {
+                    handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
                 });
@@ -1132,7 +1452,7 @@ impl Compiler {
                 }
                 let loop_ctx = context.loop_stack.pop().unwrap_or_default();
                 for jump in loop_ctx.break_jumps {
-                    self.patch_jump(context, jump, end_ip);
+                    self.patch_control_transfer(context, jump, end_ip);
                 }
             }
             Stmt::Empty { .. } => {}
@@ -1464,6 +1784,295 @@ impl Compiler {
         Ok(())
     }
 
+    fn compile_try(
+        &mut self,
+        context: &mut CompileContext,
+        body: &Stmt,
+        catch: Option<&crate::ir::CatchClause>,
+        finally: Option<&Stmt>,
+    ) -> JsliteResult<()> {
+        let finally_region = finally.map(|_| {
+            context
+                .finally_regions
+                .push(FinallyRegionContext::default());
+            context.finally_regions.len() - 1
+        });
+
+        let try_handler_site = context.code.len();
+        context.code.push(Instruction::PushHandler {
+            catch: catch.map(|_| usize::MAX),
+            finally: finally_region.map(|_| usize::MAX),
+        });
+        if let Some(region) = finally_region {
+            context.finally_regions[region]
+                .handler_sites
+                .push(try_handler_site);
+        }
+
+        context.active_handlers.push(ActiveHandlerContext {
+            finally_region,
+            scope_depth: context.scope_depth,
+        });
+        self.compile_stmt(context, body)?;
+        context.active_handlers.pop();
+        context.code.push(Instruction::PopHandler);
+
+        let mut skip_catch_jump = None;
+        let mut after_finally_patches = Vec::new();
+        let outer_handler_depth = context.active_handlers.len();
+
+        if let Some(region) = finally_region {
+            let patch = context.code.len();
+            context.code.push(Instruction::PushPendingJump {
+                target: usize::MAX,
+                target_handler_depth: outer_handler_depth,
+                target_scope_depth: context.scope_depth,
+            });
+            after_finally_patches.push(patch);
+            self.emit_jump_to_finally(context, region);
+        } else if catch.is_some() {
+            skip_catch_jump = Some(self.emit_jump(context, Instruction::Jump(usize::MAX)));
+        }
+
+        if let Some(catch_clause) = catch {
+            self.patch_handler_catch(context, try_handler_site, context.code.len());
+
+            if let Some(region) = finally_region {
+                let catch_handler_site = context.code.len();
+                context.code.push(Instruction::PushHandler {
+                    catch: None,
+                    finally: Some(usize::MAX),
+                });
+                context.finally_regions[region]
+                    .handler_sites
+                    .push(catch_handler_site);
+                context.active_handlers.push(ActiveHandlerContext {
+                    finally_region: Some(region),
+                    scope_depth: context.scope_depth,
+                });
+            }
+
+            context.code.push(Instruction::PushEnv);
+            context.scope_depth += 1;
+            if let Some(parameter) = &catch_clause.parameter {
+                for (name, mutable) in pattern_bindings(parameter) {
+                    context
+                        .code
+                        .push(Instruction::DeclareName { name, mutable });
+                }
+            }
+            context.code.push(Instruction::BeginCatch);
+            if let Some(parameter) = &catch_clause.parameter {
+                context
+                    .code
+                    .push(Instruction::InitializePattern(parameter.clone()));
+            } else {
+                context.code.push(Instruction::Pop);
+            }
+            self.compile_stmt(context, catch_clause.body.as_ref())?;
+            context.scope_depth -= 1;
+            context.code.push(Instruction::PopEnv);
+
+            if let Some(region) = finally_region {
+                context.active_handlers.pop();
+                context.code.push(Instruction::PopHandler);
+                let patch = context.code.len();
+                context.code.push(Instruction::PushPendingJump {
+                    target: usize::MAX,
+                    target_handler_depth: outer_handler_depth,
+                    target_scope_depth: context.scope_depth,
+                });
+                after_finally_patches.push(patch);
+                self.emit_jump_to_finally(context, region);
+            }
+        }
+
+        if let Some(finally_stmt) = finally {
+            let finally_ip = context.code.len();
+            self.patch_finally_region(
+                context,
+                finally_region.expect("finally region should exist"),
+                finally_ip,
+            );
+            let enter_finally = context.code.len();
+            context
+                .code
+                .push(Instruction::EnterFinally { exit: usize::MAX });
+            context.active_finally.push(ActiveFinallyContext {
+                exit_patch_site: enter_finally,
+                jump_sites: Vec::new(),
+                scope_depth: context.scope_depth,
+            });
+            self.compile_stmt(context, finally_stmt)?;
+            let continue_ip = context.code.len();
+            let active_finally = context
+                .active_finally
+                .pop()
+                .expect("finally context should exist");
+            self.patch_finally_exit(context, active_finally, continue_ip);
+            context.code.push(Instruction::ContinuePending);
+            let after_finally = context.code.len();
+            for patch in after_finally_patches {
+                self.patch_pending_jump(context, patch, after_finally);
+            }
+            if let Some(skip_catch_jump) = skip_catch_jump {
+                self.patch_jump(context, skip_catch_jump, after_finally);
+            }
+        } else if let Some(skip_catch_jump) = skip_catch_jump {
+            let after_catch = context.code.len();
+            self.patch_jump(context, skip_catch_jump, after_catch);
+        }
+
+        Ok(())
+    }
+
+    fn emit_return(&self, context: &mut CompileContext) {
+        if let Some(active_finally) = context.active_finally.last() {
+            self.emit_scope_cleanup(context, active_finally.scope_depth);
+            context.code.push(Instruction::PushPendingReturn);
+            self.emit_jump_to_active_finally_exit(context);
+            return;
+        }
+        if let Some((handler_depth, region)) = self.nearest_finally_region(context, 0) {
+            self.emit_scope_cleanup(context, context.active_handlers[handler_depth].scope_depth);
+            self.emit_handler_cleanup(context, handler_depth);
+            context.code.push(Instruction::PushPendingReturn);
+            self.emit_jump_to_finally(context, region);
+        } else {
+            context.code.push(Instruction::Return);
+        }
+    }
+
+    fn emit_jump_transfer(
+        &self,
+        context: &mut CompileContext,
+        target_handler_depth: usize,
+        target_scope_depth: usize,
+    ) -> ControlTransferPatch {
+        if let Some(active_finally) = context.active_finally.last() {
+            self.emit_scope_cleanup(context, active_finally.scope_depth);
+            let patch = context.code.len();
+            context.code.push(Instruction::PushPendingJump {
+                target: usize::MAX,
+                target_handler_depth,
+                target_scope_depth,
+            });
+            self.emit_jump_to_active_finally_exit(context);
+            return ControlTransferPatch::PendingJump(patch);
+        }
+        if let Some((handler_depth, region)) =
+            self.nearest_finally_region(context, target_handler_depth)
+        {
+            self.emit_scope_cleanup(context, context.active_handlers[handler_depth].scope_depth);
+            self.emit_handler_cleanup(context, handler_depth);
+            let patch = context.code.len();
+            context.code.push(Instruction::PushPendingJump {
+                target: usize::MAX,
+                target_handler_depth,
+                target_scope_depth,
+            });
+            self.emit_jump_to_finally(context, region);
+            ControlTransferPatch::PendingJump(patch)
+        } else {
+            self.emit_scope_cleanup(context, target_scope_depth);
+            self.emit_handler_cleanup(context, target_handler_depth);
+            ControlTransferPatch::DirectJump(self.emit_jump(context, Instruction::Jump(usize::MAX)))
+        }
+    }
+
+    fn emit_scope_cleanup(&self, context: &mut CompileContext, target_scope_depth: usize) {
+        for _ in target_scope_depth..context.scope_depth {
+            context.code.push(Instruction::PopEnv);
+        }
+    }
+
+    fn emit_handler_cleanup(&self, context: &mut CompileContext, target_handler_depth: usize) {
+        for _ in target_handler_depth..context.active_handlers.len() {
+            context.code.push(Instruction::PopHandler);
+        }
+    }
+
+    fn nearest_finally_region(
+        &self,
+        context: &CompileContext,
+        target_handler_depth: usize,
+    ) -> Option<(usize, usize)> {
+        for handler_depth in (target_handler_depth..context.active_handlers.len()).rev() {
+            if let Some(region) = context.active_handlers[handler_depth].finally_region {
+                return Some((handler_depth, region));
+            }
+        }
+        None
+    }
+
+    fn emit_jump_to_finally(&self, context: &mut CompileContext, region: usize) {
+        let jump_site = self.emit_jump(context, Instruction::Jump(usize::MAX));
+        context.finally_regions[region].jump_sites.push(jump_site);
+    }
+
+    fn emit_jump_to_active_finally_exit(&self, context: &mut CompileContext) {
+        let jump_site = self.emit_jump(context, Instruction::Jump(usize::MAX));
+        context
+            .active_finally
+            .last_mut()
+            .expect("finally context should exist")
+            .jump_sites
+            .push(jump_site);
+    }
+
+    fn patch_handler_catch(&self, context: &mut CompileContext, index: usize, target: usize) {
+        if let Instruction::PushHandler { catch, .. } = &mut context.code[index] {
+            *catch = Some(target);
+        }
+    }
+
+    fn patch_finally_region(&self, context: &mut CompileContext, region: usize, target: usize) {
+        let handler_sites = context.finally_regions[region].handler_sites.clone();
+        let jump_sites = context.finally_regions[region].jump_sites.clone();
+        for site in handler_sites {
+            if let Instruction::PushHandler { finally, .. } = &mut context.code[site] {
+                *finally = Some(target);
+            }
+        }
+        for site in jump_sites {
+            self.patch_jump(context, site, target);
+        }
+    }
+
+    fn patch_finally_exit(
+        &self,
+        context: &mut CompileContext,
+        finally: ActiveFinallyContext,
+        target: usize,
+    ) {
+        if let Instruction::EnterFinally { exit } = &mut context.code[finally.exit_patch_site] {
+            *exit = target;
+        }
+        for jump_site in finally.jump_sites {
+            self.patch_jump(context, jump_site, target);
+        }
+    }
+
+    fn patch_pending_jump(&self, context: &mut CompileContext, index: usize, target: usize) {
+        if let Instruction::PushPendingJump { target: jump, .. } = &mut context.code[index] {
+            *jump = target;
+        }
+    }
+
+    fn patch_control_transfer(
+        &self,
+        context: &mut CompileContext,
+        patch: ControlTransferPatch,
+        target: usize,
+    ) {
+        match patch {
+            ControlTransferPatch::DirectJump(index) => self.patch_jump(context, index, target),
+            ControlTransferPatch::PendingJump(index) => {
+                self.patch_pending_jump(context, index, target)
+            }
+        }
+    }
+
     fn emit_jump(&self, context: &mut CompileContext, instruction: Instruction) -> usize {
         let index = context.code.len();
         context.code.push(instruction);
@@ -1585,6 +2194,10 @@ enum BuiltinFunction {
     ArrayCtor,
     ArrayIsArray,
     ObjectCtor,
+    ErrorCtor,
+    TypeErrorCtor,
+    ReferenceErrorCtor,
+    RangeErrorCtor,
     NumberCtor,
     StringCtor,
     BooleanCtor,
@@ -1624,6 +2237,7 @@ enum ObjectKind {
     Math,
     Json,
     Console,
+    Error(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1645,6 +2259,36 @@ struct Frame {
     env: EnvKey,
     scope_stack: Vec<EnvKey>,
     stack: Vec<Value>,
+    handlers: Vec<ExceptionHandler>,
+    pending_exception: Option<Value>,
+    pending_completions: Vec<CompletionRecord>,
+    active_finally: Vec<ActiveFinallyState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ExceptionHandler {
+    catch: Option<usize>,
+    finally: Option<usize>,
+    env: EnvKey,
+    scope_stack_len: usize,
+    stack_len: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum CompletionRecord {
+    Jump {
+        target: usize,
+        target_handler_depth: usize,
+        target_scope_depth: usize,
+    },
+    Return(Value),
+    Throw(Value),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ActiveFinallyState {
+    completion_index: usize,
+    exit: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1759,21 +2403,14 @@ impl Runtime {
             }
             ResumePayload::Error(error) => {
                 self.pending_resume_behavior = ResumeBehavior::Value;
-                return Err(self.annotate_runtime_error(JsliteError::runtime(format!(
-                    "{}: {}{}{}",
-                    error.name,
-                    error.message,
-                    error
-                        .code
-                        .as_ref()
-                        .map(|code| format!(" [code={code}]"))
-                        .unwrap_or_default(),
-                    error
-                        .details
-                        .as_ref()
-                        .map(|details| format!(" [details={details:?}]"))
-                        .unwrap_or_default()
-                ))));
+                let value = self
+                    .value_from_host_error(error)
+                    .map_err(|error| self.annotate_runtime_error(error))?;
+                match self.raise_exception(value, None) {
+                    Ok(StepAction::Continue) => return self.run(),
+                    Ok(StepAction::Return(step)) => return Ok(step),
+                    Err(error) => return Err(self.annotate_runtime_error(error)),
+                }
             }
         }
         self.run()
@@ -1967,6 +2604,94 @@ impl Runtime {
                         self.frames[frame_index].stack.push(a);
                         self.frames[frame_index].stack.push(b);
                     }
+                    Instruction::PushHandler { catch, finally } => {
+                        let frame = &mut self.frames[frame_index];
+                        frame.handlers.push(ExceptionHandler {
+                            catch,
+                            finally,
+                            env: frame.env,
+                            scope_stack_len: frame.scope_stack.len(),
+                            stack_len: frame.stack.len(),
+                        });
+                    }
+                    Instruction::PopHandler => {
+                        self.frames[frame_index]
+                            .handlers
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("handler stack underflow"))?;
+                    }
+                    Instruction::EnterFinally { exit } => {
+                        let completion_index = self.frames[frame_index]
+                            .pending_completions
+                            .len()
+                            .checked_sub(1)
+                            .ok_or_else(|| JsliteError::runtime("missing pending completion"))?;
+                        self.frames[frame_index]
+                            .active_finally
+                            .push(ActiveFinallyState {
+                                completion_index,
+                                exit,
+                            });
+                    }
+                    Instruction::BeginCatch => {
+                        let value = self.frames[frame_index]
+                            .pending_exception
+                            .take()
+                            .ok_or_else(|| JsliteError::runtime("missing pending exception"))?;
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    Instruction::Throw { span } => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        return self.raise_exception(value, Some(span));
+                    }
+                    Instruction::PushPendingJump {
+                        target,
+                        target_handler_depth,
+                        target_scope_depth,
+                    } => {
+                        self.store_completion(
+                            frame_index,
+                            CompletionRecord::Jump {
+                                target,
+                                target_handler_depth,
+                                target_scope_depth,
+                            },
+                        )?;
+                    }
+                    Instruction::PushPendingReturn => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        self.store_completion(frame_index, CompletionRecord::Return(value))?;
+                    }
+                    Instruction::PushPendingThrow => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        self.store_completion(frame_index, CompletionRecord::Throw(value))?;
+                    }
+                    Instruction::ContinuePending => {
+                        let marker = self.frames[frame_index]
+                            .active_finally
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("missing active finally state"))?;
+                        if marker.completion_index
+                            >= self.frames[frame_index].pending_completions.len()
+                        {
+                            return Err(JsliteError::runtime(
+                                "active finally references missing completion",
+                            ));
+                        }
+                        let completion = self.frames[frame_index]
+                            .pending_completions
+                            .remove(marker.completion_index);
+                        return self.resume_completion(completion);
+                    }
                     Instruction::Jump(target) => self.frames[frame_index].ip = target,
                     Instruction::JumpIfFalse(target) => {
                         let value = self.frames[frame_index]
@@ -2057,24 +2782,249 @@ impl Runtime {
                             .stack
                             .pop()
                             .unwrap_or(Value::Undefined);
-                        self.frames.pop();
-                        if let Some(parent) = self.frames.last_mut() {
-                            parent.stack.push(value);
-                        } else {
-                            return Ok(StepAction::Return(ExecutionStep::Completed(
-                                self.value_to_structured(value)?,
-                            )));
-                        }
+                        return self.complete_return(value);
                     }
                 }
                 Ok(StepAction::Continue)
-            })()
-            .map_err(|error| self.annotate_runtime_error(error))?;
+            })();
+
+            let action = match action {
+                Ok(action) => action,
+                Err(error) => match self.handle_runtime_fault(error) {
+                    Ok(action) => action,
+                    Err(error) => return Err(self.annotate_runtime_error(error)),
+                },
+            };
 
             match action {
                 StepAction::Continue => {}
                 StepAction::Return(step) => return Ok(step),
             }
+        }
+    }
+
+    fn handle_runtime_fault(&mut self, error: JsliteError) -> JsliteResult<StepAction> {
+        match error {
+            JsliteError::Message {
+                kind: DiagnosticKind::Runtime,
+                message,
+                span,
+                ..
+            } => {
+                let value = self.value_from_runtime_message(&message)?;
+                self.raise_exception(value, span)
+            }
+            other => Err(other),
+        }
+    }
+
+    fn store_completion(
+        &mut self,
+        frame_index: usize,
+        completion: CompletionRecord,
+    ) -> JsliteResult<()> {
+        let completion_index = self.frames[frame_index]
+            .active_finally
+            .last()
+            .map(|active| active.completion_index);
+        if let Some(completion_index) = completion_index {
+            if completion_index >= self.frames[frame_index].pending_completions.len() {
+                return Err(JsliteError::runtime(
+                    "active finally references missing completion",
+                ));
+            }
+            self.frames[frame_index].pending_completions[completion_index] = completion;
+        } else {
+            self.frames[frame_index]
+                .pending_completions
+                .push(completion);
+        }
+        Ok(())
+    }
+
+    fn restore_handler_state(
+        &mut self,
+        frame_index: usize,
+        handler: &ExceptionHandler,
+    ) -> JsliteResult<()> {
+        let frame = &mut self.frames[frame_index];
+        frame.env = handler.env;
+        frame.scope_stack.truncate(handler.scope_stack_len);
+        frame.stack.truncate(handler.stack_len);
+        Ok(())
+    }
+
+    fn raise_exception(
+        &mut self,
+        value: Value,
+        span: Option<SourceSpan>,
+    ) -> JsliteResult<StepAction> {
+        let traceback = self.traceback_frames();
+        let thrown = value;
+
+        loop {
+            let Some(frame_index) = self.frames.len().checked_sub(1) else {
+                return Err(JsliteError::runtime("vm lost all frames"));
+            };
+
+            if let Some(handler_index) = self.frames[frame_index]
+                .handlers
+                .iter()
+                .rposition(|handler| handler.catch.is_some() || handler.finally.is_some())
+            {
+                let handler = self.frames[frame_index].handlers[handler_index].clone();
+                self.frames[frame_index].handlers.truncate(handler_index);
+                self.restore_handler_state(frame_index, &handler)?;
+
+                if let Some(catch_ip) = handler.catch {
+                    self.frames[frame_index].pending_exception = Some(thrown);
+                    self.frames[frame_index].ip = catch_ip;
+                    return Ok(StepAction::Continue);
+                }
+
+                if let Some(finally_ip) = handler.finally {
+                    self.frames[frame_index]
+                        .pending_completions
+                        .push(CompletionRecord::Throw(thrown));
+                    self.frames[frame_index].ip = finally_ip;
+                    return Ok(StepAction::Continue);
+                }
+            }
+
+            if let Some(active) = self.frames[frame_index].active_finally.last().cloned() {
+                if active.completion_index >= self.frames[frame_index].pending_completions.len() {
+                    return Err(JsliteError::runtime(
+                        "active finally references missing completion",
+                    ));
+                }
+                self.frames[frame_index].pending_completions[active.completion_index] =
+                    CompletionRecord::Throw(thrown);
+                self.frames[frame_index].ip = active.exit;
+                return Ok(StepAction::Continue);
+            }
+
+            if self.frames.len() == 1 {
+                let message = self.render_exception(&thrown)?;
+                return Err(JsliteError::Message {
+                    kind: DiagnosticKind::Runtime,
+                    message,
+                    span,
+                    traceback,
+                });
+            }
+
+            self.frames.pop();
+        }
+    }
+
+    fn resume_completion(&mut self, completion: CompletionRecord) -> JsliteResult<StepAction> {
+        match completion {
+            CompletionRecord::Throw(value) => self.raise_exception(value, None),
+            CompletionRecord::Jump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+            } => self.resume_nonthrow_completion(
+                target_handler_depth,
+                target_scope_depth,
+                CompletionRecord::Jump {
+                    target,
+                    target_handler_depth,
+                    target_scope_depth,
+                },
+            ),
+            CompletionRecord::Return(value) => {
+                self.resume_nonthrow_completion(0, 0, CompletionRecord::Return(value))
+            }
+        }
+    }
+
+    fn resume_nonthrow_completion(
+        &mut self,
+        target_handler_depth: usize,
+        target_scope_depth: usize,
+        completion: CompletionRecord,
+    ) -> JsliteResult<StepAction> {
+        let frame_index = self
+            .frames
+            .len()
+            .checked_sub(1)
+            .ok_or_else(|| JsliteError::runtime("vm lost all frames"))?;
+        let current_depth = self.frames[frame_index].handlers.len();
+        if target_handler_depth > current_depth {
+            return Err(JsliteError::runtime(
+                "completion targets missing handler depth",
+            ));
+        }
+        if target_scope_depth > self.frames[frame_index].scope_stack.len() {
+            return Err(JsliteError::runtime(
+                "completion targets missing scope depth",
+            ));
+        }
+
+        let restore_state = if target_handler_depth < current_depth {
+            self.frames[frame_index]
+                .handlers
+                .get(target_handler_depth)
+                .cloned()
+        } else {
+            None
+        };
+
+        if let Some(handler_index) = (target_handler_depth..current_depth)
+            .rev()
+            .find(|index| self.frames[frame_index].handlers[*index].finally.is_some())
+        {
+            let handler = self.frames[frame_index].handlers[handler_index].clone();
+            self.frames[frame_index].handlers.truncate(handler_index);
+            self.restore_handler_state(frame_index, &handler)?;
+            self.frames[frame_index]
+                .pending_completions
+                .push(completion);
+            self.frames[frame_index].ip = handler
+                .finally
+                .ok_or_else(|| JsliteError::runtime("missing finally target"))?;
+            return Ok(StepAction::Continue);
+        }
+
+        if let Some(handler) = restore_state.as_ref() {
+            self.restore_handler_state(frame_index, handler)?;
+        }
+        self.frames[frame_index]
+            .handlers
+            .truncate(target_handler_depth);
+
+        match completion {
+            CompletionRecord::Jump { target, .. } => {
+                if self.frames[frame_index].scope_stack.len() < target_scope_depth {
+                    return Err(JsliteError::runtime(
+                        "completion targets missing scope depth",
+                    ));
+                }
+                while self.frames[frame_index].scope_stack.len() > target_scope_depth {
+                    let restored = self.frames[frame_index]
+                        .scope_stack
+                        .pop()
+                        .ok_or_else(|| JsliteError::runtime("scope stack underflow"))?;
+                    self.frames[frame_index].env = restored;
+                }
+                self.frames[frame_index].ip = target;
+                Ok(StepAction::Continue)
+            }
+            CompletionRecord::Return(value) => self.complete_return(value),
+            CompletionRecord::Throw(_) => unreachable!(),
+        }
+    }
+
+    fn complete_return(&mut self, value: Value) -> JsliteResult<StepAction> {
+        self.frames.pop();
+        if let Some(parent) = self.frames.last_mut() {
+            parent.stack.push(value);
+            Ok(StepAction::Continue)
+        } else {
+            Ok(StepAction::Return(ExecutionStep::Completed(
+                self.value_to_structured(value)?,
+            )))
         }
     }
 
@@ -2110,6 +3060,10 @@ impl Runtime {
             env,
             scope_stack: Vec::new(),
             stack: Vec::new(),
+            handlers: Vec::new(),
+            pending_exception: None,
+            pending_completions: Vec::new(),
+            active_finally: Vec::new(),
         });
         Ok(())
     }
@@ -2152,6 +3106,10 @@ impl Runtime {
             Value::BuiltinFunction(
                 BuiltinFunction::ArrayCtor
                 | BuiltinFunction::ObjectCtor
+                | BuiltinFunction::ErrorCtor
+                | BuiltinFunction::TypeErrorCtor
+                | BuiltinFunction::ReferenceErrorCtor
+                | BuiltinFunction::RangeErrorCtor
                 | BuiltinFunction::NumberCtor
                 | BuiltinFunction::StringCtor
                 | BuiltinFunction::BooleanCtor,
@@ -2190,6 +3148,14 @@ impl Runtime {
                     });
                     Ok(Value::Object(object))
                 }
+            }
+            BuiltinFunction::ErrorCtor => self.make_error_object("Error", args, None, None),
+            BuiltinFunction::TypeErrorCtor => self.make_error_object("TypeError", args, None, None),
+            BuiltinFunction::ReferenceErrorCtor => {
+                self.make_error_object("ReferenceError", args, None, None)
+            }
+            BuiltinFunction::RangeErrorCtor => {
+                self.make_error_object("RangeError", args, None, None)
             }
             BuiltinFunction::NumberCtor => Ok(Value::Number(
                 self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?,
@@ -2269,6 +3235,26 @@ impl Runtime {
         self.define_global(
             "String".to_string(),
             Value::BuiltinFunction(BuiltinFunction::StringCtor),
+            false,
+        )?;
+        self.define_global(
+            "Error".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::ErrorCtor),
+            false,
+        )?;
+        self.define_global(
+            "TypeError".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::TypeErrorCtor),
+            false,
+        )?;
+        self.define_global(
+            "ReferenceError".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::ReferenceErrorCtor),
+            false,
+        )?;
+        self.define_global(
+            "RangeError".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::RangeErrorCtor),
             false,
         )?;
         self.define_global(
@@ -2785,11 +3771,118 @@ impl Runtime {
                 }
                 parts.join(",")
             }
-            Value::Object(_) => "[object Object]".to_string(),
+            Value::Object(object) => self
+                .error_summary(object)?
+                .unwrap_or_else(|| "[object Object]".to_string()),
             Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
                 "[Function]".to_string()
             }
         })
+    }
+
+    fn make_error_object(
+        &mut self,
+        name: &str,
+        args: &[Value],
+        code: Option<String>,
+        details: Option<Value>,
+    ) -> JsliteResult<Value> {
+        let message = if let Some(value) = args.first() {
+            self.to_string(value.clone())?
+        } else {
+            String::new()
+        };
+        let mut properties = IndexMap::from([
+            ("name".to_string(), Value::String(name.to_string())),
+            ("message".to_string(), Value::String(message)),
+        ]);
+        if let Some(code) = code {
+            properties.insert("code".to_string(), Value::String(code));
+        }
+        if let Some(details) = details {
+            properties.insert("details".to_string(), details);
+        }
+        let object = self.objects.insert(PlainObject {
+            properties,
+            kind: ObjectKind::Error(name.to_string()),
+        });
+        Ok(Value::Object(object))
+    }
+
+    fn value_from_runtime_message(&mut self, message: &str) -> JsliteResult<Value> {
+        let (name, detail) = match message.split_once(": ") {
+            Some((name, detail)) if name == "Error" || name.ends_with("Error") => {
+                (name.to_string(), detail.to_string())
+            }
+            _ => ("Error".to_string(), message.to_string()),
+        };
+        self.make_error_object(&name, &[Value::String(detail)], None, None)
+    }
+
+    fn value_from_host_error(&mut self, error: HostError) -> JsliteResult<Value> {
+        let details = match error.details {
+            Some(details) => Some(self.value_from_structured(details)?),
+            None => None,
+        };
+        self.make_error_object(
+            &error.name,
+            &[Value::String(error.message)],
+            error.code,
+            details,
+        )
+    }
+
+    fn render_exception(&self, value: &Value) -> JsliteResult<String> {
+        match value {
+            Value::Object(object) => {
+                if let Some(summary) = self.error_summary(*object)? {
+                    Ok(summary)
+                } else {
+                    self.to_string(value.clone())
+                }
+            }
+            _ => self.to_string(value.clone()),
+        }
+    }
+
+    fn error_summary(&self, object: ObjectKey) -> JsliteResult<Option<String>> {
+        let object = self
+            .objects
+            .get(object)
+            .ok_or_else(|| JsliteError::runtime("object missing"))?;
+        let name = object.properties.get("name").and_then(|value| match value {
+            Value::String(value) => Some(value.as_str()),
+            _ => None,
+        });
+        let message = object
+            .properties
+            .get("message")
+            .and_then(|value| match value {
+                Value::String(value) => Some(value.as_str()),
+                _ => None,
+            });
+
+        if !matches!(object.kind, ObjectKind::Error(_)) && name.is_none() && message.is_none() {
+            return Ok(None);
+        }
+
+        let mut summary = match (name, message) {
+            (Some(name), Some("")) => name.to_string(),
+            (Some(name), Some(message)) => format!("{name}: {message}"),
+            (Some(name), None) => name.to_string(),
+            (None, Some(message)) => message.to_string(),
+            (None, None) => "Error".to_string(),
+        };
+
+        if let Some(Value::String(code)) = object.properties.get("code") {
+            summary.push_str(&format!(" [code={code}]"));
+        }
+        if let Some(details) = object.properties.get("details") {
+            let details = self.value_to_structured(details.clone())?;
+            summary.push_str(&format!(" [details={details:?}]"));
+        }
+
+        Ok(Some(summary))
     }
 
     fn to_property_key(&self, value: Value) -> JsliteResult<String> {
@@ -3294,6 +4387,186 @@ mod tests {
     }
 
     #[test]
+    fn runs_throw_try_catch_and_finally() {
+        let value = run(r#"
+            let log = [];
+            try {
+              log[log.length] = "body";
+              throw new Error("boom");
+            } catch (error) {
+              log[log.length] = error.name;
+              log[log.length] = error.message;
+            } finally {
+              log[log.length] = "finally";
+            }
+            log;
+            "#);
+        assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                StructuredValue::String("body".to_string()),
+                StructuredValue::String("Error".to_string()),
+                StructuredValue::String("boom".to_string()),
+                StructuredValue::String("finally".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn catches_runtime_type_errors_as_guest_errors() {
+        let value = run(r#"
+            let captured;
+            try {
+              const value = null;
+              value.answer;
+            } catch (error) {
+              captured = [error.name, error.message];
+            }
+            captured;
+            "#);
+        assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                StructuredValue::String("TypeError".to_string()),
+                StructuredValue::String("cannot read properties of nullish value".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn finally_runs_for_return_break_and_continue() {
+        let value = run(r#"
+            let events = [];
+            function earlyReturn() {
+              try {
+                return "body";
+              } finally {
+                events[events.length] = "return";
+              }
+            }
+            let index = 0;
+            while (index < 2) {
+              index += 1;
+              try {
+                if (index === 1) {
+                  continue;
+                }
+                break;
+              } finally {
+                events[events.length] = index;
+              }
+            }
+            [earlyReturn(), events];
+            "#);
+        assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                StructuredValue::String("body".to_string()),
+                StructuredValue::Array(vec![
+                    StructuredValue::Number(StructuredNumber::Finite(1.0)),
+                    StructuredValue::Number(StructuredNumber::Finite(2.0)),
+                    StructuredValue::String("return".to_string()),
+                ]),
+            ])
+        );
+    }
+
+    #[test]
+    fn nested_exception_unwind_preserves_finally_order() {
+        let value = run(r#"
+            let events = [];
+            function nested() {
+              try {
+                try {
+                  events[events.length] = "inner-body";
+                  throw new Error("boom");
+                } catch (error) {
+                  events[events.length] = error.message;
+                  throw new TypeError("wrapped");
+                } finally {
+                  events[events.length] = "inner-finally";
+                }
+              } catch (error) {
+                events[events.length] = error.name;
+              } finally {
+                events[events.length] = "outer-finally";
+              }
+              return events;
+            }
+            nested();
+            "#);
+        assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                StructuredValue::String("inner-body".to_string()),
+                StructuredValue::String("boom".to_string()),
+                StructuredValue::String("inner-finally".to_string()),
+                StructuredValue::String("TypeError".to_string()),
+                StructuredValue::String("outer-finally".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn catches_host_errors_after_resume() {
+        let program = compile(
+            r#"
+            let captured;
+            try {
+              fetch_data(1);
+            } catch (error) {
+              captured = [error.name, error.message, error.code, error.details.status];
+            }
+            captured;
+            "#,
+        )
+        .expect("source should compile");
+
+        let step = start(
+            &program,
+            ExecutionOptions {
+                capabilities: vec!["fetch_data".to_string()],
+                ..ExecutionOptions::default()
+            },
+        )
+        .expect("execution should suspend");
+
+        let suspension = match step {
+            ExecutionStep::Suspended(suspension) => suspension,
+            other => panic!("expected suspension, got {other:?}"),
+        };
+
+        let resumed = resume(
+            suspension.snapshot,
+            ResumePayload::Error(HostError {
+                name: "CapabilityError".to_string(),
+                message: "upstream failed".to_string(),
+                code: Some("E_UPSTREAM".to_string()),
+                details: Some(StructuredValue::Object(IndexMap::from([(
+                    "status".to_string(),
+                    StructuredValue::Number(StructuredNumber::Finite(503.0)),
+                )]))),
+            }),
+        )
+        .expect("guest catch should handle resumed host errors");
+
+        match resumed {
+            ExecutionStep::Completed(value) => {
+                assert_eq!(
+                    value,
+                    StructuredValue::Array(vec![
+                        StructuredValue::String("CapabilityError".to_string()),
+                        StructuredValue::String("upstream failed".to_string()),
+                        StructuredValue::String("E_UPSTREAM".to_string()),
+                        StructuredValue::Number(StructuredNumber::Finite(503.0)),
+                    ])
+                );
+            }
+            other => panic!("expected completion, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn round_trips_program_and_snapshot() {
         let program =
             compile("const value = fetch_data(1); value + 2;").expect("compile should succeed");
@@ -3356,7 +4629,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("has inconsistent stack or scope depth")
+                .contains("has inconsistent validation state")
         );
     }
 

@@ -165,6 +165,138 @@ test('run surfaces sanitized host capability errors', async () => {
   );
 });
 
+test('run executes throw, try/catch, finally, and Error constructors', async () => {
+  const j = new Jslite(`
+    let log = [];
+    try {
+      log[log.length] = 'body';
+      throw new TypeError('boom');
+    } catch (error) {
+      log[log.length] = error.name;
+      log[log.length] = error.message;
+    } finally {
+      log[log.length] = 'finally';
+    }
+    log;
+  `);
+
+  const result = await j.run();
+  assert.deepEqual(result, ['body', 'TypeError', 'boom', 'finally']);
+});
+
+test('run catches runtime failures as guest-visible errors', async () => {
+  const j = new Jslite(`
+    let captured;
+    try {
+      const value = null;
+      value.answer;
+    } catch (error) {
+      captured = [error.name, error.message];
+    }
+    captured;
+  `);
+
+  const result = await j.run();
+  assert.deepEqual(result, [
+    'TypeError',
+    'cannot read properties of nullish value',
+  ]);
+});
+
+test('run catches resumed host capability errors inside guest try/catch', async () => {
+  const j = new Jslite(`
+    let captured;
+    try {
+      fetch_data(1);
+    } catch (error) {
+      captured = [error.name, error.message, error.code, error.details.status];
+    }
+    captured;
+  `);
+
+  const result = await j.run({
+    capabilities: {
+      async fetch_data() {
+        const error = new Error('upstream failed');
+        error.name = 'CapabilityError';
+        error.code = 'E_UPSTREAM';
+        error.details = { status: 503 };
+        throw error;
+      },
+    },
+  });
+
+  assert.deepEqual(result, [
+    'CapabilityError',
+    'upstream failed',
+    'E_UPSTREAM',
+    503,
+  ]);
+});
+
+test('finally runs for return, break, and continue completions', async () => {
+  const j = new Jslite(`
+    let events = [];
+    function earlyReturn() {
+      try {
+        return 'body';
+      } finally {
+        events[events.length] = 'return';
+      }
+    }
+    let index = 0;
+    while (index < 2) {
+      index += 1;
+      try {
+        if (index === 1) {
+          continue;
+        }
+        break;
+      } finally {
+        events[events.length] = index;
+      }
+    }
+    [earlyReturn(), events];
+  `);
+
+  const result = await j.run();
+  assert.deepEqual(result, ['body', [1, 2, 'return']]);
+});
+
+test('nested exception unwinds preserve catch and finally ordering', async () => {
+  const j = new Jslite(`
+    let events = [];
+    function nested() {
+      try {
+        try {
+          events[events.length] = 'inner-body';
+          throw new Error('boom');
+        } catch (error) {
+          events[events.length] = error.message;
+          throw new TypeError('wrapped');
+        } finally {
+          events[events.length] = 'inner-finally';
+        }
+      } catch (error) {
+        events[events.length] = error.name;
+      } finally {
+        events[events.length] = 'outer-finally';
+      }
+      return events;
+    }
+    nested();
+  `);
+
+  const result = await j.run();
+  assert.deepEqual(result, [
+    'inner-body',
+    'boom',
+    'inner-finally',
+    'TypeError',
+    'outer-finally',
+  ]);
+});
+
 test('constructor converts native parse failures into typed errors', () => {
   assert.throws(
     () => new Jslite('const value = ;'),
