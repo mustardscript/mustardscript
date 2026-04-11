@@ -1,6 +1,7 @@
 import type {
   Capability,
   CapabilityError,
+  ConsoleCallbacks,
   ExecutionOptions,
   JsliteError as JsliteErrorType,
   JsliteErrorKind,
@@ -46,10 +47,16 @@ const runtimeLimits: RuntimeLimits = {
 
 const errorKind: JsliteErrorKind = 'Runtime';
 const capability: Capability = async (...args) => args[0] ?? structured;
+const consoleCallbacks: ConsoleCallbacks = {
+  log(...args) {
+    return args[0];
+  },
+};
 
 async function typecheck(): Promise<void> {
   const result: StructuredValue = await runtime.run({
     ...executionOptions,
+    console: consoleCallbacks,
     capabilities: {
       ...executionOptions.capabilities,
       fetch_data: capability,
@@ -90,6 +97,7 @@ const typedError: JsliteErrorType = new JsliteError(errorKind, 'boom', new Error
 void typedError;
 void runtimeLimits;
 void errorKind;
+void consoleCallbacks;
 
 // @ts-expect-error symbols are not structured values
 runtime.run({ inputs: { bad: Symbol('nope') } });

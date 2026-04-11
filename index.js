@@ -38,6 +38,11 @@ const KNOWN_ERROR_KINDS = new Set([
   'Limit',
   'Serialization',
 ]);
+const CONSOLE_CAPABILITY_NAMES = {
+  log: 'console.log',
+  warn: 'console.warn',
+  error: 'console.error',
+};
 const USED_PROGRESS_TOKENS = new Set();
 
 class JsliteError extends Error {
@@ -69,6 +74,26 @@ function callNative(fn, ...args) {
   } catch (error) {
     throw normalizeNativeError(error);
   }
+}
+
+function collectHostHandlers({ capabilities = {}, console = {} } = {}) {
+  const handlers = { ...capabilities };
+  for (const [method, capabilityName] of Object.entries(CONSOLE_CAPABILITY_NAMES)) {
+    const handler = console[method];
+    if (handler === undefined) {
+      continue;
+    }
+    if (typeof handler !== 'function') {
+      throw new TypeError(`console.${method} must be a function`);
+    }
+    if (handlers[capabilityName] !== undefined) {
+      throw new TypeError(
+        `Duplicate handler for ${capabilityName}; use either options.console or options.capabilities`,
+      );
+    }
+    handlers[capabilityName] = handler;
+  }
+  return handlers;
 }
 
 function encodeNumber(value) {
@@ -158,11 +183,12 @@ function decodeStructured(value) {
   throw new TypeError(`Unsupported structured value: ${JSON.stringify(value)}`);
 }
 
-function encodeStartOptions({ inputs = {}, capabilities = {}, limits = {} } = {}) {
+function encodeStartOptions({ inputs = {}, limits = {}, ...handlers } = {}) {
   const encodedInputs = {};
   for (const [key, value] of Object.entries(inputs)) {
     encodedInputs[key] = encodeStructured(value);
   }
+  const hostHandlers = collectHostHandlers(handlers);
   const encodedLimits = {};
   if (limits.instructionBudget !== undefined) {
     encodedLimits.instruction_budget = limits.instructionBudget;
@@ -181,7 +207,7 @@ function encodeStartOptions({ inputs = {}, capabilities = {}, limits = {} } = {}
   }
   return JSON.stringify({
     inputs: encodedInputs,
-    capabilities: Object.keys(capabilities),
+    capabilities: Object.keys(hostHandlers),
     limits: encodedLimits,
   });
 }
@@ -309,12 +335,12 @@ class Jslite {
   }
 
   async run(options = {}) {
-    const capabilities = options.capabilities ?? {};
+    const hostHandlers = collectHostHandlers(options);
     let step = parseStep(
       callNative(native.startProgram, this._program, encodeStartOptions(options)),
     );
     while (step.type === 'suspended') {
-      const capability = capabilities[step.capability];
+      const capability = hostHandlers[step.capability];
       if (typeof capability !== 'function') {
         throw new Error(`Missing capability: ${step.capability}`);
       }

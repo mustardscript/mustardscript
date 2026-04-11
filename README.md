@@ -32,6 +32,8 @@ The current implementation already supports:
   basic control flow
 - `Math` and `JSON` built-ins
 - explicit named host capabilities with `start()` / `resume()` suspension
+- deterministic `console.log` / `console.warn` / `console.error` callbacks when
+  the host provides them explicitly
 - guest-safe runtime and limit errors with guest function-span tracebacks
 - same-version compiled-program and suspension snapshot round trips
 - a thin Node addon wrapper and a sidecar process that reuse the same Rust core
@@ -40,7 +42,6 @@ The current implementation does **not** yet execute:
 
 - `throw`, `try`, `catch`, or `finally`
 - `async` functions or `await`
-- deterministic console callbacks
 - cancellation, heap limits, call-depth limits, or outstanding-host-call limits
 
 ## Reference Docs

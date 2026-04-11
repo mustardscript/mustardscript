@@ -246,11 +246,11 @@ Exit criteria:
 - [x] Define and implement non-reentrant execution rules
 - [x] Implement suspension objects for iterative execution
 - [x] Implement `start()` and `resume()` flow
-- [ ] Implement deterministic console or print callback support
+- [x] Implement deterministic console or print callback support
 - [x] Add conversion tests for accepted and rejected values
 - [x] Add suspension and resume integration tests
 - [x] Add host error mapping tests
-- [ ] Add deterministic console callback tests
+- [x] Add deterministic console callback tests
 
 Exit criteria:
 

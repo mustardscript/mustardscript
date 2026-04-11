@@ -67,6 +67,73 @@ test('run awaits async host capabilities', async () => {
   assert.equal(result, 15);
 });
 
+test('run routes deterministic console callbacks and ignores host return values', async () => {
+  const events = [];
+  const j = new Jslite(`
+    const first = console.log('alpha', 1);
+    const second = console.warn({ ok: true });
+    const third = console.error('omega');
+    [first, second, third];
+  `);
+
+  const result = await j.run({
+    console: {
+      log(...args) {
+        events.push(['log', args]);
+        return 'ignored';
+      },
+      warn(...args) {
+        events.push(['warn', args]);
+        return 42;
+      },
+      error(...args) {
+        events.push(['error', args]);
+        return { ignored: true };
+      },
+    },
+  });
+
+  assert.deepEqual(events, [
+    ['log', ['alpha', 1]],
+    ['warn', [{ ok: true }]],
+    ['error', ['omega']],
+  ]);
+  assert.deepEqual(result, [undefined, undefined, undefined]);
+});
+
+test('start exposes console callbacks as suspension points with undefined guest results', () => {
+  const j = new Jslite(`
+    const logged = console.log('alpha');
+    logged === undefined ? 2 : 0;
+  `);
+
+  const progress = j.start({
+    console: {
+      log() {},
+    },
+  });
+
+  assert.ok(progress instanceof Progress);
+  assert.equal(progress.capability, 'console.log');
+  assert.deepEqual(progress.args, ['alpha']);
+  assert.equal(progress.resume('ignored by guest semantics'), 2);
+});
+
+test('console methods fail guest-safely when callbacks are not registered', async () => {
+  const j = new Jslite(`
+    console.log('alpha');
+  `);
+
+  await assert.rejects(
+    j.run(),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteRuntimeError' &&
+      error.kind === 'Runtime' &&
+      /value is not callable/.test(error.message),
+  );
+});
+
 test('run surfaces sanitized host capability errors', async () => {
   const j = new Jslite(`
     fetch_data(1);

@@ -65,7 +65,6 @@ extensions are called out explicitly instead of being implied.
 ## Explicit Deferrals
 
 - guest-visible `Error` objects and standard error types
-- deterministic console callbacks
 - async runtime and promises
 - full `this` semantics beyond the current basic function-call behavior
 - iterator protocol support
@@ -99,7 +98,8 @@ extensions are called out explicitly instead of being implied.
 - `Boolean`
 - `Math`
 - `JSON`
-- `console` as a placeholder global object with no callable methods yet
+- `console` with deterministic `log`, `warn`, and `error` methods when the host
+  explicitly provides those callbacks
 
 ### Currently Implemented Built-In Members
 
@@ -112,3 +112,6 @@ extensions are called out explicitly instead of being implied.
 - `Math.round`
 - `JSON.stringify`
 - `JSON.parse`
+- `console.log` when the host provides a `console.log` callback
+- `console.warn` when the host provides a `console.warn` callback
+- `console.error` when the host provides a `console.error` callback

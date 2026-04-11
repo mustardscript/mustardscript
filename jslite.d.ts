@@ -16,6 +16,12 @@ export type Capability = (
   ...args: StructuredValue[]
 ) => StructuredValue | Promise<StructuredValue>;
 
+export interface ConsoleCallbacks {
+  log?: Capability;
+  warn?: Capability;
+  error?: Capability;
+}
+
 export interface CompileOptions {
   inputs?: string[];
 }
@@ -23,6 +29,7 @@ export interface CompileOptions {
 export interface ExecutionOptions {
   inputs?: Record<string, StructuredValue>;
   capabilities?: Record<string, Capability>;
+  console?: ConsoleCallbacks;
   limits?: RuntimeLimits;
 }
 

@@ -59,8 +59,14 @@ guest-only traceback with guest function names and source spans.
 ## Console Contract
 
 - A `console` global object exists so the global name is reserved.
-- Deterministic `console.log`, `console.warn`, and `console.error` callbacks are
-  a planned later milestone and are not implemented yet.
+- `console.log`, `console.warn`, and `console.error` are exposed only when the
+  host provides the matching callback explicitly.
+- Console callbacks receive the same structured guest values as ordinary host
+  capabilities.
+- Guest-visible console calls always evaluate to `undefined`, regardless of what
+  the host callback returns.
+- If the host does not provide a callback, the corresponding console method is
+  absent and guest calls fail as ordinary guest runtime errors.
 
 ## Reentrancy
 

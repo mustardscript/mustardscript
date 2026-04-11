@@ -1659,6 +1659,7 @@ struct Runtime {
     closures: SlotMap<ClosureKey, Closure>,
     frames: Vec<Frame>,
     instruction_counter: usize,
+    pending_resume_behavior: ResumeBehavior,
 }
 
 enum RunState {
@@ -1667,7 +1668,14 @@ enum RunState {
     Suspended {
         capability: String,
         args: Vec<StructuredValue>,
+        resume_behavior: ResumeBehavior,
     },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum ResumeBehavior {
+    Value,
+    Undefined,
 }
 
 enum StepAction {
@@ -1693,6 +1701,7 @@ impl Runtime {
             closures: SlotMap::with_key(),
             frames: Vec::new(),
             instruction_counter: 0,
+            pending_resume_behavior: ResumeBehavior::Value,
         };
         runtime.install_builtins()?;
         for capability in options.capabilities {
@@ -1734,9 +1743,13 @@ impl Runtime {
     fn resume(&mut self, payload: ResumePayload) -> JsliteResult<ExecutionStep> {
         match payload {
             ResumePayload::Value(value) => {
-                let value = self
-                    .value_from_structured(value)
-                    .map_err(|error| self.annotate_runtime_error(error))?;
+                let value = match self.pending_resume_behavior {
+                    ResumeBehavior::Value => self
+                        .value_from_structured(value)
+                        .map_err(|error| self.annotate_runtime_error(error))?,
+                    ResumeBehavior::Undefined => Value::Undefined,
+                };
+                self.pending_resume_behavior = ResumeBehavior::Value;
                 let Some(frame) = self.frames.last_mut() else {
                     return Err(self.annotate_runtime_error(JsliteError::runtime(
                         "no suspended frame available",
@@ -1745,6 +1758,7 @@ impl Runtime {
                 frame.stack.push(value);
             }
             ResumePayload::Error(error) => {
+                self.pending_resume_behavior = ResumeBehavior::Value;
                 return Err(self.annotate_runtime_error(JsliteError::runtime(format!(
                     "{}: {}{}{}",
                     error.name,
@@ -2011,7 +2025,12 @@ impl Runtime {
                                 self.frames[frame_index].stack.push(value);
                             }
                             RunState::PushedFrame => {}
-                            RunState::Suspended { capability, args } => {
+                            RunState::Suspended {
+                                capability,
+                                args,
+                                resume_behavior,
+                            } => {
+                                self.pending_resume_behavior = resume_behavior;
                                 return Ok(StepAction::Return(ExecutionStep::Suspended(Box::new(
                                     Suspension {
                                         capability,
@@ -2116,6 +2135,7 @@ impl Runtime {
                 Ok(RunState::Completed(self.call_builtin(function, args)?))
             }
             Value::HostFunction(capability) => Ok(RunState::Suspended {
+                resume_behavior: resume_behavior_for_capability(&capability),
                 capability,
                 args: args
                     .iter()
@@ -2549,11 +2569,15 @@ impl Runtime {
                     .objects
                     .get(object)
                     .ok_or_else(|| JsliteError::runtime("object missing"))?;
-                Ok(object
-                    .properties
-                    .get(&key)
-                    .cloned()
-                    .unwrap_or(Value::Undefined))
+                if let Some(value) = object.properties.get(&key) {
+                    return Ok(value.clone());
+                }
+                if matches!(object.kind, ObjectKind::Console)
+                    && let Some(value) = self.console_method(&key)
+                {
+                    return Ok(value);
+                }
+                Ok(Value::Undefined)
             }
             Value::Array(array) => {
                 let array = self
@@ -2616,6 +2640,28 @@ impl Runtime {
                 Ok(())
             }
             _ => Err(JsliteError::runtime("TypeError: value is not an object")),
+        }
+    }
+
+    fn console_method(&self, key: &str) -> Option<Value> {
+        let capability = match key {
+            "log" => "console.log",
+            "warn" => "console.warn",
+            "error" => "console.error",
+            _ => return None,
+        };
+        self.capability_value(capability)
+    }
+
+    fn capability_value(&self, name: &str) -> Option<Value> {
+        let cell = self.find_cell(self.globals, name)?;
+        let cell = self.cells.get(cell)?;
+        if !cell.initialized {
+            return None;
+        }
+        match &cell.value {
+            Value::HostFunction(_) => Some(cell.value.clone()),
+            _ => None,
         }
     }
 
@@ -2888,6 +2934,13 @@ fn pop_many(stack: &mut Vec<Value>, count: usize) -> JsliteResult<Vec<Value>> {
     }
     let start = stack.len() - count;
     Ok(stack.drain(start..).collect())
+}
+
+fn resume_behavior_for_capability(capability: &str) -> ResumeBehavior {
+    match capability {
+        "console.log" | "console.warn" | "console.error" => ResumeBehavior::Undefined,
+        _ => ResumeBehavior::Value,
+    }
 }
 
 fn is_truthy(value: &Value) -> bool {
@@ -3170,6 +3223,52 @@ mod tests {
                 assert_eq!(
                     value,
                     StructuredValue::Number(StructuredNumber::Finite(42.0))
+                );
+            }
+            other => panic!("expected completion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn console_callbacks_resume_with_undefined_guest_results() {
+        let program = compile(
+            r#"
+            const logged = console.log(41);
+            logged === undefined ? 2 : 0;
+            "#,
+        )
+        .expect("source should compile");
+
+        let step = start(
+            &program,
+            ExecutionOptions {
+                capabilities: vec!["console.log".to_string()],
+                ..ExecutionOptions::default()
+            },
+        )
+        .expect("execution should suspend on console.log");
+
+        let suspension = match step {
+            ExecutionStep::Suspended(suspension) => suspension,
+            other => panic!("expected suspension, got {other:?}"),
+        };
+        assert_eq!(suspension.capability, "console.log");
+        assert_eq!(
+            suspension.args,
+            vec![StructuredValue::Number(StructuredNumber::Finite(41.0))]
+        );
+
+        let resumed = resume(
+            suspension.snapshot,
+            ResumePayload::Value(StructuredValue::String("ignored".to_string())),
+        )
+        .expect("resume should ignore host return values for console callbacks");
+
+        match resumed {
+            ExecutionStep::Completed(value) => {
+                assert_eq!(
+                    value,
+                    StructuredValue::Number(StructuredNumber::Finite(2.0))
                 );
             }
             other => panic!("expected completion, got {other:?}"),
