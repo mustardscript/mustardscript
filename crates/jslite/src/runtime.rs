@@ -2343,6 +2343,30 @@ enum StepAction {
     Return(ExecutionStep),
 }
 
+#[derive(Debug, Default)]
+struct GarbageCollectionMarks {
+    envs: HashSet<EnvKey>,
+    cells: HashSet<CellKey>,
+    objects: HashSet<ObjectKey>,
+    arrays: HashSet<ArrayKey>,
+    closures: HashSet<ClosureKey>,
+}
+
+#[derive(Debug, Default)]
+struct GarbageCollectionWorklist {
+    envs: Vec<EnvKey>,
+    cells: Vec<CellKey>,
+    objects: Vec<ObjectKey>,
+    arrays: Vec<ArrayKey>,
+    closures: Vec<ClosureKey>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct GarbageCollectionStats {
+    reclaimed_bytes: usize,
+    reclaimed_allocations: usize,
+}
+
 impl Runtime {
     fn new(program: BytecodeProgram, options: ExecutionOptions) -> JsliteResult<Self> {
         let mut envs = SlotMap::with_key();
@@ -2379,6 +2403,7 @@ impl Runtime {
     }
 
     fn run_root(&mut self) -> JsliteResult<ExecutionStep> {
+        self.collect_garbage()?;
         let root_env = self.new_env(Some(self.globals))?;
         self.push_frame(self.program.root, root_env, &[])?;
         self.run()
@@ -2569,54 +2594,10 @@ impl Runtime {
     }
 
     fn recompute_accounting_after_load(&mut self) -> JsliteResult<()> {
-        let mut heap_bytes_used = 0usize;
-        let mut allocation_count = 0usize;
-
-        for env in self.envs.values_mut() {
-            env.accounted_bytes = measure_env_bytes(env);
-            heap_bytes_used = heap_bytes_used
-                .checked_add(env.accounted_bytes)
-                .ok_or_else(|| {
-                    serialization_error("snapshot validation failed: heap accounting overflow")
-                })?;
-            allocation_count += 1;
-        }
-        for cell in self.cells.values_mut() {
-            cell.accounted_bytes = measure_cell_bytes(cell);
-            heap_bytes_used = heap_bytes_used
-                .checked_add(cell.accounted_bytes)
-                .ok_or_else(|| {
-                    serialization_error("snapshot validation failed: heap accounting overflow")
-                })?;
-            allocation_count += 1;
-        }
-        for object in self.objects.values_mut() {
-            object.accounted_bytes = measure_object_bytes(object);
-            heap_bytes_used = heap_bytes_used
-                .checked_add(object.accounted_bytes)
-                .ok_or_else(|| {
-                    serialization_error("snapshot validation failed: heap accounting overflow")
-                })?;
-            allocation_count += 1;
-        }
-        for array in self.arrays.values_mut() {
-            array.accounted_bytes = measure_array_bytes(array);
-            heap_bytes_used = heap_bytes_used
-                .checked_add(array.accounted_bytes)
-                .ok_or_else(|| {
-                    serialization_error("snapshot validation failed: heap accounting overflow")
-                })?;
-            allocation_count += 1;
-        }
-        for closure in self.closures.values_mut() {
-            closure.accounted_bytes = measure_closure_bytes(closure);
-            heap_bytes_used = heap_bytes_used
-                .checked_add(closure.accounted_bytes)
-                .ok_or_else(|| {
-                    serialization_error("snapshot validation failed: heap accounting overflow")
-                })?;
-            allocation_count += 1;
-        }
+        let (heap_bytes_used, allocation_count) =
+            self.recompute_accounting_totals().map_err(|message| {
+                serialization_error(format!("snapshot validation failed: {message}"))
+            })?;
 
         if heap_bytes_used > self.limits.heap_limit_bytes {
             return Err(serialization_error(
@@ -2655,6 +2636,8 @@ impl Runtime {
     }
 
     fn resume(&mut self, payload: ResumePayload) -> JsliteResult<ExecutionStep> {
+        self.collect_garbage()
+            .map_err(|error| self.annotate_runtime_error(error))?;
         match payload {
             ResumePayload::Value(value) => {
                 let value = match self.pending_resume_behavior {
@@ -2705,6 +2688,8 @@ impl Runtime {
                 .map_err(|error| self.annotate_runtime_error(error))?;
             self.frames[frame_index].ip += 1;
             self.bump_instruction_budget()
+                .map_err(|error| self.annotate_runtime_error(error))?;
+            self.collect_garbage_before_instruction(&instruction)
                 .map_err(|error| self.annotate_runtime_error(error))?;
             let action = (|| -> JsliteResult<StepAction> {
                 match instruction {
@@ -3290,6 +3275,282 @@ impl Runtime {
                 self.value_to_structured(value)?,
             )))
         }
+    }
+
+    fn collect_garbage_before_instruction(
+        &mut self,
+        instruction: &Instruction,
+    ) -> JsliteResult<()> {
+        if instruction_may_allocate(instruction) {
+            self.collect_garbage()?;
+        }
+        Ok(())
+    }
+
+    fn collect_garbage(&mut self) -> JsliteResult<GarbageCollectionStats> {
+        let baseline_bytes = self.heap_bytes_used;
+        let baseline_allocations = self.allocation_count;
+        let marks = self.mark_reachable_heap()?;
+
+        self.sweep_unreachable_envs(&marks);
+        self.sweep_unreachable_cells(&marks);
+        self.sweep_unreachable_objects(&marks);
+        self.sweep_unreachable_arrays(&marks);
+        self.sweep_unreachable_closures(&marks);
+
+        let (heap_bytes_used, allocation_count) = self
+            .recompute_accounting_totals()
+            .map_err(JsliteError::runtime)?;
+        self.heap_bytes_used = heap_bytes_used;
+        self.allocation_count = allocation_count;
+
+        Ok(GarbageCollectionStats {
+            reclaimed_bytes: baseline_bytes.saturating_sub(heap_bytes_used),
+            reclaimed_allocations: baseline_allocations.saturating_sub(allocation_count),
+        })
+    }
+
+    fn mark_reachable_heap(&self) -> JsliteResult<GarbageCollectionMarks> {
+        let mut marks = GarbageCollectionMarks::default();
+        let mut worklist = GarbageCollectionWorklist::default();
+
+        self.mark_env(self.globals, &mut marks, &mut worklist);
+        for frame in &self.frames {
+            self.mark_env(frame.env, &mut marks, &mut worklist);
+            for env in &frame.scope_stack {
+                self.mark_env(*env, &mut marks, &mut worklist);
+            }
+            for value in &frame.stack {
+                self.mark_value(value, &mut marks, &mut worklist);
+            }
+            if let Some(value) = &frame.pending_exception {
+                self.mark_value(value, &mut marks, &mut worklist);
+            }
+            for handler in &frame.handlers {
+                self.mark_env(handler.env, &mut marks, &mut worklist);
+            }
+            for completion in &frame.pending_completions {
+                match completion {
+                    CompletionRecord::Jump { .. } => {}
+                    CompletionRecord::Return(value) | CompletionRecord::Throw(value) => {
+                        self.mark_value(value, &mut marks, &mut worklist);
+                    }
+                }
+            }
+        }
+
+        while !worklist.envs.is_empty()
+            || !worklist.cells.is_empty()
+            || !worklist.objects.is_empty()
+            || !worklist.arrays.is_empty()
+            || !worklist.closures.is_empty()
+        {
+            while let Some(key) = worklist.envs.pop() {
+                let env = self
+                    .envs
+                    .get(key)
+                    .ok_or_else(|| JsliteError::runtime("gc encountered missing environment"))?;
+                if let Some(parent) = env.parent {
+                    self.mark_env(parent, &mut marks, &mut worklist);
+                }
+                for cell in env.bindings.values() {
+                    self.mark_cell(*cell, &mut marks, &mut worklist);
+                }
+            }
+
+            while let Some(key) = worklist.cells.pop() {
+                let cell = self
+                    .cells
+                    .get(key)
+                    .ok_or_else(|| JsliteError::runtime("gc encountered missing binding cell"))?;
+                self.mark_value(&cell.value, &mut marks, &mut worklist);
+            }
+
+            while let Some(key) = worklist.objects.pop() {
+                let object = self
+                    .objects
+                    .get(key)
+                    .ok_or_else(|| JsliteError::runtime("gc encountered missing object"))?;
+                for value in object.properties.values() {
+                    self.mark_value(value, &mut marks, &mut worklist);
+                }
+            }
+
+            while let Some(key) = worklist.arrays.pop() {
+                let array = self
+                    .arrays
+                    .get(key)
+                    .ok_or_else(|| JsliteError::runtime("gc encountered missing array"))?;
+                for value in &array.elements {
+                    self.mark_value(value, &mut marks, &mut worklist);
+                }
+                for value in array.properties.values() {
+                    self.mark_value(value, &mut marks, &mut worklist);
+                }
+            }
+
+            while let Some(key) = worklist.closures.pop() {
+                let closure = self
+                    .closures
+                    .get(key)
+                    .ok_or_else(|| JsliteError::runtime("gc encountered missing closure"))?;
+                self.mark_env(closure.env, &mut marks, &mut worklist);
+            }
+        }
+
+        Ok(marks)
+    }
+
+    fn mark_env(
+        &self,
+        key: EnvKey,
+        marks: &mut GarbageCollectionMarks,
+        worklist: &mut GarbageCollectionWorklist,
+    ) {
+        if marks.envs.insert(key) {
+            worklist.envs.push(key);
+        }
+    }
+
+    fn mark_cell(
+        &self,
+        key: CellKey,
+        marks: &mut GarbageCollectionMarks,
+        worklist: &mut GarbageCollectionWorklist,
+    ) {
+        if marks.cells.insert(key) {
+            worklist.cells.push(key);
+        }
+    }
+
+    fn mark_value(
+        &self,
+        value: &Value,
+        marks: &mut GarbageCollectionMarks,
+        worklist: &mut GarbageCollectionWorklist,
+    ) {
+        match value {
+            Value::Object(key) => {
+                if marks.objects.insert(*key) {
+                    worklist.objects.push(*key);
+                }
+            }
+            Value::Array(key) => {
+                if marks.arrays.insert(*key) {
+                    worklist.arrays.push(*key);
+                }
+            }
+            Value::Closure(key) => {
+                if marks.closures.insert(*key) {
+                    worklist.closures.push(*key);
+                }
+            }
+            Value::Undefined
+            | Value::Null
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_)
+            | Value::BuiltinFunction(_)
+            | Value::HostFunction(_) => {}
+        }
+    }
+
+    fn sweep_unreachable_envs(&mut self, marks: &GarbageCollectionMarks) {
+        let dead: Vec<_> = self
+            .envs
+            .keys()
+            .filter(|key| !marks.envs.contains(key))
+            .collect();
+        for key in dead {
+            self.envs.remove(key);
+        }
+    }
+
+    fn sweep_unreachable_cells(&mut self, marks: &GarbageCollectionMarks) {
+        let dead: Vec<_> = self
+            .cells
+            .keys()
+            .filter(|key| !marks.cells.contains(key))
+            .collect();
+        for key in dead {
+            self.cells.remove(key);
+        }
+    }
+
+    fn sweep_unreachable_objects(&mut self, marks: &GarbageCollectionMarks) {
+        let dead: Vec<_> = self
+            .objects
+            .keys()
+            .filter(|key| !marks.objects.contains(key))
+            .collect();
+        for key in dead {
+            self.objects.remove(key);
+        }
+    }
+
+    fn sweep_unreachable_arrays(&mut self, marks: &GarbageCollectionMarks) {
+        let dead: Vec<_> = self
+            .arrays
+            .keys()
+            .filter(|key| !marks.arrays.contains(key))
+            .collect();
+        for key in dead {
+            self.arrays.remove(key);
+        }
+    }
+
+    fn sweep_unreachable_closures(&mut self, marks: &GarbageCollectionMarks) {
+        let dead: Vec<_> = self
+            .closures
+            .keys()
+            .filter(|key| !marks.closures.contains(key))
+            .collect();
+        for key in dead {
+            self.closures.remove(key);
+        }
+    }
+
+    fn recompute_accounting_totals(&mut self) -> Result<(usize, usize), String> {
+        let mut heap_bytes_used = 0usize;
+        let mut allocation_count = 0usize;
+
+        for env in self.envs.values_mut() {
+            env.accounted_bytes = measure_env_bytes(env);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(env.accounted_bytes)
+                .ok_or_else(|| "heap accounting overflow".to_string())?;
+            allocation_count += 1;
+        }
+        for cell in self.cells.values_mut() {
+            cell.accounted_bytes = measure_cell_bytes(cell);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(cell.accounted_bytes)
+                .ok_or_else(|| "heap accounting overflow".to_string())?;
+            allocation_count += 1;
+        }
+        for object in self.objects.values_mut() {
+            object.accounted_bytes = measure_object_bytes(object);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(object.accounted_bytes)
+                .ok_or_else(|| "heap accounting overflow".to_string())?;
+            allocation_count += 1;
+        }
+        for array in self.arrays.values_mut() {
+            array.accounted_bytes = measure_array_bytes(array);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(array.accounted_bytes)
+                .ok_or_else(|| "heap accounting overflow".to_string())?;
+            allocation_count += 1;
+        }
+        for closure in self.closures.values_mut() {
+            closure.accounted_bytes = measure_closure_bytes(closure);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(closure.accounted_bytes)
+                .ok_or_else(|| "heap accounting overflow".to_string())?;
+            allocation_count += 1;
+        }
+
+        Ok((heap_bytes_used, allocation_count))
     }
 
     fn push_frame(&mut self, function_id: usize, env: EnvKey, args: &[Value]) -> JsliteResult<()> {
@@ -4342,6 +4603,23 @@ fn resume_behavior_for_capability(capability: &str) -> ResumeBehavior {
     }
 }
 
+fn instruction_may_allocate(instruction: &Instruction) -> bool {
+    matches!(
+        instruction,
+        Instruction::StoreName(_)
+            | Instruction::InitializePattern(_)
+            | Instruction::PushEnv
+            | Instruction::DeclareName { .. }
+            | Instruction::MakeClosure { .. }
+            | Instruction::MakeArray { .. }
+            | Instruction::MakeObject { .. }
+            | Instruction::SetPropStatic { .. }
+            | Instruction::SetPropComputed
+            | Instruction::Call { .. }
+            | Instruction::Construct { .. }
+    )
+}
+
 fn is_truthy(value: &Value) -> bool {
     match value {
         Value::Undefined | Value::Null => false,
@@ -4603,6 +4881,172 @@ mod tests {
             .insert_object(IndexMap::new(), ObjectKind::Plain)
             .expect_err("next allocation should exhaust the allocation budget");
         assert!(error.to_string().contains("allocation budget exhausted"));
+    }
+
+    #[test]
+    fn garbage_collection_marks_runtime_roots_and_collects_cycles() {
+        let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
+            .expect("lowering should succeed");
+        let mut runtime =
+            Runtime::new(program.clone(), ExecutionOptions::default()).expect("runtime init");
+
+        let closure_env = runtime
+            .new_env(Some(runtime.globals))
+            .expect("closure env should allocate");
+        let rooted_closure = runtime
+            .insert_closure(program.root, closure_env)
+            .expect("closure should allocate");
+        let rooted_object = runtime
+            .insert_object(
+                IndexMap::from([("closure".to_string(), Value::Closure(rooted_closure))]),
+                ObjectKind::Plain,
+            )
+            .expect("object should allocate");
+        let rooted_array = runtime
+            .insert_array(vec![Value::Object(rooted_object)], IndexMap::new())
+            .expect("array should allocate");
+
+        let frame_env = runtime
+            .new_env(Some(runtime.globals))
+            .expect("frame env should allocate");
+        let rooted_cell = runtime
+            .insert_cell(Value::Array(rooted_array), true, true)
+            .expect("cell should allocate");
+        runtime
+            .envs
+            .get_mut(frame_env)
+            .expect("frame env should exist")
+            .bindings
+            .insert("kept".to_string(), rooted_cell);
+        runtime
+            .refresh_env_accounting(frame_env)
+            .expect("frame env accounting should refresh");
+        runtime.frames.push(Frame {
+            function_id: program.root,
+            ip: 0,
+            env: frame_env,
+            scope_stack: vec![closure_env],
+            stack: vec![Value::Closure(rooted_closure)],
+            handlers: vec![ExceptionHandler {
+                catch: None,
+                finally: None,
+                env: closure_env,
+                scope_stack_len: 0,
+                stack_len: 0,
+            }],
+            pending_exception: Some(Value::Object(rooted_object)),
+            pending_completions: vec![
+                CompletionRecord::Return(Value::Array(rooted_array)),
+                CompletionRecord::Throw(Value::Closure(rooted_closure)),
+            ],
+            active_finally: Vec::new(),
+        });
+
+        let garbage_env = runtime.new_env(None).expect("garbage env should allocate");
+        let garbage_left = runtime
+            .insert_object(IndexMap::new(), ObjectKind::Plain)
+            .expect("garbage object should allocate");
+        let garbage_right = runtime
+            .insert_object(IndexMap::new(), ObjectKind::Plain)
+            .expect("garbage object should allocate");
+        let garbage_array = runtime
+            .insert_array(vec![Value::Object(garbage_left)], IndexMap::new())
+            .expect("garbage array should allocate");
+        let garbage_closure = runtime
+            .insert_closure(program.root, garbage_env)
+            .expect("garbage closure should allocate");
+        runtime
+            .set_property(
+                Value::Object(garbage_left),
+                Value::String("peer".to_string()),
+                Value::Object(garbage_right),
+            )
+            .expect("left cycle should update");
+        runtime
+            .set_property(
+                Value::Object(garbage_right),
+                Value::String("peer".to_string()),
+                Value::Object(garbage_left),
+            )
+            .expect("right cycle should update");
+        runtime
+            .set_property(
+                Value::Object(garbage_right),
+                Value::String("items".to_string()),
+                Value::Array(garbage_array),
+            )
+            .expect("array cycle should update");
+        runtime
+            .set_property(
+                Value::Object(garbage_left),
+                Value::String("closure".to_string()),
+                Value::Closure(garbage_closure),
+            )
+            .expect("closure cycle should update");
+        let garbage_cell = runtime
+            .insert_cell(Value::Object(garbage_left), true, true)
+            .expect("garbage cell should allocate");
+        runtime
+            .envs
+            .get_mut(garbage_env)
+            .expect("garbage env should exist")
+            .bindings
+            .insert("garbage".to_string(), garbage_cell);
+        runtime
+            .refresh_env_accounting(garbage_env)
+            .expect("garbage env accounting should refresh");
+
+        let stats = runtime.collect_garbage().expect("gc should succeed");
+
+        assert!(stats.reclaimed_allocations >= 5);
+        assert!(stats.reclaimed_bytes > 0);
+        assert!(runtime.envs.contains_key(frame_env));
+        assert!(runtime.envs.contains_key(closure_env));
+        assert!(runtime.cells.contains_key(rooted_cell));
+        assert!(runtime.objects.contains_key(rooted_object));
+        assert!(runtime.arrays.contains_key(rooted_array));
+        assert!(runtime.closures.contains_key(rooted_closure));
+
+        assert!(!runtime.envs.contains_key(garbage_env));
+        assert!(!runtime.cells.contains_key(garbage_cell));
+        assert!(!runtime.objects.contains_key(garbage_left));
+        assert!(!runtime.objects.contains_key(garbage_right));
+        assert!(!runtime.arrays.contains_key(garbage_array));
+        assert!(!runtime.closures.contains_key(garbage_closure));
+    }
+
+    #[test]
+    fn garbage_collection_reclaims_cyclic_garbage_under_execution_pressure() {
+        let program = compile(
+            r#"
+            let total = 0;
+            for (let i = 0; i < 120; i += 1) {
+              let left = {};
+              let right = {};
+              left.peer = right;
+              right.peer = left;
+              total += i;
+            }
+            total;
+            "#,
+        )
+        .expect("source should compile");
+        let value = execute(
+            &program,
+            ExecutionOptions {
+                limits: RuntimeLimits {
+                    heap_limit_bytes: 24 * 1024,
+                    allocation_budget: 256,
+                    ..RuntimeLimits::default()
+                },
+                ..ExecutionOptions::default()
+            },
+        )
+        .expect("cyclic garbage should be reclaimed");
+        assert_eq!(
+            value,
+            StructuredValue::Number(StructuredNumber::Finite(7140.0))
+        );
     }
 
     #[test]

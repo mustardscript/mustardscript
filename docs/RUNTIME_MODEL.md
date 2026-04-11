@@ -35,16 +35,24 @@ references outside `jslite`.
 
 ## Rooting and Reachability Rules
 
-`jslite` does not have a moving collector yet, but it already follows explicit
-rooting rules:
+`jslite` now uses a non-moving mark-sweep collector over the existing slotmap
+heaps. Heap handles remain stable for live allocations; collection only removes
+unreachable entries and never relocates them.
+
+The collector walks an explicit root set:
 
 - the globals environment is always a root
 - active call frames are roots
 - each frame roots its current environment, scope stack, and operand stack
+- frame exception state also roots guest values and environments:
+  pending exceptions, pending return/throw completions, and saved handler
+  environments
 - environments root their cells
 - cells root the `Value` they contain
-- objects, arrays, and closures are only reachable through rooted values or
-  validated serialized snapshots
+- objects and arrays root their contained property and element values
+- closures root their captured environment chain
+- validated suspended snapshots restore the same runtime graph and therefore the
+  same root categories after load
 
 Practical rules that follow from this:
 
@@ -53,8 +61,9 @@ Practical rules that follow from this:
 - no raw guest references may be embedded in structured host values
 - snapshots may only persist validated runtime handles owned by `jslite`
 
-When a garbage collector is added, these same runtime structures are the initial
-root set that collector must walk.
+Collection currently runs at allocation-safe execution boundaries and resume
+points. That keeps the collector precise without requiring a moving handle
+layer or conservative native-stack scanning.
 
 ## Plain Objects, Arrays, and Shapes
 

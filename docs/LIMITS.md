@@ -37,8 +37,12 @@ The Node wrapper exposes these fields through `run()` and `start()` as:
 - Instruction budgeting is implemented and enforced on every executed
   instruction.
 - Heap byte limits and allocation-count limits are implemented and enforced with
-  conservative accounting across guest heap allocations and heap-backed
+  conservative accounting across live guest heap allocations and heap-backed
   mutations.
+- The runtime runs a non-moving mark-sweep collection pass at allocation-safe
+  execution boundaries and on resume before failing heap or allocation
+  pressure, so unreachable cycles can be reclaimed without changing handle
+  identities.
 - Snapshot load recomputes heap accounting before resuming so serialized inputs
   cannot bypass the configured heap and allocation budgets.
 - Call-depth limits and outstanding host-call limits are still defined in the
@@ -50,4 +54,5 @@ The Node wrapper exposes these fields through `run()` and `start()` as:
 - Limits are enabled by default.
 - Cancellation is planned as a cooperative mechanism checked at defined
   execution points.
-- Over-budget execution fails with guest-safe runtime errors.
+- If the live heap still exceeds configured limits after collection,
+  over-budget execution fails with guest-safe runtime errors.
