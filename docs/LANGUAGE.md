@@ -21,6 +21,8 @@ extensions are called out explicitly instead of being implied.
 - strings
 - arrays
 - plain objects
+- `Map`
+- `Set`
 - guest functions
 
 ## Supported End-to-End Syntax
@@ -76,6 +78,24 @@ extensions are called out explicitly instead of being implied.
   internal array iterator state with no user-visible iterator-close hook because
   generators and custom iterators remain deferred
 
+## Supported Keyed Collection Surface
+
+- `new Map()` and `new Set()` are supported with zero arguments only
+- `Map` supports `get`, `set`, `has`, `delete`, `clear`, and `size`
+- `Set` supports `add`, `has`, `delete`, `clear`, and `size`
+- `Map` keys and `Set` membership use SameValueZero semantics:
+  `NaN` matches `NaN`, `-0` and `0` address the same entry, strings compare by
+  string contents, and heap values compare by guest identity
+- `Map` and `Set` preserve first-in insertion order internally; updating an
+  existing entry does not move it, `delete` removes the entry, and `clear`
+  empties the collection
+- iterable constructor inputs such as `new Map(entries)` and `new Set(values)`
+  remain unsupported because generic collection iteration is still deferred
+- iterator-returning collection APIs such as `entries()`, `keys()`, and
+  `values()` remain unsupported and fail closed when called
+- custom string properties on `Map` and `Set` instances are currently
+  unsupported and fail closed
+
 ## Rejected With Validation Diagnostics
 
 - `import`, `export`, and dynamic `import()`
@@ -100,6 +120,7 @@ extensions are called out explicitly instead of being implied.
 - full Promise constructor semantics and promise instance methods
 - full `this` semantics beyond the current basic function-call behavior
 - non-array iterable protocol support
+- iterable `Map` / `Set` constructors and collection iterator APIs
 - public iterator-producing APIs and custom iterator authoring
 - module loading
 - property descriptor semantics
@@ -141,6 +162,8 @@ extensions are called out explicitly instead of being implied.
 - `globalThis`
 - `Object`
 - `Array`
+- `Map`
+- `Set`
 - `Promise`
 - `String`
 - `Error`
@@ -157,6 +180,17 @@ extensions are called out explicitly instead of being implied.
 ### Currently Implemented Built-In Members
 
 - `Array.isArray`
+- `Map.prototype.get`
+- `Map.prototype.set`
+- `Map.prototype.has`
+- `Map.prototype.delete`
+- `Map.prototype.clear`
+- `Map.prototype.size`
+- `Set.prototype.add`
+- `Set.prototype.has`
+- `Set.prototype.delete`
+- `Set.prototype.clear`
+- `Set.prototype.size`
 - `Promise.resolve`
 - `Promise.reject`
 - `Math.abs`

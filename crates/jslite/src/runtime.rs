@@ -20,6 +20,8 @@ new_key_type! { struct EnvKey; }
 new_key_type! { struct CellKey; }
 new_key_type! { struct ObjectKey; }
 new_key_type! { struct ArrayKey; }
+new_key_type! { struct MapKey; }
+new_key_type! { struct SetKey; }
 new_key_type! { struct IteratorKey; }
 new_key_type! { struct ClosureKey; }
 new_key_type! { struct PromiseKey; }
@@ -1020,6 +1022,17 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
             validate_runtime_value(runtime, value)?;
         }
     }
+    for map in runtime.maps.values() {
+        for entry in &map.entries {
+            validate_runtime_value(runtime, &entry.key)?;
+            validate_runtime_value(runtime, &entry.value)?;
+        }
+    }
+    for set in runtime.sets.values() {
+        for value in &set.entries {
+            validate_runtime_value(runtime, value)?;
+        }
+    }
     for iterator in runtime.iterators.values() {
         match iterator.state {
             IteratorState::Array(ref state) => {
@@ -1092,6 +1105,24 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> JsliteResult<()> 
             message: format!(
                 "snapshot validation failed: value references missing array {:?}",
                 array
+            ),
+            span: None,
+            traceback: Vec::new(),
+        }),
+        Value::Map(map) if runtime.maps.get(*map).is_none() => Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: format!(
+                "snapshot validation failed: value references missing map {:?}",
+                map
+            ),
+            span: None,
+            traceback: Vec::new(),
+        }),
+        Value::Set(set) if runtime.sets.get(*set).is_none() => Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: format!(
+                "snapshot validation failed: value references missing set {:?}",
+                set
             ),
             span: None,
             traceback: Vec::new(),
@@ -2378,6 +2409,8 @@ enum Value {
     String(String),
     Object(ObjectKey),
     Array(ArrayKey),
+    Map(MapKey),
+    Set(SetKey),
     Iterator(IteratorKey),
     Closure(ClosureKey),
     Promise(PromiseKey),
@@ -2390,6 +2423,23 @@ enum BuiltinFunction {
     ArrayCtor,
     ArrayIsArray,
     ObjectCtor,
+    MapCtor,
+    MapGet,
+    MapSet,
+    MapHas,
+    MapDelete,
+    MapClear,
+    MapEntriesUnsupported,
+    MapKeysUnsupported,
+    MapValuesUnsupported,
+    SetCtor,
+    SetAdd,
+    SetHas,
+    SetDelete,
+    SetClear,
+    SetEntriesUnsupported,
+    SetKeysUnsupported,
+    SetValuesUnsupported,
     PromiseCtor,
     PromiseResolve,
     PromiseReject,
@@ -2449,6 +2499,26 @@ enum ObjectKind {
 struct ArrayObject {
     elements: Vec<Value>,
     properties: IndexMap<String, Value>,
+    #[serde(skip, default)]
+    accounted_bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MapObject {
+    entries: Vec<MapEntry>,
+    #[serde(skip, default)]
+    accounted_bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MapEntry {
+    key: Value,
+    value: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SetObject {
+    entries: Vec<Value>,
     #[serde(skip, default)]
     accounted_bytes: usize,
 }
@@ -2585,6 +2655,8 @@ struct Runtime {
     cells: SlotMap<CellKey, Cell>,
     objects: SlotMap<ObjectKey, PlainObject>,
     arrays: SlotMap<ArrayKey, ArrayObject>,
+    maps: SlotMap<MapKey, MapObject>,
+    sets: SlotMap<SetKey, SetObject>,
     iterators: SlotMap<IteratorKey, IteratorObject>,
     closures: SlotMap<ClosureKey, Closure>,
     promises: SlotMap<PromiseKey, PromiseObject>,
@@ -2631,6 +2703,8 @@ struct GarbageCollectionMarks {
     cells: HashSet<CellKey>,
     objects: HashSet<ObjectKey>,
     arrays: HashSet<ArrayKey>,
+    maps: HashSet<MapKey>,
+    sets: HashSet<SetKey>,
     iterators: HashSet<IteratorKey>,
     closures: HashSet<ClosureKey>,
     promises: HashSet<PromiseKey>,
@@ -2642,6 +2716,8 @@ struct GarbageCollectionWorklist {
     cells: Vec<CellKey>,
     objects: Vec<ObjectKey>,
     arrays: Vec<ArrayKey>,
+    maps: Vec<MapKey>,
+    sets: Vec<SetKey>,
     iterators: Vec<IteratorKey>,
     closures: Vec<ClosureKey>,
     promises: Vec<PromiseKey>,
@@ -2675,6 +2751,8 @@ impl Runtime {
             cells: SlotMap::with_key(),
             objects: SlotMap::with_key(),
             arrays: SlotMap::with_key(),
+            maps: SlotMap::with_key(),
+            sets: SlotMap::with_key(),
             iterators: SlotMap::with_key(),
             closures: SlotMap::with_key(),
             promises: SlotMap::with_key(),
@@ -2819,6 +2897,26 @@ impl Runtime {
         Ok(self.arrays.insert(array))
     }
 
+    fn insert_map(&mut self, entries: Vec<MapEntry>) -> JsliteResult<MapKey> {
+        let mut map = MapObject {
+            entries,
+            accounted_bytes: 0,
+        };
+        map.accounted_bytes = measure_map_bytes(&map);
+        self.account_new_allocation(map.accounted_bytes)?;
+        Ok(self.maps.insert(map))
+    }
+
+    fn insert_set(&mut self, entries: Vec<Value>) -> JsliteResult<SetKey> {
+        let mut set = SetObject {
+            entries,
+            accounted_bytes: 0,
+        };
+        set.accounted_bytes = measure_set_bytes(&set);
+        self.account_new_allocation(set.accounted_bytes)?;
+        Ok(self.sets.insert(set))
+    }
+
     fn insert_iterator(&mut self, state: IteratorState) -> JsliteResult<IteratorKey> {
         let mut iterator = IteratorObject {
             state,
@@ -2928,6 +3026,38 @@ impl Runtime {
         self.arrays
             .get_mut(key)
             .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    fn refresh_map_accounting(&mut self, key: MapKey) -> JsliteResult<()> {
+        let (old_bytes, new_bytes) = {
+            let map = self
+                .maps
+                .get(key)
+                .ok_or_else(|| JsliteError::runtime("map missing"))?;
+            (map.accounted_bytes, measure_map_bytes(map))
+        };
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.maps
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("map missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    fn refresh_set_accounting(&mut self, key: SetKey) -> JsliteResult<()> {
+        let (old_bytes, new_bytes) = {
+            let set = self
+                .sets
+                .get(key)
+                .ok_or_else(|| JsliteError::runtime("set missing"))?;
+            (set.accounted_bytes, measure_set_bytes(set))
+        };
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.sets
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("set missing"))?
             .accounted_bytes = new_bytes;
         Ok(())
     }
@@ -4052,6 +4182,8 @@ impl Runtime {
         self.sweep_unreachable_cells(&marks);
         self.sweep_unreachable_objects(&marks);
         self.sweep_unreachable_arrays(&marks);
+        self.sweep_unreachable_maps(&marks);
+        self.sweep_unreachable_sets(&marks);
         self.sweep_unreachable_iterators(&marks);
         self.sweep_unreachable_closures(&marks);
         self.sweep_unreachable_promises(&marks);
@@ -4110,6 +4242,8 @@ impl Runtime {
             || !worklist.cells.is_empty()
             || !worklist.objects.is_empty()
             || !worklist.arrays.is_empty()
+            || !worklist.maps.is_empty()
+            || !worklist.sets.is_empty()
             || !worklist.iterators.is_empty()
             || !worklist.closures.is_empty()
             || !worklist.promises.is_empty()
@@ -4154,6 +4288,27 @@ impl Runtime {
                     self.mark_value(value, &mut marks, &mut worklist);
                 }
                 for value in array.properties.values() {
+                    self.mark_value(value, &mut marks, &mut worklist);
+                }
+            }
+
+            while let Some(key) = worklist.maps.pop() {
+                let map = self
+                    .maps
+                    .get(key)
+                    .ok_or_else(|| JsliteError::runtime("gc encountered missing map"))?;
+                for entry in &map.entries {
+                    self.mark_value(&entry.key, &mut marks, &mut worklist);
+                    self.mark_value(&entry.value, &mut marks, &mut worklist);
+                }
+            }
+
+            while let Some(key) = worklist.sets.pop() {
+                let set = self
+                    .sets
+                    .get(key)
+                    .ok_or_else(|| JsliteError::runtime("gc encountered missing set"))?;
+                for value in &set.entries {
                     self.mark_value(value, &mut marks, &mut worklist);
                 }
             }
@@ -4277,6 +4432,16 @@ impl Runtime {
                     worklist.arrays.push(*key);
                 }
             }
+            Value::Map(key) => {
+                if marks.maps.insert(*key) {
+                    worklist.maps.push(*key);
+                }
+            }
+            Value::Set(key) => {
+                if marks.sets.insert(*key) {
+                    worklist.sets.push(*key);
+                }
+            }
             Value::Iterator(key) => {
                 if marks.iterators.insert(*key) {
                     worklist.iterators.push(*key);
@@ -4342,6 +4507,28 @@ impl Runtime {
         }
     }
 
+    fn sweep_unreachable_maps(&mut self, marks: &GarbageCollectionMarks) {
+        let dead: Vec<_> = self
+            .maps
+            .keys()
+            .filter(|key| !marks.maps.contains(key))
+            .collect();
+        for key in dead {
+            self.maps.remove(key);
+        }
+    }
+
+    fn sweep_unreachable_sets(&mut self, marks: &GarbageCollectionMarks) {
+        let dead: Vec<_> = self
+            .sets
+            .keys()
+            .filter(|key| !marks.sets.contains(key))
+            .collect();
+        for key in dead {
+            self.sets.remove(key);
+        }
+    }
+
     fn sweep_unreachable_iterators(&mut self, marks: &GarbageCollectionMarks) {
         let dead: Vec<_> = self
             .iterators
@@ -4404,6 +4591,20 @@ impl Runtime {
             array.accounted_bytes = measure_array_bytes(array);
             heap_bytes_used = heap_bytes_used
                 .checked_add(array.accounted_bytes)
+                .ok_or_else(|| "heap accounting overflow".to_string())?;
+            allocation_count += 1;
+        }
+        for map in self.maps.values_mut() {
+            map.accounted_bytes = measure_map_bytes(map);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(map.accounted_bytes)
+                .ok_or_else(|| "heap accounting overflow".to_string())?;
+            allocation_count += 1;
+        }
+        for set in self.sets.values_mut() {
+            set.accounted_bytes = measure_set_bytes(set);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(set.accounted_bytes)
                 .ok_or_else(|| "heap accounting overflow".to_string())?;
             allocation_count += 1;
         }
@@ -4490,7 +4691,7 @@ impl Runtime {
     fn call_callable(
         &mut self,
         callee: Value,
-        _this_value: Value,
+        this_value: Value,
         args: &[Value],
     ) -> JsliteResult<RunState> {
         match callee {
@@ -4516,9 +4717,9 @@ impl Runtime {
                     Ok(RunState::PushedFrame)
                 }
             }
-            Value::BuiltinFunction(function) => {
-                Ok(RunState::Completed(self.call_builtin(function, args)?))
-            }
+            Value::BuiltinFunction(function) => Ok(RunState::Completed(
+                self.call_builtin(function, this_value, args)?,
+            )),
             Value::HostFunction(capability) => {
                 let resume_behavior = resume_behavior_for_capability(&capability);
                 let args = args
@@ -4558,6 +4759,8 @@ impl Runtime {
             Value::BuiltinFunction(
                 BuiltinFunction::ArrayCtor
                 | BuiltinFunction::ObjectCtor
+                | BuiltinFunction::MapCtor
+                | BuiltinFunction::SetCtor
                 | BuiltinFunction::PromiseCtor
                 | BuiltinFunction::ErrorCtor
                 | BuiltinFunction::TypeErrorCtor
@@ -4566,20 +4769,24 @@ impl Runtime {
                 | BuiltinFunction::NumberCtor
                 | BuiltinFunction::StringCtor
                 | BuiltinFunction::BooleanCtor,
-            ) => self.call_builtin(
-                match callee {
-                    Value::BuiltinFunction(kind) => kind,
-                    _ => unreachable!(),
-                },
-                args,
-            ),
+            ) => match callee {
+                Value::BuiltinFunction(BuiltinFunction::MapCtor) => self.construct_map(args),
+                Value::BuiltinFunction(BuiltinFunction::SetCtor) => self.construct_set(args),
+                Value::BuiltinFunction(kind) => self.call_builtin(kind, Value::Undefined, args),
+                _ => unreachable!(),
+            },
             _ => Err(JsliteError::runtime(
                 "only conservative built-in constructors are supported in v1",
             )),
         }
     }
 
-    fn call_builtin(&mut self, function: BuiltinFunction, args: &[Value]) -> JsliteResult<Value> {
+    fn call_builtin(
+        &mut self,
+        function: BuiltinFunction,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
         match function {
             BuiltinFunction::ArrayCtor => {
                 let array = self.insert_array(args.to_vec(), IndexMap::new())?;
@@ -4596,6 +4803,39 @@ impl Runtime {
                     Ok(Value::Object(object))
                 }
             }
+            BuiltinFunction::MapCtor => Err(JsliteError::runtime(
+                "TypeError: Map constructor must be called with new",
+            )),
+            BuiltinFunction::MapGet => self.call_map_get(this_value, args),
+            BuiltinFunction::MapSet => self.call_map_set(this_value, args),
+            BuiltinFunction::MapHas => self.call_map_has(this_value, args),
+            BuiltinFunction::MapDelete => self.call_map_delete(this_value, args),
+            BuiltinFunction::MapClear => self.call_map_clear(this_value),
+            BuiltinFunction::MapEntriesUnsupported => Err(JsliteError::runtime(
+                "TypeError: Map iterator-producing APIs are not supported; use explicit get/has/size operations",
+            )),
+            BuiltinFunction::MapKeysUnsupported => Err(JsliteError::runtime(
+                "TypeError: Map iterator-producing APIs are not supported; use explicit get/has/size operations",
+            )),
+            BuiltinFunction::MapValuesUnsupported => Err(JsliteError::runtime(
+                "TypeError: Map iterator-producing APIs are not supported; use explicit get/has/size operations",
+            )),
+            BuiltinFunction::SetCtor => Err(JsliteError::runtime(
+                "TypeError: Set constructor must be called with new",
+            )),
+            BuiltinFunction::SetAdd => self.call_set_add(this_value, args),
+            BuiltinFunction::SetHas => self.call_set_has(this_value, args),
+            BuiltinFunction::SetDelete => self.call_set_delete(this_value, args),
+            BuiltinFunction::SetClear => self.call_set_clear(this_value),
+            BuiltinFunction::SetEntriesUnsupported => Err(JsliteError::runtime(
+                "TypeError: Set iterator-producing APIs are not supported; use explicit add/has/size operations",
+            )),
+            BuiltinFunction::SetKeysUnsupported => Err(JsliteError::runtime(
+                "TypeError: Set iterator-producing APIs are not supported; use explicit add/has/size operations",
+            )),
+            BuiltinFunction::SetValuesUnsupported => Err(JsliteError::runtime(
+                "TypeError: Set iterator-producing APIs are not supported; use explicit add/has/size operations",
+            )),
             BuiltinFunction::PromiseCtor => Err(JsliteError::runtime(
                 "Promise construction is not supported in v1; use async functions or Promise.resolve/reject",
             )),
@@ -4695,6 +4935,16 @@ impl Runtime {
             false,
         )?;
         self.define_global(
+            "Map".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::MapCtor),
+            false,
+        )?;
+        self.define_global(
+            "Set".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::SetCtor),
+            false,
+        )?;
+        self.define_global(
             "Array".to_string(),
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor),
             false,
@@ -4789,6 +5039,226 @@ impl Runtime {
         let console = self.insert_object(IndexMap::new(), ObjectKind::Console)?;
         self.define_global("console".to_string(), Value::Object(console), false)?;
         Ok(())
+    }
+
+    fn construct_map(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        if !args.is_empty() {
+            return Err(JsliteError::runtime(
+                "TypeError: Map constructor iterable inputs are not supported in the current collection surface",
+            ));
+        }
+        Ok(Value::Map(self.insert_map(Vec::new())?))
+    }
+
+    fn construct_set(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        if !args.is_empty() {
+            return Err(JsliteError::runtime(
+                "TypeError: Set constructor iterable inputs are not supported in the current collection surface",
+            ));
+        }
+        Ok(Value::Set(self.insert_set(Vec::new())?))
+    }
+
+    fn map_receiver(&self, value: Value, method: &str) -> JsliteResult<MapKey> {
+        match value {
+            Value::Map(key) => Ok(key),
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: Map.prototype.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
+    fn set_receiver(&self, value: Value, method: &str) -> JsliteResult<SetKey> {
+        match value {
+            Value::Set(key) => Ok(key),
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: Set.prototype.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
+    fn call_map_get(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let key = args.first().cloned().unwrap_or(Value::Undefined);
+        let map = self.map_receiver(this_value, "get")?;
+        Ok(self
+            .map_get(map, &key)?
+            .map(|entry| entry.value)
+            .unwrap_or(Value::Undefined))
+    }
+
+    fn call_map_set(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let map = self.map_receiver(this_value, "set")?;
+        let key = args.first().cloned().unwrap_or(Value::Undefined);
+        let value = args.get(1).cloned().unwrap_or(Value::Undefined);
+        self.map_set(map, key, value)?;
+        Ok(Value::Map(map))
+    }
+
+    fn call_map_has(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let key = args.first().cloned().unwrap_or(Value::Undefined);
+        let map = self.map_receiver(this_value, "has")?;
+        Ok(Value::Bool(self.map_get(map, &key)?.is_some()))
+    }
+
+    fn call_map_delete(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let key = args.first().cloned().unwrap_or(Value::Undefined);
+        let map = self.map_receiver(this_value, "delete")?;
+        Ok(Value::Bool(self.map_delete(map, &key)?))
+    }
+
+    fn call_map_clear(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let map = self.map_receiver(this_value, "clear")?;
+        self.map_clear(map)?;
+        Ok(Value::Undefined)
+    }
+
+    fn call_set_add(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let set = self.set_receiver(this_value, "add")?;
+        let value = args.first().cloned().unwrap_or(Value::Undefined);
+        self.set_add(set, value)?;
+        Ok(Value::Set(set))
+    }
+
+    fn call_set_has(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let value = args.first().cloned().unwrap_or(Value::Undefined);
+        let set = self.set_receiver(this_value, "has")?;
+        Ok(Value::Bool(self.set_contains(set, &value)?))
+    }
+
+    fn call_set_delete(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let value = args.first().cloned().unwrap_or(Value::Undefined);
+        let set = self.set_receiver(this_value, "delete")?;
+        Ok(Value::Bool(self.set_delete(set, &value)?))
+    }
+
+    fn call_set_clear(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let set = self.set_receiver(this_value, "clear")?;
+        self.set_clear(set)?;
+        Ok(Value::Undefined)
+    }
+
+    fn map_get(&self, map: MapKey, key: &Value) -> JsliteResult<Option<MapEntry>> {
+        let normalized = canonicalize_collection_key(key.clone());
+        Ok(self
+            .maps
+            .get(map)
+            .ok_or_else(|| JsliteError::runtime("map missing"))?
+            .entries
+            .iter()
+            .find(|entry| same_value_zero(&entry.key, &normalized))
+            .cloned())
+    }
+
+    fn map_set(&mut self, map: MapKey, key: Value, value: Value) -> JsliteResult<()> {
+        let key = canonicalize_collection_key(key);
+        {
+            let entries = &mut self
+                .maps
+                .get_mut(map)
+                .ok_or_else(|| JsliteError::runtime("map missing"))?
+                .entries;
+            if let Some(entry) = entries
+                .iter_mut()
+                .find(|entry| same_value_zero(&entry.key, &key))
+            {
+                entry.value = value;
+            } else {
+                entries.push(MapEntry { key, value });
+            }
+        }
+        self.refresh_map_accounting(map)
+    }
+
+    fn map_delete(&mut self, map: MapKey, key: &Value) -> JsliteResult<bool> {
+        let normalized = canonicalize_collection_key(key.clone());
+        let removed = {
+            let entries = &mut self
+                .maps
+                .get_mut(map)
+                .ok_or_else(|| JsliteError::runtime("map missing"))?
+                .entries;
+            if let Some(index) = entries
+                .iter()
+                .position(|entry| same_value_zero(&entry.key, &normalized))
+            {
+                entries.remove(index);
+                true
+            } else {
+                false
+            }
+        };
+        if removed {
+            self.refresh_map_accounting(map)?;
+        }
+        Ok(removed)
+    }
+
+    fn map_clear(&mut self, map: MapKey) -> JsliteResult<()> {
+        self.maps
+            .get_mut(map)
+            .ok_or_else(|| JsliteError::runtime("map missing"))?
+            .entries
+            .clear();
+        self.refresh_map_accounting(map)
+    }
+
+    fn set_add(&mut self, set: SetKey, value: Value) -> JsliteResult<()> {
+        let value = canonicalize_collection_key(value);
+        {
+            let entries = &mut self
+                .sets
+                .get_mut(set)
+                .ok_or_else(|| JsliteError::runtime("set missing"))?
+                .entries;
+            if !entries.iter().any(|entry| same_value_zero(entry, &value)) {
+                entries.push(value);
+            }
+        }
+        self.refresh_set_accounting(set)
+    }
+
+    fn set_contains(&self, set: SetKey, value: &Value) -> JsliteResult<bool> {
+        let normalized = canonicalize_collection_key(value.clone());
+        Ok(self
+            .sets
+            .get(set)
+            .ok_or_else(|| JsliteError::runtime("set missing"))?
+            .entries
+            .iter()
+            .any(|entry| same_value_zero(entry, &normalized)))
+    }
+
+    fn set_delete(&mut self, set: SetKey, value: &Value) -> JsliteResult<bool> {
+        let normalized = canonicalize_collection_key(value.clone());
+        let removed = {
+            let entries = &mut self
+                .sets
+                .get_mut(set)
+                .ok_or_else(|| JsliteError::runtime("set missing"))?
+                .entries;
+            if let Some(index) = entries
+                .iter()
+                .position(|entry| same_value_zero(entry, &normalized))
+            {
+                entries.remove(index);
+                true
+            } else {
+                false
+            }
+        };
+        if removed {
+            self.refresh_set_accounting(set)?;
+        }
+        Ok(removed)
+    }
+
+    fn set_clear(&mut self, set: SetKey) -> JsliteResult<()> {
+        self.sets
+            .get_mut(set)
+            .ok_or_else(|| JsliteError::runtime("set missing"))?
+            .entries
+            .clear();
+        self.refresh_set_accounting(set)
     }
 
     fn new_env(&mut self, parent: Option<EnvKey>) -> JsliteResult<EnvKey> {
@@ -5113,6 +5583,49 @@ impl Runtime {
                         .unwrap_or(Value::Undefined))
                 }
             }
+            Value::Map(map) => {
+                let map = self
+                    .maps
+                    .get(map)
+                    .ok_or_else(|| JsliteError::runtime("map missing"))?;
+                match key.as_str() {
+                    "size" => Ok(Value::Number(map.entries.len() as f64)),
+                    "get" => Ok(Value::BuiltinFunction(BuiltinFunction::MapGet)),
+                    "set" => Ok(Value::BuiltinFunction(BuiltinFunction::MapSet)),
+                    "has" => Ok(Value::BuiltinFunction(BuiltinFunction::MapHas)),
+                    "delete" => Ok(Value::BuiltinFunction(BuiltinFunction::MapDelete)),
+                    "clear" => Ok(Value::BuiltinFunction(BuiltinFunction::MapClear)),
+                    "entries" => Ok(Value::BuiltinFunction(
+                        BuiltinFunction::MapEntriesUnsupported,
+                    )),
+                    "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::MapKeysUnsupported)),
+                    "values" => Ok(Value::BuiltinFunction(
+                        BuiltinFunction::MapValuesUnsupported,
+                    )),
+                    _ => Ok(Value::Undefined),
+                }
+            }
+            Value::Set(set) => {
+                let set = self
+                    .sets
+                    .get(set)
+                    .ok_or_else(|| JsliteError::runtime("set missing"))?;
+                match key.as_str() {
+                    "size" => Ok(Value::Number(set.entries.len() as f64)),
+                    "add" => Ok(Value::BuiltinFunction(BuiltinFunction::SetAdd)),
+                    "has" => Ok(Value::BuiltinFunction(BuiltinFunction::SetHas)),
+                    "delete" => Ok(Value::BuiltinFunction(BuiltinFunction::SetDelete)),
+                    "clear" => Ok(Value::BuiltinFunction(BuiltinFunction::SetClear)),
+                    "entries" => Ok(Value::BuiltinFunction(
+                        BuiltinFunction::SetEntriesUnsupported,
+                    )),
+                    "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::SetKeysUnsupported)),
+                    "values" => Ok(Value::BuiltinFunction(
+                        BuiltinFunction::SetValuesUnsupported,
+                    )),
+                    _ => Ok(Value::Undefined),
+                }
+            }
             Value::Promise(_) => Ok(Value::Undefined),
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "isArray" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray))
@@ -5163,6 +5676,12 @@ impl Runtime {
                 self.refresh_array_accounting(array)?;
                 Ok(())
             }
+            Value::Map(_) => Err(JsliteError::runtime(
+                "TypeError: custom properties on Map values are not supported",
+            )),
+            Value::Set(_) => Err(JsliteError::runtime(
+                "TypeError: custom properties on Set values are not supported",
+            )),
             _ => Err(JsliteError::runtime("TypeError: value is not an object")),
         }
     }
@@ -5204,9 +5723,12 @@ impl Runtime {
                     Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
                         "function"
                     }
-                    Value::Object(_) | Value::Array(_) | Value::Iterator(_) | Value::Promise(_) => {
-                        "object"
-                    }
+                    Value::Object(_)
+                    | Value::Array(_)
+                    | Value::Map(_)
+                    | Value::Set(_)
+                    | Value::Iterator(_)
+                    | Value::Promise(_) => "object",
                 }
                 .to_string(),
             )),
@@ -5276,6 +5798,8 @@ impl Runtime {
             Value::Number(value) => value,
             Value::String(value) => value.parse::<f64>().unwrap_or(f64::NAN),
             Value::Array(_)
+            | Value::Map(_)
+            | Value::Set(_)
             | Value::Iterator(_)
             | Value::Object(_)
             | Value::Promise(_)
@@ -5313,6 +5837,8 @@ impl Runtime {
                 }
                 parts.join(",")
             }
+            Value::Map(_) => "[object Map]".to_string(),
+            Value::Set(_) => "[object Set]".to_string(),
             Value::Object(object) => self
                 .error_summary(object)?
                 .unwrap_or_else(|| "[object Object]".to_string()),
@@ -5511,6 +6037,11 @@ impl Runtime {
                     .map(|(key, value)| Ok((key.clone(), self.value_to_structured(value.clone())?)))
                     .collect::<JsliteResult<IndexMap<_, _>>>()?,
             ),
+            Value::Map(_) | Value::Set(_) => {
+                return Err(JsliteError::runtime(
+                    "Map and Set values cannot cross the structured host boundary",
+                ));
+            }
             Value::Iterator(_)
             | Value::Promise(_)
             | Value::Closure(_)
@@ -5611,6 +6142,22 @@ fn measure_array_bytes(array: &ArrayObject) -> usize {
         + measure_properties_bytes(&array.properties)
 }
 
+fn measure_map_bytes(map: &MapObject) -> usize {
+    std::mem::size_of::<MapObject>()
+        + map.entries.len() * std::mem::size_of::<MapEntry>()
+        + map
+            .entries
+            .iter()
+            .map(|entry| extra_value_bytes(&entry.key) + extra_value_bytes(&entry.value))
+            .sum::<usize>()
+}
+
+fn measure_set_bytes(set: &SetObject) -> usize {
+    std::mem::size_of::<SetObject>()
+        + set.entries.len() * std::mem::size_of::<Value>()
+        + set.entries.iter().map(extra_value_bytes).sum::<usize>()
+}
+
 fn measure_iterator_bytes(_iterator: &IteratorObject) -> usize {
     std::mem::size_of::<IteratorObject>()
 }
@@ -5680,6 +6227,8 @@ fn is_truthy(value: &Value) -> bool {
         Value::String(value) => !value.is_empty(),
         Value::Object(_)
         | Value::Array(_)
+        | Value::Map(_)
+        | Value::Set(_)
         | Value::Iterator(_)
         | Value::Promise(_)
         | Value::Closure(_)
@@ -5697,11 +6246,29 @@ fn strict_equal(left: &Value, right: &Value) -> bool {
         (Value::String(left), Value::String(right)) => left == right,
         (Value::Object(left), Value::Object(right)) => left == right,
         (Value::Array(left), Value::Array(right)) => left == right,
+        (Value::Map(left), Value::Map(right)) => left == right,
+        (Value::Set(left), Value::Set(right)) => left == right,
         (Value::Iterator(left), Value::Iterator(right)) => left == right,
         (Value::Promise(left), Value::Promise(right)) => left == right,
         (Value::Closure(left), Value::Closure(right)) => left == right,
         (Value::BuiltinFunction(left), Value::BuiltinFunction(right)) => left == right,
         _ => false,
+    }
+}
+
+fn same_value_zero(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Number(left), Value::Number(right)) => {
+            (left == right) || (left.is_nan() && right.is_nan())
+        }
+        _ => strict_equal(left, right),
+    }
+}
+
+fn canonicalize_collection_key(value: Value) -> Value {
+    match value {
+        Value::Number(number) if number == 0.0 && number.is_sign_negative() => Value::Number(0.0),
+        other => other,
     }
 }
 
@@ -6009,6 +6576,133 @@ mod tests {
         runtime.collect_garbage().expect("gc should succeed");
         assert!(!runtime.arrays.contains_key(kept_array));
         assert!(!runtime.iterators.contains_key(kept_iterator));
+    }
+
+    #[test]
+    fn maps_preserve_insertion_order_and_same_value_zero_updates() {
+        let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
+            .expect("lowering should succeed");
+        let mut runtime = Runtime::new(program, ExecutionOptions::default()).expect("runtime init");
+        let map = runtime.insert_map(Vec::new()).expect("map should allocate");
+        let object = runtime
+            .insert_object(IndexMap::new(), ObjectKind::Plain)
+            .expect("object should allocate");
+
+        runtime
+            .map_set(map, Value::String("alpha".to_string()), Value::Number(1.0))
+            .expect("alpha insert should succeed");
+        runtime
+            .map_set(
+                map,
+                Value::Number(f64::NAN),
+                Value::String("nan".to_string()),
+            )
+            .expect("nan insert should succeed");
+        runtime
+            .map_set(map, Value::Number(-0.0), Value::String("zero".to_string()))
+            .expect("negative zero insert should succeed");
+        runtime
+            .map_set(map, Value::Object(object), Value::Bool(true))
+            .expect("object key insert should succeed");
+        runtime
+            .map_set(map, Value::String("alpha".to_string()), Value::Number(2.0))
+            .expect("alpha update should keep insertion order");
+        runtime
+            .map_set(
+                map,
+                Value::Number(0.0),
+                Value::String("zero-updated".to_string()),
+            )
+            .expect("positive zero update should reuse the existing entry");
+
+        let entries = &runtime.maps.get(map).expect("map should exist").entries;
+        assert_eq!(entries.len(), 4);
+        assert!(matches!(entries[0].key, Value::String(ref value) if value == "alpha"));
+        assert!(matches!(entries[0].value, Value::Number(value) if value == 2.0));
+        assert!(matches!(entries[1].key, Value::Number(value) if value.is_nan()));
+        assert!(matches!(entries[1].value, Value::String(ref value) if value == "nan"));
+        assert!(matches!(entries[2].key, Value::Number(value) if value == 0.0));
+        assert!(matches!(entries[2].value, Value::String(ref value) if value == "zero-updated"));
+        assert!(matches!(entries[3].key, Value::Object(key) if key == object));
+        assert!(matches!(entries[3].value, Value::Bool(true)));
+    }
+
+    #[test]
+    fn keyed_collections_participate_in_heap_accounting_and_gc() {
+        let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
+            .expect("lowering should succeed");
+        let mut runtime = Runtime::new(program, ExecutionOptions::default()).expect("runtime init");
+
+        let baseline_heap = runtime.heap_bytes_used;
+        let kept_map = runtime.insert_map(Vec::new()).expect("map should allocate");
+        let kept_set = runtime.insert_set(Vec::new()).expect("set should allocate");
+        runtime
+            .map_set(
+                kept_map,
+                Value::String("set".to_string()),
+                Value::Set(kept_set),
+            )
+            .expect("map should store the set");
+        runtime
+            .set_add(kept_set, Value::Map(kept_map))
+            .expect("set should store the map");
+        assert!(runtime.heap_bytes_used > baseline_heap);
+
+        let frame_env = runtime
+            .new_env(Some(runtime.globals))
+            .expect("frame env should allocate");
+        let map_cell = runtime
+            .insert_cell(Value::Map(kept_map), true, true)
+            .expect("map cell should allocate");
+        runtime
+            .envs
+            .get_mut(frame_env)
+            .expect("frame env should exist")
+            .bindings
+            .insert("\0kept_map".to_string(), map_cell);
+        runtime
+            .refresh_env_accounting(frame_env)
+            .expect("frame env accounting should refresh");
+        runtime.frames.push(Frame {
+            function_id: 0,
+            ip: 0,
+            env: frame_env,
+            scope_stack: Vec::new(),
+            stack: Vec::new(),
+            handlers: Vec::new(),
+            pending_exception: None,
+            pending_completions: Vec::new(),
+            active_finally: Vec::new(),
+            async_promise: None,
+        });
+
+        let garbage_map = runtime
+            .insert_map(Vec::new())
+            .expect("garbage map should allocate");
+        let garbage_set = runtime
+            .insert_set(Vec::new())
+            .expect("garbage set should allocate");
+        runtime
+            .map_set(
+                garbage_map,
+                Value::String("set".to_string()),
+                Value::Set(garbage_set),
+            )
+            .expect("garbage map should store the set");
+        runtime
+            .set_add(garbage_set, Value::Map(garbage_map))
+            .expect("garbage set should store the map");
+
+        runtime.collect_garbage().expect("gc should succeed");
+        assert!(runtime.maps.contains_key(kept_map));
+        assert!(runtime.sets.contains_key(kept_set));
+        assert!(!runtime.maps.contains_key(garbage_map));
+        assert!(!runtime.sets.contains_key(garbage_set));
+
+        runtime.frames.clear();
+        runtime.collect_garbage().expect("gc should succeed");
+        assert!(!runtime.maps.contains_key(kept_map));
+        assert!(!runtime.sets.contains_key(kept_set));
     }
 
     #[test]

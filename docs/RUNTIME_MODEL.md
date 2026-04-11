@@ -11,8 +11,8 @@ stable serialized contract by themselves.
 The runtime represents guest values with an internal `Value` enum:
 
 - immediate scalars: `Undefined`, `Null`, `Bool`, `Number`, and `String`
-- heap handles: `Object`, `Array`, internal `Iterator`, `Closure`, and
-  `Promise`
+- heap handles: `Object`, `Array`, `Map`, `Set`, internal `Iterator`,
+  `Closure`, and `Promise`
 - callable built-ins: `BuiltinFunction`
 - explicit host entry points: `HostFunction`
 
@@ -26,6 +26,8 @@ Heap-backed state is stored indirectly through slotmap keys:
 
 - `ObjectKey` points to `PlainObject`
 - `ArrayKey` points to `ArrayObject`
+- `MapKey` points to `MapObject`
+- `SetKey` points to `SetObject`
 - `IteratorKey` points to `IteratorObject`
 - `ClosureKey` points to `Closure`
 - `PromiseKey` points to `PromiseObject`
@@ -56,7 +58,7 @@ The collector walks an explicit root set:
 - queued or suspended host requests root the guest promise they will settle
 - environments root their cells
 - cells root the `Value` they contain
-- objects, arrays, and promises root their contained values
+- objects, arrays, maps, sets, and promises root their contained values
 - iterators root the array they are currently traversing
 - closures root their captured environment chain
 - validated suspended snapshots restore the same runtime graph and therefore the
@@ -89,10 +91,23 @@ runtime-internal:
 - they do not implement user-visible iterator closing because generators and
   custom iterators are still deferred
 
-## Plain Objects, Arrays, and Shapes
+## Plain Objects, Arrays, Maps, Sets, and Shapes
 
 Plain objects currently use `IndexMap<String, Value>`. Arrays use a dedicated
-element vector plus string-keyed extra properties.
+element vector plus string-keyed extra properties. `Map` and `Set` use
+dedicated insertion-ordered entry vectors with SameValueZero key and membership
+semantics.
+
+For the current keyed-collection milestone:
+
+- `Map` updates preserve the original insertion position of an existing key
+- `Set` ignores duplicate adds without changing order
+- `delete` removes the matching entry and compacts the internal order
+- `clear` empties the collection completely
+- iterable constructors and iterator-returning collection APIs remain deferred,
+  so this order is currently an internal guarantee preserved for future
+  expansion and snapshot correctness rather than a general guest iteration
+  surface
 
 There is no shape or hidden-class layer today. If shapes are introduced later,
 they are an optimization only:

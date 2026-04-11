@@ -41,6 +41,9 @@ the safety rules they are expected to follow.
 - Active array `for...of` iterators are serialized as internal runtime state
   that preserves their source array reference and next index, so resumed loops
   continue from the next unvisited element.
+- `Map` and `Set` values are serialized only inside internal runtime snapshots,
+  where their insertion-ordered entry lists and referenced guest values are
+  preserved after validation.
 - In the Node wrapper, `start()` and `Progress.dump()` happen before any async
   capability promise is awaited, so JavaScript `Promise` objects never enter the
   serialized snapshot.
@@ -58,3 +61,7 @@ The following values may never be serialized:
 - native handles
 - unresolved host futures
 - JavaScript callback identities from the embedding host
+
+`Map` and `Set` are intentionally absent from `StructuredValue`, sidecar wire
+messages, and host-call payloads even though validated snapshots may preserve
+them as internal runtime objects.
