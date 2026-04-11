@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+description = "Node-API addon for the jslite runtime"
 
 [lib]
 crate-type = ["cdylib"]

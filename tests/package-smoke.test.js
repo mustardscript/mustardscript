@@ -18,7 +18,28 @@ function run(command, args, cwd) {
   });
 }
 
-test('published source package installs and runs from a fresh consumer project', async () => {
+function runGuestProgram(consumerRoot, source) {
+  return run(
+    process.execPath,
+    [
+      '-e',
+      `
+        const { Jslite } = require('jslite');
+        (async () => {
+          const runtime = new Jslite(${JSON.stringify(source)});
+          const value = await runtime.run();
+          process.stdout.write(String(value));
+        })().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+      `,
+    ],
+    consumerRoot,
+  );
+}
+
+test('published source package installs, reinstalls, and runs from a fresh consumer project', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-package-smoke-'));
   const consumerRoot = path.join(tempRoot, 'consumer');
   const tarballName = `jslite-${require(path.join(repoRoot, 'package.json')).version}.tgz`;
@@ -34,27 +55,16 @@ test('published source package installs and runs from a fresh consumer project',
 
     run(npmCommand, ['init', '-y'], consumerRoot);
     run(npmCommand, ['install', tarballPath], consumerRoot);
-
-    const result = run(
-      process.execPath,
-      [
-        '-e',
-        `
-          const { Jslite } = require('jslite');
-          (async () => {
-            const runtime = new Jslite('const answer = 2; answer + 3;');
-            const value = await runtime.run();
-            process.stdout.write(String(value));
-          })().catch((error) => {
-            console.error(error);
-            process.exit(1);
-          });
-        `,
-      ],
-      consumerRoot,
+    assert.equal(
+      runGuestProgram(consumerRoot, 'const answer = 2; answer + 3;'),
+      '5',
     );
 
-    assert.equal(result, '5');
+    run(npmCommand, ['install', tarballPath], consumerRoot);
+    assert.equal(
+      runGuestProgram(consumerRoot, 'let total = 40; total = total + 2; total;'),
+      '42',
+    );
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
     fs.rmSync(tarballPath, { force: true });

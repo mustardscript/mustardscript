@@ -405,18 +405,24 @@ Exit criteria:
 - [x] Publish sidecar-mode tradeoffs clearly
 - [x] Write embedding examples
 - [ ] Prepare npm publishing flow
+  Current blocker: `npm view jslite` currently resolves to an unrelated public
+  package at version `1.1.12`, so this repository cannot publish
+  `jslite@0.1.0` to the default `latest` tag without either renaming the
+  package or adopting an explicit npm dist-tag and versioning strategy.
 - [ ] Add optional prebuilt-binary publishing only after package shape is stable
-- [ ] Prepare Rust crate publishing flow if needed
-- [ ] Write release guidance
-- [ ] Add release verification checklists for build, install, upgrade, and basic
+- [x] Prepare Rust crate publishing flow if needed
+- [x] Write release guidance
+- [x] Add release verification checklists for build, install, upgrade, and basic
   runtime smoke tests
 
 Exit criteria:
 
 - [x] Docs match the implementation
 - [x] Users can embed `jslite` without tribal knowledge
-- [ ] Release checklists are runnable and verified
+- [x] Release checklists are runnable and verified
 - [ ] Project is publishable and maintainable
+  Current blocker: public npm release is not fully resolved while the package
+  name `jslite` conflicts with an existing npm package.
 
 ## First Real Milestone
 

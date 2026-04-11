@@ -1,0 +1,20 @@
+name: Release Verify
+
+on:
+  workflow_dispatch:
+
+jobs:
+  source-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify release candidate
+        run: npm run verify:release

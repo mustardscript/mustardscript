@@ -56,6 +56,7 @@ The current implementation does **not** yet execute:
 - [Bytecode VM Model](docs/BYTECODE.md)
 - [Runtime Value Model](docs/RUNTIME_MODEL.md)
 - [Sidecar Protocol](docs/SIDECAR_PROTOCOL.md)
+- [Release Guide](docs/RELEASE.md)
 - [Architecture ADRs](docs/ADRs/0001-core-architecture.md)
 
 ## Installation
@@ -76,6 +77,11 @@ npm test
 That flow builds the Rust addon locally and then runs the Node and packaging
 smoke tests. Prebuilt binaries are intentionally deferred until the package
 shape is stable.
+
+Release verification and publish guidance live in
+[docs/RELEASE.md](docs/RELEASE.md).
+Maintainers can run `npm run verify:release` to execute the current release
+verification flow end to end.
 
 ## Agent-Style Example
 
