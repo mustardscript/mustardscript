@@ -20,6 +20,7 @@ new_key_type! { struct CellKey; }
 new_key_type! { struct ObjectKey; }
 new_key_type! { struct ArrayKey; }
 new_key_type! { struct ClosureKey; }
+new_key_type! { struct PromiseKey; }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionOptions {
@@ -157,6 +158,7 @@ pub enum Instruction {
         with_this: bool,
         optional: bool,
     },
+    Await,
     Construct {
         argc: usize,
     },
@@ -678,6 +680,10 @@ fn apply_validation_effect(
                 ..state
             }
         }
+        Instruction::Await => {
+            require_stack(1)?;
+            state
+        }
         Instruction::Construct { argc } => {
             let required = argc + 1;
             require_stack(required)?;
@@ -722,10 +728,15 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
             traceback: Vec::new(),
         });
     }
-    if runtime.frames.is_empty() {
+    if runtime.frames.is_empty()
+        && runtime.suspended_host_call.is_none()
+        && runtime.root_result.is_none()
+        && runtime.microtasks.is_empty()
+    {
         return Err(JsliteError::Message {
             kind: DiagnosticKind::Serialization,
-            message: "snapshot validation failed: suspended runtime has no frames".to_string(),
+            message: "snapshot validation failed: suspended runtime has no frames or async state"
+                .to_string(),
             span: None,
             traceback: Vec::new(),
         });
@@ -976,6 +987,39 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
             validate_runtime_value(runtime, value)?;
         }
     }
+    if let Some(root_result) = &runtime.root_result {
+        validate_runtime_value(runtime, root_result)?;
+    }
+    for request in &runtime.pending_host_calls {
+        if runtime.promises.get(request.promise).is_none() {
+            return Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message:
+                    "snapshot validation failed: pending host call references a missing promise"
+                        .to_string(),
+                span: None,
+                traceback: Vec::new(),
+            });
+        }
+    }
+    if let Some(request) = &runtime.suspended_host_call
+        && runtime.promises.get(request.promise).is_none()
+    {
+        return Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: "snapshot validation failed: suspended host call references a missing promise"
+                .to_string(),
+            span: None,
+            traceback: Vec::new(),
+        });
+    }
+    for promise in runtime.promises.values() {
+        match &promise.state {
+            PromiseState::Pending => {}
+            PromiseState::Fulfilled(value) => validate_runtime_value(runtime, value)?,
+            PromiseState::Rejected(rejection) => validate_runtime_value(runtime, &rejection.value)?,
+        }
+    }
 
     Ok(())
 }
@@ -1008,6 +1052,17 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> JsliteResult<()> 
                 message: format!(
                     "snapshot validation failed: value references missing closure {:?}",
                     closure
+                ),
+                span: None,
+                traceback: Vec::new(),
+            })
+        }
+        Value::Promise(promise) if runtime.promises.get(*promise).is_none() => {
+            Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!(
+                    "snapshot validation failed: value references missing promise {:?}",
+                    promise
                 ),
                 span: None,
                 traceback: Vec::new(),
@@ -1684,11 +1739,9 @@ impl Compiler {
                     }
                 }
             }
-            Expr::Await { span, .. } => {
-                return Err(JsliteError::runtime_at(
-                    "runtime support for async/await is not implemented yet",
-                    *span,
-                ));
+            Expr::Await { value, .. } => {
+                self.compile_expr(context, value)?;
+                context.code.push(Instruction::Await);
             }
         }
         Ok(())
@@ -2187,6 +2240,7 @@ enum Value {
     Object(ObjectKey),
     Array(ArrayKey),
     Closure(ClosureKey),
+    Promise(PromiseKey),
     BuiltinFunction(BuiltinFunction),
     HostFunction(String),
 }
@@ -2196,6 +2250,9 @@ enum BuiltinFunction {
     ArrayCtor,
     ArrayIsArray,
     ObjectCtor,
+    PromiseCtor,
+    PromiseResolve,
+    PromiseReject,
     ErrorCtor,
     TypeErrorCtor,
     ReferenceErrorCtor,
@@ -2265,6 +2322,62 @@ struct Closure {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct PromiseObject {
+    state: PromiseState,
+    awaiters: Vec<AsyncContinuation>,
+    dependents: Vec<PromiseKey>,
+    #[serde(skip, default)]
+    accounted_bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum PromiseState {
+    Pending,
+    Fulfilled(Value),
+    Rejected(PromiseRejection),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PromiseRejection {
+    value: Value,
+    span: Option<SourceSpan>,
+    traceback: Vec<TraceFrameSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TraceFrameSnapshot {
+    function_name: Option<String>,
+    span: SourceSpan,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AsyncContinuation {
+    frames: Vec<Frame>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum PromiseOutcome {
+    Fulfilled(Value),
+    Rejected(PromiseRejection),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum MicrotaskJob {
+    ResumeAsync {
+        continuation: AsyncContinuation,
+        outcome: PromiseOutcome,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PendingHostCall {
+    capability: String,
+    args: Vec<StructuredValue>,
+    promise: PromiseKey,
+    resume_behavior: ResumeBehavior,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Frame {
     function_id: usize,
     ip: usize,
@@ -2275,6 +2388,7 @@ struct Frame {
     pending_exception: Option<Value>,
     pending_completions: Vec<CompletionRecord>,
     active_finally: Vec<ActiveFinallyState>,
+    async_promise: Option<PromiseKey>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2313,7 +2427,12 @@ struct Runtime {
     objects: SlotMap<ObjectKey, PlainObject>,
     arrays: SlotMap<ArrayKey, ArrayObject>,
     closures: SlotMap<ClosureKey, Closure>,
+    promises: SlotMap<PromiseKey, PromiseObject>,
     frames: Vec<Frame>,
+    root_result: Option<Value>,
+    microtasks: VecDeque<MicrotaskJob>,
+    pending_host_calls: VecDeque<PendingHostCall>,
+    suspended_host_call: Option<PendingHostCall>,
     instruction_counter: usize,
     #[serde(skip, default)]
     heap_bytes_used: usize,
@@ -2325,6 +2444,7 @@ struct Runtime {
 enum RunState {
     Completed(Value),
     PushedFrame,
+    StartedAsync(Value),
     Suspended {
         capability: String,
         args: Vec<StructuredValue>,
@@ -2350,6 +2470,7 @@ struct GarbageCollectionMarks {
     objects: HashSet<ObjectKey>,
     arrays: HashSet<ArrayKey>,
     closures: HashSet<ClosureKey>,
+    promises: HashSet<PromiseKey>,
 }
 
 #[derive(Debug, Default)]
@@ -2359,6 +2480,7 @@ struct GarbageCollectionWorklist {
     objects: Vec<ObjectKey>,
     arrays: Vec<ArrayKey>,
     closures: Vec<ClosureKey>,
+    promises: Vec<PromiseKey>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2384,7 +2506,12 @@ impl Runtime {
             objects: SlotMap::with_key(),
             arrays: SlotMap::with_key(),
             closures: SlotMap::with_key(),
+            promises: SlotMap::with_key(),
             frames: Vec::new(),
+            root_result: None,
+            microtasks: VecDeque::new(),
+            pending_host_calls: VecDeque::new(),
+            suspended_host_call: None,
             instruction_counter: 0,
             heap_bytes_used: 0,
             allocation_count: 0,
@@ -2405,7 +2532,7 @@ impl Runtime {
     fn run_root(&mut self) -> JsliteResult<ExecutionStep> {
         self.collect_garbage()?;
         let root_env = self.new_env(Some(self.globals))?;
-        self.push_frame(self.program.root, root_env, &[])?;
+        self.push_frame(self.program.root, root_env, &[], None)?;
         self.run()
     }
 
@@ -2511,6 +2638,18 @@ impl Runtime {
         closure.accounted_bytes = measure_closure_bytes(&closure);
         self.account_new_allocation(closure.accounted_bytes)?;
         Ok(self.closures.insert(closure))
+    }
+
+    fn insert_promise(&mut self, state: PromiseState) -> JsliteResult<PromiseKey> {
+        let mut promise = PromiseObject {
+            state,
+            awaiters: Vec::new(),
+            dependents: Vec::new(),
+            accounted_bytes: 0,
+        };
+        promise.accounted_bytes = measure_promise_bytes(&promise);
+        self.account_new_allocation(promise.accounted_bytes)?;
+        Ok(self.promises.insert(promise))
     }
 
     fn account_existing_env(&mut self, key: EnvKey) -> JsliteResult<()> {
@@ -2635,9 +2774,324 @@ impl Runtime {
         error.with_traceback(self.traceback_frames())
     }
 
+    fn traceback_snapshots(&self) -> Vec<TraceFrameSnapshot> {
+        self.traceback_frames()
+            .into_iter()
+            .map(|frame| TraceFrameSnapshot {
+                function_name: frame.function_name,
+                span: frame.span,
+            })
+            .collect()
+    }
+
+    fn compose_traceback(&self, origin: &[TraceFrameSnapshot]) -> Vec<TraceFrame> {
+        let mut frames = self.traceback_frames();
+        for frame in origin {
+            let candidate = TraceFrame {
+                function_name: frame.function_name.clone(),
+                span: frame.span,
+            };
+            if !frames.iter().any(|existing| {
+                existing.function_name == candidate.function_name && existing.span == candidate.span
+            }) {
+                frames.push(candidate);
+            }
+        }
+        frames
+    }
+
+    fn current_async_boundary_index(&self) -> Option<usize> {
+        self.frames
+            .iter()
+            .rposition(|frame| frame.async_promise.is_some())
+    }
+
+    fn promise_outcome(&self, promise: PromiseKey) -> JsliteResult<Option<PromiseOutcome>> {
+        let promise = self
+            .promises
+            .get(promise)
+            .ok_or_else(|| JsliteError::runtime("promise missing"))?;
+        Ok(match &promise.state {
+            PromiseState::Pending => None,
+            PromiseState::Fulfilled(value) => Some(PromiseOutcome::Fulfilled(value.clone())),
+            PromiseState::Rejected(rejection) => Some(PromiseOutcome::Rejected(rejection.clone())),
+        })
+    }
+
+    fn refresh_promise_accounting(&mut self, key: PromiseKey) -> JsliteResult<()> {
+        let (old_bytes, new_bytes) = {
+            let promise = self
+                .promises
+                .get(key)
+                .ok_or_else(|| JsliteError::runtime("promise missing"))?;
+            (promise.accounted_bytes, measure_promise_bytes(promise))
+        };
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.promises
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("promise missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    fn coerce_to_promise(&mut self, value: Value) -> JsliteResult<PromiseKey> {
+        match value {
+            Value::Promise(promise) => Ok(promise),
+            other => self.insert_promise(PromiseState::Fulfilled(other)),
+        }
+    }
+
+    fn attach_awaiter(
+        &mut self,
+        promise: PromiseKey,
+        continuation: AsyncContinuation,
+    ) -> JsliteResult<()> {
+        self.promises
+            .get_mut(promise)
+            .ok_or_else(|| JsliteError::runtime("promise missing"))?
+            .awaiters
+            .push(continuation);
+        self.refresh_promise_accounting(promise)
+    }
+
+    fn attach_dependent(&mut self, promise: PromiseKey, dependent: PromiseKey) -> JsliteResult<()> {
+        self.promises
+            .get_mut(promise)
+            .ok_or_else(|| JsliteError::runtime("promise missing"))?
+            .dependents
+            .push(dependent);
+        self.refresh_promise_accounting(promise)
+    }
+
+    fn settle_promise_with_outcome(
+        &mut self,
+        promise: PromiseKey,
+        outcome: PromiseOutcome,
+    ) -> JsliteResult<()> {
+        let (awaiters, dependents) = {
+            let promise_ref = self
+                .promises
+                .get_mut(promise)
+                .ok_or_else(|| JsliteError::runtime("promise missing"))?;
+            if !matches!(promise_ref.state, PromiseState::Pending) {
+                return Ok(());
+            }
+            promise_ref.state = match &outcome {
+                PromiseOutcome::Fulfilled(value) => PromiseState::Fulfilled(value.clone()),
+                PromiseOutcome::Rejected(rejection) => PromiseState::Rejected(rejection.clone()),
+            };
+            (
+                std::mem::take(&mut promise_ref.awaiters),
+                std::mem::take(&mut promise_ref.dependents),
+            )
+        };
+        self.refresh_promise_accounting(promise)?;
+        for continuation in awaiters {
+            self.microtasks.push_back(MicrotaskJob::ResumeAsync {
+                continuation,
+                outcome: outcome.clone(),
+            });
+        }
+        for dependent in dependents {
+            self.resolve_promise_with_outcome(dependent, outcome.clone())?;
+        }
+        Ok(())
+    }
+
+    fn resolve_promise_with_outcome(
+        &mut self,
+        promise: PromiseKey,
+        outcome: PromiseOutcome,
+    ) -> JsliteResult<()> {
+        match outcome {
+            PromiseOutcome::Fulfilled(value) => self.resolve_promise(promise, value),
+            PromiseOutcome::Rejected(rejection) => self.reject_promise(promise, rejection),
+        }
+    }
+
+    fn resolve_promise(&mut self, promise: PromiseKey, value: Value) -> JsliteResult<()> {
+        if let Value::Promise(source) = value {
+            if source == promise {
+                let error_value =
+                    self.value_from_runtime_message("TypeError: promise cannot resolve to itself")?;
+                return self.reject_promise(
+                    promise,
+                    PromiseRejection {
+                        value: error_value,
+                        span: None,
+                        traceback: self.traceback_snapshots(),
+                    },
+                );
+            }
+            match self.promise_outcome(source)? {
+                Some(outcome) => self.resolve_promise_with_outcome(promise, outcome),
+                None => self.attach_dependent(source, promise),
+            }
+        } else {
+            self.settle_promise_with_outcome(promise, PromiseOutcome::Fulfilled(value))
+        }
+    }
+
+    fn reject_promise(
+        &mut self,
+        promise: PromiseKey,
+        rejection: PromiseRejection,
+    ) -> JsliteResult<()> {
+        self.settle_promise_with_outcome(promise, PromiseOutcome::Rejected(rejection))
+    }
+
+    fn suspend_async_await(&mut self, value: Value) -> JsliteResult<()> {
+        let boundary = self.current_async_boundary_index().ok_or_else(|| {
+            JsliteError::runtime("await is only supported inside async functions")
+        })?;
+        let promise = self.coerce_to_promise(value)?;
+        let continuation = AsyncContinuation {
+            frames: self.frames.split_off(boundary),
+        };
+        match self.promise_outcome(promise)? {
+            Some(outcome) => self.microtasks.push_back(MicrotaskJob::ResumeAsync {
+                continuation,
+                outcome,
+            }),
+            None => self.attach_awaiter(promise, continuation)?,
+        }
+        Ok(())
+    }
+
+    fn activate_microtask(&mut self, job: MicrotaskJob) -> JsliteResult<()> {
+        match job {
+            MicrotaskJob::ResumeAsync {
+                continuation,
+                outcome,
+            } => {
+                if !self.frames.is_empty() {
+                    return Err(JsliteError::runtime(
+                        "microtask checkpoint ran while frames were still active",
+                    ));
+                }
+                self.frames = continuation.frames;
+                match outcome {
+                    PromiseOutcome::Fulfilled(value) => {
+                        let frame = self.frames.last_mut().ok_or_else(|| {
+                            JsliteError::runtime("async continuation resumed without frames")
+                        })?;
+                        frame.stack.push(value);
+                    }
+                    PromiseOutcome::Rejected(rejection) => {
+                        match self.raise_exception_with_origin(
+                            rejection.value,
+                            rejection.span,
+                            Some(rejection.traceback),
+                        )? {
+                            StepAction::Continue => {}
+                            StepAction::Return(_) => {}
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn has_pending_async_work(&self) -> bool {
+        self.suspended_host_call.is_some()
+            || !self.pending_host_calls.is_empty()
+            || !self.microtasks.is_empty()
+            || self.promises.values().any(|promise| {
+                matches!(promise.state, PromiseState::Pending)
+                    && (!promise.awaiters.is_empty() || !promise.dependents.is_empty())
+            })
+    }
+
+    fn root_error_from_rejection(&self, rejection: PromiseRejection) -> JsliteResult<JsliteError> {
+        Ok(JsliteError::Message {
+            kind: DiagnosticKind::Runtime,
+            message: self.render_exception(&rejection.value)?,
+            span: rejection.span,
+            traceback: self.compose_traceback(&rejection.traceback),
+        })
+    }
+
+    fn suspend_host_request(&mut self, request: PendingHostCall) -> ExecutionStep {
+        let capability = request.capability.clone();
+        let args = request.args.clone();
+        self.suspended_host_call = Some(request);
+        ExecutionStep::Suspended(Box::new(Suspension {
+            capability,
+            args,
+            snapshot: ExecutionSnapshot {
+                runtime: self.clone(),
+            },
+        }))
+    }
+
+    fn process_idle_state(&mut self) -> JsliteResult<Option<ExecutionStep>> {
+        if let Some(job) = self.microtasks.pop_front() {
+            self.activate_microtask(job)?;
+            return Ok(None);
+        }
+        if let Some(request) = self.pending_host_calls.pop_front() {
+            return Ok(Some(self.suspend_host_request(request)));
+        }
+        if let Some(root_result) = self.root_result.clone() {
+            return match root_result {
+                Value::Promise(promise) => match self.promise_outcome(promise)? {
+                    Some(PromiseOutcome::Fulfilled(value)) => Ok(Some(ExecutionStep::Completed(
+                        self.value_to_structured(value)?,
+                    ))),
+                    Some(PromiseOutcome::Rejected(rejection)) => {
+                        Err(self.root_error_from_rejection(rejection)?)
+                    }
+                    None => Err(JsliteError::runtime(
+                        "async root promise could not make progress",
+                    )),
+                },
+                value => {
+                    if self.has_pending_async_work() {
+                        return Err(JsliteError::runtime(
+                            "async execution became idle with pending work",
+                        ));
+                    }
+                    Ok(Some(ExecutionStep::Completed(
+                        self.value_to_structured(value)?,
+                    )))
+                }
+            };
+        }
+        if self.has_pending_async_work() {
+            return Err(JsliteError::runtime(
+                "async execution became idle before producing a root result",
+            ));
+        }
+        Err(JsliteError::runtime("vm lost all frames"))
+    }
+
     fn resume(&mut self, payload: ResumePayload) -> JsliteResult<ExecutionStep> {
         self.collect_garbage()
             .map_err(|error| self.annotate_runtime_error(error))?;
+        if let Some(request) = self.suspended_host_call.take() {
+            let outcome = match payload {
+                ResumePayload::Value(value) => {
+                    let value = match request.resume_behavior {
+                        ResumeBehavior::Value => self
+                            .value_from_structured(value)
+                            .map_err(|error| self.annotate_runtime_error(error))?,
+                        ResumeBehavior::Undefined => Value::Undefined,
+                    };
+                    PromiseOutcome::Fulfilled(value)
+                }
+                ResumePayload::Error(error) => PromiseOutcome::Rejected(PromiseRejection {
+                    value: self
+                        .value_from_host_error(error)
+                        .map_err(|error| self.annotate_runtime_error(error))?,
+                    span: None,
+                    traceback: Vec::new(),
+                }),
+            };
+            self.resolve_promise_with_outcome(request.promise, outcome)
+                .map_err(|error| self.annotate_runtime_error(error))?;
+            return self.run();
+        }
         match payload {
             ResumePayload::Value(value) => {
                 let value = match self.pending_resume_behavior {
@@ -2671,6 +3125,13 @@ impl Runtime {
 
     fn run(&mut self) -> JsliteResult<ExecutionStep> {
         loop {
+            if self.frames.is_empty() {
+                match self.process_idle_state() {
+                    Ok(Some(step)) => return Ok(step),
+                    Ok(None) => continue,
+                    Err(error) => return Err(self.annotate_runtime_error(error)),
+                }
+            }
             let frame_index = self
                 .frames
                 .len()
@@ -2999,6 +3460,9 @@ impl Runtime {
                                 self.frames[frame_index].stack.push(value);
                             }
                             RunState::PushedFrame => {}
+                            RunState::StartedAsync(value) => {
+                                self.frames[frame_index].stack.push(value);
+                            }
                             RunState::Suspended {
                                 capability,
                                 args,
@@ -3016,6 +3480,13 @@ impl Runtime {
                                 ))));
                             }
                         }
+                    }
+                    Instruction::Await => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        self.suspend_async_await(value)?;
                     }
                     Instruction::Construct { argc } => {
                         let args = pop_many(&mut self.frames[frame_index].stack, argc)?;
@@ -3108,7 +3579,19 @@ impl Runtime {
         value: Value,
         span: Option<SourceSpan>,
     ) -> JsliteResult<StepAction> {
-        let traceback = self.traceback_frames();
+        self.raise_exception_with_origin(value, span, None)
+    }
+
+    fn raise_exception_with_origin(
+        &mut self,
+        value: Value,
+        span: Option<SourceSpan>,
+        origin_traceback: Option<Vec<TraceFrameSnapshot>>,
+    ) -> JsliteResult<StepAction> {
+        let traceback = match origin_traceback.as_ref() {
+            Some(origin) => self.compose_traceback(origin),
+            None => self.traceback_frames(),
+        };
         let thrown = value;
 
         loop {
@@ -3149,6 +3632,25 @@ impl Runtime {
                 self.frames[frame_index].pending_completions[active.completion_index] =
                     CompletionRecord::Throw(thrown);
                 self.frames[frame_index].ip = active.exit;
+                return Ok(StepAction::Continue);
+            }
+
+            if let Some(async_promise) = self.frames[frame_index].async_promise {
+                self.frames.pop();
+                self.reject_promise(
+                    async_promise,
+                    PromiseRejection {
+                        value: thrown,
+                        span,
+                        traceback: traceback
+                            .iter()
+                            .map(|frame| TraceFrameSnapshot {
+                                function_name: frame.function_name.clone(),
+                                span: frame.span,
+                            })
+                            .collect(),
+                    },
+                )?;
                 return Ok(StepAction::Continue);
             }
 
@@ -3266,14 +3768,20 @@ impl Runtime {
     }
 
     fn complete_return(&mut self, value: Value) -> JsliteResult<StepAction> {
-        self.frames.pop();
+        let frame = self
+            .frames
+            .pop()
+            .ok_or_else(|| JsliteError::runtime("vm lost all frames"))?;
+        if let Some(async_promise) = frame.async_promise {
+            self.resolve_promise(async_promise, value)?;
+            return Ok(StepAction::Continue);
+        }
         if let Some(parent) = self.frames.last_mut() {
             parent.stack.push(value);
             Ok(StepAction::Continue)
         } else {
-            Ok(StepAction::Return(ExecutionStep::Completed(
-                self.value_to_structured(value)?,
-            )))
+            self.root_result = Some(value);
+            Ok(StepAction::Continue)
         }
     }
 
@@ -3297,6 +3805,7 @@ impl Runtime {
         self.sweep_unreachable_objects(&marks);
         self.sweep_unreachable_arrays(&marks);
         self.sweep_unreachable_closures(&marks);
+        self.sweep_unreachable_promises(&marks);
 
         let (heap_bytes_used, allocation_count) = self
             .recompute_accounting_totals()
@@ -3315,28 +3824,37 @@ impl Runtime {
         let mut worklist = GarbageCollectionWorklist::default();
 
         self.mark_env(self.globals, &mut marks, &mut worklist);
+        if let Some(root_result) = &self.root_result {
+            self.mark_value(root_result, &mut marks, &mut worklist);
+        }
         for frame in &self.frames {
-            self.mark_env(frame.env, &mut marks, &mut worklist);
-            for env in &frame.scope_stack {
-                self.mark_env(*env, &mut marks, &mut worklist);
-            }
-            for value in &frame.stack {
-                self.mark_value(value, &mut marks, &mut worklist);
-            }
-            if let Some(value) = &frame.pending_exception {
-                self.mark_value(value, &mut marks, &mut worklist);
-            }
-            for handler in &frame.handlers {
-                self.mark_env(handler.env, &mut marks, &mut worklist);
-            }
-            for completion in &frame.pending_completions {
-                match completion {
-                    CompletionRecord::Jump { .. } => {}
-                    CompletionRecord::Return(value) | CompletionRecord::Throw(value) => {
-                        self.mark_value(value, &mut marks, &mut worklist);
+            self.mark_frame_roots(frame, &mut marks, &mut worklist);
+        }
+        for job in &self.microtasks {
+            match job {
+                MicrotaskJob::ResumeAsync {
+                    continuation,
+                    outcome,
+                } => {
+                    for frame in &continuation.frames {
+                        self.mark_frame_roots(frame, &mut marks, &mut worklist);
+                    }
+                    match outcome {
+                        PromiseOutcome::Fulfilled(value) => {
+                            self.mark_value(value, &mut marks, &mut worklist);
+                        }
+                        PromiseOutcome::Rejected(rejection) => {
+                            self.mark_value(&rejection.value, &mut marks, &mut worklist);
+                        }
                     }
                 }
             }
+        }
+        for request in &self.pending_host_calls {
+            self.mark_promise(request.promise, &mut marks, &mut worklist);
+        }
+        if let Some(request) = &self.suspended_host_call {
+            self.mark_promise(request.promise, &mut marks, &mut worklist);
         }
 
         while !worklist.envs.is_empty()
@@ -3344,6 +3862,7 @@ impl Runtime {
             || !worklist.objects.is_empty()
             || !worklist.arrays.is_empty()
             || !worklist.closures.is_empty()
+            || !worklist.promises.is_empty()
         {
             while let Some(key) = worklist.envs.pop() {
                 let env = self
@@ -3396,6 +3915,30 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("gc encountered missing closure"))?;
                 self.mark_env(closure.env, &mut marks, &mut worklist);
             }
+
+            while let Some(key) = worklist.promises.pop() {
+                let promise = self
+                    .promises
+                    .get(key)
+                    .ok_or_else(|| JsliteError::runtime("gc encountered missing promise"))?;
+                match &promise.state {
+                    PromiseState::Pending => {}
+                    PromiseState::Fulfilled(value) => {
+                        self.mark_value(value, &mut marks, &mut worklist);
+                    }
+                    PromiseState::Rejected(rejection) => {
+                        self.mark_value(&rejection.value, &mut marks, &mut worklist);
+                    }
+                }
+                for continuation in &promise.awaiters {
+                    for frame in &continuation.frames {
+                        self.mark_frame_roots(frame, &mut marks, &mut worklist);
+                    }
+                }
+                for dependent in &promise.dependents {
+                    self.mark_promise(*dependent, &mut marks, &mut worklist);
+                }
+            }
         }
 
         Ok(marks)
@@ -3423,6 +3966,38 @@ impl Runtime {
         }
     }
 
+    fn mark_frame_roots(
+        &self,
+        frame: &Frame,
+        marks: &mut GarbageCollectionMarks,
+        worklist: &mut GarbageCollectionWorklist,
+    ) {
+        self.mark_env(frame.env, marks, worklist);
+        for env in &frame.scope_stack {
+            self.mark_env(*env, marks, worklist);
+        }
+        for value in &frame.stack {
+            self.mark_value(value, marks, worklist);
+        }
+        if let Some(value) = &frame.pending_exception {
+            self.mark_value(value, marks, worklist);
+        }
+        for handler in &frame.handlers {
+            self.mark_env(handler.env, marks, worklist);
+        }
+        for completion in &frame.pending_completions {
+            match completion {
+                CompletionRecord::Jump { .. } => {}
+                CompletionRecord::Return(value) | CompletionRecord::Throw(value) => {
+                    self.mark_value(value, marks, worklist);
+                }
+            }
+        }
+        if let Some(async_promise) = frame.async_promise {
+            self.mark_promise(async_promise, marks, worklist);
+        }
+    }
+
     fn mark_value(
         &self,
         value: &Value,
@@ -3445,6 +4020,7 @@ impl Runtime {
                     worklist.closures.push(*key);
                 }
             }
+            Value::Promise(key) => self.mark_promise(*key, marks, worklist),
             Value::Undefined
             | Value::Null
             | Value::Bool(_)
@@ -3510,6 +4086,17 @@ impl Runtime {
         }
     }
 
+    fn sweep_unreachable_promises(&mut self, marks: &GarbageCollectionMarks) {
+        let dead: Vec<_> = self
+            .promises
+            .keys()
+            .filter(|key| !marks.promises.contains(key))
+            .collect();
+        for key in dead {
+            self.promises.remove(key);
+        }
+    }
+
     fn recompute_accounting_totals(&mut self) -> Result<(usize, usize), String> {
         let mut heap_bytes_used = 0usize;
         let mut allocation_count = 0usize;
@@ -3549,11 +4136,35 @@ impl Runtime {
                 .ok_or_else(|| "heap accounting overflow".to_string())?;
             allocation_count += 1;
         }
+        for promise in self.promises.values_mut() {
+            promise.accounted_bytes = measure_promise_bytes(promise);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(promise.accounted_bytes)
+                .ok_or_else(|| "heap accounting overflow".to_string())?;
+            allocation_count += 1;
+        }
 
         Ok((heap_bytes_used, allocation_count))
     }
 
-    fn push_frame(&mut self, function_id: usize, env: EnvKey, args: &[Value]) -> JsliteResult<()> {
+    fn mark_promise(
+        &self,
+        key: PromiseKey,
+        marks: &mut GarbageCollectionMarks,
+        worklist: &mut GarbageCollectionWorklist,
+    ) {
+        if marks.promises.insert(key) {
+            worklist.promises.push(key);
+        }
+    }
+
+    fn push_frame(
+        &mut self,
+        function_id: usize,
+        env: EnvKey,
+        args: &[Value],
+        async_promise: Option<PromiseKey>,
+    ) -> JsliteResult<()> {
         let params = self
             .program
             .functions
@@ -3586,6 +4197,7 @@ impl Runtime {
             pending_exception: None,
             pending_completions: Vec::new(),
             active_finally: Vec::new(),
+            async_promise,
         });
         Ok(())
     }
@@ -3604,21 +4216,53 @@ impl Runtime {
                     .cloned()
                     .ok_or_else(|| JsliteError::runtime("closure not found"))?;
                 let env = self.new_env(Some(closure.env))?;
-                self.push_frame(closure.function_id, env, args)?;
-                Ok(RunState::PushedFrame)
+                let is_async = self
+                    .program
+                    .functions
+                    .get(closure.function_id)
+                    .map(|function| function.is_async)
+                    .ok_or_else(|| JsliteError::runtime("function not found"))?;
+                if is_async {
+                    let promise = self.insert_promise(PromiseState::Pending)?;
+                    self.push_frame(closure.function_id, env, args, Some(promise))?;
+                    Ok(RunState::StartedAsync(Value::Promise(promise)))
+                } else {
+                    self.push_frame(closure.function_id, env, args, None)?;
+                    Ok(RunState::PushedFrame)
+                }
             }
             Value::BuiltinFunction(function) => {
                 Ok(RunState::Completed(self.call_builtin(function, args)?))
             }
-            Value::HostFunction(capability) => Ok(RunState::Suspended {
-                resume_behavior: resume_behavior_for_capability(&capability),
-                capability,
-                args: args
+            Value::HostFunction(capability) => {
+                let resume_behavior = resume_behavior_for_capability(&capability);
+                let args = args
                     .iter()
                     .cloned()
                     .map(|value| self.value_to_structured(value))
-                    .collect::<JsliteResult<Vec<_>>>()?,
-            }),
+                    .collect::<JsliteResult<Vec<_>>>()?;
+                if self.current_async_boundary_index().is_some() {
+                    let outstanding = self.pending_host_calls.len()
+                        + usize::from(self.suspended_host_call.is_some());
+                    if outstanding >= self.limits.max_outstanding_host_calls {
+                        return Err(limit_error("outstanding host-call limit exhausted"));
+                    }
+                    let promise = self.insert_promise(PromiseState::Pending)?;
+                    self.pending_host_calls.push_back(PendingHostCall {
+                        capability,
+                        args,
+                        promise,
+                        resume_behavior,
+                    });
+                    Ok(RunState::Completed(Value::Promise(promise)))
+                } else {
+                    Ok(RunState::Suspended {
+                        resume_behavior,
+                        capability,
+                        args,
+                    })
+                }
+            }
             _ => Err(JsliteError::runtime("value is not callable")),
         }
     }
@@ -3628,6 +4272,7 @@ impl Runtime {
             Value::BuiltinFunction(
                 BuiltinFunction::ArrayCtor
                 | BuiltinFunction::ObjectCtor
+                | BuiltinFunction::PromiseCtor
                 | BuiltinFunction::ErrorCtor
                 | BuiltinFunction::TypeErrorCtor
                 | BuiltinFunction::ReferenceErrorCtor
@@ -3664,6 +4309,29 @@ impl Runtime {
                     let object = self.insert_object(IndexMap::new(), ObjectKind::Plain)?;
                     Ok(Value::Object(object))
                 }
+            }
+            BuiltinFunction::PromiseCtor => Err(JsliteError::runtime(
+                "Promise construction is not supported in v1; use async functions or Promise.resolve/reject",
+            )),
+            BuiltinFunction::PromiseResolve => {
+                let value = args.first().cloned().unwrap_or(Value::Undefined);
+                if let Value::Promise(_) = value {
+                    Ok(value)
+                } else {
+                    Ok(Value::Promise(
+                        self.insert_promise(PromiseState::Fulfilled(value))?,
+                    ))
+                }
+            }
+            BuiltinFunction::PromiseReject => {
+                let value = args.first().cloned().unwrap_or(Value::Undefined);
+                Ok(Value::Promise(self.insert_promise(
+                    PromiseState::Rejected(PromiseRejection {
+                        value,
+                        span: None,
+                        traceback: Vec::new(),
+                    }),
+                )?))
             }
             BuiltinFunction::ErrorCtor => self.make_error_object("Error", args, None, None),
             BuiltinFunction::TypeErrorCtor => self.make_error_object("TypeError", args, None, None),
@@ -3743,6 +4411,11 @@ impl Runtime {
         self.define_global(
             "Array".to_string(),
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor),
+            false,
+        )?;
+        self.define_global(
+            "Promise".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::PromiseCtor),
             false,
         )?;
         self.define_global(
@@ -4103,8 +4776,15 @@ impl Runtime {
                         .unwrap_or(Value::Undefined))
                 }
             }
+            Value::Promise(_) => Ok(Value::Undefined),
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "isArray" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray))
+            }
+            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "resolve" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseResolve))
+            }
+            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "reject" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseReject))
             }
             Value::String(value) if key == "length" => {
                 Ok(Value::Number(value.chars().count() as f64))
@@ -4187,7 +4867,7 @@ impl Runtime {
                     Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
                         "function"
                     }
-                    Value::Object(_) | Value::Array(_) => "object",
+                    Value::Object(_) | Value::Array(_) | Value::Promise(_) => "object",
                 }
                 .to_string(),
             )),
@@ -4258,6 +4938,7 @@ impl Runtime {
             Value::String(value) => value.parse::<f64>().unwrap_or(f64::NAN),
             Value::Array(_)
             | Value::Object(_)
+            | Value::Promise(_)
             | Value::Closure(_)
             | Value::BuiltinFunction(_)
             | Value::HostFunction(_) => {
@@ -4295,6 +4976,7 @@ impl Runtime {
             Value::Object(object) => self
                 .error_summary(object)?
                 .unwrap_or_else(|| "[object Object]".to_string()),
+            Value::Promise(_) => "[object Promise]".to_string(),
             Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
                 "[Function]".to_string()
             }
@@ -4488,7 +5170,10 @@ impl Runtime {
                     .map(|(key, value)| Ok((key.clone(), self.value_to_structured(value.clone())?)))
                     .collect::<JsliteResult<IndexMap<_, _>>>()?,
             ),
-            Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
+            Value::Promise(_)
+            | Value::Closure(_)
+            | Value::BuiltinFunction(_)
+            | Value::HostFunction(_) => {
                 return Err(JsliteError::runtime(
                     "functions cannot cross the structured host boundary",
                 ));
@@ -4588,6 +5273,25 @@ fn measure_closure_bytes(_closure: &Closure) -> usize {
     std::mem::size_of::<Closure>()
 }
 
+fn measure_promise_bytes(promise: &PromiseObject) -> usize {
+    let state_bytes = match &promise.state {
+        PromiseState::Pending => 0,
+        PromiseState::Fulfilled(value) => extra_value_bytes(value),
+        PromiseState::Rejected(rejection) => {
+            extra_value_bytes(&rejection.value)
+                + rejection
+                    .traceback
+                    .iter()
+                    .map(|frame| frame.function_name.as_ref().map_or(0, String::len))
+                    .sum::<usize>()
+        }
+    };
+    std::mem::size_of::<PromiseObject>()
+        + promise.awaiters.len() * std::mem::size_of::<AsyncContinuation>()
+        + promise.dependents.len() * std::mem::size_of::<PromiseKey>()
+        + state_bytes
+}
+
 fn pop_many(stack: &mut Vec<Value>, count: usize) -> JsliteResult<Vec<Value>> {
     if stack.len() < count {
         return Err(JsliteError::runtime("stack underflow"));
@@ -4616,6 +5320,7 @@ fn instruction_may_allocate(instruction: &Instruction) -> bool {
             | Instruction::SetPropStatic { .. }
             | Instruction::SetPropComputed
             | Instruction::Call { .. }
+            | Instruction::Await
             | Instruction::Construct { .. }
     )
 }
@@ -4628,6 +5333,7 @@ fn is_truthy(value: &Value) -> bool {
         Value::String(value) => !value.is_empty(),
         Value::Object(_)
         | Value::Array(_)
+        | Value::Promise(_)
         | Value::Closure(_)
         | Value::BuiltinFunction(_)
         | Value::HostFunction(_) => true,
@@ -4643,6 +5349,7 @@ fn strict_equal(left: &Value, right: &Value) -> bool {
         (Value::String(left), Value::String(right)) => left == right,
         (Value::Object(left), Value::Object(right)) => left == right,
         (Value::Array(left), Value::Array(right)) => left == right,
+        (Value::Promise(left), Value::Promise(right)) => left == right,
         (Value::Closure(left), Value::Closure(right)) => left == right,
         (Value::BuiltinFunction(left), Value::BuiltinFunction(right)) => left == right,
         _ => false,
@@ -4940,6 +5647,7 @@ mod tests {
                 CompletionRecord::Throw(Value::Closure(rooted_closure)),
             ],
             active_finally: Vec::new(),
+            async_promise: None,
         });
 
         let garbage_env = runtime.new_env(None).expect("garbage env should allocate");
