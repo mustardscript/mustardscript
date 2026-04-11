@@ -69,9 +69,11 @@ function verifyPackedFiles() {
     'crates/jslite-sidecar/Cargo.toml',
     'crates/jslite-sidecar/src/lib.rs',
     'crates/jslite-sidecar/src/main.rs',
+    'install.js',
     'index.d.ts',
     'index.js',
     'jslite.d.ts',
+    'native-loader.js',
     'package.json',
     'README.md',
   ];
