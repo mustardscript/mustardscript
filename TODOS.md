@@ -358,24 +358,27 @@ Exit criteria:
 
 ## Phase 10: Security Hardening, Fuzzing, and Hostile Inputs
 
-- [ ] Add hostile-input test suites
-- [ ] Add parser fuzzing
-- [ ] Add IR lowering fuzzing
-- [ ] Add bytecode validation fuzzing
-- [ ] Add bytecode execution fuzzing
-- [ ] Add snapshot-load fuzzing
-- [ ] Add sidecar-protocol fuzzing
-- [ ] Add regression tests for security-sensitive behaviors
+- [x] Add hostile-input test suites
+- [x] Add parser fuzzing
+- [x] Add IR lowering fuzzing
+- [x] Add bytecode validation fuzzing
+- [x] Add bytecode execution fuzzing
+- [x] Add snapshot-load fuzzing
+- [x] Add sidecar-protocol fuzzing
+- [x] Add regression tests for security-sensitive behaviors
 - [ ] Add fault-injection tests for cancellation, limits, and corrupted state
-- [ ] Audit denial-of-service failure modes
+  Current blocker: cooperative cancellation is still architecturally blocked, so
+  the verified fault-injection coverage in this phase currently covers limits
+  and corrupted serialized state but not mid-execution cancellation hooks.
+- [x] Audit denial-of-service failure modes
 - [x] Verify resource failures stay guest-safe
 
 Exit criteria:
 
-- [ ] Critical boundaries are fuzzed
-- [ ] Hostile-input failures are safe and reproducible
-- [ ] Security regressions are covered by tests
-- [ ] Hardening suites pass or continuous fuzzing infrastructure
+- [x] Critical boundaries are fuzzed
+- [x] Hostile-input failures are safe and reproducible
+- [x] Security regressions are covered by tests
+- [x] Hardening suites pass or continuous fuzzing infrastructure
 
 ## Phase 11: Conformance, Benchmarking, and Coverage Audit
 
