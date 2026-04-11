@@ -25,6 +25,7 @@ test('run supports conservative array, string, object, and Math helper surface',
     values.push(3);
     const object = { zebra: 1, alpha: 2 };
     const arrayEntries = Object.entries(values);
+    const csv = "alpha,beta,gamma";
     ({
       slice: values.slice(1).join('-'),
       includes: values.includes(2),
@@ -32,6 +33,11 @@ test('run supports conservative array, string, object, and Math helper surface',
       trim: "  MiXeD Example  ".trim(),
       startsWith: "  MiXeD Example  ".startsWith("Mi", 2),
       substring: "  MiXeD Example  ".substring(8, 3),
+      split: csv.split(",", 2),
+      replace: "  MiXeD Example  ".replace("MiXeD", "Mixed"),
+      replaceAll: "a-b-a".replaceAll("a", "z"),
+      search: "  MiXeD Example  ".search("Example"),
+      match: "  MiXeD Example  ".match("Example"),
       objectKeys: Object.keys(object),
       objectValues: Object.values(object),
       hasOwn: Object.hasOwn(object, "alpha"),
@@ -51,6 +57,11 @@ test('run supports conservative array, string, object, and Math helper surface',
     trim: 'MiXeD Example',
     startsWith: true,
     substring: 'iXeD ',
+    split: ['alpha', 'beta'],
+    replace: '  Mixed Example  ',
+    replaceAll: 'z-b-z',
+    search: 8,
+    match: ['Example'],
     objectKeys: ['alpha', 'zebra'],
     objectValues: [2, 1],
     hasOwn: true,
@@ -61,6 +72,73 @@ test('run supports conservative array, string, object, and Math helper surface',
     sign: -0,
   });
   assert.ok(Object.is(result.sign, -0));
+});
+
+test('run supports callback-heavy array helpers and thisArg for supported callbacks', async () => {
+  const j = new Jslite(`
+    const values = [1, 2, 3];
+    let seen = 0;
+    const mapped = values.map(function (value, index) {
+      seen += this.step;
+      return value + index + this.offset;
+    }, { step: 10, offset: 4 });
+    const filtered = values.filter((value) => value % 2 === 1);
+    const found = values.find((value) => value > 2);
+    const foundIndex = values.findIndex((value) => value > 2);
+    const some = values.some((value) => value === 2);
+    const every = values.every((value) => value > 0);
+    const reduced = values.reduce((acc, value) => acc + value, 5);
+    values.forEach((value) => {
+      seen += value;
+    });
+    [mapped, filtered, found, foundIndex, some, every, reduced, seen];
+  `);
+
+  const result = await j.run();
+  assert.deepEqual(result, [[5, 7, 9], [1, 3], 3, 2, true, true, 11, 36]);
+});
+
+test('array callback helpers fail closed for invalid callbacks and synchronous host suspensions', async () => {
+  await assert.rejects(
+    () => new Jslite('([1]).map(1);').run(),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Runtime' &&
+      error.message.includes('Array.prototype.map expects a callable callback'),
+  );
+
+  await assert.rejects(
+    () =>
+      new Jslite('[1].map(fetch_data);').run({
+        capabilities: {
+          fetch_data(value) {
+            return value + 1;
+          },
+        },
+      }),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Runtime' &&
+      error.message.includes('array callback helpers do not support synchronous host suspensions'),
+  );
+
+  await assert.rejects(
+    () => new Jslite('[].reduce((acc, value) => acc + value);').run(),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Runtime' &&
+      error.message.includes('Array.prototype.reduce requires an initial value for empty arrays'),
+  );
+});
+
+test('regex-heavy string helpers fail closed for callback replacements', async () => {
+  await assert.rejects(
+    () => new Jslite("'abc'.replace('a', (value) => value);").run(),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Runtime' &&
+      error.message.includes('String.prototype.replace does not support callback replacements'),
+  );
 });
 
 test('run applies nullish assignment only to nullish identifiers and members', async () => {

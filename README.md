@@ -36,25 +36,23 @@ The current implementation already supports:
 - `Map` and `Set` with supported iterable constructors, SameValueZero key and
   membership semantics, insertion-order-preserving storage, and iterator
   helpers
-- `async` functions, `await`, guest promises, and internal microtask scheduling
-  for the supported subset
+- `async` functions, `await`, guest promises, Promise combinators and instance
+  methods, and internal microtask scheduling for the supported subset
+- conservative array, string, object, and Math helper methods, including
+  callback-driven array helpers and string-pattern search/replacement helpers
 - `throw`, `try`/`catch`/`finally`, and guest-visible `Error` objects
 - `Math` and `JSON` built-ins
 - explicit named host capabilities with `start()` / `resume()` suspension,
   including async guest fan-out across host capability calls
 - deterministic `console.log` / `console.warn` / `console.error` callbacks when
   the host provides them explicitly
-- instruction, heap-byte, allocation-count, and outstanding-host-call budgets
-  with guest-safe limit errors
+- instruction, call-depth, heap-byte, allocation-count, and
+  outstanding-host-call budgets with guest-safe limit errors
 - cooperative cancellation for running compute, suspended progress objects, and
   guest async waits on host promises
 - guest-safe runtime and limit errors with guest function-span tracebacks
 - same-version compiled-program and suspension snapshot round trips
 - a thin Node addon wrapper and a sidecar process that reuse the same Rust core
-
-The current implementation does **not** yet execute:
-
-- call-depth limits
 
 ## Reference Docs
 
@@ -390,15 +388,21 @@ Current Promise support is intentionally narrow:
 Current built-in helper support is intentionally conservative:
 
 - arrays support `push`, `pop`, `slice`, `join`, `includes`, `indexOf`,
-  `values`, `keys`, and `entries`
+  `values`, `keys`, `entries`, `forEach`, `map`, `filter`, `find`,
+  `findIndex`, `some`, `every`, and `reduce`
 - strings support `trim`, `includes`, `startsWith`, `endsWith`, `slice`,
-  `substring`, `toLowerCase`, and `toUpperCase`
+  `substring`, `toLowerCase`, `toUpperCase`, `split`, `replace`,
+  `replaceAll`, `search`, and `match`
 - `Object.keys`, `Object.values`, `Object.entries`, and `Object.hasOwn`
   currently support plain objects and arrays
 - `Math.pow`, `Math.sqrt`, `Math.trunc`, and `Math.sign` are supported
-- callback-driven array helpers, descriptor/prototype helpers, regex-driven
-  string helpers, and nondeterministic helpers such as `Math.random` remain
-  unsupported
+- array callback helpers currently support guest callbacks, built-in callbacks,
+  and async host callbacks reached from an async guest boundary; synchronous
+  host suspensions from those helpers fail closed
+- string pattern helpers currently support string search patterns only;
+  callback replacements and full `RegExp` parity remain unsupported
+- descriptor/prototype helpers and nondeterministic helpers such as
+  `Math.random` remain unsupported
 
 Current function-call support is intentionally narrow:
 

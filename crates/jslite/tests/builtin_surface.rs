@@ -47,10 +47,73 @@ fn array_helpers_cover_mutation_search_and_slicing() {
 }
 
 #[test]
+fn array_callback_helpers_cover_transform_search_and_reduction() {
+    let program = compile(
+        r#"
+        const values = [1, 2, 3];
+        let seen = 0;
+        const mapped = values.map(function (value, index) {
+          seen += this.step;
+          return value + index + this.offset;
+        }, { step: 10, offset: 4 });
+        const filtered = values.filter((value) => value % 2 === 1);
+        const found = values.find((value) => value > 2);
+        const foundIndex = values.findIndex((value) => value > 2);
+        const some = values.some((value) => value === 2);
+        const every = values.every((value) => value > 0);
+        const reduced = values.reduce((acc, value) => acc + value, 5);
+        values.forEach((value) => {
+          seen += value;
+        });
+        [mapped, filtered, found, foundIndex, some, every, reduced, seen];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![number(5.0), number(7.0), number(9.0)]),
+            StructuredValue::Array(vec![number(1.0), number(3.0)]),
+            number(3.0),
+            number(2.0),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            number(11.0),
+            number(36.0),
+        ])
+    );
+}
+
+#[test]
+fn array_callback_helpers_fail_closed_for_invalid_callbacks_and_empty_reduce() {
+    let map_error = compile("([1]).map(1);").expect("source should compile");
+    let error =
+        execute(&map_error, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Array.prototype.map expects a callable callback")
+    );
+
+    let reduce_error =
+        compile("([].reduce((acc, value) => acc + value));").expect("source should compile");
+    let error =
+        execute(&reduce_error, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Array.prototype.reduce requires an initial value for empty arrays")
+    );
+}
+
+#[test]
 fn string_helpers_cover_trimming_queries_and_case_changes() {
     let program = compile(
         r#"
         const value = "  MiXeD Example  ";
+        const csv = "alpha,beta,gamma";
         [
           value.trim(),
           value.includes("XeD"),
@@ -60,6 +123,11 @@ fn string_helpers_cover_trimming_queries_and_case_changes() {
           value.substring(8, 3),
           value.toLowerCase(),
           value.toUpperCase(),
+          csv.split(",", 2),
+          value.replace("MiXeD", "Mixed"),
+          "a-b-a".replaceAll("a", "z"),
+          value.search("Example"),
+          value.match("Example"),
         ];
         "#,
     )
@@ -77,7 +145,24 @@ fn string_helpers_cover_trimming_queries_and_case_changes() {
             "iXeD ".into(),
             "  mixed example  ".into(),
             "  MIXED EXAMPLE  ".into(),
+            StructuredValue::Array(vec!["alpha".into(), "beta".into()]),
+            "  Mixed Example  ".into(),
+            "z-b-z".into(),
+            number(8.0),
+            StructuredValue::Array(vec!["Example".into()]),
         ])
+    );
+}
+
+#[test]
+fn regex_style_string_helpers_fail_closed_for_callback_replacements() {
+    let program = compile("'abc'.replace('a', (value) => value);").expect("source should compile");
+
+    let error = execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("String.prototype.replace does not support callback replacements")
     );
 }
 

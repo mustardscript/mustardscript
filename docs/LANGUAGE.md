@@ -225,6 +225,14 @@ extensions are called out explicitly instead of being implied.
 - `Array.prototype.values`
 - `Array.prototype.keys`
 - `Array.prototype.entries`
+- `Array.prototype.forEach`
+- `Array.prototype.map`
+- `Array.prototype.filter`
+- `Array.prototype.find`
+- `Array.prototype.findIndex`
+- `Array.prototype.some`
+- `Array.prototype.every`
+- `Array.prototype.reduce`
 - `Object.keys`
 - `Object.values`
 - `Object.entries`
@@ -263,6 +271,11 @@ extensions are called out explicitly instead of being implied.
 - `String.prototype.substring`
 - `String.prototype.toLowerCase`
 - `String.prototype.toUpperCase`
+- `String.prototype.split`
+- `String.prototype.replace`
+- `String.prototype.replaceAll`
+- `String.prototype.search`
+- `String.prototype.match`
 - `Math.abs`
 - `Math.max`
 - `Math.min`
@@ -278,3 +291,21 @@ extensions are called out explicitly instead of being implied.
 - `console.log` when the host provides a `console.log` callback
 - `console.warn` when the host provides a `console.warn` callback
 - `console.error` when the host provides a `console.error` callback
+
+## Current Helper Constraints
+
+- array callback helpers snapshot the starting array length, read element values
+  live by index, and pass `(value, index, array)` plus an optional `thisArg`
+- array callback helpers currently support guest callbacks, built-in callbacks,
+  and async host callbacks reached from an async guest boundary
+- synchronous host suspensions from array callback helpers fail closed with a
+  runtime `TypeError`
+- `Array.prototype.reduce` throws a runtime `TypeError` when called on an empty
+  array without an explicit initial value
+- `String.prototype.split`, `replace`, `replaceAll`, `search`, and `match`
+  currently support string search patterns only
+- callback replacements for `replace` / `replaceAll` and callback pattern
+  objects for the string search helpers fail closed with runtime `TypeError`s
+- `String.prototype.match` currently returns either `null` or a guest array for
+  the first string-pattern match, with `index` and `input` string properties on
+  that result array

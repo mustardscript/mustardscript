@@ -91,9 +91,34 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'array callback helpers',
+    source: `
+      const values = [1, 2, 3];
+      let seen = 0;
+      const mapped = values.map(function (value, index) {
+        seen += this.step;
+        return value + index + this.offset;
+      }, { step: 10, offset: 4 });
+      values.forEach((value) => {
+        seen += value;
+      });
+      ({
+        mapped,
+        filtered: values.filter((value) => value % 2 === 1),
+        found: values.find((value) => value > 2),
+        foundIndex: values.findIndex((value) => value > 2),
+        some: values.some((value) => value === 2),
+        every: values.every((value) => value > 0),
+        reduced: values.reduce((acc, value) => acc + value, 5),
+        seen,
+      });
+    `,
+  },
+  {
     name: 'string helpers',
     source: `
       const value = "  MiXeD Example  ";
+      const csv = "alpha,beta,gamma";
       [
         value.trim(),
         value.includes("XeD"),
@@ -103,6 +128,11 @@ const DIFFERENTIAL_CASES = [
         value.substring(8, 3),
         value.toLowerCase(),
         value.toUpperCase(),
+        csv.split(",", 2),
+        value.replace("MiXeD", "Mixed"),
+        "a-b-a".replaceAll("a", "z"),
+        value.search("Example"),
+        value.match("Example"),
       ];
     `,
   },
