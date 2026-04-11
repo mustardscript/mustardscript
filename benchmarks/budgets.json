@@ -1,0 +1,21 @@
+{
+  "startup": {
+    "iterations": 20,
+    "warmup": 3,
+    "averageMsMax": 20
+  },
+  "compute": {
+    "iterations": 10,
+    "warmup": 2,
+    "averageMsMax": 25
+  },
+  "suspension": {
+    "iterations": 20,
+    "warmup": 3,
+    "averageMsMax": 15
+  },
+  "memory": {
+    "runs": 40,
+    "heapDeltaBytesMax": 20000000
+  }
+}
