@@ -456,12 +456,31 @@ impl<'a> Lowerer<'a> {
             self.collect_pattern_bindings(&rest.rest.argument);
         }
         self.predeclare_block(&function.body.statements);
-        let body = function
-            .body
-            .statements
-            .iter()
-            .filter_map(|statement| self.lower_stmt(statement))
-            .collect();
+        let body = if function.expression {
+            if function.body.statements.len() == 1 {
+                match &function.body.statements[0] {
+                    Statement::ExpressionStatement(statement) => vec![Stmt::Return {
+                        span: statement.span.into(),
+                        value: Some(self.lower_expr(&statement.expression)?),
+                    }],
+                    statement => vec![self.lower_stmt(statement)?],
+                }
+            } else {
+                function
+                    .body
+                    .statements
+                    .iter()
+                    .filter_map(|statement| self.lower_stmt(statement))
+                    .collect()
+            }
+        } else {
+            function
+                .body
+                .statements
+                .iter()
+                .filter_map(|statement| self.lower_stmt(statement))
+                .collect()
+        };
         self.pop_scope();
         Some(FunctionExpr {
             span: function.span.into(),
