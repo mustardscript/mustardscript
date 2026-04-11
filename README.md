@@ -1,28 +1,44 @@
 # jslite
 
-`jslite` is a sandboxed JavaScript interpreter for running untrusted,
-LLM-generated, or user-provided JavaScript inside a Node.js service without
-granting ambient access to the host.
+`jslite` is a small, opinionated JavaScript runtime for executing a deliberately
+limited subset of JavaScript inside a Node.js service with explicit host
+capabilities, bounded resources, and resumable execution.
 
-The project is intentionally closer to Monty than to Node's built-in execution
-features. The goal is not to run arbitrary npm code or recreate Node.js inside a
-sandbox. The goal is to execute a deliberately limited subset of JavaScript with
-explicit host capabilities, strong resource controls, and resumable execution.
+This project is **not** trying to recreate Node.js, V8, npm compatibility, or a
+browser. It is trying to provide a compact execution engine for sandboxed
+agent-style scripts and other constrained guest code.
+
+## Status
+
+`jslite` is an early-stage design and implementation project.
+
+Two warnings belong at the top because they affect almost every technical
+decision:
+
+1. **In-process addon mode is not a hard security boundary.** It is a
+   low-latency embedding mode. If the runtime has a memory-safety bug, logic
+   bug, or denial-of-service failure, the host process can still be impacted.
+2. **Sidecar mode is the deployment mode for stronger isolation.** For
+   adversarial workloads, sidecar mode should be combined with OS-level controls
+   such as process limits, sandboxing, containers, or platform-native jail
+   mechanisms.
 
 ## Project Goals
 
 `jslite` should provide:
 
 - A small, auditable runtime surface
-- No ambient filesystem, network, environment, or subprocess access
-- Fast startup and low embedding overhead
+- No ambient filesystem, network, environment, module, or subprocess access
 - Explicit host capabilities instead of implicit globals
-- Resource accounting for time, memory, allocations, and recursion depth
-- Iterative execution with suspend and resume at host boundaries
-- Serialization of compiled programs and execution snapshots
-- A Node.js-first embedding experience
+- Fast startup and low embedding overhead
+- Precise accounting for instructions, memory, allocations, and call depth
+- Deterministic or tightly specified behavior for the supported subset
+- Suspension and resume at explicit host boundaries
+- Same-version serialization of compiled programs and execution snapshots
+- A Node.js-first embedding experience with a thin wrapper over a reusable Rust
+  core
 
-## What jslite Is Not
+## Non-Goals
 
 `jslite` is not intended to be:
 
@@ -30,11 +46,93 @@ explicit host capabilities, strong resource controls, and resumable execution.
 - A general-purpose JavaScript runtime
 - A compatibility layer for npm packages
 - A CommonJS environment
+- An ES module loader
 - A DOM or browser runtime
 - A JIT
 - A drop-in replacement for Node.js or V8
+- A place where unsupported features are partially emulated “well enough”
 
-## Primary Technical Decisions
+Unsupported features should fail closed with clear diagnostics.
+
+## Design Principles
+
+### 1. No Ambient Authority
+
+Guest code starts with no access to the host outside core language semantics and
+the approved built-in surface. There is no ambient `process`, `require`,
+filesystem, network, environment, timers, subprocess API, or native addon
+access.
+
+Anything effectful must come from an explicit host capability.
+
+### 2. A Small Language Contract Beats an Implicit One
+
+The supported subset must be written down precisely. A small, explicit language
+contract is better than accidental compatibility.
+
+### 3. Safety Properties Must Be Designed Early
+
+Instruction budgeting, cancellation, memory accounting, snapshot validation, and
+host-boundary validation are not “polish.” They shape the VM, bytecode, async
+model, and public API and must be designed from the beginning.
+
+### 4. The Core Owns the Semantics
+
+The Rust runtime owns guest semantics. The Node wrapper should be thin. Sidecar
+mode should run the same core runtime with a different transport boundary.
+
+### 5. Correctness Before Cleverness
+
+For v1, centralized semantics and predictable behavior matter more than advanced
+optimizations. Optimizations such as shapes, inline caches, and specialized
+representations should be introduced only after the baseline semantics are
+correct and well tested.
+
+## Threat Model and Deployment Modes
+
+`jslite` should document three deployment modes clearly.
+
+### Addon Mode
+
+- In-process Node-API addon
+- Lowest latency
+- Shares the host process
+- Best-effort containment only
+- Suitable for trusted or semi-trusted guest workloads where latency matters
+  more than isolation
+
+### Sidecar Mode
+
+- Separate process running the same Rust core
+- Structured IPC boundary
+- Better crash containment
+- Easier forceful termination
+- Better choice for untrusted or resource-heavy workloads
+
+### Hardened Sidecar Deployment
+
+- Sidecar mode plus OS-level controls
+- Recommended for adversarial guest code
+- Examples include CPU and memory limits, restricted syscalls or sandbox
+  policies, containerization, job objects, cgroups, or platform-native jail
+  mechanisms
+
+`jslite` itself is responsible for language-level containment. Production
+security for untrusted inputs should assume sidecar mode plus host-managed OS
+controls.
+
+## Core Terminology
+
+- **Guest code**: JavaScript executed by `jslite`
+- **Host**: The embedding application
+- **Capability**: A named host function intentionally exposed to the guest
+- **Suspension point**: A boundary where guest execution pauses awaiting host
+  progress
+- **Snapshot**: A serialized representation of a compiled program or suspended
+  execution state
+- **Structured host value**: A value that may legally cross the host boundary
+
+## Technical Choices
 
 ### Rust Core
 
@@ -43,90 +141,180 @@ The interpreter core should be written in Rust.
 Reasons:
 
 - Strong memory-safety baseline
-- Good parser and tooling ecosystem
-- Practical path to a Node addon via Node-API
-- Good fit for a custom VM, serialization, and host capability layer
+- Good tooling for parsers, serialization, fuzzing, and testing
+- Clean path to a Node-API addon
+- Practical fit for a custom VM and capability boundary
 
-### Native Addon First
+### Node-API Native Addon First
 
-The primary embedding should be a Node-API native addon, likely via `napi-rs`.
-
-Reasons:
-
-- The only target embedder is a Node.js service
-- Native addons keep host interop simple and efficient
-- Node-API offers a more stable interface than raw V8 bindings
-
-### Optional Sidecar Isolation
-
-`jslite` should support two execution modes:
-
-1. In-process addon mode for low latency
-2. Sidecar-process mode for stronger fault isolation
-
-The runtime core should remain the same in both modes.
-
-### Custom Interpreter
-
-`jslite` should use a custom execution pipeline:
-
-`source -> parser AST -> lowered IR -> jslite bytecode -> VM`
+The primary in-process embedding should be a Node-API native addon, likely via
+`napi-rs`.
 
 Reasons:
 
-- Explicit control over supported semantics
-- Precise resource accounting
-- Clean suspension and resume boundaries
-- Easier serialization than a general-purpose engine wrapper
+- The target embedder is a Node.js service
+- Node-API keeps the host interop layer stable and relatively small
+- `napi-rs` is a practical way to keep the Node binding thin while leaving the
+  runtime in Rust
 
 ### Oxc Frontend
 
 Use `oxc` as the parser frontend unless evaluation proves it to be a poor fit.
 
-### Tracing GC
-
-Use a non-moving mark-sweep collector in v1 instead of refcounting.
-
 Reasons:
 
-- JavaScript object graphs are naturally cyclic
-- Closures, prototypes, promises, and exception objects create cycles routinely
-- Tracing GC is a more natural baseline for JS semantics
+- It is a strong Rust-native frontend for JavaScript parsing
+- It allows `jslite` to separate parsing from runtime design
+- It is a better fit than building a parser from scratch before the runtime
+  architecture exists
 
-## Security Model
+### Custom Execution Pipeline
 
-The core security rule is simple:
+The runtime pipeline should be:
 
-Guest code gets no ambient authority.
+`source -> parse -> validate -> lowered IR -> bytecode -> VM`
 
-That means guest code must not receive direct access to:
+The explicit validation phase matters. Parsing alone is not enough because some
+things should be rejected as unsupported semantics rather than syntax errors.
 
-- `process`
-- `require`
-- Node built-ins
-- Filesystem
-- Network
-- Environment variables
-- Subprocesses
-- Native addons
-- Shared memory primitives
+## Language Contract for v1
 
-Anything outside pure language semantics must be exposed through explicit host
-capabilities.
+The first useful version should support a strict, intentionally limited subset of
+JavaScript.
+
+### Baseline Semantic Rules
+
+- Guest code always runs with strict semantics
+- There is no ambient module system
+- There is no dynamic code loading
+- Unsupported features fail with explicit diagnostics
+- Diagnostics and tracebacks must not leak host paths or host internals
+
+### Supported in v1
+
+- Numbers, booleans, strings, `null`, and `undefined`
+- Arrays and plain objects
+- `let` and `const`
+- Functions and closures
+- Arrow functions
+- `if`, `switch`, loops, `break`, and `continue`
+- `try`, `catch`, `finally`, and `throw`
+- Common-case destructuring
+- Template literals
+- Optional chaining and nullish coalescing if lowering cost stays reasonable
+- Host capability calls
+- Deterministic console or print output through an explicit host hook
+- Suspension and resume at host boundaries
+- Snapshotting at safe suspension points
+- `async` functions and `await` once the async runtime lands
+
+### Explicitly Out of Scope for v1
+
+- ES modules
+- CommonJS
+- `eval`
+- `Function` constructor
+- `with`
+- Classes
+- Generators and iterator protocol
+- `for...of`
+- Symbols
+- `Map`, `Set`, `WeakMap`, `WeakSet`
+- Typed arrays, `ArrayBuffer`, shared memory, and atomics
+- `Date`
+- `Intl`
+- `Proxy`
+- Full `RegExp` parity
+- Full property descriptor semantics
+- Accessors
+- Full prototype semantics
+- Implicit host globals such as `process`, `module`, `exports`, `global`,
+  `require`, timers, or fetch-like APIs
+
+### Important Clarification About Names Like `require`
+
+`jslite` should not reject arbitrary identifiers named `require` or `process`.
+Those names can be legitimate local bindings in JavaScript.
+
+What `jslite` should reject is:
+
+- module syntax and dynamic import forms
+- dynamic code loading primitives such as `eval` and `Function`
+- unresolved free references to forbidden ambient globals, when static
+  resolution can prove they are free references
+
+If a program defines its own local `require`, that is ordinary lexical
+JavaScript and should be treated as such.
+
+## Built-In Surface
+
+The initial built-in surface should be conservative and explicit.
+
+Planned v1 built-ins:
+
+- `globalThis`
+- `Object`
+- `Array`
+- `String`
+- `Number`
+- `Boolean`
+- `Math`
+- `JSON`
+- Standard `Error` types
+- A minimal deterministic `console`
+
+`Promise` should be considered part of the async milestone, not a separate early
+promise of compatibility before the internal async runtime exists.
+
+No default clock, random source, filesystem, network, timers, or environment
+access should exist in the guest runtime. If the host wants those capabilities,
+it must provide them explicitly.
+
+## Structured Host Boundary
+
+The host boundary should be narrowly defined and documented as its own contract.
+
+### Allowed Structured Host Values
+
+- `undefined`
+- `null`
+- booleans
+- strings
+- numbers, including non-finite values and `-0`
+- arrays of structured host values
+- plain objects with string keys and structured host values
+
+### Rejected at the Host Boundary
+
+- functions
+- symbols
+- bigint, unless and until bigint support is added deliberately
+- class instances
+- host objects
+- dates
+- regex objects
+- maps, sets, typed arrays, buffers, and array buffers
+- cycles
+- objects with accessors or custom prototypes
+
+This is intentionally narrower than general JavaScript values.
+
+The sidecar wire format and snapshot format should **not** rely on plain JSON if
+that would lose information such as `undefined`, `NaN`, `Infinity`, or `-0`.
+Use a tagged internal encoding instead.
 
 ## Architecture
 
-### Frontend
-
-The frontend parses JavaScript source and lowers it into an internal IR that is
-stable, explicit, and decoupled from parser internals.
+### Frontend and Validation
 
 Responsibilities:
 
 - Parse source text
-- Reject unsupported syntax with good diagnostics
+- Reject modules and unsupported syntax with clear diagnostics
 - Preserve spans for tracebacks and error reporting
-- Normalize syntax sugar before bytecode generation
+- Run a validation pass that rejects forbidden dynamic forms and unsupported
+  semantic constructs
+- Lower valid programs into an internal IR
 
 ### IR
 
@@ -137,144 +325,229 @@ Design goals:
 - Explicit scopes and bindings
 - Explicit function and closure boundaries
 - Explicit exception regions
-- Explicit async suspension points
+- Explicit host-call suspension points
+- A structure that is convenient for validation and bytecode generation
 
 ### Bytecode
 
-The runtime should compile IR into compact bytecode that is:
+The bytecode should be:
 
 - Easy to interpret
+- Easy to validate
 - Easy to serialize
-- Easy to cost-account
-- Stable enough for snapshots and cached compilation
+- Instrumentable for instruction budgeting
+- Private to `jslite`, not a public stable standard
+
+Compiled programs only need to round-trip within the same `jslite` version.
 
 ### VM
 
-The VM should initially be stack-based unless profiling shows a strong need to
-change direction.
+The VM should initially be stack-based unless profiling proves a different choice
+worth the complexity.
 
 Responsibilities:
 
 - Execute bytecode
 - Maintain call frames and lexical environments
-- Handle exceptions
-- Enforce resource limits
+- Handle control flow and exceptions
+- Enforce instruction budgets and cancellation checks
 - Suspend and resume around host interactions
+- Produce guest-safe tracebacks
 
-### Value and Object Model
+### Values, Objects, and Heap
 
-The runtime should define an explicit internal `JsValue` type and a heap-allocated
-object system with shape metadata, prototype pointers, and interned property
-names where practical.
+`jslite` should define an explicit internal `JsValue` type and a heap object
+model with a disciplined rooting strategy.
 
-This should be designed deliberately from the start. In JavaScript, object and
-property semantics are central enough that ad hoc maps scattered across the VM
-will become both a correctness problem and a performance problem.
+For v1, object semantics should prioritize correctness and centralization over
+aggressive optimization:
 
-### Async Model
+- centralized property get, set, and deletion rules
+- plain-object and array behavior first
+- explicit decisions around enumeration order
+- explicit decisions around prototype support and deferrals
+
+A simple dictionary-backed representation is a sensible starting point. Shapes or
+hidden-class-style metadata can be added later if profiling shows a real need.
+They should be treated as an optimization, not as the foundation of the v1
+semantic model.
+
+### Garbage Collection
+
+Use a non-moving mark-sweep collector in v1.
+
+Requirements:
+
+- explicit root-set design
+- no raw guest references crossing host boundaries without rooting
+- test coverage for cyclic data
+- accounting hooks for heap limits and allocation tracking
+
+### Exceptions
+
+Guest exceptions must be guest-facing objects with guest-safe rendering.
+
+Requirements:
+
+- support `throw`, `try`, `catch`, and `finally`
+- standard error hierarchy for the supported subset
+- tracebacks mapped to guest source spans
+- no host paths, internal filenames, or Rust panic details in guest output
+
+### Async Runtime
 
 `jslite` should own its own async model.
 
-That means:
+Requirements:
 
-- Internal promise state
-- Internal microtask queue
-- Explicit suspension at host boundaries
-- Stable resume objects for host-driven continuation
+- internal promise representation
+- internal microtask queue
+- explicit scheduling checkpoints
+- clear ordering rules
+- suspension at host boundaries
+- no reentrancy into the same VM unless explicitly designed and documented
 
 The host should not need to understand VM internals to resume guest execution.
 
-### Capability Interface
+### Serialization and Snapshots
 
-The host interface should be narrow and explicit:
+Two formats matter:
 
-- Named host functions exposed by the embedder
-- Structured argument and result conversion
-- Sync and async host call support
-- No implicit fallback lookup path
+1. **Compiled program format**
+2. **Suspended execution snapshot format**
 
-## v1 Feature Boundary
+Requirements:
 
-The first useful version should support a strict, intentionally limited subset
-of JavaScript:
+- same-version round trips only
+- explicit version tags
+- defensive validation on load
+- corruption-safe failure behavior
+- no raw host pointers, JS callback handles, or native references in serialized
+  state
 
-- Strict-mode execution only
-- Numbers, booleans, strings, `null`, `undefined`
-- Arrays and plain objects
-- `let` and `const`
-- Functions and closures
-- Arrow functions
-- `if`, `switch`, loops, `break`, `continue`
-- `try`, `catch`, `finally`, `throw`
-- Destructuring for common cases
-- Template literals
-- Optional chaining and nullish coalescing if lowering cost is acceptable
-- `async` functions and `await`
-- Host function calls through an explicit capability table
-- Deterministic print or console-style output via host callback
-- Snapshotting at host-call suspension points
+Snapshots should only be allowed at safe suspension points. If a suspended
+execution depends on ongoing external work, the host must represent that work
+through an explicit continuation token or equivalent resumable contract. `jslite`
+must not attempt to serialize opaque host futures.
 
-Likely deferred:
+## Resource Model
 
-- Classes
-- Generators
-- `for...of`
-- Symbols
-- Full property descriptor semantics
-- Accessors
-- `Map`, `Set`, typed arrays
-- `Date`
-- Full `RegExp` parity
+Resource controls should be designed into the runtime from the beginning.
 
-## End State
+The public model should include at least:
 
-The desired end state is a reusable Rust core and a thin Node-facing wrapper
-that together provide:
+- instruction budget
+- heap byte limit
+- allocation limit or allocation accounting
+- call-depth limit
+- maximum outstanding host calls
+- cancellation support
 
-- Fast parse and execution for short scripts
-- Safe-by-default host embedding
-- Explicit and testable feature boundaries
-- Good diagnostics and tracebacks
-- Snapshot and resume across process boundaries
-- A realistic path to production use for agent code execution
+Default limits should be explicit and documented.
 
-The finished project should feel small, opinionated, and predictable. It should
-optimize for sandboxed execution of constrained JavaScript, not for language
-maximalism.
+Limit failures should be deterministic, guest-safe, and distinguishable from
+ordinary guest exceptions.
 
-## Likely Public API Shape
+## Public API Shape
 
-The initial Node-facing API should stay small:
+The public Node API should stay small.
+
+Illustrative shape:
 
 ```ts
-const j = new Jslite(code, { inputs: ['x'] })
+type HostValue =
+  | undefined
+  | null
+  | boolean
+  | number
+  | string
+  | HostValue[]
+  | { [k: string]: HostValue }
 
-const result = j.run({
+type Capability = (
+  args: HostValue[],
+  ctx: { name: string; signal?: AbortSignal }
+) => HostValue | Promise<HostValue>
+
+const program = await Jslite.compile(source, {
+  inputs: ["x"],
+})
+
+const result = await program.run({
   inputs: { x: 1 },
   capabilities: {
-    fetch_data: async (url: string) => '...',
+    fetch_data: async ([url]) => "...",
+  },
+  limits: {
+    instructions: 100_000,
+    heapBytes: 8 << 20,
+    callDepth: 256,
   },
 })
 ```
 
-Expected concepts:
+Lower-level control should exist for advanced hosts:
 
-- `new Jslite(code, options?)`
-- `run(options?)`
-- `start(options?)`
-- `resume(...)` on progress objects
-- `dump()` and `load(...)`
+- `compile(...)`
+- `run(...)`
+- `start(...)`
+- `resume(...)`
+- `dumpProgram(...)`
+- `loadProgram(...)`
+- `dumpSnapshot(...)`
+- `loadSnapshot(...)`
 
-## Initial Repository Shape
+The common path should be easy. The advanced path should remain explicit.
+
+## Repository Shape
 
 ```text
 jslite/
   crates/
     jslite/
     jslite-node/
+    jslite-sidecar/
+  docs/
+    SECURITY_MODEL.md
+    LANGUAGE.md
+    HOST_API.md
+    SERIALIZATION.md
+    LIMITS.md
+    ADRs/
   tests/
   examples/
 ```
 
-The repository should mirror Monty's separation between a reusable Rust core and
-a thin embedding layer.
+The extra documentation matters. The risk in a project like this is not only code
+complexity. It is semantic ambiguity.
+
+## What Must Be True Before Production Use
+
+Before `jslite` is described as production-ready for untrusted workloads, the
+following should be true:
+
+- the supported subset is written down and tested
+- forbidden features fail closed
+- resource limits are enforced predictably
+- snapshots and compiled programs are validated before load
+- guest diagnostics never leak host internals
+- sidecar mode is available for stronger isolation
+- kill and cancellation behavior is well defined
+- the capability boundary is narrow, tested, and documented
+
+## End State
+
+The desired end state is a reusable Rust core plus thin Node-facing wrappers that
+together provide:
+
+- safe-by-default host embedding
+- explicit and testable feature boundaries
+- good diagnostics and tracebacks
+- snapshot and resume across process boundaries
+- predictable behavior under limits
+- a practical path to production use for constrained guest code
+
+The finished project should feel small, opinionated, and predictable. It should
+optimize for sandboxed execution of constrained JavaScript, not for language
+maximalism.
+
