@@ -1,0 +1,170 @@
+{
+  "functions": [
+    {
+      "name": null,
+      "params": [
+        {
+          "Identifier": {
+            "span": {
+              "start": 20,
+              "end": 24
+            },
+            "name": "left"
+          }
+        },
+        {
+          "Default": {
+            "span": {
+              "start": 26,
+              "end": 35
+            },
+            "target": {
+              "Identifier": {
+                "span": {
+                  "start": 26,
+                  "end": 31
+                },
+                "name": "right"
+              }
+            },
+            "default_value": {
+              "Number": {
+                "span": {
+                  "start": 34,
+                  "end": 35
+                },
+                "value": 1.0
+              }
+            }
+          }
+        }
+      ],
+      "code": [
+        {
+          "DeclareName": {
+            "name": "pair",
+            "mutable": false
+          }
+        },
+        {
+          "LoadName": "left"
+        },
+        {
+          "LoadName": "right"
+        },
+        {
+          "MakeArray": {
+            "count": 2
+          }
+        },
+        {
+          "InitializePattern": {
+            "Identifier": {
+              "span": {
+                "start": 50,
+                "end": 54
+              },
+              "name": "pair"
+            }
+          }
+        },
+        {
+          "LoadName": "pair"
+        },
+        {
+          "PushNumber": 0.0
+        },
+        {
+          "GetPropComputed": {
+            "optional": false
+          }
+        },
+        {
+          "LoadName": "pair"
+        },
+        {
+          "PushNumber": 1.0
+        },
+        {
+          "GetPropComputed": {
+            "optional": false
+          }
+        },
+        {
+          "Binary": "Add"
+        },
+        {
+          "MakeObject": {
+            "keys": [
+              {
+                "Identifier": "total"
+              }
+            ]
+          }
+        },
+        "Return",
+        "PushUndefined",
+        "Return"
+      ],
+      "is_async": false,
+      "span": {
+        "start": 19,
+        "end": 112
+      }
+    },
+    {
+      "name": null,
+      "params": [],
+      "code": [
+        {
+          "DeclareName": {
+            "name": "makeTotal",
+            "mutable": false
+          }
+        },
+        {
+          "MakeClosure": {
+            "function_id": 0
+          }
+        },
+        {
+          "InitializePattern": {
+            "Identifier": {
+              "span": {
+                "start": 7,
+                "end": 16
+              },
+              "name": "makeTotal"
+            }
+          }
+        },
+        {
+          "LoadName": "makeTotal"
+        },
+        {
+          "PushNumber": 2.0
+        },
+        {
+          "Call": {
+            "argc": 1,
+            "with_this": false,
+            "optional": false
+          }
+        },
+        {
+          "GetPropStatic": {
+            "name": "total",
+            "optional": false
+          }
+        },
+        "Return"
+      ],
+      "is_async": false,
+      "span": {
+        "start": 0,
+        "end": 134
+      }
+    }
+  ],
+  "root": 1
+}

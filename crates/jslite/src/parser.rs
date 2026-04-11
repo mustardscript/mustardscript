@@ -12,11 +12,13 @@ use crate::{
 };
 
 const FORBIDDEN_AMBIENT_GLOBALS: &[&str] = &[
+    "eval",
     "process",
     "module",
     "exports",
     "global",
     "require",
+    "Function",
     "setTimeout",
     "setInterval",
     "queueMicrotask",
@@ -25,17 +27,19 @@ const FORBIDDEN_AMBIENT_GLOBALS: &[&str] = &[
 
 pub fn compile(source: &str) -> JsliteResult<CompiledProgram> {
     let allocator = Allocator::default();
-    let parser = Parser::new(&allocator, source, SourceType::default().with_script(true)).with_options(
-        ParseOptions {
+    let parser = Parser::new(&allocator, source, SourceType::default().with_script(true))
+        .with_options(ParseOptions {
             allow_return_outside_function: false,
             ..ParseOptions::default()
-        },
-    );
+        });
     let parsed = parser.parse();
     let mut diagnostics = Vec::new();
-    diagnostics.extend(parsed.errors.into_iter().map(|error| {
-        Diagnostic::parse(error.to_string(), None)
-    }));
+    diagnostics.extend(
+        parsed
+            .errors
+            .into_iter()
+            .map(|error| Diagnostic::parse(error.to_string(), None)),
+    );
     if parsed.panicked {
         return Err(JsliteError::Diagnostics(diagnostics));
     }
@@ -144,7 +148,9 @@ impl<'a> Lowerer<'a> {
 
     fn collect_pattern_bindings(&mut self, pattern: &BindingPattern<'a>) {
         match pattern {
-            BindingPattern::BindingIdentifier(identifier) => self.bind_name(identifier.name.as_str()),
+            BindingPattern::BindingIdentifier(identifier) => {
+                self.bind_name(identifier.name.as_str())
+            }
             BindingPattern::ObjectPattern(pattern) => {
                 for property in &pattern.properties {
                     self.collect_pattern_bindings(&property.value);
@@ -169,9 +175,7 @@ impl<'a> Lowerer<'a> {
 
     fn lower_stmt(&mut self, statement: &Statement<'a>) -> Option<Stmt> {
         match statement {
-            Statement::BlockStatement(block) => {
-                Some(self.lower_block_stmt(block))
-            }
+            Statement::BlockStatement(block) => Some(self.lower_block_stmt(block)),
             Statement::BreakStatement(statement) => Some(Stmt::Break {
                 span: statement.span.into(),
             }),
@@ -181,30 +185,36 @@ impl<'a> Lowerer<'a> {
             Statement::EmptyStatement(statement) => Some(Stmt::Empty {
                 span: statement.span.into(),
             }),
-            Statement::ExpressionStatement(statement) => {
-                Some(Stmt::Expression {
-                    span: statement.span.into(),
-                    expression: self.lower_expr(&statement.expression)?,
-                })
-            }
+            Statement::ExpressionStatement(statement) => Some(Stmt::Expression {
+                span: statement.span.into(),
+                expression: self.lower_expr(&statement.expression)?,
+            }),
             Statement::ForStatement(statement) => {
                 let init = match &statement.init {
-                    Some(ForStatementInit::VariableDeclaration(decl)) => Some(ForInit::VariableDecl {
-                        kind: self.lower_binding_kind(decl.kind, decl.span)?,
-                        declarators: decl
-                            .declarations
-                            .iter()
-                            .filter_map(|declarator| self.lower_declarator(declarator))
-                            .collect(),
-                    }),
+                    Some(ForStatementInit::VariableDeclaration(decl)) => {
+                        Some(ForInit::VariableDecl {
+                            kind: self.lower_binding_kind(decl.kind, decl.span)?,
+                            declarators: decl
+                                .declarations
+                                .iter()
+                                .filter_map(|declarator| self.lower_declarator(declarator))
+                                .collect(),
+                        })
+                    }
                     Some(init) => Some(ForInit::Expression(self.lower_for_init_expr(init)?)),
                     None => None,
                 };
                 Some(Stmt::For {
                     span: statement.span.into(),
                     init,
-                    test: statement.test.as_ref().and_then(|test| self.lower_expr(test)),
-                    update: statement.update.as_ref().and_then(|expr| self.lower_expr(expr)),
+                    test: statement
+                        .test
+                        .as_ref()
+                        .and_then(|test| self.lower_expr(test)),
+                    update: statement
+                        .update
+                        .as_ref()
+                        .and_then(|expr| self.lower_expr(expr)),
                     body: Box::new(self.lower_stmt(&statement.body)?),
                 })
             }
@@ -220,7 +230,10 @@ impl<'a> Lowerer<'a> {
             }),
             Statement::ReturnStatement(statement) => Some(Stmt::Return {
                 span: statement.span.into(),
-                value: statement.argument.as_ref().and_then(|expr| self.lower_expr(expr)),
+                value: statement
+                    .argument
+                    .as_ref()
+                    .and_then(|expr| self.lower_expr(expr)),
             }),
             Statement::SwitchStatement(statement) => Some(Stmt::Switch {
                 span: statement.span.into(),
@@ -254,15 +267,19 @@ impl<'a> Lowerer<'a> {
                     self.predeclare_block(&handler.body.body);
                     let clause = crate::ir::CatchClause {
                         span: handler.span.into(),
-                        parameter: handler.param.as_ref().and_then(|param| self.lower_pattern(&param.pattern)),
+                        parameter: handler
+                            .param
+                            .as_ref()
+                            .and_then(|param| self.lower_pattern(&param.pattern)),
                         body: Box::new(self.lower_block_stmt(&handler.body)),
                     };
                     self.pop_scope();
                     clause
                 }),
-                finally: statement.finalizer.as_ref().and_then(|block| {
-                    Some(Box::new(self.lower_block_stmt(block)))
-                }),
+                finally: statement
+                    .finalizer
+                    .as_ref()
+                    .map(|block| Box::new(self.lower_block_stmt(block))),
             }),
             Statement::VariableDeclaration(decl) => Some(Stmt::VariableDecl {
                 span: decl.span.into(),
@@ -283,26 +300,36 @@ impl<'a> Lowerer<'a> {
                 body: Box::new(self.lower_stmt(&statement.body)?),
                 test: self.lower_expr(&statement.test)?,
             }),
-            Statement::FunctionDeclaration(function) => {
-                Some(Stmt::FunctionDecl {
-                    span: function.span.into(),
-                    function: self.lower_function(function, false)?,
-                })
-            }
+            Statement::FunctionDeclaration(function) => Some(Stmt::FunctionDecl {
+                span: function.span.into(),
+                function: self.lower_function(function, false)?,
+            }),
             Statement::DebuggerStatement(statement) => {
-                self.unsupported("debugger statements are not supported", Some(statement.span.into()));
+                self.unsupported(
+                    "debugger statements are not supported",
+                    Some(statement.span.into()),
+                );
                 None
             }
             Statement::ForInStatement(statement) => {
-                self.unsupported("for...in is not supported in v1", Some(statement.span.into()));
+                self.unsupported(
+                    "for...in is not supported in v1",
+                    Some(statement.span.into()),
+                );
                 None
             }
             Statement::ForOfStatement(statement) => {
-                self.unsupported("for...of is not supported in v1", Some(statement.span.into()));
+                self.unsupported(
+                    "for...of is not supported in v1",
+                    Some(statement.span.into()),
+                );
                 None
             }
             Statement::LabeledStatement(statement) => {
-                self.unsupported("labeled statements are not supported in v1", Some(statement.span.into()));
+                self.unsupported(
+                    "labeled statements are not supported in v1",
+                    Some(statement.span.into()),
+                );
                 None
             }
             statement if statement.is_module_declaration() => {
@@ -349,7 +376,10 @@ impl<'a> Lowerer<'a> {
         Some(Declarator {
             span: declarator.span.into(),
             pattern: self.lower_pattern(&declarator.id)?,
-            initializer: declarator.init.as_ref().and_then(|expr| self.lower_expr(expr)),
+            initializer: declarator
+                .init
+                .as_ref()
+                .and_then(|expr| self.lower_expr(expr)),
         })
     }
 
@@ -383,7 +413,11 @@ impl<'a> Lowerer<'a> {
                 elements: pattern
                     .elements
                     .iter()
-                    .map(|element| element.as_ref().and_then(|pattern| self.lower_pattern(pattern)))
+                    .map(|element| {
+                        element
+                            .as_ref()
+                            .and_then(|pattern| self.lower_pattern(pattern))
+                    })
                     .collect(),
                 rest: pattern
                     .rest
@@ -401,11 +435,17 @@ impl<'a> Lowerer<'a> {
 
     fn lower_function(&mut self, function: &Function<'a>, is_arrow: bool) -> Option<FunctionExpr> {
         if function.generator {
-            self.unsupported("generators are not supported in v1", Some(function.span.into()));
+            self.unsupported(
+                "generators are not supported in v1",
+                Some(function.span.into()),
+            );
             return None;
         }
         let Some(body) = function.body.as_ref() else {
-            self.unsupported("functions without bodies are not supported", Some(function.span.into()));
+            self.unsupported(
+                "functions without bodies are not supported",
+                Some(function.span.into()),
+            );
             return None;
         };
         self.push_scope();
@@ -447,7 +487,10 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    fn lower_arrow_function(&mut self, function: &ArrowFunctionExpression<'a>) -> Option<FunctionExpr> {
+    fn lower_arrow_function(
+        &mut self,
+        function: &ArrowFunctionExpression<'a>,
+    ) -> Option<FunctionExpr> {
         self.push_scope();
         for param in &function.params.items {
             self.collect_pattern_bindings(&param.pattern);
@@ -536,7 +579,15 @@ impl<'a> Lowerer<'a> {
                 quasis: literal
                     .quasis
                     .iter()
-                    .map(|quasi| quasi.value.cooked.as_ref().unwrap_or(&quasi.value.raw).as_str().to_string())
+                    .map(|quasi| {
+                        quasi
+                            .value
+                            .cooked
+                            .as_ref()
+                            .unwrap_or(&quasi.value.raw)
+                            .as_str()
+                            .to_string()
+                    })
                     .collect(),
                 expressions: literal
                     .expressions
@@ -571,11 +622,17 @@ impl<'a> Lowerer<'a> {
                 for element in &array.elements {
                     match element {
                         ArrayExpressionElement::SpreadElement(spread) => {
-                            self.unsupported("array spread is not supported in v1", Some(spread.span.into()));
+                            self.unsupported(
+                                "array spread is not supported in v1",
+                                Some(spread.span.into()),
+                            );
                             return None;
                         }
                         ArrayExpressionElement::Elision(elision) => {
-                            self.unsupported("array holes are not supported in v1", Some(elision.span.into()));
+                            self.unsupported(
+                                "array holes are not supported in v1",
+                                Some(elision.span.into()),
+                            );
                             return None;
                         }
                         element => elements.push(self.lower_expr(element.to_expression())?),
@@ -594,7 +651,10 @@ impl<'a> Lowerer<'a> {
                     .filter_map(|property| match property {
                         ObjectPropertyKind::ObjectProperty(property) => {
                             if property.method {
-                                self.unsupported("object literal methods are not supported in v1", Some(property.span.into()));
+                                self.unsupported(
+                                    "object literal methods are not supported in v1",
+                                    Some(property.span.into()),
+                                );
                                 return None;
                             }
                             Some(crate::ir::ObjectProperty {
@@ -604,18 +664,21 @@ impl<'a> Lowerer<'a> {
                             })
                         }
                         ObjectPropertyKind::SpreadProperty(property) => {
-                            self.unsupported("object spread is not supported in v1", Some(property.span.into()));
+                            self.unsupported(
+                                "object spread is not supported in v1",
+                                Some(property.span.into()),
+                            );
                             None
                         }
                     })
                     .collect(),
             }),
-            Expression::ArrowFunctionExpression(function) => {
-                Some(Expr::Function(Box::new(self.lower_arrow_function(function)?)))
-            }
-            Expression::FunctionExpression(function) => {
-                Some(Expr::Function(Box::new(self.lower_function(function, false)?)))
-            }
+            Expression::ArrowFunctionExpression(function) => Some(Expr::Function(Box::new(
+                self.lower_arrow_function(function)?,
+            ))),
+            Expression::FunctionExpression(function) => Some(Expr::Function(Box::new(
+                self.lower_function(function, false)?,
+            ))),
             Expression::UnaryExpression(expression) => Some(Expr::Unary {
                 span: expression.span.into(),
                 operator: self.lower_unary_op(expression.operator, expression.span)?,
@@ -661,7 +724,9 @@ impl<'a> Lowerer<'a> {
                 ChainElement::ComputedMemberExpression(member) => Some(Expr::Member {
                     span: member.span.into(),
                     object: Box::new(self.lower_expr(&member.object)?),
-                    property: MemberProperty::Computed(Box::new(self.lower_expr(&member.expression)?)),
+                    property: MemberProperty::Computed(Box::new(
+                        self.lower_expr(&member.expression)?,
+                    )),
                     optional: true,
                 }),
                 ChainElement::StaticMemberExpression(member) => Some(Expr::Member {
@@ -673,10 +738,15 @@ impl<'a> Lowerer<'a> {
                     optional: true,
                 }),
                 ChainElement::PrivateFieldExpression(member) => {
-                    self.unsupported("private fields are not supported in v1", Some(member.span.into()));
+                    self.unsupported(
+                        "private fields are not supported in v1",
+                        Some(member.span.into()),
+                    );
                     None
                 }
-                ChainElement::TSNonNullExpression(expression) => self.lower_expr(&expression.expression),
+                ChainElement::TSNonNullExpression(expression) => {
+                    self.lower_expr(&expression.expression)
+                }
             },
             Expression::ComputedMemberExpression(member) => Some(Expr::Member {
                 span: member.span.into(),
@@ -701,21 +771,35 @@ impl<'a> Lowerer<'a> {
                 callee: Box::new(self.lower_expr(&expression.callee)?),
                 arguments: self.lower_call_args(&expression.arguments)?,
             }),
-            Expression::ParenthesizedExpression(expression) => self.lower_expr(&expression.expression),
+            Expression::ParenthesizedExpression(expression) => {
+                self.lower_expr(&expression.expression)
+            }
             Expression::MetaProperty(property) => {
-                self.unsupported("meta properties are not supported", Some(property.span.into()));
+                self.unsupported(
+                    "meta properties are not supported",
+                    Some(property.span.into()),
+                );
                 None
             }
             Expression::ImportExpression(expression) => {
-                self.unsupported("dynamic import() is not supported", Some(expression.span.into()));
+                self.unsupported(
+                    "dynamic import() is not supported",
+                    Some(expression.span.into()),
+                );
                 None
             }
             Expression::RegExpLiteral(expression) => {
-                self.unsupported("RegExp literals are not supported in v1", Some(expression.span.into()));
+                self.unsupported(
+                    "RegExp literals are not supported in v1",
+                    Some(expression.span.into()),
+                );
                 None
             }
             Expression::SequenceExpression(expression) => {
-                self.unsupported("sequence expressions are not supported in v1", Some(expression.span.into()));
+                self.unsupported(
+                    "sequence expressions are not supported in v1",
+                    Some(expression.span.into()),
+                );
                 None
             }
             Expression::Super(expression) => {
@@ -723,11 +807,17 @@ impl<'a> Lowerer<'a> {
                 None
             }
             Expression::PrivateFieldExpression(expression) => {
-                self.unsupported("private fields are not supported in v1", Some(expression.span.into()));
+                self.unsupported(
+                    "private fields are not supported in v1",
+                    Some(expression.span.into()),
+                );
                 None
             }
             Expression::UpdateExpression(expression) => {
-                self.unsupported("update expressions are not supported in v1", Some(expression.span.into()));
+                self.unsupported(
+                    "update expressions are not supported in v1",
+                    Some(expression.span.into()),
+                );
                 None
             }
             Expression::YieldExpression(expression) => {
@@ -735,15 +825,24 @@ impl<'a> Lowerer<'a> {
                 None
             }
             Expression::BigIntLiteral(expression) => {
-                self.unsupported("bigint is not supported in v1", Some(expression.span.into()));
+                self.unsupported(
+                    "bigint is not supported in v1",
+                    Some(expression.span.into()),
+                );
                 None
             }
             Expression::TaggedTemplateExpression(expression) => {
-                self.unsupported("tagged templates are not supported in v1", Some(expression.span.into()));
+                self.unsupported(
+                    "tagged templates are not supported in v1",
+                    Some(expression.span.into()),
+                );
                 None
             }
             Expression::ClassExpression(expression) => {
-                self.unsupported("classes are not supported in v1", Some(expression.span.into()));
+                self.unsupported(
+                    "classes are not supported in v1",
+                    Some(expression.span.into()),
+                );
                 None
             }
             Expression::JSXElement(_)
@@ -754,11 +853,17 @@ impl<'a> Lowerer<'a> {
             | Expression::TSNonNullExpression(_)
             | Expression::TSTypeAssertion(_)
             | Expression::PrivateInExpression(_) => {
-                self.unsupported("unsupported expression form in v1", Some(expression.span().into()));
+                self.unsupported(
+                    "unsupported expression form in v1",
+                    Some(expression.span().into()),
+                );
                 None
             }
             _ => {
-                self.unsupported("unsupported expression form in v1", Some(expression.span().into()));
+                self.unsupported(
+                    "unsupported expression form in v1",
+                    Some(expression.span().into()),
+                );
                 None
             }
         }
@@ -769,7 +874,10 @@ impl<'a> Lowerer<'a> {
         for arg in args {
             match arg {
                 Argument::SpreadElement(spread) => {
-                    self.unsupported("spread arguments are not supported in v1", Some(spread.span.into()));
+                    self.unsupported(
+                        "spread arguments are not supported in v1",
+                        Some(spread.span.into()),
+                    );
                     return None;
                 }
                 expression => lowered.push(self.lower_expr(expression.to_expression())?),
@@ -780,12 +888,12 @@ impl<'a> Lowerer<'a> {
 
     fn lower_property_name(&mut self, key: &PropertyKey<'a>) -> Option<PropertyName> {
         match key {
-            PropertyKey::StaticIdentifier(identifier) => {
-                Some(PropertyName::Identifier(identifier.name.as_str().to_string()))
-            }
-            PropertyKey::StringLiteral(literal) => Some(PropertyName::String(
-                literal.value.as_str().to_string(),
+            PropertyKey::StaticIdentifier(identifier) => Some(PropertyName::Identifier(
+                identifier.name.as_str().to_string(),
             )),
+            PropertyKey::StringLiteral(literal) => {
+                Some(PropertyName::String(literal.value.as_str().to_string()))
+            }
             PropertyKey::NumericLiteral(literal) => Some(PropertyName::Number(literal.value)),
             _ => {
                 self.unsupported("unsupported property key in v1", Some(key.span().into()));
@@ -796,10 +904,12 @@ impl<'a> Lowerer<'a> {
 
     fn lower_assignment_target(&mut self, target: &AssignmentTarget<'a>) -> Option<AssignTarget> {
         match target {
-            AssignmentTarget::AssignmentTargetIdentifier(identifier) => Some(AssignTarget::Identifier {
-                span: identifier.span.into(),
-                name: identifier.name.as_str().to_string(),
-            }),
+            AssignmentTarget::AssignmentTargetIdentifier(identifier) => {
+                Some(AssignTarget::Identifier {
+                    span: identifier.span.into(),
+                    name: identifier.name.as_str().to_string(),
+                })
+            }
             AssignmentTarget::ComputedMemberExpression(member) => Some(AssignTarget::Member {
                 span: member.span.into(),
                 object: Box::new(self.lower_expr(&member.object)?),
@@ -815,19 +925,31 @@ impl<'a> Lowerer<'a> {
                 optional: member.optional,
             }),
             AssignmentTarget::PrivateFieldExpression(expression) => {
-                self.unsupported("private fields are not supported in v1", Some(expression.span.into()));
+                self.unsupported(
+                    "private fields are not supported in v1",
+                    Some(expression.span.into()),
+                );
                 None
             }
             AssignmentTarget::ArrayAssignmentTarget(target) => {
-                self.unsupported("destructuring assignment is not supported in v1", Some(target.span.into()));
+                self.unsupported(
+                    "destructuring assignment is not supported in v1",
+                    Some(target.span.into()),
+                );
                 None
             }
             AssignmentTarget::ObjectAssignmentTarget(target) => {
-                self.unsupported("destructuring assignment is not supported in v1", Some(target.span.into()));
+                self.unsupported(
+                    "destructuring assignment is not supported in v1",
+                    Some(target.span.into()),
+                );
                 None
             }
             _ => {
-                self.unsupported("unsupported assignment target in v1", Some(target.span().into()));
+                self.unsupported(
+                    "unsupported assignment target in v1",
+                    Some(target.span().into()),
+                );
                 None
             }
         }
@@ -869,7 +991,11 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_logical_op(&mut self, op: LogicalOperator, _span: oxc_span::Span) -> Option<LogicalOp> {
+    fn lower_logical_op(
+        &mut self,
+        op: LogicalOperator,
+        _span: oxc_span::Span,
+    ) -> Option<LogicalOp> {
         match op {
             LogicalOperator::And => Some(LogicalOp::And),
             LogicalOperator::Or => Some(LogicalOp::Or),
@@ -877,7 +1003,11 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_assign_op(&mut self, op: AssignmentOperator, span: oxc_span::Span) -> Option<AssignOp> {
+    fn lower_assign_op(
+        &mut self,
+        op: AssignmentOperator,
+        span: oxc_span::Span,
+    ) -> Option<AssignOp> {
         match op {
             AssignmentOperator::Assign => Some(AssignOp::Assign),
             AssignmentOperator::Addition => Some(AssignOp::AddAssign),
@@ -893,7 +1023,8 @@ impl<'a> Lowerer<'a> {
     }
 
     fn unsupported(&mut self, message: impl Into<String>, span: Option<SourceSpan>) {
-        self.diagnostics.push(Diagnostic::validation(message.into(), span));
+        self.diagnostics
+            .push(Diagnostic::validation(message.into(), span));
     }
 }
 
@@ -932,8 +1063,30 @@ mod tests {
     }
 
     #[test]
+    fn rejects_free_eval() {
+        let error = compile("eval('1 + 1');").expect_err("should reject eval");
+        let text = error.to_string();
+        assert!(text.contains("forbidden ambient global `eval`"));
+        assert!(text.contains("[0..4]"));
+    }
+
+    #[test]
+    fn rejects_free_function_constructor() {
+        let error = compile("new Function('return 1;');").expect_err("should reject Function");
+        let text = error.to_string();
+        assert!(text.contains("forbidden ambient global `Function`"));
+        assert!(text.contains("[4..12]"));
+    }
+
+    #[test]
     fn allows_shadowed_require() {
         compile("const require = () => 1; require();").expect("shadowed require should compile");
+    }
+
+    #[test]
+    fn allows_shadowed_function_identifier() {
+        compile("const Function = (value) => value; Function(1);")
+            .expect("shadowed Function should compile");
     }
 
     #[test]

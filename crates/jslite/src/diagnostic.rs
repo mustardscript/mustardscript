@@ -81,7 +81,11 @@ impl fmt::Display for JsliteError {
                 }
                 Ok(())
             }
-            Self::Message { kind, message, span } => {
+            Self::Message {
+                kind,
+                message,
+                span,
+            } => {
                 write!(f, "{kind:?}: {message}")?;
                 if let Some(span) = span {
                     write!(f, " [{}..{}]", span.start, span.end)?;

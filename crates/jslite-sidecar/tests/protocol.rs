@@ -28,8 +28,11 @@ fn sidecar_compiles_starts_and_resumes() {
     .expect("compile request should write");
 
     let mut line = String::new();
-    reader.read_line(&mut line).expect("compile response should read");
-    let compile_response: Value = serde_json::from_str(&line).expect("compile response should parse");
+    reader
+        .read_line(&mut line)
+        .expect("compile response should read");
+    let compile_response: Value =
+        serde_json::from_str(&line).expect("compile response should parse");
     assert!(compile_response["ok"].as_bool().unwrap_or(false));
     let program = compile_response["result"]["program_base64"]
         .as_str()
@@ -52,7 +55,9 @@ fn sidecar_compiles_starts_and_resumes() {
     .expect("start request should write");
 
     line.clear();
-    reader.read_line(&mut line).expect("start response should read");
+    reader
+        .read_line(&mut line)
+        .expect("start response should read");
     let start_response: Value = serde_json::from_str(&line).expect("start response should parse");
     assert!(start_response["ok"].as_bool().unwrap_or(false));
     assert_eq!(start_response["result"]["step"]["type"], "suspended");
@@ -78,11 +83,16 @@ fn sidecar_compiles_starts_and_resumes() {
     .expect("resume request should write");
 
     line.clear();
-    reader.read_line(&mut line).expect("resume response should read");
+    reader
+        .read_line(&mut line)
+        .expect("resume response should read");
     let resume_response: Value = serde_json::from_str(&line).expect("resume response should parse");
     assert!(resume_response["ok"].as_bool().unwrap_or(false));
     assert_eq!(resume_response["result"]["step"]["type"], "completed");
-    assert_eq!(resume_response["result"]["step"]["value"]["Number"]["Finite"], 6.0);
+    assert_eq!(
+        resume_response["result"]["step"]["value"]["Number"]["Finite"],
+        6.0
+    );
 
     drop(stdin);
     let status = child.wait().expect("sidecar should exit cleanly");

@@ -20,7 +20,9 @@ struct StartOptionsDto {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum StepDto {
-    Completed { value: StructuredValue },
+    Completed {
+        value: StructuredValue,
+    },
     Suspended {
         capability: String,
         args: Vec<StructuredValue>,

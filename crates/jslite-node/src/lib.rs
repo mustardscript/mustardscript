@@ -21,7 +21,9 @@ struct StartOptionsDto {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum StepDto {
-    Completed { value: StructuredValue },
+    Completed {
+        value: StructuredValue,
+    },
     Suspended {
         capability: String,
         args: Vec<StructuredValue>,
@@ -50,7 +52,8 @@ fn encode_step(step: ExecutionStep) -> Result<String> {
         ExecutionStep::Suspended(suspension) => StepDto::Suspended {
             capability: suspension.capability,
             args: suspension.args,
-            snapshot_base64: STANDARD.encode(dump_snapshot(&suspension.snapshot).map_err(to_napi_error)?),
+            snapshot_base64: STANDARD
+                .encode(dump_snapshot(&suspension.snapshot).map_err(to_napi_error)?),
         },
     };
     serde_json::to_string(&dto).map_err(to_napi_error)

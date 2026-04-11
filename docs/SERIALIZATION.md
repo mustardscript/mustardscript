@@ -1,11 +1,21 @@
 # Serialization
 
+This document covers the serialized forms that already exist in the runtime and
+the safety rules they are expected to follow.
+
 ## Formats
 
 `jslite` serializes:
 
 1. Compiled programs
 2. Suspended execution snapshots
+
+## Compiled-Program Format Goals
+
+- preserve lowered bytecode without reparsing source
+- remain private to `jslite` rather than becoming a public stable bytecode
+- round-trip only within the same `jslite` version
+- fail safely on corrupt or unsupported input
 
 ## Versioning
 
@@ -15,11 +25,26 @@
 
 ## Safety Rules
 
-- Inputs are validated before load.
-- Opaque host references are never serialized.
-- Pending host work must be represented as resumable metadata, not native futures.
+- The current loader validates the outer format by decoding the tagged payload
+  and checking the serialized version.
+- Deeper structural bytecode validation is a planned follow-up and is not
+  implemented yet.
+- Opaque host references, native handles, and host futures are never
+  serialized.
+- Snapshots are only created at explicit suspension points.
+- Pending host work is represented by the suspended capability name plus the
+  resumable VM snapshot, not by native futures.
 
 ## Value Encoding
 
 The encoding is tagged so that values such as `undefined`, `NaN`, `Infinity`,
 and `-0` can round-trip safely.
+
+## Serialization Exclusions
+
+The following values may never be serialized:
+
+- opaque host references
+- native handles
+- unresolved host futures
+- JavaScript callback identities from the embedding host

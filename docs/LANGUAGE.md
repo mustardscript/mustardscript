@@ -1,10 +1,16 @@
 # Language Contract
 
+This document describes the currently implemented language surface. Planned
+extensions are called out explicitly instead of being implied.
+
 ## Baseline Rules
 
 - Guest code always runs with strict semantics.
-- `import`, `export`, dynamic `import()`, `eval`, and `Function` are rejected.
-- Unsupported features fail with explicit diagnostics.
+- Input is script-only; module syntax is rejected.
+- Unsupported features fail closed with explicit diagnostics.
+- Free references to forbidden ambient globals are rejected when lexical
+  resolution proves they are unresolved.
+- Free `eval` and free `Function` are rejected for the same reason.
 
 ## Supported Value Types
 
@@ -17,24 +23,54 @@
 - plain objects
 - guest functions
 
-## Supported Syntax
+## Supported End-to-End Syntax
 
 - variable declarations with `let` and `const`
 - function declarations and expressions
 - arrow functions
 - literals, arrays, and objects
-- `if`, `switch`, `while`, `for`, `break`, and `continue`
-- `try`, `catch`, `finally`, and `throw`
+- `if`, `switch`, `while`, `do...while`, `for`, `break`, and `continue`
+- `return`
 - common destructuring
+- assignment to identifiers and member expressions
+- member access, calls, and `new` for supported built-ins
+- template literals
 - optional chaining
 - nullish coalescing
-- `async` and `await`
+- named host capability calls
+
+## Parsed But Not Yet Executable
+
+- `throw`
+- `try`, `catch`, and `finally`
+- `async` functions
+- `await`
+
+## Rejected With Validation Diagnostics
+
+- `import`, `export`, and dynamic `import()`
+- free `eval` and free `Function`
+- free references to `process`, `module`, `exports`, `global`, `require`,
+  `setTimeout`, `setInterval`, `queueMicrotask`, and `fetch`
+- `with`
+- classes
+- generators and `yield`
+- `for...in` and `for...of`
+- `debugger`
+- labeled statements
+- object spread and object-literal methods
+- array spread and array holes
+- bigint, regexp literals, and sequence expressions
 
 ## Explicit Deferrals
 
-- classes
-- generators
+- guest-visible `Error` objects and standard error types
+- deterministic console callbacks
+- async runtime and promises
+- full `this` semantics beyond the current basic function-call behavior
+- iterator protocol support
 - module loading
+- property descriptor semantics
 - full prototype semantics
 - accessors
 - symbols
@@ -43,7 +79,7 @@
 - `Intl`
 - `Proxy`
 
-## Built-Ins
+## Built-Ins and Global Names
 
 - `globalThis`
 - `Object`
@@ -53,6 +89,16 @@
 - `Boolean`
 - `Math`
 - `JSON`
-- `Promise`
-- standard `Error` types
-- deterministic `console`
+- `console` as a placeholder global object with no callable methods yet
+
+### Currently Implemented Built-In Members
+
+- `Array.isArray`
+- `Math.abs`
+- `Math.max`
+- `Math.min`
+- `Math.floor`
+- `Math.ceil`
+- `Math.round`
+- `JSON.stringify`
+- `JSON.parse`

@@ -7,8 +7,8 @@ use slotmap::{SlotMap, new_key_type};
 use crate::{
     diagnostic::{DiagnosticKind, JsliteError, JsliteResult},
     ir::{
-        AssignOp, AssignTarget, BinaryOp, BindingKind, CompiledProgram, Expr, ForInit, FunctionExpr,
-        LogicalOp, MemberProperty, Pattern, PropertyName, Stmt, UnaryOp,
+        AssignOp, AssignTarget, BinaryOp, BindingKind, CompiledProgram, Expr, ForInit,
+        FunctionExpr, LogicalOp, MemberProperty, Pattern, PropertyName, Stmt, UnaryOp,
     },
     limits::RuntimeLimits,
     span::SourceSpan,
@@ -67,7 +67,7 @@ pub struct Suspension {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExecutionStep {
     Completed(StructuredValue),
-    Suspended(Suspension),
+    Suspended(Box<Suspension>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,13 +99,29 @@ pub enum Instruction {
     InitializePattern(Pattern),
     PushEnv,
     PopEnv,
-    DeclareName { name: String, mutable: bool },
-    MakeClosure { function_id: usize },
-    MakeArray { count: usize },
-    MakeObject { keys: Vec<PropertyName> },
-    GetPropStatic { name: String, optional: bool },
-    GetPropComputed { optional: bool },
-    SetPropStatic { name: String },
+    DeclareName {
+        name: String,
+        mutable: bool,
+    },
+    MakeClosure {
+        function_id: usize,
+    },
+    MakeArray {
+        count: usize,
+    },
+    MakeObject {
+        keys: Vec<PropertyName>,
+    },
+    GetPropStatic {
+        name: String,
+        optional: bool,
+    },
+    GetPropComputed {
+        optional: bool,
+    },
+    SetPropStatic {
+        name: String,
+    },
     SetPropComputed,
     Unary(UnaryOp),
     Binary(BinaryOp),
@@ -116,8 +132,14 @@ pub enum Instruction {
     JumpIfFalse(usize),
     JumpIfTrue(usize),
     JumpIfNullish(usize),
-    Call { argc: usize, with_this: bool, optional: bool },
-    Construct { argc: usize },
+    Call {
+        argc: usize,
+        with_this: bool,
+        optional: bool,
+    },
+    Construct {
+        argc: usize,
+    },
     Return,
 }
 
@@ -130,7 +152,10 @@ pub fn lower_to_bytecode(program: &CompiledProgram) -> JsliteResult<BytecodeProg
     })
 }
 
-pub fn execute(program: &CompiledProgram, options: ExecutionOptions) -> JsliteResult<StructuredValue> {
+pub fn execute(
+    program: &CompiledProgram,
+    options: ExecutionOptions,
+) -> JsliteResult<StructuredValue> {
     match start(program, options)? {
         ExecutionStep::Completed(value) => Ok(value),
         ExecutionStep::Suspended(suspension) => Err(JsliteError::runtime(format!(
@@ -145,7 +170,10 @@ pub fn start(program: &CompiledProgram, options: ExecutionOptions) -> JsliteResu
     start_bytecode(&bytecode, options)
 }
 
-pub fn start_bytecode(program: &BytecodeProgram, options: ExecutionOptions) -> JsliteResult<ExecutionStep> {
+pub fn start_bytecode(
+    program: &BytecodeProgram,
+    options: ExecutionOptions,
+) -> JsliteResult<ExecutionStep> {
     let mut runtime = Runtime::new(program.clone(), options)?;
     runtime.run_root()
 }
@@ -168,11 +196,12 @@ pub fn dump_program(program: &BytecodeProgram) -> JsliteResult<Vec<u8>> {
 }
 
 pub fn load_program(bytes: &[u8]) -> JsliteResult<BytecodeProgram> {
-    let decoded: SerializedProgram = bincode::deserialize(bytes).map_err(|error| JsliteError::Message {
-        kind: DiagnosticKind::Serialization,
-        message: error.to_string(),
-        span: None,
-    })?;
+    let decoded: SerializedProgram =
+        bincode::deserialize(bytes).map_err(|error| JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: error.to_string(),
+            span: None,
+        })?;
     if decoded.version != SERIAL_FORMAT_VERSION {
         return Err(JsliteError::Message {
             kind: DiagnosticKind::Serialization,
@@ -199,11 +228,12 @@ pub fn dump_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<Vec<u8>> {
 }
 
 pub fn load_snapshot(bytes: &[u8]) -> JsliteResult<ExecutionSnapshot> {
-    let decoded: SerializedSnapshot = bincode::deserialize(bytes).map_err(|error| JsliteError::Message {
-        kind: DiagnosticKind::Serialization,
-        message: error.to_string(),
-        span: None,
-    })?;
+    let decoded: SerializedSnapshot =
+        bincode::deserialize(bytes).map_err(|error| JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: error.to_string(),
+            span: None,
+        })?;
     if decoded.version != SERIAL_FORMAT_VERSION {
         return Err(JsliteError::Message {
             kind: DiagnosticKind::Serialization,
@@ -254,12 +284,10 @@ impl Compiler {
         let mut produced_result = false;
         for (index, statement) in statements.iter().enumerate() {
             let is_last = index + 1 == statements.len();
-            if is_last {
-                if let Stmt::Expression { expression, .. } = statement {
-                    self.compile_expr(&mut context, expression)?;
-                    produced_result = true;
-                    continue;
-                }
+            if is_last && let Stmt::Expression { expression, .. } = statement {
+                self.compile_expr(&mut context, expression)?;
+                produced_result = true;
+                continue;
             }
             self.compile_stmt(&mut context, statement)?;
         }
@@ -314,12 +342,18 @@ impl Compiler {
         Ok(id)
     }
 
-    fn emit_block_prologue(&mut self, context: &mut CompileContext, statements: &[Stmt]) -> JsliteResult<()> {
+    fn emit_block_prologue(
+        &mut self,
+        context: &mut CompileContext,
+        statements: &[Stmt],
+    ) -> JsliteResult<()> {
         let mut declared = HashSet::new();
         let bindings = collect_block_bindings(statements);
         for (name, mutable) in bindings.lexicals {
             if declared.insert(name.clone()) {
-                context.code.push(Instruction::DeclareName { name, mutable });
+                context
+                    .code
+                    .push(Instruction::DeclareName { name, mutable });
             }
         }
         for function in bindings.functions {
@@ -332,10 +366,12 @@ impl Compiler {
             context.code.push(Instruction::MakeClosure {
                 function_id: self.compile_function(&function.expr)?,
             });
-            context.code.push(Instruction::InitializePattern(Pattern::Identifier {
-                span: function.expr.span,
-                name: function.name,
-            }));
+            context
+                .code
+                .push(Instruction::InitializePattern(Pattern::Identifier {
+                    span: function.expr.span,
+                    name: function.name,
+                }));
         }
         Ok(())
     }
@@ -432,17 +468,24 @@ impl Compiler {
                 context.code.push(Instruction::PushEnv);
                 if let Some(init) = init {
                     match init {
-                        ForInit::VariableDecl { kind: _, declarators } => {
+                        ForInit::VariableDecl {
+                            kind: _,
+                            declarators,
+                        } => {
                             for declarator in declarators {
                                 for (name, mutable) in pattern_bindings(&declarator.pattern) {
-                                    context.code.push(Instruction::DeclareName { name, mutable });
+                                    context
+                                        .code
+                                        .push(Instruction::DeclareName { name, mutable });
                                 }
                                 if let Some(initializer) = &declarator.initializer {
                                     self.compile_expr(context, initializer)?;
                                 } else {
                                     context.code.push(Instruction::PushUndefined);
                                 }
-                                context.code.push(Instruction::InitializePattern(declarator.pattern.clone()));
+                                context.code.push(Instruction::InitializePattern(
+                                    declarator.pattern.clone(),
+                                ));
                             }
                         }
                         ForInit::Expression(expression) => {
@@ -530,7 +573,8 @@ impl Compiler {
                         context.code.push(Instruction::Dup);
                         self.compile_expr(context, test)?;
                         context.code.push(Instruction::Binary(BinaryOp::StrictEq));
-                        case_jumps.push(self.emit_jump(context, Instruction::JumpIfTrue(usize::MAX)));
+                        case_jumps
+                            .push(self.emit_jump(context, Instruction::JumpIfTrue(usize::MAX)));
                     } else {
                         default_label = Some(context.code.len());
                     }
@@ -560,7 +604,11 @@ impl Compiler {
         Ok(())
     }
 
-    fn compile_expr(&mut self, context: &mut CompileContext, expression: &Expr) -> JsliteResult<()> {
+    fn compile_expr(
+        &mut self,
+        context: &mut CompileContext,
+        expression: &Expr,
+    ) -> JsliteResult<()> {
         match expression {
             Expr::Undefined { .. } => context.code.push(Instruction::PushUndefined),
             Expr::Null { .. } => context.code.push(Instruction::PushNull),
@@ -573,7 +621,9 @@ impl Compiler {
                 for element in elements {
                     self.compile_expr(context, element)?;
                 }
-                context.code.push(Instruction::MakeArray { count: elements.len() });
+                context.code.push(Instruction::MakeArray {
+                    count: elements.len(),
+                });
             }
             Expr::Object { properties, .. } => {
                 let mut keys = Vec::with_capacity(properties.len());
@@ -595,7 +645,10 @@ impl Compiler {
                 context.code.push(Instruction::Unary(*operator));
             }
             Expr::Binary {
-                operator, left, right, ..
+                operator,
+                left,
+                right,
+                ..
             } => {
                 self.compile_expr(context, left)?;
                 self.compile_expr(context, right)?;
@@ -666,12 +719,12 @@ impl Compiler {
                 self.compile_expr(context, object)?;
                 match property {
                     MemberProperty::Static(PropertyName::Identifier(name))
-                    | MemberProperty::Static(PropertyName::String(name)) => context.code.push(
-                        Instruction::GetPropStatic {
+                    | MemberProperty::Static(PropertyName::String(name)) => {
+                        context.code.push(Instruction::GetPropStatic {
                             name: name.clone(),
                             optional: *optional,
-                        },
-                    ),
+                        })
+                    }
                     MemberProperty::Static(PropertyName::Number(number)) => {
                         context.code.push(Instruction::GetPropStatic {
                             name: format_number_key(*number),
@@ -680,7 +733,9 @@ impl Compiler {
                     }
                     MemberProperty::Computed(expression) => {
                         self.compile_expr(context, expression)?;
-                        context.code.push(Instruction::GetPropComputed { optional: *optional });
+                        context.code.push(Instruction::GetPropComputed {
+                            optional: *optional,
+                        });
                     }
                 }
             }
@@ -702,12 +757,12 @@ impl Compiler {
                     context.code.push(Instruction::Dup);
                     match property {
                         MemberProperty::Static(PropertyName::Identifier(name))
-                        | MemberProperty::Static(PropertyName::String(name)) => context.code.push(
-                            Instruction::GetPropStatic {
+                        | MemberProperty::Static(PropertyName::String(name)) => {
+                            context.code.push(Instruction::GetPropStatic {
                                 name: name.clone(),
                                 optional: *member_optional,
-                            },
-                        ),
+                            })
+                        }
                         MemberProperty::Static(PropertyName::Number(number)) => {
                             context.code.push(Instruction::GetPropStatic {
                                 name: format_number_key(*number),
@@ -795,7 +850,9 @@ impl Compiler {
                 } else {
                     context.code.push(Instruction::LoadName(name.clone()));
                     self.compile_expr(context, value)?;
-                    context.code.push(Instruction::Binary(assign_op_to_binary(operator)?));
+                    context
+                        .code
+                        .push(Instruction::Binary(assign_op_to_binary(operator)?));
                     context.code.push(Instruction::StoreName(name.clone()));
                 }
             }
@@ -810,7 +867,9 @@ impl Compiler {
                     self.compile_expr(context, object)?;
                     if operator == AssignOp::Assign {
                         self.compile_expr(context, value)?;
-                        context.code.push(Instruction::SetPropStatic { name: name.clone() });
+                        context
+                            .code
+                            .push(Instruction::SetPropStatic { name: name.clone() });
                     } else {
                         context.code.push(Instruction::Dup);
                         context.code.push(Instruction::GetPropStatic {
@@ -818,8 +877,12 @@ impl Compiler {
                             optional: *optional,
                         });
                         self.compile_expr(context, value)?;
-                        context.code.push(Instruction::Binary(assign_op_to_binary(operator)?));
-                        context.code.push(Instruction::SetPropStatic { name: name.clone() });
+                        context
+                            .code
+                            .push(Instruction::Binary(assign_op_to_binary(operator)?));
+                        context
+                            .code
+                            .push(Instruction::SetPropStatic { name: name.clone() });
                     }
                 }
                 MemberProperty::Static(PropertyName::Number(number)) => {
@@ -835,7 +898,9 @@ impl Compiler {
                             optional: *optional,
                         });
                         self.compile_expr(context, value)?;
-                        context.code.push(Instruction::Binary(assign_op_to_binary(operator)?));
+                        context
+                            .code
+                            .push(Instruction::Binary(assign_op_to_binary(operator)?));
                         context.code.push(Instruction::SetPropStatic { name });
                     }
                 }
@@ -847,9 +912,13 @@ impl Compiler {
                         context.code.push(Instruction::SetPropComputed);
                     } else {
                         context.code.push(Instruction::Dup2);
-                        context.code.push(Instruction::GetPropComputed { optional: *optional });
+                        context.code.push(Instruction::GetPropComputed {
+                            optional: *optional,
+                        });
                         self.compile_expr(context, value)?;
-                        context.code.push(Instruction::Binary(assign_op_to_binary(operator)?));
+                        context
+                            .code
+                            .push(Instruction::Binary(assign_op_to_binary(operator)?));
                         context.code.push(Instruction::SetPropComputed);
                     }
                 }
@@ -912,7 +981,10 @@ fn collect_block_bindings(statements: &[Stmt]) -> BlockBindings {
             _ => {}
         }
     }
-    BlockBindings { lexicals, functions }
+    BlockBindings {
+        lexicals,
+        functions,
+    }
 }
 
 fn pattern_bindings(pattern: &Pattern) -> Vec<(String, bool)> {
@@ -1085,7 +1157,7 @@ impl Runtime {
             runtime.define_global(capability.clone(), Value::HostFunction(capability), false)?;
         }
         for (name, value) in options.inputs {
-            let value = runtime.from_structured(value)?;
+            let value = runtime.value_from_structured(value)?;
             runtime.define_global(name, value, true)?;
         }
         Ok(runtime)
@@ -1100,7 +1172,7 @@ impl Runtime {
     fn resume(&mut self, payload: ResumePayload) -> JsliteResult<ExecutionStep> {
         match payload {
             ResumePayload::Value(value) => {
-                let value = self.from_structured(value)?;
+                let value = self.value_from_structured(value)?;
                 let frame = self
                     .frames
                     .last_mut()
@@ -1149,11 +1221,15 @@ impl Runtime {
             match instruction {
                 Instruction::PushUndefined => self.frames[frame_index].stack.push(Value::Undefined),
                 Instruction::PushNull => self.frames[frame_index].stack.push(Value::Null),
-                Instruction::PushBool(value) => self.frames[frame_index].stack.push(Value::Bool(value)),
+                Instruction::PushBool(value) => {
+                    self.frames[frame_index].stack.push(Value::Bool(value))
+                }
                 Instruction::PushNumber(value) => {
                     self.frames[frame_index].stack.push(Value::Number(value))
                 }
-                Instruction::PushString(value) => self.frames[frame_index].stack.push(Value::String(value)),
+                Instruction::PushString(value) => {
+                    self.frames[frame_index].stack.push(Value::String(value))
+                }
                 Instruction::LoadName(name) => {
                     let env = self.frames[frame_index].env;
                     let value = self.lookup_name(env, &name)?;
@@ -1195,10 +1271,7 @@ impl Runtime {
                 }
                 Instruction::MakeClosure { function_id } => {
                     let env = self.frames[frame_index].env;
-                    let closure = self.closures.insert(Closure {
-                        function_id,
-                        env,
-                    });
+                    let closure = self.closures.insert(Closure { function_id, env });
                     self.frames[frame_index].stack.push(Value::Closure(closure));
                 }
                 Instruction::MakeArray { count } => {
@@ -1369,13 +1442,13 @@ impl Runtime {
                         }
                         RunState::PushedFrame => {}
                         RunState::Suspended { capability, args } => {
-                            return Ok(ExecutionStep::Suspended(Suspension {
+                            return Ok(ExecutionStep::Suspended(Box::new(Suspension {
                                 capability,
                                 args,
                                 snapshot: ExecutionSnapshot {
                                     runtime: self.clone(),
                                 },
-                            }));
+                            })));
                         }
                     }
                 }
@@ -1397,7 +1470,7 @@ impl Runtime {
                     if let Some(parent) = self.frames.last_mut() {
                         parent.stack.push(value);
                     } else {
-                        return Ok(ExecutionStep::Completed(self.into_structured(value)?));
+                        return Ok(ExecutionStep::Completed(self.value_to_structured(value)?));
                     }
                 }
             }
@@ -1457,13 +1530,15 @@ impl Runtime {
                 self.push_frame(closure.function_id, env, args)?;
                 Ok(RunState::PushedFrame)
             }
-            Value::BuiltinFunction(function) => Ok(RunState::Completed(self.call_builtin(function, args)?)),
+            Value::BuiltinFunction(function) => {
+                Ok(RunState::Completed(self.call_builtin(function, args)?))
+            }
             Value::HostFunction(capability) => Ok(RunState::Suspended {
                 capability,
                 args: args
                     .iter()
                     .cloned()
-                    .map(|value| self.into_structured(value))
+                    .map(|value| self.value_to_structured(value))
                     .collect::<JsliteResult<Vec<_>>>()?,
             }),
             _ => Err(JsliteError::runtime("value is not callable")),
@@ -1478,10 +1553,13 @@ impl Runtime {
                 | BuiltinFunction::NumberCtor
                 | BuiltinFunction::StringCtor
                 | BuiltinFunction::BooleanCtor,
-            ) => self.call_builtin(match callee {
-                Value::BuiltinFunction(kind) => kind,
-                _ => unreachable!(),
-            }, args),
+            ) => self.call_builtin(
+                match callee {
+                    Value::BuiltinFunction(kind) => kind,
+                    _ => unreachable!(),
+                },
+                args,
+            ),
             _ => Err(JsliteError::runtime(
                 "only conservative built-in constructors are supported in v1",
             )),
@@ -1497,7 +1575,9 @@ impl Runtime {
                 });
                 Ok(Value::Array(array))
             }
-            BuiltinFunction::ArrayIsArray => Ok(Value::Bool(matches!(args.first(), Some(Value::Array(_))))),
+            BuiltinFunction::ArrayIsArray => {
+                Ok(Value::Bool(matches!(args.first(), Some(Value::Array(_)))))
+            }
             BuiltinFunction::ObjectCtor => {
                 if let Some(Value::Object(object)) = args.first() {
                     Ok(Value::Object(*object))
@@ -1509,10 +1589,19 @@ impl Runtime {
                     Ok(Value::Object(object))
                 }
             }
-            BuiltinFunction::NumberCtor => Ok(Value::Number(self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?)),
-            BuiltinFunction::StringCtor => Ok(Value::String(self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?)),
-            BuiltinFunction::BooleanCtor => Ok(Value::Bool(is_truthy(args.first().unwrap_or(&Value::Undefined)))),
-            BuiltinFunction::MathAbs => Ok(Value::Number(self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?.abs())),
+            BuiltinFunction::NumberCtor => Ok(Value::Number(
+                self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?,
+            )),
+            BuiltinFunction::StringCtor => Ok(Value::String(
+                self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?,
+            )),
+            BuiltinFunction::BooleanCtor => Ok(Value::Bool(is_truthy(
+                args.first().unwrap_or(&Value::Undefined),
+            ))),
+            BuiltinFunction::MathAbs => Ok(Value::Number(
+                self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                    .abs(),
+            )),
             BuiltinFunction::MathMax => {
                 let mut value = f64::NEG_INFINITY;
                 for arg in args {
@@ -1527,21 +1616,30 @@ impl Runtime {
                 }
                 Ok(Value::Number(value))
             }
-            BuiltinFunction::MathFloor => Ok(Value::Number(self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?.floor())),
-            BuiltinFunction::MathCeil => Ok(Value::Number(self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?.ceil())),
-            BuiltinFunction::MathRound => Ok(Value::Number(self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?.round())),
+            BuiltinFunction::MathFloor => Ok(Value::Number(
+                self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                    .floor(),
+            )),
+            BuiltinFunction::MathCeil => Ok(Value::Number(
+                self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                    .ceil(),
+            )),
+            BuiltinFunction::MathRound => Ok(Value::Number(
+                self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                    .round(),
+            )),
             BuiltinFunction::JsonStringify => {
                 let value = args.first().cloned().unwrap_or(Value::Undefined);
-                let structured = self.into_structured(value)?;
+                let structured = self.value_to_structured(value)?;
                 let json = serde_json::to_string(&structured_to_json(structured)?)
                     .map_err(|error| JsliteError::runtime(error.to_string()))?;
                 Ok(Value::String(json))
             }
             BuiltinFunction::JsonParse => {
                 let source = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
-                let parsed: serde_json::Value =
-                    serde_json::from_str(&source).map_err(|error| JsliteError::runtime(error.to_string()))?;
-                self.from_json(parsed)
+                let parsed: serde_json::Value = serde_json::from_str(&source)
+                    .map_err(|error| JsliteError::runtime(error.to_string()))?;
+                self.value_from_json(parsed)
             }
         }
     }
@@ -1551,21 +1649,63 @@ impl Runtime {
             properties: IndexMap::new(),
             kind: ObjectKind::Global,
         });
-        self.define_global("globalThis".to_string(), Value::Object(global_object), false)?;
-        self.define_global("Object".to_string(), Value::BuiltinFunction(BuiltinFunction::ObjectCtor), false)?;
-        self.define_global("Array".to_string(), Value::BuiltinFunction(BuiltinFunction::ArrayCtor), false)?;
-        self.define_global("String".to_string(), Value::BuiltinFunction(BuiltinFunction::StringCtor), false)?;
-        self.define_global("Number".to_string(), Value::BuiltinFunction(BuiltinFunction::NumberCtor), false)?;
-        self.define_global("Boolean".to_string(), Value::BuiltinFunction(BuiltinFunction::BooleanCtor), false)?;
+        self.define_global(
+            "globalThis".to_string(),
+            Value::Object(global_object),
+            false,
+        )?;
+        self.define_global(
+            "Object".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::ObjectCtor),
+            false,
+        )?;
+        self.define_global(
+            "Array".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::ArrayCtor),
+            false,
+        )?;
+        self.define_global(
+            "String".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::StringCtor),
+            false,
+        )?;
+        self.define_global(
+            "Number".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::NumberCtor),
+            false,
+        )?;
+        self.define_global(
+            "Boolean".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::BooleanCtor),
+            false,
+        )?;
 
         let math = self.objects.insert(PlainObject {
             properties: IndexMap::from([
-                ("abs".to_string(), Value::BuiltinFunction(BuiltinFunction::MathAbs)),
-                ("max".to_string(), Value::BuiltinFunction(BuiltinFunction::MathMax)),
-                ("min".to_string(), Value::BuiltinFunction(BuiltinFunction::MathMin)),
-                ("floor".to_string(), Value::BuiltinFunction(BuiltinFunction::MathFloor)),
-                ("ceil".to_string(), Value::BuiltinFunction(BuiltinFunction::MathCeil)),
-                ("round".to_string(), Value::BuiltinFunction(BuiltinFunction::MathRound)),
+                (
+                    "abs".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAbs),
+                ),
+                (
+                    "max".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathMax),
+                ),
+                (
+                    "min".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathMin),
+                ),
+                (
+                    "floor".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathFloor),
+                ),
+                (
+                    "ceil".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathCeil),
+                ),
+                (
+                    "round".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathRound),
+                ),
             ]),
             kind: ObjectKind::Math,
         });
@@ -1577,7 +1717,10 @@ impl Runtime {
                     "stringify".to_string(),
                     Value::BuiltinFunction(BuiltinFunction::JsonStringify),
                 ),
-                ("parse".to_string(), Value::BuiltinFunction(BuiltinFunction::JsonParse)),
+                (
+                    "parse".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::JsonParse),
+                ),
             ]),
             kind: ObjectKind::Json,
         });
@@ -1648,9 +1791,9 @@ impl Runtime {
     }
 
     fn assign_name(&mut self, env: EnvKey, name: &str, value: Value) -> JsliteResult<()> {
-        let cell_key = self
-            .find_cell(env, name)
-            .ok_or_else(|| JsliteError::runtime(format!("ReferenceError: `{name}` is not defined")))?;
+        let cell_key = self.find_cell(env, name).ok_or_else(|| {
+            JsliteError::runtime(format!("ReferenceError: `{name}` is not defined"))
+        })?;
         let cell = self
             .cells
             .get_mut(cell_key)
@@ -1669,12 +1812,19 @@ impl Runtime {
         Ok(())
     }
 
-    fn initialize_name_in_env(&mut self, env: EnvKey, name: &str, value: Value) -> JsliteResult<()> {
+    fn initialize_name_in_env(
+        &mut self,
+        env: EnvKey,
+        name: &str,
+        value: Value,
+    ) -> JsliteResult<()> {
         let cell_key = self
             .envs
             .get(env)
             .and_then(|env| env.bindings.get(name).copied())
-            .ok_or_else(|| JsliteError::runtime(format!("binding `{name}` missing in current scope")))?;
+            .ok_or_else(|| {
+                JsliteError::runtime(format!("binding `{name}` missing in current scope"))
+            })?;
         let cell = self
             .cells
             .get_mut(cell_key)
@@ -1705,7 +1855,12 @@ impl Runtime {
         None
     }
 
-    fn initialize_pattern(&mut self, env: EnvKey, pattern: &Pattern, value: Value) -> JsliteResult<()> {
+    fn initialize_pattern(
+        &mut self,
+        env: EnvKey,
+        pattern: &Pattern,
+        value: Value,
+    ) -> JsliteResult<()> {
         match pattern {
             Pattern::Identifier { name, .. } => self.initialize_name_in_env(env, name, value),
             Pattern::Default {
@@ -1760,11 +1915,8 @@ impl Runtime {
                 let mut seen = HashSet::new();
                 for property in properties {
                     let key = property_name_to_key(&property.key);
-                    let prop_value = self.get_property(
-                        value.clone(),
-                        Value::String(key.clone()),
-                        false,
-                    )?;
+                    let prop_value =
+                        self.get_property(value.clone(), Value::String(key.clone()), false)?;
                     seen.insert(key);
                     self.initialize_pattern(env, &property.value, prop_value)?;
                 }
@@ -1814,7 +1966,11 @@ impl Runtime {
                     .objects
                     .get(object)
                     .ok_or_else(|| JsliteError::runtime("object missing"))?;
-                Ok(object.properties.get(&key).cloned().unwrap_or(Value::Undefined))
+                Ok(object
+                    .properties
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or(Value::Undefined))
             }
             Value::Array(array) => {
                 let array = self
@@ -1824,15 +1980,25 @@ impl Runtime {
                 if key == "length" {
                     Ok(Value::Number(array.elements.len() as f64))
                 } else if let Ok(index) = key.parse::<usize>() {
-                    Ok(array.elements.get(index).cloned().unwrap_or(Value::Undefined))
+                    Ok(array
+                        .elements
+                        .get(index)
+                        .cloned()
+                        .unwrap_or(Value::Undefined))
                 } else {
-                    Ok(array.properties.get(&key).cloned().unwrap_or(Value::Undefined))
+                    Ok(array
+                        .properties
+                        .get(&key)
+                        .cloned()
+                        .unwrap_or(Value::Undefined))
                 }
             }
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "isArray" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray))
             }
-            Value::String(value) if key == "length" => Ok(Value::Number(value.chars().count() as f64)),
+            Value::String(value) if key == "length" => {
+                Ok(Value::Number(value.chars().count() as f64))
+            }
             Value::Null | Value::Undefined => Err(JsliteError::runtime(
                 "TypeError: cannot read properties of nullish value",
             )),
@@ -1875,21 +2041,30 @@ impl Runtime {
             UnaryOp::Plus => Ok(Value::Number(self.to_number(value)?)),
             UnaryOp::Minus => Ok(Value::Number(-self.to_number(value)?)),
             UnaryOp::Not => Ok(Value::Bool(!is_truthy(&value))),
-            UnaryOp::Typeof => Ok(Value::String(match value {
-                Value::Undefined => "undefined",
-                Value::Null => "object",
-                Value::Bool(_) => "boolean",
-                Value::Number(_) => "number",
-                Value::String(_) => "string",
-                Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => "function",
-                Value::Object(_) | Value::Array(_) => "object",
-            }
-            .to_string())),
+            UnaryOp::Typeof => Ok(Value::String(
+                match value {
+                    Value::Undefined => "undefined",
+                    Value::Null => "object",
+                    Value::Bool(_) => "boolean",
+                    Value::Number(_) => "number",
+                    Value::String(_) => "string",
+                    Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
+                        "function"
+                    }
+                    Value::Object(_) | Value::Array(_) => "object",
+                }
+                .to_string(),
+            )),
             UnaryOp::Void => Ok(Value::Undefined),
         }
     }
 
-    fn apply_binary(&mut self, operator: BinaryOp, left: Value, right: Value) -> JsliteResult<Value> {
+    fn apply_binary(
+        &mut self,
+        operator: BinaryOp,
+        left: Value,
+        right: Value,
+    ) -> JsliteResult<Value> {
         match operator {
             BinaryOp::Add => {
                 if matches!(left, Value::String(_)) || matches!(right, Value::String(_)) {
@@ -1899,19 +2074,37 @@ impl Runtime {
                         self.to_string(right)?
                     )))
                 } else {
-                    Ok(Value::Number(self.to_number(left)? + self.to_number(right)?))
+                    Ok(Value::Number(
+                        self.to_number(left)? + self.to_number(right)?,
+                    ))
                 }
             }
-            BinaryOp::Sub => Ok(Value::Number(self.to_number(left)? - self.to_number(right)?)),
-            BinaryOp::Mul => Ok(Value::Number(self.to_number(left)? * self.to_number(right)?)),
-            BinaryOp::Div => Ok(Value::Number(self.to_number(left)? / self.to_number(right)?)),
-            BinaryOp::Rem => Ok(Value::Number(self.to_number(left)? % self.to_number(right)?)),
+            BinaryOp::Sub => Ok(Value::Number(
+                self.to_number(left)? - self.to_number(right)?,
+            )),
+            BinaryOp::Mul => Ok(Value::Number(
+                self.to_number(left)? * self.to_number(right)?,
+            )),
+            BinaryOp::Div => Ok(Value::Number(
+                self.to_number(left)? / self.to_number(right)?,
+            )),
+            BinaryOp::Rem => Ok(Value::Number(
+                self.to_number(left)? % self.to_number(right)?,
+            )),
             BinaryOp::Eq | BinaryOp::StrictEq => Ok(Value::Bool(strict_equal(&left, &right))),
-            BinaryOp::NotEq | BinaryOp::StrictNotEq => Ok(Value::Bool(!strict_equal(&left, &right))),
+            BinaryOp::NotEq | BinaryOp::StrictNotEq => {
+                Ok(Value::Bool(!strict_equal(&left, &right)))
+            }
             BinaryOp::LessThan => Ok(Value::Bool(self.to_number(left)? < self.to_number(right)?)),
-            BinaryOp::LessThanEq => Ok(Value::Bool(self.to_number(left)? <= self.to_number(right)?)),
-            BinaryOp::GreaterThan => Ok(Value::Bool(self.to_number(left)? > self.to_number(right)?)),
-            BinaryOp::GreaterThanEq => Ok(Value::Bool(self.to_number(left)? >= self.to_number(right)?)),
+            BinaryOp::LessThanEq => {
+                Ok(Value::Bool(self.to_number(left)? <= self.to_number(right)?))
+            }
+            BinaryOp::GreaterThan => {
+                Ok(Value::Bool(self.to_number(left)? > self.to_number(right)?))
+            }
+            BinaryOp::GreaterThanEq => {
+                Ok(Value::Bool(self.to_number(left)? >= self.to_number(right)?))
+            }
         }
     }
     fn to_number(&self, value: Value) -> JsliteResult<f64> {
@@ -1932,7 +2125,9 @@ impl Runtime {
             | Value::Closure(_)
             | Value::BuiltinFunction(_)
             | Value::HostFunction(_) => {
-                return Err(JsliteError::runtime("cannot coerce complex value to number"))
+                return Err(JsliteError::runtime(
+                    "cannot coerce complex value to number",
+                ));
             }
         })
     }
@@ -1987,7 +2182,9 @@ impl Runtime {
                 .map(|array| array.elements.clone())
                 .ok_or_else(|| JsliteError::runtime("array missing")),
             Value::Undefined | Value::Null => Ok(Vec::new()),
-            _ => Err(JsliteError::runtime("value is not destructurable as an array")),
+            _ => Err(JsliteError::runtime(
+                "value is not destructurable as an array",
+            )),
         }
     }
 
@@ -2003,7 +2200,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn from_structured(&mut self, value: StructuredValue) -> JsliteResult<Value> {
+    fn value_from_structured(&mut self, value: StructuredValue) -> JsliteResult<Value> {
         Ok(match value {
             StructuredValue::Undefined => Value::Undefined,
             StructuredValue::Null => Value::Null,
@@ -2013,7 +2210,7 @@ impl Runtime {
             StructuredValue::Array(items) => {
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {
-                    values.push(self.from_structured(item)?);
+                    values.push(self.value_from_structured(item)?);
                 }
                 let array = self.arrays.insert(ArrayObject {
                     elements: values,
@@ -2024,7 +2221,7 @@ impl Runtime {
             StructuredValue::Object(object) => {
                 let mut properties = IndexMap::new();
                 for (key, value) in object {
-                    properties.insert(key, self.from_structured(value)?);
+                    properties.insert(key, self.value_from_structured(value)?);
                 }
                 let object = self.objects.insert(PlainObject {
                     properties,
@@ -2035,7 +2232,7 @@ impl Runtime {
         })
     }
 
-    fn into_structured(&self, value: Value) -> JsliteResult<StructuredValue> {
+    fn value_to_structured(&self, value: Value) -> JsliteResult<StructuredValue> {
         Ok(match value {
             Value::Undefined => StructuredValue::Undefined,
             Value::Null => StructuredValue::Null,
@@ -2049,7 +2246,7 @@ impl Runtime {
                     .elements
                     .iter()
                     .cloned()
-                    .map(|value| self.into_structured(value))
+                    .map(|value| self.value_to_structured(value))
                     .collect::<JsliteResult<Vec<_>>>()?,
             ),
             Value::Object(object) => StructuredValue::Object(
@@ -2058,18 +2255,18 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("object missing"))?
                     .properties
                     .iter()
-                    .map(|(key, value)| Ok((key.clone(), self.into_structured(value.clone())?)))
+                    .map(|(key, value)| Ok((key.clone(), self.value_to_structured(value.clone())?)))
                     .collect::<JsliteResult<IndexMap<_, _>>>()?,
             ),
             Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
                 return Err(JsliteError::runtime(
                     "functions cannot cross the structured host boundary",
-                ))
+                ));
             }
         })
     }
 
-    fn from_json(&mut self, value: serde_json::Value) -> JsliteResult<Value> {
+    fn value_from_json(&mut self, value: serde_json::Value) -> JsliteResult<Value> {
         match value {
             serde_json::Value::Null => Ok(Value::Null),
             serde_json::Value::Bool(value) => Ok(Value::Bool(value)),
@@ -2078,7 +2275,7 @@ impl Runtime {
             serde_json::Value::Array(items) => {
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {
-                    values.push(self.from_json(item)?);
+                    values.push(self.value_from_json(item)?);
                 }
                 let array = self.arrays.insert(ArrayObject {
                     elements: values,
@@ -2089,7 +2286,7 @@ impl Runtime {
             serde_json::Value::Object(object) => {
                 let mut properties = IndexMap::new();
                 for (key, value) in object {
-                    properties.insert(key, self.from_json(value)?);
+                    properties.insert(key, self.value_from_json(value)?);
                 }
                 let object = self.objects.insert(PlainObject {
                     properties,
@@ -2195,51 +2392,55 @@ mod tests {
 
     #[test]
     fn runs_arithmetic_and_locals() {
-        let value = run(
-            r#"
+        let value = run(r#"
             const a = 4;
             const b = 3;
             a * b + 2;
-            "#,
+            "#);
+        assert_eq!(
+            value,
+            StructuredValue::Number(StructuredNumber::Finite(14.0))
         );
-        assert_eq!(value, StructuredValue::Number(StructuredNumber::Finite(14.0)));
     }
 
     #[test]
     fn runs_functions_and_closures() {
-        let value = run(
-            r#"
+        let value = run(r#"
             function makeAdder(x) {
               return (y) => x + y;
             }
             const add2 = makeAdder(2);
             add2(5);
-            "#,
+            "#);
+        assert_eq!(
+            value,
+            StructuredValue::Number(StructuredNumber::Finite(7.0))
         );
-        assert_eq!(value, StructuredValue::Number(StructuredNumber::Finite(7.0)));
     }
 
     #[test]
     fn runs_arrays_objects_and_member_access() {
-        let value = run(
-            r#"
+        let value = run(r#"
             const values = [1, 2];
             const record = { total: values[0] + values[1] };
             record.total;
-            "#,
+            "#);
+        assert_eq!(
+            value,
+            StructuredValue::Number(StructuredNumber::Finite(3.0))
         );
-        assert_eq!(value, StructuredValue::Number(StructuredNumber::Finite(3.0)));
     }
 
     #[test]
     fn runs_math_and_json_builtins() {
-        let value = run(
-            r#"
+        let value = run(r#"
             const encoded = JSON.stringify({ value: Math.max(1, 9, 4) });
             JSON.parse(encoded).value;
-            "#,
+            "#);
+        assert_eq!(
+            value,
+            StructuredValue::Number(StructuredNumber::Finite(9.0))
         );
-        assert_eq!(value, StructuredValue::Number(StructuredNumber::Finite(9.0)));
     }
 
     #[test]
@@ -2297,7 +2498,10 @@ mod tests {
 
         match resumed {
             ExecutionStep::Completed(value) => {
-                assert_eq!(value, StructuredValue::Number(StructuredNumber::Finite(42.0)));
+                assert_eq!(
+                    value,
+                    StructuredValue::Number(StructuredNumber::Finite(42.0))
+                );
             }
             other => panic!("expected completion, got {other:?}"),
         }
@@ -2305,7 +2509,8 @@ mod tests {
 
     #[test]
     fn round_trips_program_and_snapshot() {
-        let program = compile("const value = fetch_data(1); value + 2;").expect("compile should succeed");
+        let program =
+            compile("const value = fetch_data(1); value + 2;").expect("compile should succeed");
         let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
         let program_bytes = dump_program(&bytecode).expect("program dump should succeed");
         let loaded_program = load_program(&program_bytes).expect("program load should succeed");
@@ -2324,7 +2529,8 @@ mod tests {
             ExecutionStep::Suspended(suspension) => suspension,
             other => panic!("expected suspension, got {other:?}"),
         };
-        let snapshot_bytes = dump_snapshot(&suspension.snapshot).expect("snapshot dump should succeed");
+        let snapshot_bytes =
+            dump_snapshot(&suspension.snapshot).expect("snapshot dump should succeed");
         let loaded_snapshot = load_snapshot(&snapshot_bytes).expect("snapshot load should succeed");
         let resumed = resume(
             loaded_snapshot,
@@ -2333,7 +2539,10 @@ mod tests {
         .expect("resume should succeed");
         match resumed {
             ExecutionStep::Completed(value) => {
-                assert_eq!(value, StructuredValue::Number(StructuredNumber::Finite(3.0)));
+                assert_eq!(
+                    value,
+                    StructuredValue::Number(StructuredNumber::Finite(3.0))
+                );
             }
             other => panic!("expected completion, got {other:?}"),
         }

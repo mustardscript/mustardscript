@@ -1,0 +1,1 @@
+Validation: free reference to forbidden ambient global `eval` [0..4]

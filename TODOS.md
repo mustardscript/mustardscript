@@ -43,129 +43,129 @@ These decisions are closed unless a later ADR explicitly changes them:
 
 Create and maintain these docs early:
 
-- [ ] `docs/SECURITY_MODEL.md`
-- [ ] `docs/LANGUAGE.md`
-- [ ] `docs/HOST_API.md`
-- [ ] `docs/SERIALIZATION.md`
-- [ ] `docs/LIMITS.md`
-- [ ] `docs/ADRs/` for irreversible decisions
+- [x] `docs/SECURITY_MODEL.md`
+- [x] `docs/LANGUAGE.md`
+- [x] `docs/HOST_API.md`
+- [x] `docs/SERIALIZATION.md`
+- [x] `docs/LIMITS.md`
+- [x] `docs/ADRs/` for irreversible decisions
 
 Minimum content:
 
 ### `SECURITY_MODEL.md`
 
-- [ ] Define threat assumptions
-- [ ] Define what addon mode does and does not guarantee
-- [ ] Define what sidecar mode improves
-- [ ] Define what requires host-managed OS sandboxing
-- [ ] Define which failures are considered security issues
+- [x] Define threat assumptions
+- [x] Define what addon mode does and does not guarantee
+- [x] Define what sidecar mode improves
+- [x] Define what requires host-managed OS sandboxing
+- [x] Define which failures are considered security issues
 
 ### `LANGUAGE.md`
 
-- [ ] Define the supported syntax matrix
-- [ ] Define supported runtime semantics
-- [ ] Define forbidden forms and their diagnostics
-- [ ] Define built-ins and global names
-- [ ] Define semantic deferrals such as prototypes, descriptors, iterators, and
+- [x] Define the supported syntax matrix
+- [x] Define supported runtime semantics
+- [x] Define forbidden forms and their diagnostics
+- [x] Define built-ins and global names
+- [x] Define semantic deferrals such as prototypes, descriptors, iterators, and
   `this`
 
 ### `HOST_API.md`
 
-- [ ] Define the structured host value contract
-- [ ] Define sync and async capability calls
-- [ ] Define host error sanitization
-- [ ] Define console or print behavior
-- [ ] Define reentrancy rules
-- [ ] Define cancellation and abort propagation
+- [x] Define the structured host value contract
+- [x] Define sync and async capability calls
+- [x] Define host error sanitization
+- [x] Define console or print behavior
+- [x] Define reentrancy rules
+- [x] Define cancellation and abort propagation
 
 ### `SERIALIZATION.md`
 
-- [ ] Define compiled-program format goals
-- [ ] Define snapshot safety rules
-- [ ] Define versioning and validation requirements
-- [ ] Define how non-JSON values are tagged and preserved
-- [ ] Define what may never be serialized
+- [x] Define compiled-program format goals
+- [x] Define snapshot safety rules
+- [x] Define versioning and validation requirements
+- [x] Define how non-JSON values are tagged and preserved
+- [x] Define what may never be serialized
 
 ### `LIMITS.md`
 
-- [ ] Define instruction budgeting
-- [ ] Define heap accounting and limits
-- [ ] Define call-depth limits
-- [ ] Define outstanding-host-call limits
-- [ ] Define cancellation semantics
-- [ ] Define default public limits
+- [x] Define instruction budgeting
+- [x] Define heap accounting and limits
+- [x] Define call-depth limits
+- [x] Define outstanding-host-call limits
+- [x] Define cancellation semantics
+- [x] Define default public limits
 
 Exit criteria:
 
-- [ ] Each doc exists with concrete decisions, not placeholders
-- [ ] The docs are internally consistent with `README.md`
-- [ ] The docs are referenced from the repository root
+- [x] Each doc exists with concrete decisions, not placeholders
+- [x] The docs are internally consistent with `README.md`
+- [x] The docs are referenced from the repository root
 
 ## Phase 0: Repository Bootstrap
 
-- [ ] Create repository layout
-- [ ] Add Rust workspace with `crates/jslite`, `crates/jslite-node`, and
+- [x] Create repository layout
+- [x] Add Rust workspace with `crates/jslite`, `crates/jslite-node`, and
   `crates/jslite-sidecar`
-- [ ] Add minimal Node package wrapper for the addon
-- [ ] Add Rust unit and integration test harnesses
-- [ ] Add Node integration and end-to-end test harnesses
-- [ ] Add golden-file helpers for diagnostics, IR, and bytecode snapshots
-- [ ] Configure formatting, linting, and CI
+- [x] Add minimal Node package wrapper for the addon
+- [x] Add Rust unit and integration test harnesses
+- [x] Add Node integration and end-to-end test harnesses
+- [x] Add golden-file helpers for diagnostics, IR, and bytecode snapshots
+- [x] Configure formatting, linting, and CI
 - [ ] Add Linux, macOS, and Windows build coverage
-- [ ] Add Node.js target coverage in CI
-- [ ] Add minimal smoke test that loads the addon from Node
-- [ ] Add minimal end-to-end smoke test that compiles and runs guest code
-- [ ] Write contribution, security, and disclosure guidance
-- [ ] Document source-build-only installation first
-- [ ] Link the core sandbox invariant from the root docs
+- [x] Add Node.js target coverage in CI
+- [x] Add minimal smoke test that loads the addon from Node
+- [x] Add minimal end-to-end smoke test that compiles and runs guest code
+- [x] Write contribution, security, and disclosure guidance
+- [x] Document source-build-only installation first
+- [x] Link the core sandbox invariant from the root docs
 
 Exit criteria:
 
-- [ ] Workspace builds cleanly
-- [ ] Rust and Node test harnesses both run in CI
-- [ ] Addon loads successfully in CI
-- [ ] End-to-end smoke test passes in CI
-- [ ] Baseline docs and contributor guidance exist
+- [x] Workspace builds cleanly
+- [x] Rust and Node test harnesses both run in CI
+- [x] Addon loads successfully in CI
+- [x] End-to-end smoke test passes in CI
+- [x] Baseline docs and contributor guidance exist
 
 ## Phase 1: Parsing, Validation, and Diagnostics
 
-- [ ] Integrate `oxc` for JavaScript parsing
-- [ ] Decide whether `jslite` accepts scripts only or a tightly defined script
+- [x] Integrate `oxc` for JavaScript parsing
+- [x] Decide whether `jslite` accepts scripts only or a tightly defined script
   subset with module syntax rejected
-- [ ] Define and publish the supported-syntax matrix for v1
-- [ ] Implement a validation pass after parsing
-- [ ] Reject `import`, `export`, and dynamic `import()`
-- [ ] Reject `eval` and `Function` constructor use
-- [ ] Define how unresolved free references to forbidden ambient globals are
+- [x] Define and publish the supported-syntax matrix for v1
+- [x] Implement a validation pass after parsing
+- [x] Reject `import`, `export`, and dynamic `import()`
+- [x] Reject `eval` and `Function` constructor use
+- [x] Define how unresolved free references to forbidden ambient globals are
   diagnosed
 - [ ] Preserve source spans for errors and tracebacks
-- [ ] Define the internal IR data model
-- [ ] Lower parser AST to IR
-- [ ] Add parser acceptance tests for the supported subset
-- [ ] Add rejection tests for unsupported syntax and forbidden forms
-- [ ] Add diagnostics snapshot tests with source spans
-- [ ] Add golden tests for representative IR output
+- [x] Define the internal IR data model
+- [x] Lower parser AST to IR
+- [x] Add parser acceptance tests for the supported subset
+- [x] Add rejection tests for unsupported syntax and forbidden forms
+- [x] Add diagnostics snapshot tests with source spans
+- [x] Add golden tests for representative IR output
 
 Exit criteria:
 
-- [ ] Supported input parses and validates
-- [ ] Unsupported input fails with clear diagnostics
-- [ ] IR lowering is stable enough to build execution on top
-- [ ] Parser, validation, diagnostics, and IR tests pass
+- [x] Supported input parses and validates
+- [x] Unsupported input fails with clear diagnostics
+- [x] IR lowering is stable enough to build execution on top
+- [x] Parser, validation, diagnostics, and IR tests pass
 
 ## Phase 2: Minimal VM With Limits From Day One
 
-- [ ] Design the bytecode format
+- [x] Design the bytecode format
 - [ ] Document frame layout and operand model
 - [ ] Implement bytecode validation
-- [ ] Implement constant loading
-- [ ] Implement local variable access
-- [ ] Implement arithmetic and comparison operations
-- [ ] Implement branching and jumps
-- [ ] Implement function calls and returns
-- [ ] Implement lexical scope and closures
-- [ ] Add a run-to-completion execution path
-- [ ] Add instruction-budget accounting
+- [x] Implement constant loading
+- [x] Implement local variable access
+- [x] Implement arithmetic and comparison operations
+- [x] Implement branching and jumps
+- [x] Implement function calls and returns
+- [x] Implement lexical scope and closures
+- [x] Add a run-to-completion execution path
+- [x] Add instruction-budget accounting
 - [ ] Add cancellation checks at defined execution points
 - [ ] Add tracebacks with guest source locations
 - [ ] Add unit tests for bytecode decoding and instruction behavior
@@ -184,21 +184,21 @@ Exit criteria:
 
 - [ ] Define `JsValue`
 - [ ] Define rooting and handle rules
-- [ ] Implement heap allocation for strings, arrays, objects, and functions
-- [ ] Start with a centralized plain-object and array semantic layer
-- [ ] Choose an initial object storage strategy that optimizes for correctness
+- [x] Implement heap allocation for strings, arrays, objects, and functions
+- [x] Start with a centralized plain-object and array semantic layer
+- [x] Choose an initial object storage strategy that optimizes for correctness
   first
 - [ ] If shapes are used, document them as an optimization layer rather than a
   semantic dependency
 - [ ] Define enumeration order for supported cases
-- [ ] Implement property get and set semantics for supported cases
+- [x] Implement property get and set semantics for supported cases
 - [ ] Decide whether property deletion is supported in v1 and document it
-- [ ] Implement array behavior for supported cases
-- [ ] Implement `Object`, `Array`, `Math`, and `JSON`
+- [x] Implement array behavior for supported cases
+- [x] Implement `Object`, `Array`, `Math`, and `JSON`
 - [ ] Add heap accounting hooks
 - [ ] Implement a non-moving mark-sweep collector
 - [ ] Define and test the GC root set
-- [ ] Add object, array, and built-in behavior tests
+- [x] Add object, array, and built-in behavior tests
 - [ ] Add GC stress tests
 
 Exit criteria:
@@ -230,33 +230,33 @@ Exit criteria:
 
 ## Phase 5: Host Capabilities and Suspension
 
-- [ ] Design capability registration in the core runtime
-- [ ] Define the structured host value contract precisely
-- [ ] Decide how numbers such as `NaN`, `Infinity`, and `-0` cross the boundary
-- [ ] Implement argument conversion from guest to host
-- [ ] Implement result conversion from host to guest
-- [ ] Reject disallowed values with clear guest-safe errors
-- [ ] Implement named capability lookup
-- [ ] Implement sync host calls
-- [ ] Implement async host calls that suspend guest execution
-- [ ] Sanitize host-thrown or rejected errors into guest-safe errors with
+- [x] Design capability registration in the core runtime
+- [x] Define the structured host value contract precisely
+- [x] Decide how numbers such as `NaN`, `Infinity`, and `-0` cross the boundary
+- [x] Implement argument conversion from guest to host
+- [x] Implement result conversion from host to guest
+- [x] Reject disallowed values with clear guest-safe errors
+- [x] Implement named capability lookup
+- [x] Implement sync host calls
+- [x] Implement async host calls that suspend guest execution
+- [x] Sanitize host-thrown or rejected errors into guest-safe errors with
   `name`, `message`, `code`, and `details`
 - [ ] Define and implement non-reentrant execution rules
-- [ ] Implement suspension objects for iterative execution
-- [ ] Implement `start()` and `resume()` flow
+- [x] Implement suspension objects for iterative execution
+- [x] Implement `start()` and `resume()` flow
 - [ ] Implement deterministic console or print callback support
-- [ ] Add conversion tests for accepted and rejected values
-- [ ] Add suspension and resume integration tests
-- [ ] Add host error mapping tests
+- [x] Add conversion tests for accepted and rejected values
+- [x] Add suspension and resume integration tests
+- [x] Add host error mapping tests
 - [ ] Add deterministic console callback tests
 
 Exit criteria:
 
-- [ ] Host functions can be called explicitly and safely
-- [ ] Disallowed boundary values fail clearly
-- [ ] Iterative execution works end to end
-- [ ] Non-reentrant behavior is enforced or clearly documented
-- [ ] Capability, suspension, and error-mapping tests pass
+- [x] Host functions can be called explicitly and safely
+- [x] Disallowed boundary values fail clearly
+- [x] Iterative execution works end to end
+- [x] Non-reentrant behavior is enforced or clearly documented
+- [x] Capability, suspension, and error-mapping tests pass
 
 ## Phase 6: Async Runtime and Promise Semantics
 
@@ -285,20 +285,20 @@ Exit criteria:
 
 ## Phase 7: Serialization and Safe Snapshotting
 
-- [ ] Serialize compiled programs
-- [ ] Implement explicit versioning for serialized formats
+- [x] Serialize compiled programs
+- [x] Implement explicit versioning for serialized formats
 - [ ] Validate serialized inputs before load
 - [ ] Reject cross-version loads explicitly
-- [ ] Define a tagged encoding for values that plain JSON cannot preserve
-- [ ] Serialize execution snapshots at safe suspension points only
-- [ ] Define what suspended external work looks like in a snapshot
-- [ ] Represent pending host work through continuation tokens or equivalent
+- [x] Define a tagged encoding for values that plain JSON cannot preserve
+- [x] Serialize execution snapshots at safe suspension points only
+- [x] Define what suspended external work looks like in a snapshot
+- [x] Represent pending host work through continuation tokens or equivalent
   resumable metadata
 - [ ] Ensure opaque host futures are never serialized
-- [ ] Implement load and restore APIs
-- [ ] Add round-trip fixtures for compiled programs and snapshots
+- [x] Implement load and restore APIs
+- [x] Add round-trip fixtures for compiled programs and snapshots
 - [ ] Add corruption and invalid-input tests
-- [ ] Add cross-process resume tests
+- [x] Add cross-process resume tests
 
 Exit criteria:
 
@@ -309,17 +309,17 @@ Exit criteria:
 
 ## Phase 8: Sidecar Protocol and Isolation
 
-- [ ] Define the sidecar protocol
-- [ ] Define structured request and response messages
-- [ ] Decide whether the transport is stdio, sockets, or both
-- [ ] Build a separate-process runner around the core runtime
-- [ ] Support compiled-program loading in sidecar mode
-- [ ] Support snapshot resume in sidecar mode
+- [x] Define the sidecar protocol
+- [x] Define structured request and response messages
+- [x] Decide whether the transport is stdio, sockets, or both
+- [x] Build a separate-process runner around the core runtime
+- [x] Support compiled-program loading in sidecar mode
+- [x] Support snapshot resume in sidecar mode
 - [ ] Define lifecycle, shutdown, and termination behavior
 - [ ] Define kill semantics for stuck or over-budget executions
 - [ ] Decide how host capabilities are proxied across the sidecar boundary
-- [ ] Document how sidecar mode interacts with OS-level sandboxing
-- [ ] Add sidecar protocol and compatibility tests
+- [x] Document how sidecar mode interacts with OS-level sandboxing
+- [x] Add sidecar protocol and compatibility tests
 - [ ] Add crash-containment and forceful-termination tests
 
 Exit criteria:
@@ -331,21 +331,21 @@ Exit criteria:
 
 ## Phase 9: Node Binding and Packaging
 
-- [ ] Build the `napi-rs` binding layer
-- [ ] Design the high-level Node API around the core contract
-- [ ] Keep `run()` async while preserving explicit `start()` and `resume()`
-- [ ] Implement input handling
-- [ ] Implement capability registration in the Node wrapper
+- [x] Build the `napi-rs` binding layer
+- [x] Design the high-level Node API around the core contract
+- [x] Keep `run()` async while preserving explicit `start()` and `resume()`
+- [x] Implement input handling
+- [x] Implement capability registration in the Node wrapper
 - [ ] Implement error conversion for syntax, runtime, resource, and snapshot
   errors
-- [ ] Implement program dump/load APIs
+- [x] Implement program dump/load APIs
 - [ ] Implement snapshot dump/load APIs
 - [ ] Add TypeScript declarations
 - [ ] Add TypeScript type tests for the public API
-- [ ] Add Node integration tests
+- [x] Add Node integration tests
 - [ ] Add packaging smoke tests for source builds on supported platforms
 - [ ] Add example usage for agent-style execution
-- [ ] Defer prebuilt binaries until the package shape is stable
+- [x] Defer prebuilt binaries until the package shape is stable
 
 Exit criteria:
 
@@ -421,36 +421,35 @@ Exit criteria:
 This should prove the architecture end to end without overpromising security or
 language breadth.
 
-- [ ] Parse source
-- [ ] Validate supported and forbidden forms
-- [ ] Lower to IR
-- [ ] Compile to bytecode
-- [ ] Execute arithmetic, locals, functions, and closures
-- [ ] Execute plain arrays and plain objects for supported cases
-- [ ] Support one named host capability
-- [ ] Support suspension with `start()` and `resume()`
-- [ ] Enforce an instruction budget
-- [ ] Expose the runtime through the Node addon
-- [ ] Add end-to-end tests that cover parse through resume
+- [x] Parse source
+- [x] Validate supported and forbidden forms
+- [x] Lower to IR
+- [x] Compile to bytecode
+- [x] Execute arithmetic, locals, functions, and closures
+- [x] Execute plain arrays and plain objects for supported cases
+- [x] Support one named host capability
+- [x] Support suspension with `start()` and `resume()`
+- [x] Enforce an instruction budget
+- [x] Expose the runtime through the Node addon
+- [x] Add end-to-end tests that cover parse through resume
 
 Definition of done:
 
-- [ ] A Node script can compile a program
-- [ ] A supported guest program can run to completion
-- [ ] A guest program can suspend on a host call and resume with a result
-- [ ] Over-budget execution fails predictably
-- [ ] Milestone tests pass
+- [x] A Node script can compile a program
+- [x] A supported guest program can run to completion
+- [x] A guest program can suspend on a host call and resume with a result
+- [x] Over-budget execution fails predictably
+- [x] Milestone tests pass
 
 ## Production-Readiness Gate
 
 Before claiming the project is ready for untrusted guest workloads:
 
-- [ ] Sidecar mode exists and is tested
-- [ ] Security model is published
-- [ ] Limits are enabled by default
+- [x] Sidecar mode exists and is tested
+- [x] Security model is published
+- [x] Limits are enabled by default
 - [ ] Serialization validation is enabled
-- [ ] Host errors are sanitized
+- [x] Host errors are sanitized
 - [ ] Guest diagnostics do not leak host internals
 - [ ] Kill and cancellation behavior are documented and tested
-- [ ] Supported subset and unsupported subset are both explicit
-
+- [x] Supported subset and unsupported subset are both explicit

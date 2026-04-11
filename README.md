@@ -23,6 +23,51 @@ decision:
    such as process limits, sandboxing, containers, or platform-native jail
    mechanisms.
 
+## Current Baseline
+
+The current implementation already supports:
+
+- parse -> validate -> IR -> bytecode -> VM execution for a synchronous subset
+- `let`/`const`, functions and closures, arrays, plain objects, loops, and
+  basic control flow
+- `Math` and `JSON` built-ins
+- explicit named host capabilities with `start()` / `resume()` suspension
+- same-version compiled-program and suspension snapshot round trips
+- a thin Node addon wrapper and a sidecar process that reuse the same Rust core
+
+The current implementation does **not** yet execute:
+
+- `throw`, `try`, `catch`, or `finally`
+- `async` functions or `await`
+- deterministic console callbacks
+- cancellation, heap limits, call-depth limits, or outstanding-host-call limits
+- deep bytecode or snapshot structural validation beyond decode and version
+  checks
+
+## Reference Docs
+
+- [Security Model](docs/SECURITY_MODEL.md)
+- [Language Contract](docs/LANGUAGE.md)
+- [Host API](docs/HOST_API.md)
+- [Serialization](docs/SERIALIZATION.md)
+- [Limits](docs/LIMITS.md)
+- [Architecture ADRs](docs/ADRs/0001-core-architecture.md)
+
+## Installation
+
+`jslite` should currently be treated as a source-build-only package.
+
+From a clean checkout:
+
+```sh
+npm install
+npm test
+```
+
+That flow builds the Rust addon locally and then runs the Node integration
+tests. Prebuilt binaries are intentionally deferred until the package shape is
+stable.
+
 ## Project Goals
 
 `jslite` should provide:
@@ -190,7 +235,7 @@ JavaScript.
 - Unsupported features fail with explicit diagnostics
 - Diagnostics and tracebacks must not leak host paths or host internals
 
-### Supported in v1
+### Current Implemented Baseline
 
 - Numbers, booleans, strings, `null`, and `undefined`
 - Arrays and plain objects
@@ -198,15 +243,18 @@ JavaScript.
 - Functions and closures
 - Arrow functions
 - `if`, `switch`, loops, `break`, and `continue`
-- `try`, `catch`, `finally`, and `throw`
 - Common-case destructuring
 - Template literals
-- Optional chaining and nullish coalescing if lowering cost stays reasonable
+- Optional chaining and nullish coalescing
 - Host capability calls
-- Deterministic console or print output through an explicit host hook
 - Suspension and resume at host boundaries
 - Snapshotting at safe suspension points
-- `async` functions and `await` once the async runtime lands
+
+### Parsed But Not Yet Executable
+
+- `throw`
+- `try`, `catch`, and `finally`
+- `async` functions and `await`
 
 ### Explicitly Out of Scope for v1
 
@@ -250,7 +298,7 @@ JavaScript and should be treated as such.
 
 The initial built-in surface should be conservative and explicit.
 
-Planned v1 built-ins:
+Currently implemented built-ins:
 
 - `globalThis`
 - `Object`
@@ -260,8 +308,7 @@ Planned v1 built-ins:
 - `Boolean`
 - `Math`
 - `JSON`
-- Standard `Error` types
-- A minimal deterministic `console`
+- A placeholder `console` global object
 
 `Promise` should be considered part of the async milestone, not a separate early
 promise of compatibility before the internal async runtime exists.
@@ -550,4 +597,3 @@ together provide:
 The finished project should feel small, opinionated, and predictable. It should
 optimize for sandboxed execution of constrained JavaScript, not for language
 maximalism.
-

@@ -1,0 +1,283 @@
+{
+  "span": {
+    "start": 0,
+    "end": 134
+  },
+  "body": [
+    {
+      "VariableDecl": {
+        "span": {
+          "start": 1,
+          "end": 113
+        },
+        "kind": "Const",
+        "declarators": [
+          {
+            "span": {
+              "start": 7,
+              "end": 112
+            },
+            "pattern": {
+              "Identifier": {
+                "span": {
+                  "start": 7,
+                  "end": 16
+                },
+                "name": "makeTotal"
+              }
+            },
+            "initializer": {
+              "Function": {
+                "span": {
+                  "start": 19,
+                  "end": 112
+                },
+                "name": null,
+                "params": [
+                  {
+                    "Identifier": {
+                      "span": {
+                        "start": 20,
+                        "end": 24
+                      },
+                      "name": "left"
+                    }
+                  },
+                  {
+                    "Default": {
+                      "span": {
+                        "start": 26,
+                        "end": 35
+                      },
+                      "target": {
+                        "Identifier": {
+                          "span": {
+                            "start": 26,
+                            "end": 31
+                          },
+                          "name": "right"
+                        }
+                      },
+                      "default_value": {
+                        "Number": {
+                          "span": {
+                            "start": 34,
+                            "end": 35
+                          },
+                          "value": 1.0
+                        }
+                      }
+                    }
+                  }
+                ],
+                "body": [
+                  {
+                    "VariableDecl": {
+                      "span": {
+                        "start": 44,
+                        "end": 71
+                      },
+                      "kind": "Const",
+                      "declarators": [
+                        {
+                          "span": {
+                            "start": 50,
+                            "end": 70
+                          },
+                          "pattern": {
+                            "Identifier": {
+                              "span": {
+                                "start": 50,
+                                "end": 54
+                              },
+                              "name": "pair"
+                            }
+                          },
+                          "initializer": {
+                            "Array": {
+                              "span": {
+                                "start": 57,
+                                "end": 70
+                              },
+                              "elements": [
+                                {
+                                  "Identifier": {
+                                    "span": {
+                                      "start": 58,
+                                      "end": 62
+                                    },
+                                    "name": "left"
+                                  }
+                                },
+                                {
+                                  "Identifier": {
+                                    "span": {
+                                      "start": 64,
+                                      "end": 69
+                                    },
+                                    "name": "right"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "Return": {
+                      "span": {
+                        "start": 74,
+                        "end": 110
+                      },
+                      "value": {
+                        "Object": {
+                          "span": {
+                            "start": 81,
+                            "end": 109
+                          },
+                          "properties": [
+                            {
+                              "span": {
+                                "start": 83,
+                                "end": 107
+                              },
+                              "key": {
+                                "Identifier": "total"
+                              },
+                              "value": {
+                                "Binary": {
+                                  "span": {
+                                    "start": 90,
+                                    "end": 107
+                                  },
+                                  "operator": "Add",
+                                  "left": {
+                                    "Member": {
+                                      "span": {
+                                        "start": 90,
+                                        "end": 97
+                                      },
+                                      "object": {
+                                        "Identifier": {
+                                          "span": {
+                                            "start": 90,
+                                            "end": 94
+                                          },
+                                          "name": "pair"
+                                        }
+                                      },
+                                      "property": {
+                                        "Computed": {
+                                          "Number": {
+                                            "span": {
+                                              "start": 95,
+                                              "end": 96
+                                            },
+                                            "value": 0.0
+                                          }
+                                        }
+                                      },
+                                      "optional": false
+                                    }
+                                  },
+                                  "right": {
+                                    "Member": {
+                                      "span": {
+                                        "start": 100,
+                                        "end": 107
+                                      },
+                                      "object": {
+                                        "Identifier": {
+                                          "span": {
+                                            "start": 100,
+                                            "end": 104
+                                          },
+                                          "name": "pair"
+                                        }
+                                      },
+                                      "property": {
+                                        "Computed": {
+                                          "Number": {
+                                            "span": {
+                                              "start": 105,
+                                              "end": 106
+                                            },
+                                            "value": 1.0
+                                          }
+                                        }
+                                      },
+                                      "optional": false
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ],
+                "is_async": false,
+                "is_arrow": true
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "Expression": {
+        "span": {
+          "start": 114,
+          "end": 133
+        },
+        "expression": {
+          "Member": {
+            "span": {
+              "start": 114,
+              "end": 132
+            },
+            "object": {
+              "Call": {
+                "span": {
+                  "start": 114,
+                  "end": 126
+                },
+                "callee": {
+                  "Identifier": {
+                    "span": {
+                      "start": 114,
+                      "end": 123
+                    },
+                    "name": "makeTotal"
+                  }
+                },
+                "arguments": [
+                  {
+                    "Number": {
+                      "span": {
+                        "start": 124,
+                        "end": 125
+                      },
+                      "value": 2.0
+                    }
+                  }
+                ],
+                "optional": false
+              }
+            },
+            "property": {
+              "Static": {
+                "Identifier": "total"
+              }
+            },
+            "optional": false
+          }
+        }
+      }
+    }
+  ]
+}
