@@ -41,6 +41,7 @@
     "test:conformance": "npm run test:differential && npm run test:test262",
     "test:differential": "node --test tests/node/differential.test.js tests/node/coverage-audit.test.js",
     "test:node": "node --test tests/node/**/*.test.js",
+    "test:use-cases": "node scripts/audit-use-cases.js",
     "test:package-smoke": "node --test tests/package-smoke.test.js",
     "test:test262": "node --test tests/test262/**/*.test.js",
     "test:types": "tsc --noEmit -p tsconfig.typecheck.json",

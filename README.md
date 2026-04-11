@@ -58,6 +58,7 @@ The current implementation already supports:
 
 - [Security Threat Model](SECURITY_THREAT_MODEL.md)
 - [Security Model](docs/SECURITY_MODEL.md)
+- [Use Case Gaps](USE_CASE_GAPS.md)
 - [Language Contract](docs/LANGUAGE.md)
 - [Host API](docs/HOST_API.md)
 - [Serialization](docs/SERIALIZATION.md)
@@ -99,6 +100,9 @@ verification flow end to end.
 See [examples/agent-style.js](examples/agent-style.js) for a minimal host loop
 that starts guest execution, persists a suspended `Progress`, reloads it, and
 resumes with a host result.
+
+For more realistic guest programs shaped like programmatic tool-calling
+workloads, see [examples/programmatic-tool-calls](examples/programmatic-tool-calls).
 
 ## Primary Use Cases
 
