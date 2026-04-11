@@ -51,6 +51,7 @@ The current implementation does **not** yet execute:
 - [Host API](docs/HOST_API.md)
 - [Serialization](docs/SERIALIZATION.md)
 - [Limits](docs/LIMITS.md)
+- [Bytecode VM Model](docs/BYTECODE.md)
 - [Architecture ADRs](docs/ADRs/0001-core-architecture.md)
 
 ## Installation

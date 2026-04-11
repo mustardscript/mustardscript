@@ -27,8 +27,10 @@ the safety rules they are expected to follow.
 
 - The current loader validates the outer format by decoding the tagged payload
   and checking the serialized version.
-- Deeper structural bytecode validation is a planned follow-up and is not
-  implemented yet.
+- Compiled-program loads validate root function ids, closure targets, jump
+  targets, and stack/scope discipline before execution.
+- Snapshot loads also validate live frame pointers and referenced runtime
+  objects before restore.
 - Opaque host references, native handles, and host futures are never
   serialized.
 - Snapshots are only created at explicit suspension points.

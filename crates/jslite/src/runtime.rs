@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -146,10 +146,12 @@ pub enum Instruction {
 pub fn lower_to_bytecode(program: &CompiledProgram) -> JsliteResult<BytecodeProgram> {
     let mut compiler = Compiler::default();
     let root = compiler.compile_root(&program.script.body, program.script.span)?;
-    Ok(BytecodeProgram {
+    let program = BytecodeProgram {
         functions: compiler.functions,
         root,
-    })
+    };
+    validate_bytecode_program(&program)?;
+    Ok(program)
 }
 
 pub fn execute(
@@ -174,6 +176,7 @@ pub fn start_bytecode(
     program: &BytecodeProgram,
     options: ExecutionOptions,
 ) -> JsliteResult<ExecutionStep> {
+    validate_bytecode_program(program)?;
     let mut runtime = Runtime::new(program.clone(), options)?;
     runtime.run_root()
 }
@@ -212,6 +215,7 @@ pub fn load_program(bytes: &[u8]) -> JsliteResult<BytecodeProgram> {
             span: None,
         });
     }
+    validate_bytecode_program(&decoded.program)?;
     Ok(decoded.program)
 }
 
@@ -244,6 +248,7 @@ pub fn load_snapshot(bytes: &[u8]) -> JsliteResult<ExecutionSnapshot> {
             span: None,
         });
     }
+    validate_snapshot(&decoded.snapshot)?;
     Ok(decoded.snapshot)
 }
 
@@ -259,6 +264,457 @@ struct SerializedSnapshot {
     snapshot: ExecutionSnapshot,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ValidationState {
+    stack_depth: usize,
+    scope_depth: usize,
+}
+
+fn validate_bytecode_program(program: &BytecodeProgram) -> JsliteResult<()> {
+    if program.functions.is_empty() {
+        return Err(JsliteError::validation(
+            "bytecode validation failed: program defines no functions",
+            None,
+        ));
+    }
+    if program.root >= program.functions.len() {
+        return Err(JsliteError::validation(
+            format!(
+                "bytecode validation failed: root function {} is out of range for {} functions",
+                program.root,
+                program.functions.len()
+            ),
+            None,
+        ));
+    }
+    for (function_id, function) in program.functions.iter().enumerate() {
+        validate_function(program, function_id, function)?;
+    }
+    Ok(())
+}
+
+fn validate_function(
+    program: &BytecodeProgram,
+    function_id: usize,
+    function: &FunctionPrototype,
+) -> JsliteResult<()> {
+    if function.code.is_empty() {
+        return Err(JsliteError::validation(
+            format!("bytecode validation failed: function {function_id} has no instructions"),
+            None,
+        ));
+    }
+    if !matches!(function.code.last(), Some(Instruction::Return)) {
+        return Err(JsliteError::validation(
+            format!("bytecode validation failed: function {function_id} does not end in Return"),
+            None,
+        ));
+    }
+
+    let code_len = function.code.len();
+    for (ip, instruction) in function.code.iter().enumerate() {
+        match instruction {
+            Instruction::MakeClosure {
+                function_id: target,
+            } if *target >= program.functions.len() => {
+                return Err(JsliteError::validation(
+                    format!(
+                        "bytecode validation failed: function {function_id} instruction {ip} references missing closure target {target}"
+                    ),
+                    None,
+                ));
+            }
+            Instruction::Jump(target)
+            | Instruction::JumpIfFalse(target)
+            | Instruction::JumpIfTrue(target)
+            | Instruction::JumpIfNullish(target)
+                if *target >= code_len =>
+            {
+                return Err(JsliteError::validation(
+                    format!(
+                        "bytecode validation failed: function {function_id} instruction {ip} jumps to invalid target {target}"
+                    ),
+                    None,
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    let mut states = vec![None; code_len];
+    let mut work = VecDeque::from([(
+        0usize,
+        ValidationState {
+            stack_depth: 0,
+            scope_depth: 0,
+        },
+    )]);
+    while let Some((ip, state)) = work.pop_front() {
+        if let Some(existing) = states[ip] {
+            if existing != state {
+                return Err(JsliteError::validation(
+                    format!(
+                        "bytecode validation failed: function {function_id} instruction {ip} has inconsistent stack or scope depth"
+                    ),
+                    None,
+                ));
+            }
+            continue;
+        }
+        states[ip] = Some(state);
+
+        let instruction = &function.code[ip];
+        let next_state = apply_validation_effect(function_id, ip, instruction, state)?;
+        for successor in validation_successors(ip, instruction, code_len) {
+            work.push_back((successor, next_state));
+        }
+    }
+
+    Ok(())
+}
+
+fn apply_validation_effect(
+    function_id: usize,
+    ip: usize,
+    instruction: &Instruction,
+    state: ValidationState,
+) -> JsliteResult<ValidationState> {
+    let require_stack = |count: usize| -> JsliteResult<()> {
+        if state.stack_depth < count {
+            return Err(JsliteError::validation(
+                format!(
+                    "bytecode validation failed: function {function_id} instruction {ip} requires stack depth {count}, found {}",
+                    state.stack_depth
+                ),
+                None,
+            ));
+        }
+        Ok(())
+    };
+
+    let next = match instruction {
+        Instruction::PushUndefined
+        | Instruction::PushNull
+        | Instruction::PushBool(_)
+        | Instruction::PushNumber(_)
+        | Instruction::PushString(_)
+        | Instruction::LoadName(_)
+        | Instruction::MakeClosure { .. } => ValidationState {
+            stack_depth: state.stack_depth + 1,
+            ..state
+        },
+        Instruction::StoreName(_) => {
+            require_stack(1)?;
+            state
+        }
+        Instruction::InitializePattern(_) | Instruction::Pop => {
+            require_stack(1)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                ..state
+            }
+        }
+        Instruction::PushEnv => ValidationState {
+            scope_depth: state.scope_depth + 1,
+            ..state
+        },
+        Instruction::PopEnv => {
+            if state.scope_depth == 0 {
+                return Err(JsliteError::validation(
+                    format!(
+                        "bytecode validation failed: function {function_id} instruction {ip} pops an empty scope stack"
+                    ),
+                    None,
+                ));
+            }
+            ValidationState {
+                scope_depth: state.scope_depth - 1,
+                ..state
+            }
+        }
+        Instruction::DeclareName { .. } => state,
+        Instruction::MakeArray { count } => {
+            require_stack(*count)?;
+            ValidationState {
+                stack_depth: state.stack_depth - count + 1,
+                ..state
+            }
+        }
+        Instruction::MakeObject { keys } => {
+            require_stack(keys.len())?;
+            ValidationState {
+                stack_depth: state.stack_depth - keys.len() + 1,
+                ..state
+            }
+        }
+        Instruction::GetPropStatic { .. } => {
+            require_stack(1)?;
+            state
+        }
+        Instruction::GetPropComputed { .. } => {
+            require_stack(2)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                ..state
+            }
+        }
+        Instruction::SetPropStatic { .. } => {
+            require_stack(2)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                ..state
+            }
+        }
+        Instruction::SetPropComputed => {
+            require_stack(3)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 2,
+                ..state
+            }
+        }
+        Instruction::Unary(_) => {
+            require_stack(1)?;
+            state
+        }
+        Instruction::Binary(_) => {
+            require_stack(2)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                ..state
+            }
+        }
+        Instruction::Dup => {
+            require_stack(1)?;
+            ValidationState {
+                stack_depth: state.stack_depth + 1,
+                ..state
+            }
+        }
+        Instruction::Dup2 => {
+            require_stack(2)?;
+            ValidationState {
+                stack_depth: state.stack_depth + 2,
+                ..state
+            }
+        }
+        Instruction::Jump(_) => state,
+        Instruction::JumpIfFalse(_)
+        | Instruction::JumpIfTrue(_)
+        | Instruction::JumpIfNullish(_) => {
+            require_stack(1)?;
+            state
+        }
+        Instruction::Call {
+            argc, with_this, ..
+        } => {
+            let required = argc + 1 + usize::from(*with_this);
+            require_stack(required)?;
+            ValidationState {
+                stack_depth: state.stack_depth - required + 1,
+                ..state
+            }
+        }
+        Instruction::Construct { argc } => {
+            let required = argc + 1;
+            require_stack(required)?;
+            ValidationState {
+                stack_depth: state.stack_depth - required + 1,
+                ..state
+            }
+        }
+        Instruction::Return => state,
+    };
+    Ok(next)
+}
+
+fn validation_successors(ip: usize, instruction: &Instruction, code_len: usize) -> Vec<usize> {
+    match instruction {
+        Instruction::Jump(target) => vec![*target],
+        Instruction::JumpIfFalse(target)
+        | Instruction::JumpIfTrue(target)
+        | Instruction::JumpIfNullish(target) => {
+            let mut successors = vec![*target];
+            if ip + 1 < code_len {
+                successors.push(ip + 1);
+            }
+            successors
+        }
+        Instruction::Return => Vec::new(),
+        _ if ip + 1 < code_len => vec![ip + 1],
+        _ => Vec::new(),
+    }
+}
+
+fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
+    let runtime = &snapshot.runtime;
+    validate_bytecode_program(&runtime.program)?;
+    if runtime.envs.get(runtime.globals).is_none() {
+        return Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: "snapshot validation failed: missing globals environment".to_string(),
+            span: None,
+        });
+    }
+    if runtime.frames.is_empty() {
+        return Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: "snapshot validation failed: suspended runtime has no frames".to_string(),
+            span: None,
+        });
+    }
+
+    for (env_key, env) in &runtime.envs {
+        if let Some(parent) = env.parent
+            && runtime.envs.get(parent).is_none()
+        {
+            return Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!(
+                    "snapshot validation failed: environment {:?} references missing parent {:?}",
+                    env_key, parent
+                ),
+                span: None,
+            });
+        }
+        for cell in env.bindings.values() {
+            if runtime.cells.get(*cell).is_none() {
+                return Err(JsliteError::Message {
+                    kind: DiagnosticKind::Serialization,
+                    message: format!(
+                        "snapshot validation failed: environment {:?} references missing cell {:?}",
+                        env_key, cell
+                    ),
+                    span: None,
+                });
+            }
+        }
+    }
+
+    for (closure_key, closure) in &runtime.closures {
+        if closure.function_id >= runtime.program.functions.len() {
+            return Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!(
+                    "snapshot validation failed: closure {:?} references missing function {}",
+                    closure_key, closure.function_id
+                ),
+                span: None,
+            });
+        }
+        if runtime.envs.get(closure.env).is_none() {
+            return Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!(
+                    "snapshot validation failed: closure {:?} references missing environment {:?}",
+                    closure_key, closure.env
+                ),
+                span: None,
+            });
+        }
+    }
+
+    for frame in &runtime.frames {
+        let Some(function) = runtime.program.functions.get(frame.function_id) else {
+            return Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!(
+                    "snapshot validation failed: frame references missing function {}",
+                    frame.function_id
+                ),
+                span: None,
+            });
+        };
+        if frame.ip >= function.code.len() {
+            return Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!(
+                    "snapshot validation failed: frame instruction pointer {} is out of range for function {}",
+                    frame.ip, frame.function_id
+                ),
+                span: None,
+            });
+        }
+        if runtime.envs.get(frame.env).is_none() {
+            return Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!(
+                    "snapshot validation failed: frame references missing environment {:?}",
+                    frame.env
+                ),
+                span: None,
+            });
+        }
+        for env in &frame.scope_stack {
+            if runtime.envs.get(*env).is_none() {
+                return Err(JsliteError::Message {
+                    kind: DiagnosticKind::Serialization,
+                    message: format!(
+                        "snapshot validation failed: frame scope stack references missing environment {:?}",
+                        env
+                    ),
+                    span: None,
+                });
+            }
+        }
+        for value in &frame.stack {
+            validate_runtime_value(runtime, value)?;
+        }
+    }
+
+    for cell in runtime.cells.values() {
+        validate_runtime_value(runtime, &cell.value)?;
+    }
+    for object in runtime.objects.values() {
+        for value in object.properties.values() {
+            validate_runtime_value(runtime, value)?;
+        }
+    }
+    for array in runtime.arrays.values() {
+        for value in &array.elements {
+            validate_runtime_value(runtime, value)?;
+        }
+        for value in array.properties.values() {
+            validate_runtime_value(runtime, value)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_runtime_value(runtime: &Runtime, value: &Value) -> JsliteResult<()> {
+    match value {
+        Value::Object(object) if runtime.objects.get(*object).is_none() => {
+            Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!(
+                    "snapshot validation failed: value references missing object {:?}",
+                    object
+                ),
+                span: None,
+            })
+        }
+        Value::Array(array) if runtime.arrays.get(*array).is_none() => Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: format!(
+                "snapshot validation failed: value references missing array {:?}",
+                array
+            ),
+            span: None,
+        }),
+        Value::Closure(closure) if runtime.closures.get(*closure).is_none() => {
+            Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!(
+                    "snapshot validation failed: value references missing closure {:?}",
+                    closure
+                ),
+                span: None,
+            })
+        }
+        _ => Ok(()),
+    }
+}
+
 #[derive(Debug, Default)]
 struct Compiler {
     functions: Vec<FunctionPrototype>,
@@ -268,6 +724,7 @@ struct Compiler {
 struct CompileContext {
     code: Vec<Instruction>,
     loop_stack: Vec<LoopContext>,
+    scope_depth: usize,
 }
 
 #[derive(Debug, Default)]
@@ -275,6 +732,7 @@ struct LoopContext {
     break_jumps: Vec<usize>,
     continue_jumps: Vec<usize>,
     continue_target: Option<usize>,
+    scope_depth: usize,
 }
 
 impl Compiler {
@@ -380,10 +838,12 @@ impl Compiler {
         match statement {
             Stmt::Block { body, .. } => {
                 context.code.push(Instruction::PushEnv);
+                context.scope_depth += 1;
                 self.emit_block_prologue(context, body)?;
                 for statement in body {
                     self.compile_stmt(context, statement)?;
                 }
+                context.scope_depth -= 1;
                 context.code.push(Instruction::PopEnv);
             }
             Stmt::VariableDecl { declarators, .. } => {
@@ -411,10 +871,12 @@ impl Compiler {
             } => {
                 self.compile_expr(context, test)?;
                 let jump_to_else = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
+                context.code.push(Instruction::Pop);
                 self.compile_stmt(context, consequent)?;
                 let jump_to_end = self.emit_jump(context, Instruction::Jump(usize::MAX));
                 let else_ip = context.code.len();
                 self.patch_jump(context, jump_to_else, else_ip);
+                context.code.push(Instruction::Pop);
                 if let Some(alternate) = alternate {
                     self.compile_stmt(context, alternate)?;
                 }
@@ -425,7 +887,11 @@ impl Compiler {
                 let loop_start = context.code.len();
                 self.compile_expr(context, test)?;
                 let exit_jump = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
-                context.loop_stack.push(LoopContext::default());
+                context.code.push(Instruction::Pop);
+                context.loop_stack.push(LoopContext {
+                    scope_depth: context.scope_depth,
+                    ..LoopContext::default()
+                });
                 self.compile_stmt(context, body)?;
                 let loop_ctx = context.loop_stack.pop().unwrap_or_default();
                 let continue_target = loop_ctx.continue_target.unwrap_or(loop_start);
@@ -433,23 +899,33 @@ impl Compiler {
                     self.patch_jump(context, jump, continue_target);
                 }
                 context.code.push(Instruction::Jump(loop_start));
+                let false_path_ip = context.code.len();
+                context.code.push(Instruction::Pop);
                 let loop_end = context.code.len();
-                self.patch_jump(context, exit_jump, loop_end);
+                self.patch_jump(context, exit_jump, false_path_ip);
                 for jump in loop_ctx.break_jumps {
                     self.patch_jump(context, jump, loop_end);
                 }
             }
             Stmt::DoWhile { body, test, .. } => {
                 let loop_start = context.code.len();
-                context.loop_stack.push(LoopContext::default());
+                context.loop_stack.push(LoopContext {
+                    scope_depth: context.scope_depth,
+                    ..LoopContext::default()
+                });
                 self.compile_stmt(context, body)?;
                 let continue_target = context.code.len();
                 if let Some(loop_ctx) = context.loop_stack.last_mut() {
                     loop_ctx.continue_target = Some(continue_target);
                 }
                 self.compile_expr(context, test)?;
-                context.code.push(Instruction::JumpIfTrue(loop_start));
+                let exit_jump = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
+                context.code.push(Instruction::Pop);
+                context.code.push(Instruction::Jump(loop_start));
+                let false_path_ip = context.code.len();
+                context.code.push(Instruction::Pop);
                 let loop_end = context.code.len();
+                self.patch_jump(context, exit_jump, false_path_ip);
                 let loop_ctx = context.loop_stack.pop().unwrap_or_default();
                 for jump in loop_ctx.continue_jumps {
                     self.patch_jump(context, jump, continue_target);
@@ -466,6 +942,7 @@ impl Compiler {
                 ..
             } => {
                 context.code.push(Instruction::PushEnv);
+                context.scope_depth += 1;
                 if let Some(init) = init {
                     match init {
                         ForInit::VariableDecl {
@@ -497,11 +974,16 @@ impl Compiler {
                 let loop_start = context.code.len();
                 let exit_jump = if let Some(test) = test {
                     self.compile_expr(context, test)?;
-                    Some(self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX)))
+                    let jump = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
+                    context.code.push(Instruction::Pop);
+                    Some(jump)
                 } else {
                     None
                 };
-                context.loop_stack.push(LoopContext::default());
+                context.loop_stack.push(LoopContext {
+                    scope_depth: context.scope_depth,
+                    ..LoopContext::default()
+                });
                 self.compile_stmt(context, body)?;
                 let update_start = context.code.len();
                 if let Some(loop_ctx) = context.loop_stack.last_mut() {
@@ -512,9 +994,13 @@ impl Compiler {
                     context.code.push(Instruction::Pop);
                 }
                 context.code.push(Instruction::Jump(loop_start));
+                let false_path_ip = context.code.len();
+                if exit_jump.is_some() {
+                    context.code.push(Instruction::Pop);
+                }
                 let loop_end = context.code.len();
                 if let Some(exit_jump) = exit_jump {
-                    self.patch_jump(context, exit_jump, loop_end);
+                    self.patch_jump(context, exit_jump, false_path_ip);
                 }
                 let loop_ctx = context.loop_stack.pop().unwrap_or_default();
                 for jump in loop_ctx.continue_jumps {
@@ -523,9 +1009,15 @@ impl Compiler {
                 for jump in loop_ctx.break_jumps {
                     self.patch_jump(context, jump, loop_end);
                 }
+                context.scope_depth -= 1;
                 context.code.push(Instruction::PopEnv);
             }
             Stmt::Break { .. } => {
+                if let Some(loop_ctx) = context.loop_stack.last() {
+                    for _ in loop_ctx.scope_depth..context.scope_depth {
+                        context.code.push(Instruction::PopEnv);
+                    }
+                }
                 let jump = self.emit_jump(context, Instruction::Jump(usize::MAX));
                 if let Some(loop_ctx) = context.loop_stack.last_mut() {
                     loop_ctx.break_jumps.push(jump);
@@ -534,6 +1026,11 @@ impl Compiler {
                 }
             }
             Stmt::Continue { .. } => {
+                if let Some(loop_ctx) = context.loop_stack.last() {
+                    for _ in loop_ctx.scope_depth..context.scope_depth {
+                        context.code.push(Instruction::PopEnv);
+                    }
+                }
                 let jump = self.emit_jump(context, Instruction::Jump(usize::MAX));
                 if let Some(loop_ctx) = context.loop_stack.last_mut() {
                     loop_ctx.continue_jumps.push(jump);
@@ -566,17 +1063,26 @@ impl Compiler {
             } => {
                 self.compile_expr(context, discriminant)?;
                 let mut case_jumps = Vec::new();
-                let mut default_label = None;
-                context.loop_stack.push(LoopContext::default());
-                for case in cases {
+                let mut default_case_index = None;
+                context.loop_stack.push(LoopContext {
+                    scope_depth: context.scope_depth,
+                    ..LoopContext::default()
+                });
+                for (case_index, case) in cases.iter().enumerate() {
                     if let Some(test) = &case.test {
                         context.code.push(Instruction::Dup);
                         self.compile_expr(context, test)?;
                         context.code.push(Instruction::Binary(BinaryOp::StrictEq));
-                        case_jumps
-                            .push(self.emit_jump(context, Instruction::JumpIfTrue(usize::MAX)));
+                        let miss_jump =
+                            self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
+                        context.code.push(Instruction::Pop);
+                        context.code.push(Instruction::Pop);
+                        case_jumps.push(self.emit_jump(context, Instruction::Jump(usize::MAX)));
+                        let miss_ip = context.code.len();
+                        self.patch_jump(context, miss_jump, miss_ip);
+                        context.code.push(Instruction::Pop);
                     } else {
-                        default_label = Some(context.code.len());
+                        default_case_index = Some(case_index);
                     }
                 }
                 context.code.push(Instruction::Pop);
@@ -590,7 +1096,10 @@ impl Compiler {
                     }
                 }
                 let end_ip = context.code.len();
-                self.patch_jump(context, jump_past_cases, default_label.unwrap_or(end_ip));
+                let default_target = default_case_index
+                    .and_then(|index| case_offsets.get(index).copied())
+                    .unwrap_or(end_ip);
+                self.patch_jump(context, jump_past_cases, default_target);
                 for (jump, target) in case_jumps.into_iter().zip(case_offsets.iter().copied()) {
                     self.patch_jump(context, jump, target);
                 }
@@ -2385,6 +2894,23 @@ mod tests {
     use super::*;
     use crate::compile;
 
+    fn test_function(code: Vec<Instruction>) -> FunctionPrototype {
+        FunctionPrototype {
+            name: None,
+            params: Vec::new(),
+            code,
+            is_async: false,
+            span: SourceSpan::new(0, 0),
+        }
+    }
+
+    fn invalid_program(code: Vec<Instruction>) -> BytecodeProgram {
+        BytecodeProgram {
+            functions: vec![test_function(code)],
+            root: 0,
+        }
+    }
+
     fn run(source: &str) -> StructuredValue {
         let program = compile(source).expect("source should compile");
         execute(&program, ExecutionOptions::default()).expect("program should run")
@@ -2428,6 +2954,39 @@ mod tests {
         assert_eq!(
             value,
             StructuredValue::Number(StructuredNumber::Finite(3.0))
+        );
+    }
+
+    #[test]
+    fn runs_branching_loops_and_switch() {
+        let value = run(r#"
+            let total = 0;
+            let i = 0;
+            while (i < 4) {
+              total += i;
+              i += 1;
+            }
+            do {
+              total += 1;
+            } while (false);
+            for (let j = 0; j < 2; j += 1) {
+              if (j === 0) {
+                continue;
+              }
+              total += j;
+            }
+            switch (total) {
+              case 8:
+                total += 1;
+                break;
+              default:
+                total = 0;
+            }
+            total;
+            "#);
+        assert_eq!(
+            value,
+            StructuredValue::Number(StructuredNumber::Finite(9.0))
         );
     }
 
@@ -2546,5 +3105,97 @@ mod tests {
             }
             other => panic!("expected completion, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn rejects_invalid_jump_targets_before_execution() {
+        let program = invalid_program(vec![Instruction::Jump(99), Instruction::Return]);
+        let error = start_bytecode(&program, ExecutionOptions::default())
+            .expect_err("invalid jump target should fail validation");
+        assert!(error.to_string().contains("jumps to invalid target 99"));
+    }
+
+    #[test]
+    fn rejects_inconsistent_stack_depth_in_serialized_programs() {
+        let program = invalid_program(vec![
+            Instruction::PushNumber(1.0),
+            Instruction::JumpIfTrue(3),
+            Instruction::Pop,
+            Instruction::Return,
+        ]);
+        let bytes = dump_program(&program).expect("invalid program still serializes");
+        let error =
+            load_program(&bytes).expect_err("invalid serialized program should fail validation");
+        assert!(
+            error
+                .to_string()
+                .contains("has inconsistent stack or scope depth")
+        );
+    }
+
+    #[test]
+    fn rejects_cross_version_serialized_programs() {
+        let program = lower_to_bytecode(&compile("1;").expect("compile should succeed"))
+            .expect("lowering should succeed");
+        let mut bytes = dump_program(&program).expect("program should serialize");
+        bytes[0] = bytes[0].saturating_add(1);
+        let error = load_program(&bytes).expect_err("cross-version program should be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("serialized program version mismatch")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_snapshot_frame_state() {
+        let program =
+            compile("const value = fetch_data(1); value + 2;").expect("compile should succeed");
+        let step = start(
+            &program,
+            ExecutionOptions {
+                capabilities: vec!["fetch_data".to_string()],
+                ..ExecutionOptions::default()
+            },
+        )
+        .expect("execution should suspend");
+        let mut suspension = match step {
+            ExecutionStep::Suspended(suspension) => *suspension,
+            other => panic!("expected suspension, got {other:?}"),
+        };
+        suspension.snapshot.runtime.frames[0].ip = 999;
+        let bytes = dump_snapshot(&suspension.snapshot).expect("snapshot should serialize");
+        let error = load_snapshot(&bytes).expect_err("invalid snapshot should fail validation");
+        assert!(
+            error
+                .to_string()
+                .contains("frame instruction pointer 999 is out of range")
+        );
+    }
+
+    #[test]
+    fn rejects_cross_version_snapshots() {
+        let program =
+            compile("const value = fetch_data(1); value + 2;").expect("compile should succeed");
+        let step = start(
+            &program,
+            ExecutionOptions {
+                capabilities: vec!["fetch_data".to_string()],
+                ..ExecutionOptions::default()
+            },
+        )
+        .expect("execution should suspend");
+        let suspension = match step {
+            ExecutionStep::Suspended(suspension) => suspension,
+            other => panic!("expected suspension, got {other:?}"),
+        };
+        let mut bytes = dump_snapshot(&suspension.snapshot).expect("snapshot should serialize");
+        bytes[0] = bytes[0].saturating_add(1);
+        let error = load_snapshot(&bytes).expect_err("cross-version snapshot should be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("serialized snapshot version mismatch")
+        );
     }
 }

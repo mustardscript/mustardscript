@@ -156,8 +156,8 @@ Exit criteria:
 ## Phase 2: Minimal VM With Limits From Day One
 
 - [x] Design the bytecode format
-- [ ] Document frame layout and operand model
-- [ ] Implement bytecode validation
+- [x] Document frame layout and operand model
+- [x] Implement bytecode validation
 - [x] Implement constant loading
 - [x] Implement local variable access
 - [x] Implement arithmetic and comparison operations
@@ -168,16 +168,16 @@ Exit criteria:
 - [x] Add instruction-budget accounting
 - [ ] Add cancellation checks at defined execution points
 - [ ] Add tracebacks with guest source locations
-- [ ] Add unit tests for bytecode decoding and instruction behavior
-- [ ] Add execution tests for locals, branching, calls, and closures
+- [x] Add unit tests for bytecode decoding and instruction behavior
+- [x] Add execution tests for locals, branching, calls, and closures
 - [ ] Add pure-compute differential tests against Node for the supported subset
 
 Exit criteria:
 
-- [ ] Pure compute programs run correctly
-- [ ] Closures work for representative cases
+- [x] Pure compute programs run correctly
+- [x] Closures work for representative cases
 - [ ] Instruction budget and cancellation behave predictably
-- [ ] Bytecode validation and VM tests pass
+- [x] Bytecode validation and VM tests pass
 - [ ] Runtime errors include useful guest-facing location data
 
 ## Phase 3: Heap, Plain Objects, Arrays, and GC
@@ -287,8 +287,8 @@ Exit criteria:
 
 - [x] Serialize compiled programs
 - [x] Implement explicit versioning for serialized formats
-- [ ] Validate serialized inputs before load
-- [ ] Reject cross-version loads explicitly
+- [x] Validate serialized inputs before load
+- [x] Reject cross-version loads explicitly
 - [x] Define a tagged encoding for values that plain JSON cannot preserve
 - [x] Serialize execution snapshots at safe suspension points only
 - [x] Define what suspended external work looks like in a snapshot
@@ -297,15 +297,15 @@ Exit criteria:
 - [ ] Ensure opaque host futures are never serialized
 - [x] Implement load and restore APIs
 - [x] Add round-trip fixtures for compiled programs and snapshots
-- [ ] Add corruption and invalid-input tests
+- [x] Add corruption and invalid-input tests
 - [x] Add cross-process resume tests
 
 Exit criteria:
 
-- [ ] Compiled programs round-trip without reparsing
-- [ ] Execution snapshots round-trip safely at supported suspension points
-- [ ] Invalid or corrupted serialized input fails safely
-- [ ] Serialization tests pass
+- [x] Compiled programs round-trip without reparsing
+- [x] Execution snapshots round-trip safely at supported suspension points
+- [x] Invalid or corrupted serialized input fails safely
+- [x] Serialization tests pass
 
 ## Phase 8: Sidecar Protocol and Isolation
 
@@ -448,7 +448,7 @@ Before claiming the project is ready for untrusted guest workloads:
 - [x] Sidecar mode exists and is tested
 - [x] Security model is published
 - [x] Limits are enabled by default
-- [ ] Serialization validation is enabled
+- [x] Serialization validation is enabled
 - [x] Host errors are sanitized
 - [ ] Guest diagnostics do not leak host internals
 - [ ] Kill and cancellation behavior are documented and tested
