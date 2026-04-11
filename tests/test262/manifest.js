@@ -62,6 +62,11 @@ module.exports = {
       file: 'cases/pass/language/statements/function/recursion-factorial.js',
       expected: 120,
     },
+    {
+      id: 'language/statements/for-of/array-basic.js',
+      file: 'cases/pass/language/statements/for-of/array-basic.js',
+      expected: [1, 2, 3],
+    },
   ],
   unsupported: [
     {
@@ -107,11 +112,11 @@ module.exports = {
       reason: 'Generators and iterator protocol support are deferred.',
     },
     {
-      id: 'language/statements/for-of/basic.js',
-      file: 'cases/unsupported/language/statements/for-of/basic.js',
+      id: 'language/statements/for-of/assignment-target.js',
+      file: 'cases/unsupported/language/statements/for-of/assignment-target.js',
       errorKind: 'Validation',
-      messageIncludes: 'for...of is not supported in v1',
-      reason: 'Iterator-based control flow is explicitly unsupported.',
+      messageIncludes: 'for...of currently requires a let or const binding declaration',
+      reason: 'The first iteration surface only supports let/const loop bindings.',
     },
     {
       id: 'language/statements/debugger/basic.js',

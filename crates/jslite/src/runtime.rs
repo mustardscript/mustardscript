@@ -20,6 +20,7 @@ new_key_type! { struct EnvKey; }
 new_key_type! { struct CellKey; }
 new_key_type! { struct ObjectKey; }
 new_key_type! { struct ArrayKey; }
+new_key_type! { struct IteratorKey; }
 new_key_type! { struct ClosureKey; }
 new_key_type! { struct PromiseKey; }
 
@@ -123,6 +124,8 @@ pub enum Instruction {
     MakeObject {
         keys: Vec<PropertyName>,
     },
+    CreateIterator,
+    IteratorNext,
     GetPropStatic {
         name: String,
         optional: bool,
@@ -548,6 +551,17 @@ fn apply_validation_effect(
             require_stack(keys.len())?;
             ValidationState {
                 stack_depth: state.stack_depth - keys.len() + 1,
+                ..state
+            }
+        }
+        Instruction::CreateIterator => {
+            require_stack(1)?;
+            state
+        }
+        Instruction::IteratorNext => {
+            require_stack(1)?;
+            ValidationState {
+                stack_depth: state.stack_depth + 1,
                 ..state
             }
         }
@@ -1006,6 +1020,23 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
             validate_runtime_value(runtime, value)?;
         }
     }
+    for iterator in runtime.iterators.values() {
+        match iterator.state {
+            IteratorState::Array(ref state) => {
+                if runtime.arrays.get(state.array).is_none() {
+                    return Err(JsliteError::Message {
+                        kind: DiagnosticKind::Serialization,
+                        message: format!(
+                            "snapshot validation failed: iterator references missing array {:?}",
+                            state.array
+                        ),
+                        span: None,
+                        traceback: Vec::new(),
+                    });
+                }
+            }
+        }
+    }
     if let Some(root_result) = &runtime.root_result {
         validate_runtime_value(runtime, root_result)?;
     }
@@ -1065,6 +1096,17 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> JsliteResult<()> 
             span: None,
             traceback: Vec::new(),
         }),
+        Value::Iterator(iterator) if runtime.iterators.get(*iterator).is_none() => {
+            Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!(
+                    "snapshot validation failed: value references missing iterator {:?}",
+                    iterator
+                ),
+                span: None,
+                traceback: Vec::new(),
+            })
+        }
         Value::Closure(closure) if runtime.closures.get(*closure).is_none() => {
             Err(JsliteError::Message {
                 kind: DiagnosticKind::Serialization,
@@ -1104,6 +1146,7 @@ struct CompileContext {
     active_finally: Vec<ActiveFinallyContext>,
     finally_regions: Vec<FinallyRegionContext>,
     scope_depth: usize,
+    internal_name_counter: usize,
 }
 
 #[derive(Debug, Default)]
@@ -1237,6 +1280,12 @@ impl Compiler {
                 }));
         }
         Ok(())
+    }
+
+    fn fresh_internal_name(&self, context: &mut CompileContext, prefix: &str) -> String {
+        let name = format!("\0jslite_{prefix}_{}", context.internal_name_counter);
+        context.internal_name_counter += 1;
+        name
     }
 
     fn compile_stmt(&mut self, context: &mut CompileContext, statement: &Stmt) -> JsliteResult<()> {
@@ -1417,6 +1466,77 @@ impl Compiler {
                 for jump in loop_ctx.break_jumps {
                     self.patch_control_transfer(context, jump, loop_end);
                 }
+                context.scope_depth -= 1;
+                context.code.push(Instruction::PopEnv);
+            }
+            Stmt::ForOf {
+                span,
+                kind,
+                pattern,
+                iterable,
+                body,
+            } => {
+                context.code.push(Instruction::PushEnv);
+                context.scope_depth += 1;
+                let loop_scope_depth = context.scope_depth;
+                let iterator_binding = self.fresh_internal_name(context, "iter");
+                context.code.push(Instruction::DeclareName {
+                    name: iterator_binding.clone(),
+                    mutable: false,
+                });
+                self.compile_expr(context, iterable)?;
+                context.code.push(Instruction::CreateIterator);
+                context
+                    .code
+                    .push(Instruction::InitializePattern(Pattern::Identifier {
+                        span: *span,
+                        name: iterator_binding.clone(),
+                    }));
+
+                let loop_start = context.code.len();
+                context
+                    .code
+                    .push(Instruction::LoadName(iterator_binding.clone()));
+                context.code.push(Instruction::IteratorNext);
+                let exit_jump = self.emit_jump(context, Instruction::JumpIfTrue(usize::MAX));
+                context.code.push(Instruction::Pop);
+
+                context.code.push(Instruction::PushEnv);
+                context.scope_depth += 1;
+                for (name, _) in pattern_bindings(pattern) {
+                    context.code.push(Instruction::DeclareName {
+                        name,
+                        mutable: *kind == BindingKind::Let,
+                    });
+                }
+                context
+                    .code
+                    .push(Instruction::InitializePattern(pattern.clone()));
+                context.loop_stack.push(LoopContext {
+                    handler_depth: context.active_handlers.len(),
+                    scope_depth: loop_scope_depth,
+                    ..LoopContext::default()
+                });
+                self.compile_stmt(context, body)?;
+                context.scope_depth -= 1;
+                context.code.push(Instruction::PopEnv);
+                let continue_target = context.code.len();
+                context.code.push(Instruction::Jump(loop_start));
+
+                let done_path_ip = context.code.len();
+                context.code.push(Instruction::Pop);
+                context.code.push(Instruction::Pop);
+                let loop_end = context.code.len();
+                self.patch_jump(context, exit_jump, done_path_ip);
+
+                let loop_ctx = context.loop_stack.pop().unwrap_or_default();
+                for jump in loop_ctx.continue_jumps {
+                    self.patch_control_transfer(context, jump, continue_target);
+                }
+                for jump in loop_ctx.break_jumps {
+                    self.patch_control_transfer(context, jump, loop_end);
+                }
+
                 context.scope_depth -= 1;
                 context.code.push(Instruction::PopEnv);
             }
@@ -2258,6 +2378,7 @@ enum Value {
     String(String),
     Object(ObjectKey),
     Array(ArrayKey),
+    Iterator(IteratorKey),
     Closure(ClosureKey),
     Promise(PromiseKey),
     BuiltinFunction(BuiltinFunction),
@@ -2330,6 +2451,24 @@ struct ArrayObject {
     properties: IndexMap<String, Value>,
     #[serde(skip, default)]
     accounted_bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct IteratorObject {
+    state: IteratorState,
+    #[serde(skip, default)]
+    accounted_bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum IteratorState {
+    Array(ArrayIteratorState),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ArrayIteratorState {
+    array: ArrayKey,
+    next_index: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2446,6 +2585,7 @@ struct Runtime {
     cells: SlotMap<CellKey, Cell>,
     objects: SlotMap<ObjectKey, PlainObject>,
     arrays: SlotMap<ArrayKey, ArrayObject>,
+    iterators: SlotMap<IteratorKey, IteratorObject>,
     closures: SlotMap<ClosureKey, Closure>,
     promises: SlotMap<PromiseKey, PromiseObject>,
     frames: Vec<Frame>,
@@ -2491,6 +2631,7 @@ struct GarbageCollectionMarks {
     cells: HashSet<CellKey>,
     objects: HashSet<ObjectKey>,
     arrays: HashSet<ArrayKey>,
+    iterators: HashSet<IteratorKey>,
     closures: HashSet<ClosureKey>,
     promises: HashSet<PromiseKey>,
 }
@@ -2501,6 +2642,7 @@ struct GarbageCollectionWorklist {
     cells: Vec<CellKey>,
     objects: Vec<ObjectKey>,
     arrays: Vec<ArrayKey>,
+    iterators: Vec<IteratorKey>,
     closures: Vec<ClosureKey>,
     promises: Vec<PromiseKey>,
 }
@@ -2533,6 +2675,7 @@ impl Runtime {
             cells: SlotMap::with_key(),
             objects: SlotMap::with_key(),
             arrays: SlotMap::with_key(),
+            iterators: SlotMap::with_key(),
             closures: SlotMap::with_key(),
             promises: SlotMap::with_key(),
             frames: Vec::new(),
@@ -2676,6 +2819,16 @@ impl Runtime {
         Ok(self.arrays.insert(array))
     }
 
+    fn insert_iterator(&mut self, state: IteratorState) -> JsliteResult<IteratorKey> {
+        let mut iterator = IteratorObject {
+            state,
+            accounted_bytes: 0,
+        };
+        iterator.accounted_bytes = measure_iterator_bytes(&iterator);
+        self.account_new_allocation(iterator.accounted_bytes)?;
+        Ok(self.iterators.insert(iterator))
+    }
+
     fn insert_closure(&mut self, function_id: usize, env: EnvKey) -> JsliteResult<ClosureKey> {
         let mut closure = Closure {
             function_id,
@@ -2775,6 +2928,22 @@ impl Runtime {
         self.arrays
             .get_mut(key)
             .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    fn refresh_iterator_accounting(&mut self, key: IteratorKey) -> JsliteResult<()> {
+        let (old_bytes, new_bytes) = {
+            let iterator = self
+                .iterators
+                .get(key)
+                .ok_or_else(|| JsliteError::runtime("iterator missing"))?;
+            (iterator.accounted_bytes, measure_iterator_bytes(iterator))
+        };
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.iterators
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("iterator missing"))?
             .accounted_bytes = new_bytes;
         Ok(())
     }
@@ -3286,6 +3455,23 @@ impl Runtime {
                         }
                         let object = self.insert_object(properties, ObjectKind::Plain)?;
                         self.frames[frame_index].stack.push(Value::Object(object));
+                    }
+                    Instruction::CreateIterator => {
+                        let iterable = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let iterator = self.create_iterator(iterable)?;
+                        self.frames[frame_index].stack.push(iterator);
+                    }
+                    Instruction::IteratorNext => {
+                        let iterator = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let (value, done) = self.iterator_next(iterator)?;
+                        self.frames[frame_index].stack.push(value);
+                        self.frames[frame_index].stack.push(Value::Bool(done));
                     }
                     Instruction::GetPropStatic { name, optional } => {
                         let object = self.frames[frame_index]
@@ -3866,6 +4052,7 @@ impl Runtime {
         self.sweep_unreachable_cells(&marks);
         self.sweep_unreachable_objects(&marks);
         self.sweep_unreachable_arrays(&marks);
+        self.sweep_unreachable_iterators(&marks);
         self.sweep_unreachable_closures(&marks);
         self.sweep_unreachable_promises(&marks);
 
@@ -3923,6 +4110,7 @@ impl Runtime {
             || !worklist.cells.is_empty()
             || !worklist.objects.is_empty()
             || !worklist.arrays.is_empty()
+            || !worklist.iterators.is_empty()
             || !worklist.closures.is_empty()
             || !worklist.promises.is_empty()
         {
@@ -3967,6 +4155,18 @@ impl Runtime {
                 }
                 for value in array.properties.values() {
                     self.mark_value(value, &mut marks, &mut worklist);
+                }
+            }
+
+            while let Some(key) = worklist.iterators.pop() {
+                let iterator = self
+                    .iterators
+                    .get(key)
+                    .ok_or_else(|| JsliteError::runtime("gc encountered missing iterator"))?;
+                match iterator.state {
+                    IteratorState::Array(ref state) => {
+                        self.mark_value(&Value::Array(state.array), &mut marks, &mut worklist);
+                    }
                 }
             }
 
@@ -4077,6 +4277,11 @@ impl Runtime {
                     worklist.arrays.push(*key);
                 }
             }
+            Value::Iterator(key) => {
+                if marks.iterators.insert(*key) {
+                    worklist.iterators.push(*key);
+                }
+            }
             Value::Closure(key) => {
                 if marks.closures.insert(*key) {
                     worklist.closures.push(*key);
@@ -4137,6 +4342,17 @@ impl Runtime {
         }
     }
 
+    fn sweep_unreachable_iterators(&mut self, marks: &GarbageCollectionMarks) {
+        let dead: Vec<_> = self
+            .iterators
+            .keys()
+            .filter(|key| !marks.iterators.contains(key))
+            .collect();
+        for key in dead {
+            self.iterators.remove(key);
+        }
+    }
+
     fn sweep_unreachable_closures(&mut self, marks: &GarbageCollectionMarks) {
         let dead: Vec<_> = self
             .closures
@@ -4188,6 +4404,13 @@ impl Runtime {
             array.accounted_bytes = measure_array_bytes(array);
             heap_bytes_used = heap_bytes_used
                 .checked_add(array.accounted_bytes)
+                .ok_or_else(|| "heap accounting overflow".to_string())?;
+            allocation_count += 1;
+        }
+        for iterator in self.iterators.values_mut() {
+            iterator.accounted_bytes = measure_iterator_bytes(iterator);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(iterator.accounted_bytes)
                 .ok_or_else(|| "heap accounting overflow".to_string())?;
             allocation_count += 1;
         }
@@ -4797,6 +5020,57 @@ impl Runtime {
         }
     }
 
+    fn create_iterator(&mut self, iterable: Value) -> JsliteResult<Value> {
+        match iterable {
+            Value::Array(array) => Ok(Value::Iterator(self.insert_iterator(
+                IteratorState::Array(ArrayIteratorState {
+                    array,
+                    next_index: 0,
+                }),
+            )?)),
+            _ => Err(JsliteError::runtime(
+                "TypeError: for...of currently only supports arrays",
+            )),
+        }
+    }
+
+    fn iterator_next(&mut self, iterator: Value) -> JsliteResult<(Value, bool)> {
+        let key = match iterator {
+            Value::Iterator(key) => key,
+            _ => return Err(JsliteError::runtime("TypeError: value is not an iterator")),
+        };
+        let (array, next_index) = match self
+            .iterators
+            .get(key)
+            .ok_or_else(|| JsliteError::runtime("iterator missing"))?
+            .state
+        {
+            IteratorState::Array(ref state) => (state.array, state.next_index),
+        };
+
+        let value = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .get(next_index)
+            .cloned();
+
+        if value.is_some() {
+            if let Some(iterator) = self.iterators.get_mut(key) {
+                match &mut iterator.state {
+                    IteratorState::Array(state) => state.next_index += 1,
+                }
+            }
+            self.refresh_iterator_accounting(key)?;
+        }
+
+        Ok(match value {
+            Some(value) => (value, false),
+            None => (Value::Undefined, true),
+        })
+    }
+
     fn get_property(&self, object: Value, property: Value, optional: bool) -> JsliteResult<Value> {
         if optional && matches!(object, Value::Null | Value::Undefined) {
             return Ok(Value::Undefined);
@@ -4930,7 +5204,9 @@ impl Runtime {
                     Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
                         "function"
                     }
-                    Value::Object(_) | Value::Array(_) | Value::Promise(_) => "object",
+                    Value::Object(_) | Value::Array(_) | Value::Iterator(_) | Value::Promise(_) => {
+                        "object"
+                    }
                 }
                 .to_string(),
             )),
@@ -5000,6 +5276,7 @@ impl Runtime {
             Value::Number(value) => value,
             Value::String(value) => value.parse::<f64>().unwrap_or(f64::NAN),
             Value::Array(_)
+            | Value::Iterator(_)
             | Value::Object(_)
             | Value::Promise(_)
             | Value::Closure(_)
@@ -5039,6 +5316,7 @@ impl Runtime {
             Value::Object(object) => self
                 .error_summary(object)?
                 .unwrap_or_else(|| "[object Object]".to_string()),
+            Value::Iterator(_) => "[object Iterator]".to_string(),
             Value::Promise(_) => "[object Promise]".to_string(),
             Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
                 "[Function]".to_string()
@@ -5233,7 +5511,8 @@ impl Runtime {
                     .map(|(key, value)| Ok((key.clone(), self.value_to_structured(value.clone())?)))
                     .collect::<JsliteResult<IndexMap<_, _>>>()?,
             ),
-            Value::Promise(_)
+            Value::Iterator(_)
+            | Value::Promise(_)
             | Value::Closure(_)
             | Value::BuiltinFunction(_)
             | Value::HostFunction(_) => {
@@ -5332,6 +5611,10 @@ fn measure_array_bytes(array: &ArrayObject) -> usize {
         + measure_properties_bytes(&array.properties)
 }
 
+fn measure_iterator_bytes(_iterator: &IteratorObject) -> usize {
+    std::mem::size_of::<IteratorObject>()
+}
+
 fn measure_closure_bytes(_closure: &Closure) -> usize {
     std::mem::size_of::<Closure>()
 }
@@ -5380,6 +5663,7 @@ fn instruction_may_allocate(instruction: &Instruction) -> bool {
             | Instruction::MakeClosure { .. }
             | Instruction::MakeArray { .. }
             | Instruction::MakeObject { .. }
+            | Instruction::CreateIterator
             | Instruction::SetPropStatic { .. }
             | Instruction::SetPropComputed
             | Instruction::Call { .. }
@@ -5396,6 +5680,7 @@ fn is_truthy(value: &Value) -> bool {
         Value::String(value) => !value.is_empty(),
         Value::Object(_)
         | Value::Array(_)
+        | Value::Iterator(_)
         | Value::Promise(_)
         | Value::Closure(_)
         | Value::BuiltinFunction(_)
@@ -5412,6 +5697,7 @@ fn strict_equal(left: &Value, right: &Value) -> bool {
         (Value::String(left), Value::String(right)) => left == right,
         (Value::Object(left), Value::Object(right)) => left == right,
         (Value::Array(left), Value::Array(right)) => left == right,
+        (Value::Iterator(left), Value::Iterator(right)) => left == right,
         (Value::Promise(left), Value::Promise(right)) => left == right,
         (Value::Closure(left), Value::Closure(right)) => left == right,
         (Value::BuiltinFunction(left), Value::BuiltinFunction(right)) => left == right,
@@ -5652,6 +5938,77 @@ mod tests {
             .insert_object(IndexMap::new(), ObjectKind::Plain)
             .expect_err("next allocation should exhaust the allocation budget");
         assert!(error.to_string().contains("allocation budget exhausted"));
+    }
+
+    #[test]
+    fn iterators_participate_in_heap_accounting_and_gc() {
+        let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
+            .expect("lowering should succeed");
+        let mut runtime = Runtime::new(program, ExecutionOptions::default()).expect("runtime init");
+
+        let baseline_heap = runtime.heap_bytes_used;
+        let kept_array = runtime
+            .insert_array(
+                vec![Value::Number(1.0), Value::Number(2.0)],
+                IndexMap::new(),
+            )
+            .expect("kept array should allocate");
+        let kept_iterator = runtime
+            .insert_iterator(IteratorState::Array(ArrayIteratorState {
+                array: kept_array,
+                next_index: 1,
+            }))
+            .expect("kept iterator should allocate");
+        assert!(runtime.heap_bytes_used > baseline_heap);
+
+        let frame_env = runtime
+            .new_env(Some(runtime.globals))
+            .expect("frame env should allocate");
+        let iterator_cell = runtime
+            .insert_cell(Value::Iterator(kept_iterator), true, true)
+            .expect("iterator cell should allocate");
+        runtime
+            .envs
+            .get_mut(frame_env)
+            .expect("frame env should exist")
+            .bindings
+            .insert("\0kept_iter".to_string(), iterator_cell);
+        runtime
+            .refresh_env_accounting(frame_env)
+            .expect("frame env accounting should refresh");
+        runtime.frames.push(Frame {
+            function_id: 0,
+            ip: 0,
+            env: frame_env,
+            scope_stack: Vec::new(),
+            stack: Vec::new(),
+            handlers: Vec::new(),
+            pending_exception: None,
+            pending_completions: Vec::new(),
+            active_finally: Vec::new(),
+            async_promise: None,
+        });
+
+        let garbage_array = runtime
+            .insert_array(vec![Value::Number(9.0)], IndexMap::new())
+            .expect("garbage array should allocate");
+        let garbage_iterator = runtime
+            .insert_iterator(IteratorState::Array(ArrayIteratorState {
+                array: garbage_array,
+                next_index: 0,
+            }))
+            .expect("garbage iterator should allocate");
+
+        runtime.collect_garbage().expect("gc should succeed");
+        assert!(runtime.arrays.contains_key(kept_array));
+        assert!(runtime.iterators.contains_key(kept_iterator));
+        assert!(!runtime.arrays.contains_key(garbage_array));
+        assert!(!runtime.iterators.contains_key(garbage_iterator));
+
+        runtime.frames.clear();
+        runtime.collect_garbage().expect("gc should succeed");
+        assert!(!runtime.arrays.contains_key(kept_array));
+        assert!(!runtime.iterators.contains_key(kept_iterator));
     }
 
     #[test]

@@ -11,7 +11,8 @@ stable serialized contract by themselves.
 The runtime represents guest values with an internal `Value` enum:
 
 - immediate scalars: `Undefined`, `Null`, `Bool`, `Number`, and `String`
-- heap handles: `Object`, `Array`, `Closure`, and `Promise`
+- heap handles: `Object`, `Array`, internal `Iterator`, `Closure`, and
+  `Promise`
 - callable built-ins: `BuiltinFunction`
 - explicit host entry points: `HostFunction`
 
@@ -25,6 +26,7 @@ Heap-backed state is stored indirectly through slotmap keys:
 
 - `ObjectKey` points to `PlainObject`
 - `ArrayKey` points to `ArrayObject`
+- `IteratorKey` points to `IteratorObject`
 - `ClosureKey` points to `Closure`
 - `PromiseKey` points to `PromiseObject`
 - `EnvKey` points to lexical environments
@@ -55,6 +57,7 @@ The collector walks an explicit root set:
 - environments root their cells
 - cells root the `Value` they contain
 - objects, arrays, and promises root their contained values
+- iterators root the array they are currently traversing
 - closures root their captured environment chain
 - validated suspended snapshots restore the same runtime graph and therefore the
   same root categories after load
@@ -69,6 +72,22 @@ Practical rules that follow from this:
 Collection currently runs at allocation-safe execution boundaries and resume
 points. That keeps the collector precise without requiring a moving handle
 layer or conservative native-stack scanning.
+
+## Internal Iterators
+
+The current iteration milestone introduces one internal iterator kind:
+
+- array iterators used by `for...of`
+
+These iterator objects are heap-allocated and snapshot-safe, but they are still
+runtime-internal:
+
+- they are never exposed through `StructuredValue`
+- they are not guest-authorable
+- they currently preserve only an array reference and the next numeric index
+- they allow suspended `for...of` loops to resume without rebuilding loop state
+- they do not implement user-visible iterator closing because generators and
+  custom iterators are still deferred
 
 ## Plain Objects, Arrays, and Shapes
 

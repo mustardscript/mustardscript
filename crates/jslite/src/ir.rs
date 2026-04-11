@@ -56,6 +56,13 @@ pub enum Stmt {
         update: Option<Expr>,
         body: Box<Stmt>,
     },
+    ForOf {
+        span: SourceSpan,
+        kind: BindingKind,
+        pattern: Pattern,
+        iterable: Expr,
+        body: Box<Stmt>,
+    },
     Break {
         span: SourceSpan,
     },

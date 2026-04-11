@@ -466,31 +466,31 @@ explicit here so future language growth remains documented and fail closed.
 
 ### Iteration and `for...of`
 
-- [ ] Define the supported iterator protocol surface for the first iteration
+- [x] Define the supported iterator protocol surface for the first iteration
   milestone
-- [ ] Decide which existing types become iterable first and publish that matrix
-- [ ] Keep generators and custom iterator authoring deferred until explicitly
+- [x] Decide which existing types become iterable first and publish that matrix
+- [x] Keep generators and custom iterator authoring deferred until explicitly
   designed and implemented
-- [ ] Implement internal iterator runtime state for supported iterables
-- [ ] Implement `for...of`
-- [ ] Decide and document abrupt-completion behavior during `for...of`
-- [ ] Decide snapshot and resume behavior for active iterators and suspended
+- [x] Implement internal iterator runtime state for supported iterables
+- [x] Implement `for...of`
+- [x] Decide and document abrupt-completion behavior during `for...of`
+- [x] Decide snapshot and resume behavior for active iterators and suspended
   `for...of` frames
-- [ ] Wire iterator objects and iterator-owned references into heap accounting
+- [x] Wire iterator objects and iterator-owned references into heap accounting
   and GC reachability
-- [ ] Fail closed on unsupported iterator-producing APIs and unsupported
+- [x] Fail closed on unsupported iterator-producing APIs and unsupported
   iterable inputs
-- [ ] Add unit, integration, differential, and hostile-input tests for
+- [x] Add unit, integration, differential, and hostile-input tests for
   supported iteration ordering and `for...of` behavior
-- [ ] Update `README.md`, `docs/LANGUAGE.md`, `docs/SERIALIZATION.md`, and
+- [x] Update `README.md`, `docs/LANGUAGE.md`, `docs/SERIALIZATION.md`, and
   `docs/RUNTIME_MODEL.md` when iteration lands
 
 Exit criteria:
 
-- [ ] Supported `for...of` programs run correctly
-- [ ] Unsupported iteration surfaces fail closed with clear diagnostics
-- [ ] Heap accounting, GC, and snapshotting remain correct for iterators
-- [ ] Iteration tests pass
+- [x] Supported `for...of` programs run correctly
+- [x] Unsupported iteration surfaces fail closed with clear diagnostics
+- [x] Heap accounting, GC, and snapshotting remain correct for iterators
+- [x] Iteration tests pass
 
 ### Keyed Collections (`Map` and `Set`)
 
