@@ -1928,8 +1928,7 @@ impl Compiler {
                 } else if operator == AssignOp::NullishAssign {
                     context.code.push(Instruction::LoadName(name.clone()));
                     context.code.push(Instruction::Dup);
-                    let rhs_jump =
-                        self.emit_jump(context, Instruction::JumpIfNullish(usize::MAX));
+                    let rhs_jump = self.emit_jump(context, Instruction::JumpIfNullish(usize::MAX));
                     context.code.push(Instruction::Pop);
                     let end_jump = self.emit_jump(context, Instruction::Jump(usize::MAX));
                     let rhs_ip = context.code.len();
@@ -1976,7 +1975,9 @@ impl Compiler {
                                 span: SourceSpan::new(0, 0),
                                 name: object_binding.clone(),
                             }));
-                        context.code.push(Instruction::LoadName(object_binding.clone()));
+                        context
+                            .code
+                            .push(Instruction::LoadName(object_binding.clone()));
                         context.code.push(Instruction::GetPropStatic {
                             name: name.clone(),
                             optional: *optional,
@@ -2032,7 +2033,9 @@ impl Compiler {
                                 span: SourceSpan::new(0, 0),
                                 name: object_binding.clone(),
                             }));
-                        context.code.push(Instruction::LoadName(object_binding.clone()));
+                        context
+                            .code
+                            .push(Instruction::LoadName(object_binding.clone()));
                         context.code.push(Instruction::GetPropStatic {
                             name: name.clone(),
                             optional: *optional,
@@ -2094,8 +2097,12 @@ impl Compiler {
                                 span: SourceSpan::new(0, 0),
                                 name: key_binding.clone(),
                             }));
-                        context.code.push(Instruction::LoadName(object_binding.clone()));
-                        context.code.push(Instruction::LoadName(key_binding.clone()));
+                        context
+                            .code
+                            .push(Instruction::LoadName(object_binding.clone()));
+                        context
+                            .code
+                            .push(Instruction::LoadName(key_binding.clone()));
                         context.code.push(Instruction::GetPropComputed {
                             optional: *optional,
                         });
