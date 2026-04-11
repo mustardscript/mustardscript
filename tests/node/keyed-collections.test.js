@@ -148,38 +148,40 @@ test('progress snapshots preserve live keyed collections and cycles across resum
   });
 });
 
-test('unsupported collection iteration surfaces fail closed', async () => {
-  await assert.rejects(
-    () => new Jslite("new Map([['alpha', 1]]);").run(),
-    (error) =>
-      error instanceof JsliteError &&
-      error.kind === 'Runtime' &&
-      error.message.includes('Map constructor iterable inputs are not supported'),
-  );
+test('collection constructors and iteration helpers support the documented iterable surface', async () => {
+  const runtime = new Jslite(`
+    const map = new Map([['alpha', 1], ['beta', 2], ['alpha', 3]]);
+    const set = new Set('abba');
+    const entry = map.entries().next();
+    const key = map.keys().next();
+    const value = map.values().next();
+    const setEntry = set.entries().next();
+    const seen = [];
+    for (const [itemKey, itemValue] of map) {
+      seen[seen.length] = itemKey + ':' + itemValue;
+    }
+    let setSeen = '';
+    for (const item of set) {
+      setSeen += item;
+    }
+    [
+      map.size,
+      map.get('alpha'),
+      set.size,
+      entry.value[0],
+      entry.value[1],
+      entry.done,
+      key.value,
+      value.value,
+      setEntry.value[0],
+      setEntry.value[1],
+      setSeen,
+      seen,
+    ];
+  `);
 
-  await assert.rejects(
-    () => new Jslite('new Map().entries();').run(),
-    (error) =>
-      error instanceof JsliteError &&
-      error.kind === 'Runtime' &&
-      error.message.includes('Map iterator-producing APIs are not supported'),
-  );
-
-  await assert.rejects(
-    () => new Jslite('new Set([1, 2]);').run(),
-    (error) =>
-      error instanceof JsliteError &&
-      error.kind === 'Runtime' &&
-      error.message.includes('Set constructor iterable inputs are not supported'),
-  );
-
-  await assert.rejects(
-    () => new Jslite('new Set().values();').run(),
-    (error) =>
-      error instanceof JsliteError &&
-      error.kind === 'Runtime' &&
-      error.message.includes('Set iterator-producing APIs are not supported'),
-  );
+  const result = await runtime.run();
+  assert.deepEqual(result, [2, 3, 2, 'alpha', 3, false, 'alpha', 3, 'a', 'a', 'ab', ['alpha:3', 'beta:2']]);
 });
 
 test('guest keyed collections cannot cross the structured host boundary', async () => {

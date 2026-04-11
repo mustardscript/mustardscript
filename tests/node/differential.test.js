@@ -125,6 +125,35 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'supported iterable surfaces',
+    source: `
+      const map = new Map([['alpha', 1], ['beta', 2], ['alpha', 3]]);
+      const set = new Set('abba');
+      const seen = [];
+      for (const [key, value] of map) {
+        seen[seen.length] = key + ':' + value;
+      }
+      let chars = '';
+      for (const value of 'hi') {
+        chars += value;
+      }
+      let setChars = '';
+      for (const value of set.keys()) {
+        setChars += value;
+      }
+      const pair = [10, 20].entries().next();
+      ({
+        size: map.size,
+        alpha: map.get('alpha'),
+        setSize: set.size,
+        chars,
+        setChars,
+        pair: [pair.value[0], pair.value[1], pair.done],
+        seen,
+      });
+    `,
+  },
+  {
     name: 'optional call on nullish and callable values',
     source: `
       const fn = (value) => value + 1;

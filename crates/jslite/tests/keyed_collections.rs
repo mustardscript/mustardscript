@@ -165,39 +165,58 @@ fn collection_methods_require_compatible_receivers() {
 }
 
 #[test]
-fn collection_iteration_dependent_forms_fail_closed() {
-    let map_ctor = compile("new Map([['alpha', 1]]);").expect("source should compile");
-    let error = execute(&map_ctor, ExecutionOptions::default()).expect_err("execution should fail");
-    assert!(
-        error
-            .to_string()
-            .contains("Map constructor iterable inputs are not supported")
-    );
+fn keyed_collections_support_iterable_inputs_and_iteration_helpers() {
+    let program = compile(
+        r#"
+        const map = new Map([['alpha', 1], ['beta', 2], ['alpha', 3]]);
+        const set = new Set('abba');
+        const entry = map.entries().next();
+        const key = map.keys().next();
+        const value = map.values().next();
+        const setEntry = set.entries().next();
+        const seen = [];
+        for (const [itemKey, itemValue] of map) {
+          seen[seen.length] = itemKey + ':' + itemValue;
+        }
+        let setSeen = '';
+        for (const item of set) {
+          setSeen += item;
+        }
+        [
+          map.size,
+          map.get('alpha'),
+          set.size,
+          entry.value[0],
+          entry.value[1],
+          entry.done,
+          key.value,
+          value.value,
+          setEntry.value[0],
+          setEntry.value[1],
+          setSeen,
+          seen,
+        ];
+        "#,
+    )
+    .expect("source should compile");
 
-    let map_entries = compile("new Map().entries();").expect("source should compile");
-    let error =
-        execute(&map_entries, ExecutionOptions::default()).expect_err("execution should fail");
-    assert!(
-        error
-            .to_string()
-            .contains("Map iterator-producing APIs are not supported")
-    );
-
-    let set_ctor = compile("new Set([1, 2]);").expect("source should compile");
-    let error = execute(&set_ctor, ExecutionOptions::default()).expect_err("execution should fail");
-    assert!(
-        error
-            .to_string()
-            .contains("Set constructor iterable inputs are not supported")
-    );
-
-    let set_values = compile("new Set().values();").expect("source should compile");
-    let error =
-        execute(&set_values, ExecutionOptions::default()).expect_err("execution should fail");
-    assert!(
-        error
-            .to_string()
-            .contains("Set iterator-producing APIs are not supported")
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            number(2.0),
+            number(3.0),
+            number(2.0),
+            string("alpha"),
+            number(3.0),
+            StructuredValue::Bool(false),
+            string("alpha"),
+            number(3.0),
+            string("a"),
+            string("a"),
+            string("ab"),
+            StructuredValue::Array(vec![string("alpha:3"), string("beta:2")]),
+        ])
     );
 }
 

@@ -91,14 +91,50 @@ fn for_of_runs_finally_blocks_on_continue_and_break() {
 }
 
 #[test]
-fn for_of_rejects_non_array_iterables() {
+fn for_of_supports_strings_maps_sets_and_iterator_helpers() {
     let program = compile(
         r#"
-        let total = 0;
-        for (const value of "hi") {
-          total += value.length;
+        const map = new Map([['alpha', 1], ['beta', 2]]);
+        const set = new Set('aba');
+        const seen = [];
+        for (const [key, value] of map) {
+          seen[seen.length] = key + ':' + value;
         }
-        total;
+        let chars = '';
+        for (const value of 'hi') {
+          chars += value;
+        }
+        let setChars = '';
+        for (const value of set.keys()) {
+          setChars += value;
+        }
+        const pair = [10, 20].entries().next();
+        [seen, chars, setChars, pair.value[0], pair.value[1], pair.done];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![string("alpha:1"), string("beta:2")]),
+            string("hi"),
+            string("ab"),
+            number(0.0),
+            number(10.0),
+            StructuredValue::Bool(false),
+        ])
+    );
+}
+
+#[test]
+fn for_of_rejects_unsupported_iterable_inputs() {
+    let program = compile(
+        r#"
+        for (const value of { alpha: 1 }) {
+          value;
+        }
         "#,
     )
     .expect("source should compile");
@@ -107,16 +143,8 @@ fn for_of_rejects_non_array_iterables() {
     assert!(
         error
             .to_string()
-            .contains("for...of currently only supports arrays")
+            .contains("value is not iterable in the supported surface")
     );
-}
-
-#[test]
-fn iterator_producing_array_helpers_fail_closed() {
-    let program = compile("([1, 2]).values();").expect("source should compile");
-
-    let error = execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
-    assert!(error.to_string().contains("value is not callable"));
 }
 
 #[test]
@@ -176,4 +204,8 @@ fn snapshot_round_trip_preserves_active_array_iterators() {
         ExecutionStep::Completed(value) => assert_eq!(value, number(60.0)),
         ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
     }
+}
+
+fn string(value: &str) -> StructuredValue {
+    StructuredValue::from(value)
 }

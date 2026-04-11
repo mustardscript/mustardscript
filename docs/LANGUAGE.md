@@ -69,7 +69,8 @@ extensions are called out explicitly instead of being implied.
 
 - `for...of` is currently supported only when the header declares exactly one
   `let` or `const` binding pattern
-- only guest arrays are iterable in the current surface
+- arrays, strings, `Map`, `Set`, and guest iterator objects from the supported
+  helper surface are iterable in the current surface
 - header patterns can use the same identifier, array, and object destructuring
   forms already supported elsewhere in the runtime
 - each `for...of` iteration gets a fresh lexical binding environment for the
@@ -78,18 +79,22 @@ extensions are called out explicitly instead of being implied.
   non-index properties
 - active array iterators observe the live backing array length, so elements
   appended before exhaustion are visited in order
-- array iterator helper methods such as `values()`, `keys()`, and `entries()`
-  are still absent from the built-in surface and therefore fail closed when
-  called
-- unsupported iterable inputs such as strings, plain objects, promises, and
-  custom iterables throw a runtime `TypeError`
+- strings iterate by Unicode scalar values and preserve source order
+- `Map` default iteration yields `[key, value]` entry pairs in insertion order
+- `Set` default iteration yields values in insertion order
+- public iterator helper methods `values()`, `keys()`, and `entries()` are
+  available on arrays and keyed collections, and produced iterator objects
+  expose a guest-visible `.next()` method
+- unsupported iterable inputs such as plain objects, promises, and custom
+  symbol-based iterables throw a runtime `TypeError`
 - abrupt completion from `break`, `continue`, `return`, or `throw` discards the
-  internal array iterator state with no user-visible iterator-close hook because
-  generators and custom iterators remain deferred
+  internal iterator state with no user-visible iterator-close hook because
+  generators and custom iterator authoring remain deferred
 
 ## Supported Keyed Collection Surface
 
-- `new Map()` and `new Set()` are supported with zero arguments only
+- `new Map(iterable)` and `new Set(iterable)` accept the supported iterable
+  surface
 - `Map` supports `get`, `set`, `has`, `delete`, `clear`, and `size`
 - `Set` supports `add`, `has`, `delete`, `clear`, and `size`
 - `Map` keys and `Set` membership use SameValueZero semantics:
@@ -98,10 +103,11 @@ extensions are called out explicitly instead of being implied.
 - `Map` and `Set` preserve first-in insertion order internally; updating an
   existing entry does not move it, `delete` removes the entry, and `clear`
   empties the collection
-- iterable constructor inputs such as `new Map(entries)` and `new Set(values)`
-  remain unsupported because generic collection iteration is still deferred
-- iterator-returning collection APIs such as `entries()`, `keys()`, and
-  `values()` remain unsupported and fail closed when called
+- `Map.prototype.entries`, `Map.prototype.keys`, `Map.prototype.values`,
+  `Set.prototype.entries`, `Set.prototype.keys`, and `Set.prototype.values`
+  return guest iterator objects that preserve insertion order
+- `Map(iterable)` expects each produced item to be a guest array pair and uses
+  the first two elements as `[key, value]`
 - custom string properties on `Map` and `Set` instances are currently
   unsupported and fail closed
 
@@ -133,9 +139,8 @@ extensions are called out explicitly instead of being implied.
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
 - default parameter evaluation
-- non-array iterable protocol support
-- iterable `Map` / `Set` constructors and collection iterator APIs
-- public iterator-producing APIs and custom iterator authoring
+- symbol-based custom iterable protocol support
+- custom iterator authoring beyond the documented collection helpers
 - module loading
 - property descriptor semantics
 - full prototype semantics
@@ -163,13 +168,19 @@ extensions are called out explicitly instead of being implied.
 
 ## Observable Ordering
 
-- The currently supported observable property-order surface is `JSON.stringify`,
-  array `for...of`, and the supported `Object.keys` / `Object.values` /
+- The currently supported observable property-order surface is
+  `JSON.stringify`, `for...of` over the documented iterable surface, `Map` /
+  `Set` iteration helpers, and the supported `Object.keys` / `Object.values` /
   `Object.entries` helpers.
 - `JSON.stringify` on plain objects renders string keys in sorted key order.
 - `JSON.stringify` on arrays renders elements in ascending numeric index order.
 - Non-index array properties are ignored by `JSON.stringify`.
 - Array `for...of` yields values in ascending numeric index order.
+- String iteration yields characters in source order.
+- `Map` iteration and `Map.prototype.entries` / `keys` / `values` preserve
+  insertion order.
+- `Set` iteration and `Set.prototype.entries` / `keys` / `values` preserve
+  insertion order.
 - `Object.keys`, `Object.values`, and `Object.entries` on plain objects render
   string keys in sorted key order.
 - `Object.keys`, `Object.values`, and `Object.entries` on arrays enumerate
@@ -206,6 +217,9 @@ extensions are called out explicitly instead of being implied.
 - `Array.prototype.join`
 - `Array.prototype.includes`
 - `Array.prototype.indexOf`
+- `Array.prototype.values`
+- `Array.prototype.keys`
+- `Array.prototype.entries`
 - `Object.keys`
 - `Object.values`
 - `Object.entries`
@@ -216,11 +230,17 @@ extensions are called out explicitly instead of being implied.
 - `Map.prototype.delete`
 - `Map.prototype.clear`
 - `Map.prototype.size`
+- `Map.prototype.entries`
+- `Map.prototype.keys`
+- `Map.prototype.values`
 - `Set.prototype.add`
 - `Set.prototype.has`
 - `Set.prototype.delete`
 - `Set.prototype.clear`
 - `Set.prototype.size`
+- `Set.prototype.entries`
+- `Set.prototype.keys`
+- `Set.prototype.values`
 - `Promise.resolve`
 - `Promise.reject`
 - `String.prototype.trim`

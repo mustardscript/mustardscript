@@ -54,9 +54,33 @@ test('progress snapshots preserve active array iterators across resumes', () => 
   assert.equal(result, 60);
 });
 
+test('run supports strings, keyed collections, and iterator helper objects', async () => {
+  const runtime = new Jslite(`
+    const map = new Map([['alpha', 1], ['beta', 2]]);
+    const set = new Set('aba');
+    const seen = [];
+    for (const [key, value] of map) {
+      seen[seen.length] = key + ':' + value;
+    }
+    let chars = '';
+    for (const value of 'hi') {
+      chars += value;
+    }
+    let setChars = '';
+    for (const value of set.keys()) {
+      setChars += value;
+    }
+    const pair = [10, 20].entries().next();
+    [seen, chars, setChars, pair.value[0], pair.value[1], pair.done];
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, [['alpha:1', 'beta:2'], 'hi', 'ab', 0, 10, false]);
+});
+
 test('run rejects unsupported for...of iterable inputs', async () => {
   const runtime = new Jslite(`
-    for (const value of 'hi') {
+    for (const value of { alpha: 1 }) {
       value;
     }
   `);
@@ -66,18 +90,6 @@ test('run rejects unsupported for...of iterable inputs', async () => {
     (error) =>
       error instanceof JsliteError &&
       error.kind === 'Runtime' &&
-      error.message.includes('for...of currently only supports arrays'),
-  );
-});
-
-test('run fails closed for unsupported array iterator helper methods', async () => {
-  const runtime = new Jslite('([1, 2]).values();');
-
-  await assert.rejects(
-    () => runtime.run(),
-    (error) =>
-      error instanceof JsliteError &&
-      error.kind === 'Runtime' &&
-      error.message.includes('value is not callable'),
+      error.message.includes('value is not iterable in the supported surface'),
   );
 });

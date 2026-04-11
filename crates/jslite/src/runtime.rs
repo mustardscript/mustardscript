@@ -1053,6 +1053,48 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
                     });
                 }
             }
+            IteratorState::ArrayKeys(ref state) | IteratorState::ArrayEntries(ref state) => {
+                if runtime.arrays.get(state.array).is_none() {
+                    return Err(JsliteError::Message {
+                        kind: DiagnosticKind::Serialization,
+                        message: format!(
+                            "snapshot validation failed: iterator references missing array {:?}",
+                            state.array
+                        ),
+                        span: None,
+                        traceback: Vec::new(),
+                    });
+                }
+            }
+            IteratorState::String(_) => {}
+            IteratorState::MapEntries(ref state)
+            | IteratorState::MapKeys(ref state)
+            | IteratorState::MapValues(ref state) => {
+                if runtime.maps.get(state.map).is_none() {
+                    return Err(JsliteError::Message {
+                        kind: DiagnosticKind::Serialization,
+                        message: format!(
+                            "snapshot validation failed: iterator references missing map {:?}",
+                            state.map
+                        ),
+                        span: None,
+                        traceback: Vec::new(),
+                    });
+                }
+            }
+            IteratorState::SetEntries(ref state) | IteratorState::SetValues(ref state) => {
+                if runtime.sets.get(state.set).is_none() {
+                    return Err(JsliteError::Message {
+                        kind: DiagnosticKind::Serialization,
+                        message: format!(
+                            "snapshot validation failed: iterator references missing set {:?}",
+                            state.set
+                        ),
+                        span: None,
+                        traceback: Vec::new(),
+                    });
+                }
+            }
         }
     }
     if let Some(root_result) = &runtime.root_result {
@@ -2560,6 +2602,9 @@ enum BuiltinFunction {
     ArrayJoin,
     ArrayIncludes,
     ArrayIndexOf,
+    ArrayValues,
+    ArrayKeys,
+    ArrayEntries,
     ObjectCtor,
     ObjectKeys,
     ObjectValues,
@@ -2571,17 +2616,18 @@ enum BuiltinFunction {
     MapHas,
     MapDelete,
     MapClear,
-    MapEntriesUnsupported,
-    MapKeysUnsupported,
-    MapValuesUnsupported,
+    MapEntries,
+    MapKeys,
+    MapValues,
     SetCtor,
     SetAdd,
     SetHas,
     SetDelete,
     SetClear,
-    SetEntriesUnsupported,
-    SetKeysUnsupported,
-    SetValuesUnsupported,
+    SetEntries,
+    SetKeys,
+    SetValues,
+    IteratorNext,
     PromiseCtor,
     PromiseResolve,
     PromiseReject,
@@ -2687,11 +2733,37 @@ struct IteratorObject {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum IteratorState {
     Array(ArrayIteratorState),
+    ArrayKeys(ArrayIteratorState),
+    ArrayEntries(ArrayIteratorState),
+    String(StringIteratorState),
+    MapEntries(MapIteratorState),
+    MapKeys(MapIteratorState),
+    MapValues(MapIteratorState),
+    SetEntries(SetIteratorState),
+    SetValues(SetIteratorState),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ArrayIteratorState {
     array: ArrayKey,
+    next_index: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StringIteratorState {
+    value: String,
+    next_index: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct MapIteratorState {
+    map: MapKey,
+    next_index: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SetIteratorState {
+    set: SetKey,
     next_index: usize,
 }
 
@@ -4477,6 +4549,19 @@ impl Runtime {
                     IteratorState::Array(ref state) => {
                         self.mark_value(&Value::Array(state.array), &mut marks, &mut worklist);
                     }
+                    IteratorState::ArrayKeys(ref state)
+                    | IteratorState::ArrayEntries(ref state) => {
+                        self.mark_value(&Value::Array(state.array), &mut marks, &mut worklist);
+                    }
+                    IteratorState::String(_) => {}
+                    IteratorState::MapEntries(ref state)
+                    | IteratorState::MapKeys(ref state)
+                    | IteratorState::MapValues(ref state) => {
+                        self.mark_value(&Value::Map(state.map), &mut marks, &mut worklist);
+                    }
+                    IteratorState::SetEntries(ref state) | IteratorState::SetValues(ref state) => {
+                        self.mark_value(&Value::Set(state.set), &mut marks, &mut worklist);
+                    }
                 }
             }
 
@@ -4980,6 +5065,9 @@ impl Runtime {
             BuiltinFunction::ArrayJoin => self.call_array_join(this_value, args),
             BuiltinFunction::ArrayIncludes => self.call_array_includes(this_value, args),
             BuiltinFunction::ArrayIndexOf => self.call_array_index_of(this_value, args),
+            BuiltinFunction::ArrayValues => self.call_array_values(this_value),
+            BuiltinFunction::ArrayKeys => self.call_array_keys(this_value),
+            BuiltinFunction::ArrayEntries => self.call_array_entries(this_value),
             BuiltinFunction::ObjectCtor => {
                 if let Some(Value::Object(object)) = args.first() {
                     Ok(Value::Object(*object))
@@ -5000,15 +5088,9 @@ impl Runtime {
             BuiltinFunction::MapHas => self.call_map_has(this_value, args),
             BuiltinFunction::MapDelete => self.call_map_delete(this_value, args),
             BuiltinFunction::MapClear => self.call_map_clear(this_value),
-            BuiltinFunction::MapEntriesUnsupported => Err(JsliteError::runtime(
-                "TypeError: Map iterator-producing APIs are not supported; use explicit get/has/size operations",
-            )),
-            BuiltinFunction::MapKeysUnsupported => Err(JsliteError::runtime(
-                "TypeError: Map iterator-producing APIs are not supported; use explicit get/has/size operations",
-            )),
-            BuiltinFunction::MapValuesUnsupported => Err(JsliteError::runtime(
-                "TypeError: Map iterator-producing APIs are not supported; use explicit get/has/size operations",
-            )),
+            BuiltinFunction::MapEntries => self.call_map_entries(this_value),
+            BuiltinFunction::MapKeys => self.call_map_keys(this_value),
+            BuiltinFunction::MapValues => self.call_map_values(this_value),
             BuiltinFunction::SetCtor => Err(JsliteError::runtime(
                 "TypeError: Set constructor must be called with new",
             )),
@@ -5016,15 +5098,10 @@ impl Runtime {
             BuiltinFunction::SetHas => self.call_set_has(this_value, args),
             BuiltinFunction::SetDelete => self.call_set_delete(this_value, args),
             BuiltinFunction::SetClear => self.call_set_clear(this_value),
-            BuiltinFunction::SetEntriesUnsupported => Err(JsliteError::runtime(
-                "TypeError: Set iterator-producing APIs are not supported; use explicit add/has/size operations",
-            )),
-            BuiltinFunction::SetKeysUnsupported => Err(JsliteError::runtime(
-                "TypeError: Set iterator-producing APIs are not supported; use explicit add/has/size operations",
-            )),
-            BuiltinFunction::SetValuesUnsupported => Err(JsliteError::runtime(
-                "TypeError: Set iterator-producing APIs are not supported; use explicit add/has/size operations",
-            )),
+            BuiltinFunction::SetEntries => self.call_set_entries(this_value),
+            BuiltinFunction::SetKeys => self.call_set_keys(this_value),
+            BuiltinFunction::SetValues => self.call_set_values(this_value),
+            BuiltinFunction::IteratorNext => self.call_iterator_next(this_value),
             BuiltinFunction::PromiseCtor => Err(JsliteError::runtime(
                 "Promise construction is not supported in v1; use async functions or Promise.resolve/reject",
             )),
@@ -5279,21 +5356,56 @@ impl Runtime {
     }
 
     fn construct_map(&mut self, args: &[Value]) -> JsliteResult<Value> {
-        if !args.is_empty() {
-            return Err(JsliteError::runtime(
-                "TypeError: Map constructor iterable inputs are not supported in the current collection surface",
-            ));
+        let map = self.insert_map(Vec::new())?;
+        let iterable = args.first().cloned().unwrap_or(Value::Undefined);
+        if matches!(iterable, Value::Null | Value::Undefined) {
+            return Ok(Value::Map(map));
         }
-        Ok(Value::Map(self.insert_map(Vec::new())?))
+
+        let iterator = self.create_iterator(iterable)?;
+        loop {
+            let (entry, done) = self.iterator_next(iterator.clone())?;
+            if done {
+                break;
+            }
+            let items = match entry {
+                Value::Array(array) => self
+                    .arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .clone(),
+                _ => {
+                    return Err(JsliteError::runtime(
+                        "TypeError: Map constructor expects an iterable of [key, value] pairs",
+                    ));
+                }
+            };
+            let key = items.first().cloned().unwrap_or(Value::Undefined);
+            let value = items.get(1).cloned().unwrap_or(Value::Undefined);
+            self.map_set(map, key, value)?;
+        }
+
+        Ok(Value::Map(map))
     }
 
     fn construct_set(&mut self, args: &[Value]) -> JsliteResult<Value> {
-        if !args.is_empty() {
-            return Err(JsliteError::runtime(
-                "TypeError: Set constructor iterable inputs are not supported in the current collection surface",
-            ));
+        let set = self.insert_set(Vec::new())?;
+        let iterable = args.first().cloned().unwrap_or(Value::Undefined);
+        if matches!(iterable, Value::Null | Value::Undefined) {
+            return Ok(Value::Set(set));
         }
-        Ok(Value::Set(self.insert_set(Vec::new())?))
+
+        let iterator = self.create_iterator(iterable)?;
+        loop {
+            let (value, done) = self.iterator_next(iterator.clone())?;
+            if done {
+                break;
+            }
+            self.set_add(set, value)?;
+        }
+
+        Ok(Value::Set(set))
     }
 
     fn array_receiver(&self, value: Value, method: &str) -> JsliteResult<ArrayKey> {
@@ -5434,6 +5546,36 @@ impl Runtime {
             .map(|(index, _)| index as f64)
             .unwrap_or(-1.0);
         Ok(Value::Number(index))
+    }
+
+    fn call_array_values(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "values")?;
+        Ok(Value::Iterator(self.insert_iterator(
+            IteratorState::Array(ArrayIteratorState {
+                array,
+                next_index: 0,
+            }),
+        )?))
+    }
+
+    fn call_array_keys(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "keys")?;
+        Ok(Value::Iterator(self.insert_iterator(
+            IteratorState::ArrayKeys(ArrayIteratorState {
+                array,
+                next_index: 0,
+            }),
+        )?))
+    }
+
+    fn call_array_entries(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "entries")?;
+        Ok(Value::Iterator(self.insert_iterator(
+            IteratorState::ArrayEntries(ArrayIteratorState {
+                array,
+                next_index: 0,
+            }),
+        )?))
     }
 
     fn enumerable_keys(&self, value: Value) -> JsliteResult<Vec<String>> {
@@ -5683,6 +5825,15 @@ impl Runtime {
         }
     }
 
+    fn iterator_receiver(&self, value: Value, method: &str) -> JsliteResult<IteratorKey> {
+        match value {
+            Value::Iterator(key) => Ok(key),
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: iterator.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
     fn call_map_get(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
         let key = args.first().cloned().unwrap_or(Value::Undefined);
         let map = self.map_receiver(this_value, "get")?;
@@ -5718,6 +5869,27 @@ impl Runtime {
         Ok(Value::Undefined)
     }
 
+    fn call_map_entries(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let map = self.map_receiver(this_value, "entries")?;
+        Ok(Value::Iterator(self.insert_iterator(
+            IteratorState::MapEntries(MapIteratorState { map, next_index: 0 }),
+        )?))
+    }
+
+    fn call_map_keys(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let map = self.map_receiver(this_value, "keys")?;
+        Ok(Value::Iterator(self.insert_iterator(
+            IteratorState::MapKeys(MapIteratorState { map, next_index: 0 }),
+        )?))
+    }
+
+    fn call_map_values(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let map = self.map_receiver(this_value, "values")?;
+        Ok(Value::Iterator(self.insert_iterator(
+            IteratorState::MapValues(MapIteratorState { map, next_index: 0 }),
+        )?))
+    }
+
     fn call_set_add(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
         let set = self.set_receiver(this_value, "add")?;
         let value = args.first().cloned().unwrap_or(Value::Undefined);
@@ -5741,6 +5913,40 @@ impl Runtime {
         let set = self.set_receiver(this_value, "clear")?;
         self.set_clear(set)?;
         Ok(Value::Undefined)
+    }
+
+    fn call_set_entries(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let set = self.set_receiver(this_value, "entries")?;
+        Ok(Value::Iterator(self.insert_iterator(
+            IteratorState::SetEntries(SetIteratorState { set, next_index: 0 }),
+        )?))
+    }
+
+    fn call_set_keys(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let set = self.set_receiver(this_value, "keys")?;
+        Ok(Value::Iterator(self.insert_iterator(
+            IteratorState::SetValues(SetIteratorState { set, next_index: 0 }),
+        )?))
+    }
+
+    fn call_set_values(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let set = self.set_receiver(this_value, "values")?;
+        Ok(Value::Iterator(self.insert_iterator(
+            IteratorState::SetValues(SetIteratorState { set, next_index: 0 }),
+        )?))
+    }
+
+    fn call_iterator_next(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let iterator = self.iterator_receiver(this_value, "next")?;
+        let (value, done) = self.iterator_next(Value::Iterator(iterator))?;
+        let result = self.insert_object(
+            IndexMap::from([
+                ("value".to_string(), value),
+                ("done".to_string(), Value::Bool(done)),
+            ]),
+            ObjectKind::Plain,
+        )?;
+        Ok(Value::Object(result))
     }
 
     fn map_get(&self, map: MapKey, key: &Value) -> JsliteResult<Option<MapEntry>> {
@@ -6106,8 +6312,21 @@ impl Runtime {
                     next_index: 0,
                 }),
             )?)),
+            Value::String(value) => Ok(Value::Iterator(self.insert_iterator(
+                IteratorState::String(StringIteratorState {
+                    value,
+                    next_index: 0,
+                }),
+            )?)),
+            Value::Map(map) => Ok(Value::Iterator(self.insert_iterator(
+                IteratorState::MapEntries(MapIteratorState { map, next_index: 0 }),
+            )?)),
+            Value::Set(set) => Ok(Value::Iterator(self.insert_iterator(
+                IteratorState::SetValues(SetIteratorState { set, next_index: 0 }),
+            )?)),
+            Value::Iterator(iterator) => Ok(Value::Iterator(iterator)),
             _ => Err(JsliteError::runtime(
-                "TypeError: for...of currently only supports arrays",
+                "TypeError: value is not iterable in the supported surface",
             )),
         }
     }
@@ -6117,27 +6336,113 @@ impl Runtime {
             Value::Iterator(key) => key,
             _ => return Err(JsliteError::runtime("TypeError: value is not an iterator")),
         };
-        let (array, next_index) = match self
+        let state = self
             .iterators
             .get(key)
             .ok_or_else(|| JsliteError::runtime("iterator missing"))?
             .state
-        {
-            IteratorState::Array(ref state) => (state.array, state.next_index),
-        };
+            .clone();
 
-        let value = self
-            .arrays
-            .get(array)
-            .ok_or_else(|| JsliteError::runtime("array missing"))?
-            .elements
-            .get(next_index)
-            .cloned();
+        let value = match state {
+            IteratorState::Array(state) => self
+                .arrays
+                .get(state.array)
+                .ok_or_else(|| JsliteError::runtime("array missing"))?
+                .elements
+                .get(state.next_index)
+                .cloned(),
+            IteratorState::ArrayKeys(state) => self
+                .arrays
+                .get(state.array)
+                .ok_or_else(|| JsliteError::runtime("array missing"))?
+                .elements
+                .get(state.next_index)
+                .map(|_| Value::Number(state.next_index as f64)),
+            IteratorState::ArrayEntries(state) => {
+                let value = self
+                    .arrays
+                    .get(state.array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .get(state.next_index)
+                    .cloned();
+                match value {
+                    Some(value) => Some(Value::Array(self.insert_array(
+                        vec![Value::Number(state.next_index as f64), value],
+                        IndexMap::new(),
+                    )?)),
+                    None => None,
+                }
+            }
+            IteratorState::String(state) => {
+                let chars = state.value.chars().collect::<Vec<_>>();
+                chars
+                    .get(state.next_index)
+                    .map(|ch| Value::String(ch.to_string()))
+            }
+            IteratorState::MapEntries(state) => {
+                let entry = self
+                    .maps
+                    .get(state.map)
+                    .ok_or_else(|| JsliteError::runtime("map missing"))?
+                    .entries
+                    .get(state.next_index)
+                    .cloned();
+                match entry {
+                    Some(entry) => Some(Value::Array(
+                        self.insert_array(vec![entry.key, entry.value], IndexMap::new())?,
+                    )),
+                    None => None,
+                }
+            }
+            IteratorState::MapKeys(state) => self
+                .maps
+                .get(state.map)
+                .ok_or_else(|| JsliteError::runtime("map missing"))?
+                .entries
+                .get(state.next_index)
+                .map(|entry| entry.key.clone()),
+            IteratorState::MapValues(state) => self
+                .maps
+                .get(state.map)
+                .ok_or_else(|| JsliteError::runtime("map missing"))?
+                .entries
+                .get(state.next_index)
+                .map(|entry| entry.value.clone()),
+            IteratorState::SetEntries(state) => self
+                .sets
+                .get(state.set)
+                .ok_or_else(|| JsliteError::runtime("set missing"))?
+                .entries
+                .get(state.next_index)
+                .cloned()
+                .map(|value| {
+                    self.insert_array(vec![value.clone(), value], IndexMap::new())
+                        .map(Value::Array)
+                })
+                .transpose()?,
+            IteratorState::SetValues(state) => self
+                .sets
+                .get(state.set)
+                .ok_or_else(|| JsliteError::runtime("set missing"))?
+                .entries
+                .get(state.next_index)
+                .cloned(),
+        };
 
         if value.is_some() {
             if let Some(iterator) = self.iterators.get_mut(key) {
                 match &mut iterator.state {
-                    IteratorState::Array(state) => state.next_index += 1,
+                    IteratorState::Array(state)
+                    | IteratorState::ArrayKeys(state)
+                    | IteratorState::ArrayEntries(state) => state.next_index += 1,
+                    IteratorState::String(state) => state.next_index += 1,
+                    IteratorState::MapEntries(state)
+                    | IteratorState::MapKeys(state)
+                    | IteratorState::MapValues(state) => state.next_index += 1,
+                    IteratorState::SetEntries(state) | IteratorState::SetValues(state) => {
+                        state.next_index += 1
+                    }
                 }
             }
             self.refresh_iterator_accounting(key)?;
@@ -6193,6 +6498,9 @@ impl Runtime {
                         "join" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayJoin)),
                         "includes" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIncludes)),
                         "indexOf" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIndexOf)),
+                        "values" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayValues)),
+                        "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayKeys)),
+                        "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayEntries)),
                         _ => Ok(Value::Undefined),
                     }
                 }
@@ -6209,13 +6517,9 @@ impl Runtime {
                     "has" => Ok(Value::BuiltinFunction(BuiltinFunction::MapHas)),
                     "delete" => Ok(Value::BuiltinFunction(BuiltinFunction::MapDelete)),
                     "clear" => Ok(Value::BuiltinFunction(BuiltinFunction::MapClear)),
-                    "entries" => Ok(Value::BuiltinFunction(
-                        BuiltinFunction::MapEntriesUnsupported,
-                    )),
-                    "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::MapKeysUnsupported)),
-                    "values" => Ok(Value::BuiltinFunction(
-                        BuiltinFunction::MapValuesUnsupported,
-                    )),
+                    "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::MapEntries)),
+                    "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::MapKeys)),
+                    "values" => Ok(Value::BuiltinFunction(BuiltinFunction::MapValues)),
                     _ => Ok(Value::Undefined),
                 }
             }
@@ -6230,16 +6534,16 @@ impl Runtime {
                     "has" => Ok(Value::BuiltinFunction(BuiltinFunction::SetHas)),
                     "delete" => Ok(Value::BuiltinFunction(BuiltinFunction::SetDelete)),
                     "clear" => Ok(Value::BuiltinFunction(BuiltinFunction::SetClear)),
-                    "entries" => Ok(Value::BuiltinFunction(
-                        BuiltinFunction::SetEntriesUnsupported,
-                    )),
-                    "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::SetKeysUnsupported)),
-                    "values" => Ok(Value::BuiltinFunction(
-                        BuiltinFunction::SetValuesUnsupported,
-                    )),
+                    "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::SetEntries)),
+                    "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::SetKeys)),
+                    "values" => Ok(Value::BuiltinFunction(BuiltinFunction::SetValues)),
                     _ => Ok(Value::Undefined),
                 }
             }
+            Value::Iterator(_) if key == "next" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::IteratorNext))
+            }
+            Value::Iterator(_) => Ok(Value::Undefined),
             Value::Promise(_) => Ok(Value::Undefined),
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "isArray" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray))
@@ -6813,8 +7117,19 @@ fn measure_set_bytes(set: &SetObject) -> usize {
         + set.entries.iter().map(extra_value_bytes).sum::<usize>()
 }
 
-fn measure_iterator_bytes(_iterator: &IteratorObject) -> usize {
-    std::mem::size_of::<IteratorObject>()
+fn measure_iterator_bytes(iterator: &IteratorObject) -> usize {
+    let state_bytes = match &iterator.state {
+        IteratorState::String(state) => state.value.len(),
+        IteratorState::Array(_)
+        | IteratorState::ArrayKeys(_)
+        | IteratorState::ArrayEntries(_)
+        | IteratorState::MapEntries(_)
+        | IteratorState::MapKeys(_)
+        | IteratorState::MapValues(_)
+        | IteratorState::SetEntries(_)
+        | IteratorState::SetValues(_) => 0,
+    };
+    std::mem::size_of::<IteratorObject>() + state_bytes
 }
 
 fn measure_closure_bytes(_closure: &Closure) -> usize {
@@ -7254,6 +7569,106 @@ mod tests {
         runtime.collect_garbage().expect("gc should succeed");
         assert!(!runtime.arrays.contains_key(kept_array));
         assert!(!runtime.iterators.contains_key(kept_iterator));
+    }
+
+    #[test]
+    fn map_and_set_iterators_keep_keyed_collections_alive_for_gc() {
+        let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
+            .expect("lowering should succeed");
+        let mut runtime = Runtime::new(program, ExecutionOptions::default()).expect("runtime init");
+
+        let kept_map = runtime.insert_map(Vec::new()).expect("map should allocate");
+        runtime
+            .map_set(
+                kept_map,
+                Value::String("alpha".to_string()),
+                Value::Number(1.0),
+            )
+            .expect("map entry should insert");
+        let kept_set = runtime.insert_set(Vec::new()).expect("set should allocate");
+        runtime
+            .set_add(kept_set, Value::String("beta".to_string()))
+            .expect("set entry should insert");
+        let kept_map_iterator = runtime
+            .insert_iterator(IteratorState::MapEntries(MapIteratorState {
+                map: kept_map,
+                next_index: 0,
+            }))
+            .expect("map iterator should allocate");
+        let kept_set_iterator = runtime
+            .insert_iterator(IteratorState::SetValues(SetIteratorState {
+                set: kept_set,
+                next_index: 0,
+            }))
+            .expect("set iterator should allocate");
+
+        let frame_env = runtime
+            .new_env(Some(runtime.globals))
+            .expect("frame env should allocate");
+        let map_iterator_cell = runtime
+            .insert_cell(Value::Iterator(kept_map_iterator), true, true)
+            .expect("map iterator cell should allocate");
+        let set_iterator_cell = runtime
+            .insert_cell(Value::Iterator(kept_set_iterator), true, true)
+            .expect("set iterator cell should allocate");
+        let env = runtime
+            .envs
+            .get_mut(frame_env)
+            .expect("frame env should exist");
+        env.bindings
+            .insert("\0kept_map_iter".to_string(), map_iterator_cell);
+        env.bindings
+            .insert("\0kept_set_iter".to_string(), set_iterator_cell);
+        runtime
+            .refresh_env_accounting(frame_env)
+            .expect("frame env accounting should refresh");
+        runtime.frames.push(Frame {
+            function_id: 0,
+            ip: 0,
+            env: frame_env,
+            scope_stack: Vec::new(),
+            stack: Vec::new(),
+            handlers: Vec::new(),
+            pending_exception: None,
+            pending_completions: Vec::new(),
+            active_finally: Vec::new(),
+            async_promise: None,
+        });
+
+        let garbage_map = runtime.insert_map(Vec::new()).expect("map should allocate");
+        runtime
+            .map_set(
+                garbage_map,
+                Value::String("gamma".to_string()),
+                Value::Number(2.0),
+            )
+            .expect("garbage map entry should insert");
+        let garbage_set = runtime.insert_set(Vec::new()).expect("set should allocate");
+        runtime
+            .set_add(garbage_set, Value::String("delta".to_string()))
+            .expect("garbage set entry should insert");
+        let garbage_map_iterator = runtime
+            .insert_iterator(IteratorState::MapEntries(MapIteratorState {
+                map: garbage_map,
+                next_index: 0,
+            }))
+            .expect("garbage map iterator should allocate");
+        let garbage_set_iterator = runtime
+            .insert_iterator(IteratorState::SetValues(SetIteratorState {
+                set: garbage_set,
+                next_index: 0,
+            }))
+            .expect("garbage set iterator should allocate");
+
+        runtime.collect_garbage().expect("gc should succeed");
+        assert!(runtime.maps.contains_key(kept_map));
+        assert!(runtime.sets.contains_key(kept_set));
+        assert!(runtime.iterators.contains_key(kept_map_iterator));
+        assert!(runtime.iterators.contains_key(kept_set_iterator));
+        assert!(!runtime.maps.contains_key(garbage_map));
+        assert!(!runtime.sets.contains_key(garbage_set));
+        assert!(!runtime.iterators.contains_key(garbage_map_iterator));
+        assert!(!runtime.iterators.contains_key(garbage_set_iterator));
     }
 
     #[test]

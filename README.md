@@ -30,11 +30,12 @@ The current implementation already supports:
 - parse -> validate -> IR -> bytecode -> VM execution for the supported subset
 - `let`/`const`, functions and closures, rest parameters, arrays, plain
   objects, loops, and basic control flow
-- array `for...of` with `let` / `const` loop bindings, destructuring, and
+- `for...of` over arrays, strings, `Map`, `Set`, and supported iterator
+  objects, with `let` / `const` loop bindings, destructuring, and
   snapshot-safe iterator state
-- `Map` and `Set` with zero-argument constructors, SameValueZero key and
-  membership semantics, insertion-order-preserving storage, and explicit
-  rejection of iterator-dependent collection APIs
+- `Map` and `Set` with supported iterable constructors, SameValueZero key and
+  membership semantics, insertion-order-preserving storage, and iterator
+  helpers
 - `async` functions, `await`, guest promises, and internal microtask scheduling
   for the supported subset
 - `throw`, `try`/`catch`/`finally`, and guest-visible `Error` objects
@@ -321,8 +322,8 @@ JavaScript.
 - `Function` constructor
 - `with`
 - Classes
-- Generators, custom iterator authoring, and non-array iterable protocols
-- public iterator-producing built-ins such as array iterator helper methods
+- Generators and custom iterator authoring
+- symbol-based custom iterable protocols outside the documented built-ins
 - Symbols
 - `WeakMap`, `WeakSet`
 - Typed arrays, `ArrayBuffer`, shared memory, and atomics
@@ -382,15 +383,16 @@ Current Promise support is intentionally narrow:
 
 Current built-in helper support is intentionally conservative:
 
-- arrays support `push`, `pop`, `slice`, `join`, `includes`, and `indexOf`
+- arrays support `push`, `pop`, `slice`, `join`, `includes`, `indexOf`,
+  `values`, `keys`, and `entries`
 - strings support `trim`, `includes`, `startsWith`, `endsWith`, `slice`,
   `substring`, `toLowerCase`, and `toUpperCase`
 - `Object.keys`, `Object.values`, `Object.entries`, and `Object.hasOwn`
   currently support plain objects and arrays
 - `Math.pow`, `Math.sqrt`, `Math.trunc`, and `Math.sign` are supported
 - callback-driven array helpers, descriptor/prototype helpers, regex-driven
-  string helpers, iterable-based constructors, and nondeterministic helpers
-  such as `Math.random` remain unsupported
+  string helpers, Promise instance/combinator helpers, and nondeterministic
+  helpers such as `Math.random` remain unsupported
 
 Current function-call support is intentionally narrow:
 
@@ -403,14 +405,16 @@ Current function-call support is intentionally narrow:
 
 Current keyed-collection support is intentionally narrow:
 
-- `new Map()` and `new Set()` are supported with zero arguments only
+- `new Map()` and `new Set()` accept the supported iterable surface
 - `Map` supports `get`, `set`, `has`, `delete`, `clear`, and `size`
 - `Set` supports `add`, `has`, `delete`, `clear`, and `size`
 - `Map` keys and `Set` membership use SameValueZero semantics, so `NaN`
   matches `NaN` and `-0` is treated the same as `0`
-- `Map` and `Set` preserve first-in insertion order internally, but
-  iterator-producing APIs and iterable constructor inputs remain unsupported
-  and fail closed
+- `Map` and `Set` preserve first-in insertion order internally
+- public collection iterator helpers `entries()`, `keys()`, and `values()`
+  return guest iterator objects with `.next()`
+- `for...of` supports arrays, strings, `Map`, `Set`, and iterator objects
+  produced by the supported helper surface
 
 No default clock, random source, filesystem, network, timers, or environment
 access should exist in the guest runtime. If the host wants those capabilities,
