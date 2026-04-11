@@ -36,6 +36,9 @@ the safety rules they are expected to follow.
 - Snapshots are only created at explicit suspension points.
 - Pending host work is represented by the suspended capability name plus the
   resumable VM snapshot, not by native futures.
+- In the Node wrapper, `start()` and `Progress.dump()` happen before any async
+  capability promise is awaited, so JavaScript `Promise` objects never enter the
+  serialized snapshot.
 
 ## Value Encoding
 

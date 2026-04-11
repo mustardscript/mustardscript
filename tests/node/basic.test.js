@@ -3,6 +3,12 @@ const assert = require('node:assert/strict');
 
 const { Jslite, JsliteError, Progress } = require('../../index.js');
 
+function assertGuestSafeMessage(message) {
+  assert.ok(!message.includes(process.cwd()));
+  assert.ok(!message.includes('crates/jslite'));
+  assert.ok(!message.includes('.rs'));
+}
+
 test('run executes sync programs', async () => {
   const j = new Jslite(`
     const values = [1, 2, 3];
@@ -166,7 +172,8 @@ test('constructor converts native parse failures into typed errors', () => {
       error instanceof JsliteError &&
       error.name === 'JsliteParseError' &&
       error.kind === 'Parse' &&
-      error.message.length > 0,
+      error.message.length > 0 &&
+      (assertGuestSafeMessage(error.message), true),
   );
 });
 
@@ -276,6 +283,28 @@ test('progress dump and load preserve suspended execution state', () => {
   assert.equal(restored.resume(4), 8);
 });
 
+test('start snapshots guest state before async host futures exist', () => {
+  let calls = 0;
+  const j = new Jslite(`
+    const response = fetch_data(4);
+    response * 2;
+  `);
+
+  const progress = j.start({
+    capabilities: {
+      async fetch_data() {
+        calls += 1;
+        return 4;
+      },
+    },
+  });
+
+  assert.equal(calls, 0);
+  const dumped = progress.dump();
+  const restored = Progress.load(dumped);
+  assert.equal(restored.resume(4), 8);
+});
+
 test('progress.load rejects reused snapshots in the same process', () => {
   const j = new Jslite(`
     const response = fetch_data(4);
@@ -313,6 +342,42 @@ test('progress resume surfaces snapshot failures as typed errors', () => {
       error instanceof JsliteError &&
       error.name === 'JsliteSerializationError' &&
       error.kind === 'Serialization',
+  );
+});
+
+test('runtime errors do not leak host internals in guest tracebacks', async () => {
+  const j = new Jslite(`
+    function outer() {
+      const value = null;
+      return value.answer;
+    }
+    outer();
+  `);
+
+  await assert.rejects(
+    j.run(),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteRuntimeError' &&
+      error.kind === 'Runtime' &&
+      (assertGuestSafeMessage(error.message), true),
+  );
+});
+
+test('serialization errors do not leak host internals', () => {
+  const restored = Progress.load({
+    capability: 'fetch_data',
+    args: [],
+    snapshot: Buffer.from('not-a-valid-snapshot'),
+  });
+
+  assert.throws(
+    () => restored.resume(1),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteSerializationError' &&
+      error.kind === 'Serialization' &&
+      (assertGuestSafeMessage(error.message), true),
   );
 });
 

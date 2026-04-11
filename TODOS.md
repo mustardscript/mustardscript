@@ -218,10 +218,10 @@ Exit criteria:
 - [ ] Implement VM unwind logic
 - [ ] Define runtime exception types and rendering
 - [ ] Implement guest-visible `Error` objects and supported standard errors
-- [ ] Ensure tracebacks never leak host paths or host internals
-- [ ] Decide what stack information is guest-visible
+- [x] Ensure tracebacks never leak host paths or host internals
+- [x] Decide what stack information is guest-visible
 - [ ] Add nested exception and unwind matrix tests
-- [ ] Add diagnostics tests for guest-safe rendering
+- [x] Add diagnostics tests for guest-safe rendering
 
 Exit criteria:
 
@@ -296,7 +296,7 @@ Exit criteria:
 - [x] Define what suspended external work looks like in a snapshot
 - [x] Represent pending host work through continuation tokens or equivalent
   resumable metadata
-- [ ] Ensure opaque host futures are never serialized
+- [x] Ensure opaque host futures are never serialized
 - [x] Implement load and restore APIs
 - [x] Add round-trip fixtures for compiled programs and snapshots
 - [x] Add corruption and invalid-input tests
@@ -452,6 +452,6 @@ Before claiming the project is ready for untrusted guest workloads:
 - [x] Limits are enabled by default
 - [x] Serialization validation is enabled
 - [x] Host errors are sanitized
-- [ ] Guest diagnostics do not leak host internals
+- [x] Guest diagnostics do not leak host internals
 - [ ] Kill and cancellation behavior are documented and tested
 - [x] Supported subset and unsupported subset are both explicit

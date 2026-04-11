@@ -84,6 +84,8 @@ extensions are called out explicitly instead of being implied.
 - Parse and validation failures preserve guest source spans.
 - Runtime and limit failures render guest-safe tracebacks using guest function
   names and guest source spans.
+- Guest-visible stack information is limited to guest function names and guest
+  source spans.
 - Current traceback precision is function-level span data rather than
   exact-expression locations.
 - Guest-facing rendering does not include host paths, internal filenames, or
