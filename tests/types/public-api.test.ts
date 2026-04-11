@@ -6,6 +6,7 @@ import type {
   JsliteError as JsliteErrorType,
   JsliteErrorKind,
   Progress as ProgressType,
+  ResumeOptions,
   RuntimeLimits,
   SerializedProgress,
   StructuredValue,
@@ -25,6 +26,7 @@ const executionOptions: ExecutionOptions = {
   limits: {
     instructionBudget: 1000,
   },
+  signal: new AbortController().signal,
   capabilities: {
     fetch_data(value) {
       return value;
@@ -43,6 +45,9 @@ const structured: StructuredValue = {
 
 const runtimeLimits: RuntimeLimits = {
   instructionBudget: 10,
+};
+const resumeOptions: ResumeOptions = {
+  signal: new AbortController().signal,
 };
 
 const errorKind: JsliteErrorKind = 'Runtime';
@@ -73,19 +78,21 @@ async function typecheck(): Promise<void> {
     const snapshot: Buffer = step.snapshot;
     const dumpedProgress: SerializedProgress = step.dump();
     const restored: ProgressType = Progress.load(dumpedProgress);
-    const resumed: StructuredValue | ProgressType = step.resume(1);
+    const resumed: StructuredValue | ProgressType = step.resume(1, resumeOptions);
     const hostError: CapabilityError = Object.assign(new Error('failed'), {
       name: 'CapabilityError',
       code: 'E_FAIL',
       details: { retriable: false },
     });
-    const resumedError: StructuredValue | ProgressType = step.resumeError(hostError);
+    const resumedError: StructuredValue | ProgressType = step.resumeError(hostError, resumeOptions);
+    const cancelled: StructuredValue | ProgressType = step.cancel();
     void capabilityName;
     void args;
     void snapshot;
     void restored;
     void resumed;
     void resumedError;
+    void cancelled;
   }
 
   void result;
@@ -96,6 +103,7 @@ void typecheck();
 const typedError: JsliteErrorType = new JsliteError(errorKind, 'boom', new Error('cause'));
 void typedError;
 void runtimeLimits;
+void resumeOptions;
 void errorKind;
 void consoleCallbacks;
 

@@ -52,9 +52,10 @@ Current hostile-input pressure points and mitigations:
 - Sidecar protocol decoding treats every input line as hostile. The sidecar
   library path is fuzzable directly and has integration coverage for malformed,
   truncated, and semantically hostile requests.
-- Cooperative cancellation is still architecturally blocked in the core runtime,
-  so there is no mid-execution cancellation hook to fuzz yet. Hard-stop
-  behavior remains OS-process termination in sidecar mode.
+- Cooperative cancellation is now part of the core runtime boundary. The new
+  cancellation suite asserts guest-safe failures both for in-flight compute and
+  for suspended async host waits. Hard-stop behavior still remains OS-process
+  termination in sidecar mode when hosts need preemptive kill guarantees.
 
 Residual risk notes:
 
@@ -69,14 +70,21 @@ Residual risk notes:
 The current kill/cancellation evidence is intentionally split by deployment
 mode:
 
-- Addon-mode non-cancellation behavior is covered by
-  `tests/node/coverage-audit.test.js`, which verifies that delaying or dropping
-  the caller's immediate await does not inject a guest-visible cancellation
-  signal into a suspended capability flow.
+- Core cooperative cancellation is covered by
+  `crates/jslite/tests/cancellation.rs`, which interrupts running guest code and
+  cancels suspended async host waits without letting guest `try` / `catch`
+  convert the host abort into ordinary guest control flow.
+- Addon-mode cancellation plumbing is covered by
+  `tests/node/cancellation.test.js`, which verifies already-aborted signals,
+  explicit `Progress.cancel()`, and cancellation while guest async code is
+  awaiting a host promise.
+- Addon-mode delayed-await behavior is still covered by
+  `tests/node/coverage-audit.test.js`, which verifies that merely dropping or
+  delaying the caller's immediate await does not itself inject cancellation.
 - Sidecar hard-stop behavior is covered by
   `crates/jslite-sidecar/tests/protocol.rs`, which forcefully terminates a live
   sidecar process and verifies that a fresh sidecar can be started cleanly
   afterward.
-- Cooperative mid-execution cancellation is still architecturally blocked in
-  the core runtime, so there is intentionally no in-band cancellation hook to
-  fuzz or assert yet.
+- Same-thread addon compute is still cooperative rather than preemptive. If the
+  host needs a hard kill while native execution is on the Node main thread,
+  sidecar termination remains the stronger control.

@@ -36,6 +36,7 @@ fn suspended_snapshot_bytes() -> Vec<u8> {
             inputs: IndexMap::new(),
             capabilities: vec!["fetch_data".to_string()],
             limits: RuntimeLimits::default(),
+            cancellation_token: None,
         },
     )
     .expect("program should start");
@@ -181,6 +182,7 @@ fn compound_limit_failures_remain_guest_safe() {
                 instruction_budget: 64,
                 ..RuntimeLimits::default()
             },
+            cancellation_token: None,
         },
     )
     .expect_err("instruction limit should trigger");
@@ -201,6 +203,7 @@ fn compound_limit_failures_remain_guest_safe() {
                 allocation_budget: 128,
                 ..RuntimeLimits::default()
             },
+            cancellation_token: None,
         },
     )
     .expect_err("heap or allocation limit should trigger");
@@ -219,6 +222,7 @@ fn sanitized_resume_errors_preserve_safe_shape() {
             inputs: IndexMap::new(),
             capabilities: vec!["fetch_data".to_string()],
             limits: RuntimeLimits::default(),
+            cancellation_token: None,
         },
     )
     .expect("program should suspend");
@@ -274,6 +278,7 @@ proptest! {
                         allocation_budget: 1_024,
                         ..RuntimeLimits::default()
                     },
+                    cancellation_token: None,
                 },
             ) {
             assert_host_safe_message(&error.to_string());

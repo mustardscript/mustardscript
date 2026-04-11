@@ -16,6 +16,7 @@ fuzz_target!(|data: &[u8]| {
                     allocation_budget: 1_024,
                     ..jslite::RuntimeLimits::default()
                 },
+                cancellation_token: None,
             },
         );
     }
@@ -33,6 +34,7 @@ fuzz_target!(|data: &[u8]| {
                     allocation_budget: 1_024,
                     ..jslite::RuntimeLimits::default()
                 },
+                cancellation_token: None,
             },
         );
     }

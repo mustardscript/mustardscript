@@ -183,7 +183,7 @@ function decodeStructured(value) {
   throw new TypeError(`Unsupported structured value: ${JSON.stringify(value)}`);
 }
 
-function encodeStartOptions({ inputs = {}, limits = {}, ...handlers } = {}) {
+function encodeStartOptions({ inputs = {}, limits = {}, signal, ...handlers } = {}) {
   const encodedInputs = {};
   for (const [key, value] of Object.entries(inputs)) {
     encodedInputs[key] = encodeStructured(value);
@@ -230,6 +230,114 @@ function encodeResumePayloadError(error) {
       details: source.details === undefined ? null : encodeStructured(source.details),
     },
   });
+}
+
+function encodeResumePayloadCancel() {
+  return JSON.stringify({
+    type: 'cancelled',
+  });
+}
+
+function getAbortSignal(options, label) {
+  if (options === undefined) {
+    return undefined;
+  }
+  if (options === null || typeof options !== 'object') {
+    throw new TypeError(`${label} must be an object`);
+  }
+  const { signal } = options;
+  if (signal === undefined) {
+    return undefined;
+  }
+  if (
+    typeof signal !== 'object' ||
+    signal === null ||
+    typeof signal.aborted !== 'boolean' ||
+    typeof signal.addEventListener !== 'function' ||
+    typeof signal.removeEventListener !== 'function'
+  ) {
+    throw new TypeError(`${label}.signal must be an AbortSignal`);
+  }
+  return signal;
+}
+
+function withCancellationSignal(fn, args, signal) {
+  if (signal === undefined) {
+    return callNative(fn, ...args);
+  }
+  const tokenId = callNative(native.createCancellationToken);
+  const cancel = () => {
+    try {
+      callNative(native.cancelCancellationToken, tokenId);
+    } catch {
+      // Ignore late cancellation after cleanup wins the race.
+    }
+  };
+
+  if (signal.aborted) {
+    cancel();
+  } else {
+    signal.addEventListener('abort', cancel, { once: true });
+  }
+
+  try {
+    return callNative(fn, ...args, tokenId);
+  } finally {
+    if (!signal.aborted) {
+      signal.removeEventListener('abort', cancel);
+    }
+    callNative(native.releaseCancellationToken, tokenId);
+  }
+}
+
+async function settleCapabilityInvocation(capability, args, signal) {
+  if (signal?.aborted) {
+    return { type: 'cancelled' };
+  }
+
+  let pending;
+  try {
+    pending = Promise.resolve(capability(...args));
+  } catch (error) {
+    return { type: 'error', error };
+  }
+
+  if (signal === undefined) {
+    try {
+      return {
+        type: 'value',
+        value: await pending,
+      };
+    } catch (error) {
+      return { type: 'error', error };
+    }
+  }
+
+  if (signal.aborted) {
+    pending.catch(() => {});
+    return { type: 'cancelled' };
+  }
+
+  const ABORTED = Symbol('aborted');
+  let onAbort = null;
+  const raced = await Promise.race([
+    pending.then(
+      (value) => ({ type: 'value', value }),
+      (error) => ({ type: 'error', error }),
+    ),
+    new Promise((resolve) => {
+      onAbort = () => resolve(ABORTED);
+      signal.addEventListener('abort', onAbort, { once: true });
+    }),
+  ]);
+  signal.removeEventListener('abort', onAbort);
+
+  if (raced === ABORTED) {
+    pending.catch(() => {});
+    return { type: 'cancelled' };
+  }
+
+  return raced;
 }
 
 function parseStep(stepJson) {
@@ -283,18 +391,33 @@ class Progress {
     };
   }
 
-  resume(value) {
+  resume(value, options = undefined) {
+    const signal = getAbortSignal(options, 'resume options');
+    if (signal?.aborted) {
+      return this.cancel();
+    }
     const payload = encodeResumePayloadValue(value);
     const step = parseStep(
-      callNative(native.resumeProgram, this.#claimSnapshot(), payload),
+      withCancellationSignal(native.resumeProgram, [this.#claimSnapshot(), payload], signal),
     );
     return materializeStep(step);
   }
 
-  resumeError(error) {
+  resumeError(error, options = undefined) {
+    const signal = getAbortSignal(options, 'resume options');
+    if (signal?.aborted) {
+      return this.cancel();
+    }
     const payload = encodeResumePayloadError(error);
     const step = parseStep(
-      callNative(native.resumeProgram, this.#claimSnapshot(), payload),
+      withCancellationSignal(native.resumeProgram, [this.#claimSnapshot(), payload], signal),
+    );
+    return materializeStep(step);
+  }
+
+  cancel() {
+    const step = parseStep(
+      callNative(native.resumeProgram, this.#claimSnapshot(), encodeResumePayloadCancel()),
     );
     return materializeStep(step);
   }
@@ -335,32 +458,38 @@ class Jslite {
   }
 
   async run(options = {}) {
+    const signal = getAbortSignal(options, 'run options');
     const hostHandlers = collectHostHandlers(options);
     let step = parseStep(
-      callNative(native.startProgram, this._program, encodeStartOptions(options)),
+      withCancellationSignal(native.startProgram, [this._program, encodeStartOptions(options)], signal),
     );
     while (step.type === 'suspended') {
       const capability = hostHandlers[step.capability];
       if (typeof capability !== 'function') {
         throw new Error(`Missing capability: ${step.capability}`);
       }
-      try {
-        const result = await capability(...step.args);
+      const outcome = await settleCapabilityInvocation(capability, step.args, signal);
+      if (outcome.type === 'cancelled') {
         step = parseStep(
-          callNative(native.resumeProgram, step.snapshot, encodeResumePayloadValue(result)),
+          callNative(native.resumeProgram, step.snapshot, encodeResumePayloadCancel()),
         );
-      } catch (error) {
-        step = parseStep(
-          callNative(native.resumeProgram, step.snapshot, encodeResumePayloadError(error)),
-        );
+        continue;
       }
+      const payload =
+        outcome.type === 'value'
+          ? encodeResumePayloadValue(outcome.value)
+          : encodeResumePayloadError(outcome.error);
+      step = parseStep(
+        withCancellationSignal(native.resumeProgram, [step.snapshot, payload], signal),
+      );
     }
     return step.value;
   }
 
   start(options = {}) {
+    const signal = getAbortSignal(options, 'start options');
     const step = parseStep(
-      callNative(native.startProgram, this._program, encodeStartOptions(options)),
+      withCancellationSignal(native.startProgram, [this._program, encodeStartOptions(options)], signal),
     );
     return materializeStep(step);
   }
