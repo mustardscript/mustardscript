@@ -109,7 +109,7 @@ const DIFFERENTIAL_CASES = [
   {
     name: 'Object and Math helpers',
     source: `
-      const object = { zebra: 1, alpha: 2 };
+      const object = { alpha: 2, zebra: 1 };
       const array = [4, 5];
       array.extra = 6;
       ({
