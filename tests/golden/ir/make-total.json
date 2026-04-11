@@ -44,32 +44,16 @@
                     }
                   },
                   {
-                    "Default": {
+                    "Identifier": {
                       "span": {
                         "start": 26,
-                        "end": 35
+                        "end": 31
                       },
-                      "target": {
-                        "Identifier": {
-                          "span": {
-                            "start": 26,
-                            "end": 31
-                          },
-                          "name": "right"
-                        }
-                      },
-                      "default_value": {
-                        "Number": {
-                          "span": {
-                            "start": 34,
-                            "end": 35
-                          },
-                          "value": 1.0
-                        }
-                      }
+                      "name": "right"
                     }
                   }
                 ],
+                "rest": null,
                 "body": [
                   {
                     "VariableDecl": {

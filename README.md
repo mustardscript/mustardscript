@@ -28,8 +28,8 @@ decision:
 The current implementation already supports:
 
 - parse -> validate -> IR -> bytecode -> VM execution for the supported subset
-- `let`/`const`, functions and closures, arrays, plain objects, loops, and
-  basic control flow
+- `let`/`const`, functions and closures, rest parameters, arrays, plain
+  objects, loops, and basic control flow
 - array `for...of` with `let` / `const` loop bindings, destructuring, and
   snapshot-safe iterator state
 - `Map` and `Set` with zero-argument constructors, SameValueZero key and
@@ -65,6 +65,7 @@ The current implementation does **not** yet execute:
 - [Bytecode VM Model](docs/BYTECODE.md)
 - [Runtime Value Model](docs/RUNTIME_MODEL.md)
 - [Sidecar Protocol](docs/SIDECAR_PROTOCOL.md)
+- [Benchmarking Notes and Comparison Plan](benchmarks/README.md)
 - [Release Guide](docs/RELEASE.md)
 - [Architecture ADRs](docs/ADRs/0001-core-architecture.md)
 
@@ -99,6 +100,27 @@ See [examples/agent-style.js](examples/agent-style.js) for a minimal host loop
 that starts guest execution, persists a suspended `Progress`, reloads it, and
 resumes with a host result.
 
+## Primary Use Cases
+
+`jslite` is primarily aimed at agent runtimes that need to execute small,
+bounded guest programs with explicit host tools instead of exposing a large
+ambient runtime.
+
+- Server-side "code mode" workloads where an agent writes code against a typed
+  SDK or a compact `search()` / `execute()` tool surface instead of loading a
+  large API into model context
+- Programmatic tool-calling workloads where an agent fans out across many host
+  tools, reduces large intermediate results in code, and only returns the final
+  answer to the model
+- Resumable host-mediated workflows where execution must pause at explicit host
+  capability boundaries, persist state, and resume later
+
+These are the workload shapes described by
+[Cloudflare's Code Mode](https://blog.cloudflare.com/code-mode-mcp/) and
+[Anthropic's Programmatic Tool Calling](https://www.anthropic.com/engineering/advanced-tool-use).
+They are a better fit for `jslite` than trying to match general-purpose
+JavaScript runtime behavior.
+
 ## Project Goals
 
 `jslite` should provide:
@@ -107,6 +129,8 @@ resumes with a host result.
 - No ambient filesystem, network, environment, module, or subprocess access
 - Explicit host capabilities instead of implicit globals
 - Fast startup and low embedding overhead
+- Good cold-start, memory, and host-call overhead for code-mode and
+  programmatic tool-calling workloads
 - Precise accounting for instructions, memory, allocations, and call depth
 - Deterministic or tightly specified behavior for the supported subset
 - Suspension and resume at explicit host boundaries
@@ -355,6 +379,15 @@ Current Promise support is intentionally narrow:
 - async functions return internal guest promises
 - `Promise.resolve(...)` and `Promise.reject(...)` are supported
 - `new Promise(...)` and instance methods remain unsupported and fail closed
+
+Current function-call support is intentionally narrow:
+
+- non-arrow guest member calls bind the computed receiver as `this`
+- rest parameters are supported for functions and arrow functions
+- arrow functions are supported, but broader `this` semantics remain deferred
+- default parameters, default destructuring, and implicit free `arguments`
+  are rejected with validation diagnostics
+- `new` remains limited to the documented conservative built-in constructors
 
 Current keyed-collection support is intentionally narrow:
 

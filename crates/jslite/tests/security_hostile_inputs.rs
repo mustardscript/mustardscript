@@ -22,8 +22,10 @@ fn simple_function(code: Vec<Instruction>) -> FunctionPrototype {
     FunctionPrototype {
         name: None,
         params: Vec::new(),
+        rest: None,
         code,
         is_async: false,
+        is_arrow: false,
         span: jslite::span::SourceSpan::new(0, 0),
     }
 }

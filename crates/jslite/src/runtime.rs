@@ -96,8 +96,10 @@ const SERIAL_FORMAT_VERSION: u32 = 1;
 pub struct FunctionPrototype {
     pub name: Option<String>,
     pub params: Vec<Pattern>,
+    pub rest: Option<Pattern>,
     pub code: Vec<Instruction>,
     pub is_async: bool,
+    pub is_arrow: bool,
     pub span: SourceSpan,
 }
 
@@ -1239,45 +1241,36 @@ impl Compiler {
         self.functions.push(FunctionPrototype {
             name: None,
             params: Vec::new(),
+            rest: None,
             code: context.code,
             is_async: false,
+            is_arrow: false,
             span,
         });
         Ok(id)
     }
 
     fn compile_function(&mut self, function: &FunctionExpr) -> JsliteResult<usize> {
-        self.compile_function_body(
-            function.name.clone(),
-            &function.params,
-            &function.body,
-            function.is_async,
-            function.span,
-        )
+        self.compile_function_body(function)
     }
 
-    fn compile_function_body(
-        &mut self,
-        name: Option<String>,
-        params: &[Pattern],
-        statements: &[Stmt],
-        is_async: bool,
-        span: SourceSpan,
-    ) -> JsliteResult<usize> {
+    fn compile_function_body(&mut self, function: &FunctionExpr) -> JsliteResult<usize> {
         let mut context = CompileContext::default();
-        self.emit_block_prologue(&mut context, statements)?;
-        for statement in statements {
+        self.emit_block_prologue(&mut context, &function.body)?;
+        for statement in &function.body {
             self.compile_stmt(&mut context, statement)?;
         }
         context.code.push(Instruction::PushUndefined);
         context.code.push(Instruction::Return);
         let id = self.functions.len();
         self.functions.push(FunctionPrototype {
-            name,
-            params: params.to_vec(),
+            name: function.name.clone(),
+            params: function.params.clone(),
+            rest: function.rest.clone(),
             code: context.code,
-            is_async,
-            span,
+            is_async: function.is_async,
+            is_arrow: function.is_arrow,
+            span: function.span,
         });
         Ok(id)
     }
@@ -2928,19 +2921,12 @@ impl Runtime {
         Ok(())
     }
 
-    fn check_call_depth(&self) -> JsliteResult<()> {
-        if self.frames.len() >= self.limits.call_depth_limit {
-            return Err(limit_error("call depth limit exceeded"));
-        }
-        Ok(())
-    }
-
     fn run_root(&mut self) -> JsliteResult<ExecutionStep> {
         self.check_cancellation()?;
         self.collect_garbage()?;
         self.check_call_depth()?;
         let root_env = self.new_env(Some(self.globals))?;
-        self.push_frame(self.program.root, root_env, &[], None)?;
+        self.push_frame(self.program.root, root_env, &[], Value::Undefined, None)?;
         self.run()
     }
 
@@ -4784,21 +4770,29 @@ impl Runtime {
         }
     }
 
+    fn check_call_depth(&self) -> JsliteResult<()> {
+        if self.frames.len() >= self.limits.call_depth_limit {
+            return Err(limit_error("call depth limit exceeded"));
+        }
+        Ok(())
+    }
+
     fn push_frame(
         &mut self,
         function_id: usize,
         env: EnvKey,
         args: &[Value],
+        this_value: Value,
         async_promise: Option<PromiseKey>,
     ) -> JsliteResult<()> {
         self.check_call_depth()?;
-        let params = self
+        let (params, rest) = self
             .program
             .functions
             .get(function_id)
-            .map(|function| function.params.clone())
+            .map(|function| (function.params.clone(), function.rest.clone()))
             .ok_or_else(|| JsliteError::runtime("function not found"))?;
-        let this_cell = self.insert_cell(Value::Undefined, true, true)?;
+        let this_cell = self.insert_cell(this_value, true, true)?;
         self.envs
             .get_mut(env)
             .ok_or_else(|| JsliteError::runtime("environment missing"))?
@@ -4813,6 +4807,16 @@ impl Runtime {
         for (index, pattern) in params.iter().enumerate() {
             let arg = args.get(index).cloned().unwrap_or(Value::Undefined);
             self.initialize_pattern(env, pattern, arg)?;
+        }
+        if let Some(rest) = &rest {
+            for (name, _) in pattern_bindings(rest) {
+                self.declare_name(env, name, true)?;
+            }
+            let rest_array = self.insert_array(
+                args.iter().skip(params.len()).cloned().collect(),
+                IndexMap::new(),
+            )?;
+            self.initialize_pattern(env, rest, Value::Array(rest_array))?;
         }
         self.frames.push(Frame {
             function_id,
@@ -4843,18 +4847,23 @@ impl Runtime {
                     .cloned()
                     .ok_or_else(|| JsliteError::runtime("closure not found"))?;
                 let env = self.new_env(Some(closure.env))?;
-                let is_async = self
+                let (is_async, is_arrow) = self
                     .program
                     .functions
                     .get(closure.function_id)
-                    .map(|function| function.is_async)
+                    .map(|function| (function.is_async, function.is_arrow))
                     .ok_or_else(|| JsliteError::runtime("function not found"))?;
+                let frame_this = if is_arrow {
+                    Value::Undefined
+                } else {
+                    this_value
+                };
                 if is_async {
                     let promise = self.insert_promise(PromiseState::Pending)?;
-                    self.push_frame(closure.function_id, env, args, Some(promise))?;
+                    self.push_frame(closure.function_id, env, args, frame_this, Some(promise))?;
                     Ok(RunState::StartedAsync(Value::Promise(promise)))
                 } else {
-                    self.push_frame(closure.function_id, env, args, None)?;
+                    self.push_frame(closure.function_id, env, args, frame_this, None)?;
                     Ok(RunState::PushedFrame)
                 }
             }
@@ -5552,8 +5561,10 @@ impl Runtime {
                         functions: vec![FunctionPrototype {
                             name: None,
                             params: Vec::new(),
+                            rest: None,
                             code: Vec::new(),
                             is_async: false,
+                            is_arrow: false,
                             span: SourceSpan::new(0, 0),
                         }],
                         root: 0,
@@ -6467,8 +6478,10 @@ mod tests {
         FunctionPrototype {
             name: None,
             params: Vec::new(),
+            rest: None,
             code,
             is_async: false,
+            is_arrow: false,
             span: SourceSpan::new(0, 0),
         }
     }

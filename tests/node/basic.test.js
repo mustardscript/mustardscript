@@ -35,6 +35,32 @@ test('run applies nullish assignment only to nullish identifiers and members', a
   assert.deepEqual(result, [7, 5, 11, 13]);
 });
 
+test('run binds member-call receivers for guest functions', async () => {
+  const j = new Jslite(`
+    const method = function (delta) {
+      return this.base + delta;
+    };
+    const obj = { base: 40, method: method };
+    obj.method(2);
+  `);
+
+  const result = await j.run();
+  assert.equal(result, 42);
+});
+
+test('run binds rest parameters for functions and arrows', async () => {
+  const j = new Jslite(`
+    function collect(head, ...tail) {
+      return [head, tail.length, tail[0], tail[1]];
+    }
+    const sumFirstTwo = (...[first, second]) => first + second;
+    [collect(1, 2, 3), sumFirstTwo(4, 5, 6)];
+  `);
+
+  const result = await j.run();
+  assert.deepEqual(result, [[1, 2, 2, 3], 9]);
+});
+
 test('run exposes structured inputs with preserved numeric edge cases', async () => {
   const j = new Jslite(`
     ({ value, inf, negZero, nan });
@@ -333,6 +359,35 @@ test('constructor converts native validation failures into typed errors', () => 
       error.name === 'JsliteValidationError' &&
       error.kind === 'Validation' &&
       /module syntax is not supported/.test(error.message),
+  );
+});
+
+test('constructor rejects unsupported default params, destructuring defaults, and free arguments', () => {
+  assert.throws(
+    () => new Jslite('function wrap(value = 1) { return value; }'),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteValidationError' &&
+      error.kind === 'Validation' &&
+      /default parameters are not supported/.test(error.message),
+  );
+
+  assert.throws(
+    () => new Jslite('const { value = 1 } = {};'),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteValidationError' &&
+      error.kind === 'Validation' &&
+      /default destructuring is not supported/.test(error.message),
+  );
+
+  assert.throws(
+    () => new Jslite('function wrap() { return arguments[0]; }'),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteValidationError' &&
+      error.kind === 'Validation' &&
+      /forbidden ambient global `arguments`/.test(error.message),
   );
 });
 

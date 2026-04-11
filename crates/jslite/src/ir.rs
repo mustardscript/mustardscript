@@ -171,6 +171,7 @@ pub struct FunctionExpr {
     pub span: SourceSpan,
     pub name: Option<String>,
     pub params: Vec<Pattern>,
+    pub rest: Option<Pattern>,
     pub body: Vec<Stmt>,
     pub is_async: bool,
     pub is_arrow: bool,
