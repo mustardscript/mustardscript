@@ -80,6 +80,8 @@ shape is stable.
 
 Release verification and publish guidance live in
 [docs/RELEASE.md](docs/RELEASE.md).
+Maintainers can run `npm run verify:release` to execute the current release
+verification flow end to end.
 
 ## Agent-Style Example
 

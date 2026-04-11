@@ -25,6 +25,15 @@ maintainers should run before publishing anything.
 
 Run these commands from the repository root.
 
+### Canonical verification command
+
+```sh
+npm run verify:release
+```
+
+That command runs the same release verification flow used by the manual GitHub
+Actions workflow in `.github/workflows/release-verify.yml`.
+
 ### 1. Build, test, and lint the release candidate
 
 ```sh
@@ -89,7 +98,9 @@ This validates the exact release tarball, not just the checkout.
 ### 4. Upgrade or reinstall smoke test
 
 Run the tarball install again in the same temporary consumer and rerun the same
-smoke program:
+smoke program. The repository now automates this in
+`tests/package-smoke.test.js`, which installs the packed tarball, runs guest
+code, reinstalls the same tarball, and reruns guest code from the consumer.
 
 ```sh
 npm install "$repo_root/$tarball"
@@ -119,10 +130,15 @@ install-from-previous-version then upgrade-to-candidate flow.
 ### 5. Verify Rust package readiness if a crate release is being considered
 
 The default release path does not publish a Rust crate. If maintainers decide
-to publish one later, start with dry-run packaging:
+to publish one later, the current verifiable flow for the core crate is:
 
 ```sh
-cargo package -p jslite --allow-dirty --list
+cargo publish --dry-run --allow-dirty -p jslite
+```
+
+For the addon and sidecar crates, maintain dry-run packaging checks:
+
+```sh
 cargo package -p jslite-node --allow-dirty --list
 cargo package -p jslite-sidecar --allow-dirty --list
 ```
@@ -133,15 +149,35 @@ Interpretation:
   Rust artifact.
 - `jslite-node` and `jslite-sidecar` are packaging checks for completeness, not
   a recommendation to publish those crates independently.
-- If a future `cargo publish --dry-run` is desired, add any remaining metadata
-  such as a dedicated crate README before attempting an actual publish.
+- If maintainers later decide to publish more than the core crate, add any
+  remaining metadata and remove the current path dependencies before attempting
+  an actual publish.
+
+## npm Registry Blocker
+
+As verified on April 11, 2026, `npm view jslite` resolves to an existing public
+package at version `1.1.12` with unrelated ownership and description.
+
+Practical effect:
+
+- `npm publish --dry-run` without an explicit tag fails immediately because
+  this repository is currently versioned as `0.1.0`.
+- `npm publish --dry-run --tag next` succeeds and is the command shape that the
+  automated release verification currently checks.
+
+Before an actual public npm release, maintainers still need to make one naming
+decision:
+
+- rename this package to a scoped or otherwise unclaimed name
+- or adopt an explicit npm dist-tag and versioning strategy for the existing
+  `jslite` package namespace
 
 ## Publishing The npm Package
 
 Once the checklist passes:
 
 ```sh
-npm publish
+npm publish --tag next
 ```
 
 Recommended follow-up:
@@ -152,9 +188,9 @@ Recommended follow-up:
 - link to `README.md`, `docs/LANGUAGE.md`, `docs/HOST_API.md`, and
   `docs/SECURITY_MODEL.md`
 
-The repository also includes a manual GitHub Actions workflow,
-`.github/workflows/release-verify.yml`, that runs the same verification flow on
-an Ubuntu release candidate checkout.
+If maintainers later rename the package or resolve namespace ownership so the
+default `latest` tag is appropriate, update both the release script and this
+document together.
 
 ## Deferred Prebuilt Binary Flow
 

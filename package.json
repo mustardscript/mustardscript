@@ -31,6 +31,7 @@
     "test:types": "tsc --noEmit -p tsconfig.typecheck.json",
     "test:rust": "cargo test --workspace",
     "bench:smoke": "npm run build && node --expose-gc benchmarks/smoke.js",
+    "verify:release": "node scripts/release-verify.js",
     "lint": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings"
   },
   "repository": {
