@@ -1928,8 +1928,7 @@ impl Compiler {
                 } else if operator == AssignOp::NullishAssign {
                     context.code.push(Instruction::LoadName(name.clone()));
                     context.code.push(Instruction::Dup);
-                    let rhs_jump =
-                        self.emit_jump(context, Instruction::JumpIfNullish(usize::MAX));
+                    let rhs_jump = self.emit_jump(context, Instruction::JumpIfNullish(usize::MAX));
                     context.code.push(Instruction::Pop);
                     let end_jump = self.emit_jump(context, Instruction::Jump(usize::MAX));
                     let rhs_ip = context.code.len();
@@ -1976,7 +1975,9 @@ impl Compiler {
                                 span: SourceSpan::new(0, 0),
                                 name: object_binding.clone(),
                             }));
-                        context.code.push(Instruction::LoadName(object_binding.clone()));
+                        context
+                            .code
+                            .push(Instruction::LoadName(object_binding.clone()));
                         context.code.push(Instruction::GetPropStatic {
                             name: name.clone(),
                             optional: *optional,
@@ -2032,7 +2033,9 @@ impl Compiler {
                                 span: SourceSpan::new(0, 0),
                                 name: object_binding.clone(),
                             }));
-                        context.code.push(Instruction::LoadName(object_binding.clone()));
+                        context
+                            .code
+                            .push(Instruction::LoadName(object_binding.clone()));
                         context.code.push(Instruction::GetPropStatic {
                             name: name.clone(),
                             optional: *optional,
@@ -2094,8 +2097,12 @@ impl Compiler {
                                 span: SourceSpan::new(0, 0),
                                 name: key_binding.clone(),
                             }));
-                        context.code.push(Instruction::LoadName(object_binding.clone()));
-                        context.code.push(Instruction::LoadName(key_binding.clone()));
+                        context
+                            .code
+                            .push(Instruction::LoadName(object_binding.clone()));
+                        context
+                            .code
+                            .push(Instruction::LoadName(key_binding.clone()));
                         context.code.push(Instruction::GetPropComputed {
                             optional: *optional,
                         });
@@ -2547,7 +2554,17 @@ enum Value {
 enum BuiltinFunction {
     ArrayCtor,
     ArrayIsArray,
+    ArrayPush,
+    ArrayPop,
+    ArraySlice,
+    ArrayJoin,
+    ArrayIncludes,
+    ArrayIndexOf,
     ObjectCtor,
+    ObjectKeys,
+    ObjectValues,
+    ObjectEntries,
+    ObjectHasOwn,
     MapCtor,
     MapGet,
     MapSet,
@@ -2574,6 +2591,14 @@ enum BuiltinFunction {
     RangeErrorCtor,
     NumberCtor,
     StringCtor,
+    StringTrim,
+    StringIncludes,
+    StringStartsWith,
+    StringEndsWith,
+    StringSlice,
+    StringSubstring,
+    StringToLowerCase,
+    StringToUpperCase,
     BooleanCtor,
     MathAbs,
     MathMax,
@@ -2581,6 +2606,10 @@ enum BuiltinFunction {
     MathFloor,
     MathCeil,
     MathRound,
+    MathPow,
+    MathSqrt,
+    MathTrunc,
+    MathSign,
     JsonStringify,
     JsonParse,
 }
@@ -4945,6 +4974,12 @@ impl Runtime {
             BuiltinFunction::ArrayIsArray => {
                 Ok(Value::Bool(matches!(args.first(), Some(Value::Array(_)))))
             }
+            BuiltinFunction::ArrayPush => self.call_array_push(this_value, args),
+            BuiltinFunction::ArrayPop => self.call_array_pop(this_value),
+            BuiltinFunction::ArraySlice => self.call_array_slice(this_value, args),
+            BuiltinFunction::ArrayJoin => self.call_array_join(this_value, args),
+            BuiltinFunction::ArrayIncludes => self.call_array_includes(this_value, args),
+            BuiltinFunction::ArrayIndexOf => self.call_array_index_of(this_value, args),
             BuiltinFunction::ObjectCtor => {
                 if let Some(Value::Object(object)) = args.first() {
                     Ok(Value::Object(*object))
@@ -4953,6 +4988,10 @@ impl Runtime {
                     Ok(Value::Object(object))
                 }
             }
+            BuiltinFunction::ObjectKeys => self.call_object_keys(args),
+            BuiltinFunction::ObjectValues => self.call_object_values(args),
+            BuiltinFunction::ObjectEntries => self.call_object_entries(args),
+            BuiltinFunction::ObjectHasOwn => self.call_object_has_own(args),
             BuiltinFunction::MapCtor => Err(JsliteError::runtime(
                 "TypeError: Map constructor must be called with new",
             )),
@@ -5023,6 +5062,14 @@ impl Runtime {
             BuiltinFunction::StringCtor => Ok(Value::String(
                 self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?,
             )),
+            BuiltinFunction::StringTrim => self.call_string_trim(this_value),
+            BuiltinFunction::StringIncludes => self.call_string_includes(this_value, args),
+            BuiltinFunction::StringStartsWith => self.call_string_starts_with(this_value, args),
+            BuiltinFunction::StringEndsWith => self.call_string_ends_with(this_value, args),
+            BuiltinFunction::StringSlice => self.call_string_slice(this_value, args),
+            BuiltinFunction::StringSubstring => self.call_string_substring(this_value, args),
+            BuiltinFunction::StringToLowerCase => self.call_string_to_lower_case(this_value),
+            BuiltinFunction::StringToUpperCase => self.call_string_to_upper_case(this_value),
             BuiltinFunction::BooleanCtor => Ok(Value::Bool(is_truthy(
                 args.first().unwrap_or(&Value::Undefined),
             ))),
@@ -5056,6 +5103,30 @@ impl Runtime {
                 self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
                     .round(),
             )),
+            BuiltinFunction::MathPow => Ok(Value::Number(
+                self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                    .powf(self.to_number(args.get(1).cloned().unwrap_or(Value::Undefined))?),
+            )),
+            BuiltinFunction::MathSqrt => Ok(Value::Number(
+                self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                    .sqrt(),
+            )),
+            BuiltinFunction::MathTrunc => Ok(Value::Number(
+                self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                    .trunc(),
+            )),
+            BuiltinFunction::MathSign => {
+                let value = self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?;
+                Ok(Value::Number(if value.is_nan() {
+                    f64::NAN
+                } else if value == 0.0 {
+                    value
+                } else if value.is_sign_positive() {
+                    1.0
+                } else {
+                    -1.0
+                }))
+            }
             BuiltinFunction::JsonStringify => {
                 let value = args.first().cloned().unwrap_or(Value::Undefined);
                 let structured = self.value_to_structured(value)?;
@@ -5166,6 +5237,22 @@ impl Runtime {
                     "round".to_string(),
                     Value::BuiltinFunction(BuiltinFunction::MathRound),
                 ),
+                (
+                    "pow".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathPow),
+                ),
+                (
+                    "sqrt".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathSqrt),
+                ),
+                (
+                    "trunc".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathTrunc),
+                ),
+                (
+                    "sign".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathSign),
+                ),
             ]),
             ObjectKind::Math,
         )?;
@@ -5207,6 +5294,375 @@ impl Runtime {
             ));
         }
         Ok(Value::Set(self.insert_set(Vec::new())?))
+    }
+
+    fn array_receiver(&self, value: Value, method: &str) -> JsliteResult<ArrayKey> {
+        match value {
+            Value::Array(key) => Ok(key),
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: Array.prototype.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
+    fn string_receiver(&self, value: Value, method: &str) -> JsliteResult<String> {
+        match value {
+            Value::String(value) => Ok(value),
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: String.prototype.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
+    fn call_array_push(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "push")?;
+        {
+            let elements = &mut self
+                .arrays
+                .get_mut(array)
+                .ok_or_else(|| JsliteError::runtime("array missing"))?
+                .elements;
+            elements.extend(args.iter().cloned());
+        }
+        self.refresh_array_accounting(array)?;
+        let length = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .len();
+        Ok(Value::Number(length as f64))
+    }
+
+    fn call_array_pop(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "pop")?;
+        let value = self
+            .arrays
+            .get_mut(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .pop()
+            .unwrap_or(Value::Undefined);
+        self.refresh_array_accounting(array)?;
+        Ok(value)
+    }
+
+    fn call_array_slice(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "slice")?;
+        let elements = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .clone();
+        let start = normalize_relative_bound(
+            self.to_integer(args.first().cloned().unwrap_or(Value::Number(0.0)))?,
+            elements.len(),
+        );
+        let end = normalize_relative_bound(
+            match args.get(1) {
+                Some(value) => self.to_integer(value.clone())?,
+                None => elements.len() as i64,
+            },
+            elements.len(),
+        );
+        let end = end.max(start);
+        Ok(Value::Array(self.insert_array(
+            elements[start..end].to_vec(),
+            IndexMap::new(),
+        )?))
+    }
+
+    fn call_array_join(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "join")?;
+        let separator = match args.first() {
+            Some(value) => self.to_string(value.clone())?,
+            None => ",".to_string(),
+        };
+        let elements = &self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements;
+        let mut parts = Vec::with_capacity(elements.len());
+        for value in elements {
+            parts.push(match value {
+                Value::Undefined | Value::Null => String::new(),
+                other => self.to_string(other.clone())?,
+            });
+        }
+        Ok(Value::String(parts.join(&separator)))
+    }
+
+    fn call_array_includes(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "includes")?;
+        let search = args.first().cloned().unwrap_or(Value::Undefined);
+        let elements = &self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements;
+        let start = normalize_search_index(
+            self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
+            elements.len(),
+        );
+        Ok(Value::Bool(
+            elements
+                .iter()
+                .skip(start)
+                .any(|value| same_value_zero(value, &search)),
+        ))
+    }
+
+    fn call_array_index_of(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "indexOf")?;
+        let search = args.first().cloned().unwrap_or(Value::Undefined);
+        let elements = &self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements;
+        let start = normalize_search_index(
+            self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
+            elements.len(),
+        );
+        let index = elements
+            .iter()
+            .enumerate()
+            .skip(start)
+            .find(|(_, value)| strict_equal(value, &search))
+            .map(|(index, _)| index as f64)
+            .unwrap_or(-1.0);
+        Ok(Value::Number(index))
+    }
+
+    fn enumerable_keys(&self, value: Value) -> JsliteResult<Vec<String>> {
+        match value {
+            Value::Object(object) => {
+                let mut keys = self
+                    .objects
+                    .get(object)
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?
+                    .properties
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>();
+                keys.sort();
+                Ok(keys)
+            }
+            Value::Array(array) => {
+                let array = self
+                    .arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                let mut keys = (0..array.elements.len())
+                    .map(|index| index.to_string())
+                    .collect::<Vec<_>>();
+                let mut extra = array.properties.keys().cloned().collect::<Vec<_>>();
+                extra.sort();
+                keys.extend(extra);
+                Ok(keys)
+            }
+            _ => Err(JsliteError::runtime(
+                "TypeError: Object helpers currently only support plain objects and arrays",
+            )),
+        }
+    }
+
+    fn enumerable_value(&self, target: Value, key: &str) -> JsliteResult<Value> {
+        match target {
+            Value::Object(object) => self
+                .objects
+                .get(object)
+                .and_then(|object| object.properties.get(key))
+                .cloned()
+                .ok_or_else(|| JsliteError::runtime("object property missing")),
+            Value::Array(array) => {
+                let array = self
+                    .arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                if let Ok(index) = key.parse::<usize>() {
+                    Ok(array
+                        .elements
+                        .get(index)
+                        .cloned()
+                        .unwrap_or(Value::Undefined))
+                } else {
+                    array
+                        .properties
+                        .get(key)
+                        .cloned()
+                        .ok_or_else(|| JsliteError::runtime("array property missing"))
+                }
+            }
+            _ => Err(JsliteError::runtime(
+                "TypeError: Object helpers currently only support plain objects and arrays",
+            )),
+        }
+    }
+
+    fn call_object_keys(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let target = args.first().cloned().unwrap_or(Value::Undefined);
+        let keys = self
+            .enumerable_keys(target)?
+            .into_iter()
+            .map(Value::String)
+            .collect();
+        Ok(Value::Array(self.insert_array(keys, IndexMap::new())?))
+    }
+
+    fn call_object_values(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let target = args.first().cloned().unwrap_or(Value::Undefined);
+        let keys = self.enumerable_keys(target.clone())?;
+        let mut values = Vec::with_capacity(keys.len());
+        for key in keys {
+            values.push(self.enumerable_value(target.clone(), &key)?);
+        }
+        Ok(Value::Array(self.insert_array(values, IndexMap::new())?))
+    }
+
+    fn call_object_entries(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let target = args.first().cloned().unwrap_or(Value::Undefined);
+        let keys = self.enumerable_keys(target.clone())?;
+        let mut entries = Vec::with_capacity(keys.len());
+        for key in keys {
+            let pair = self.insert_array(
+                vec![
+                    Value::String(key.clone()),
+                    self.enumerable_value(target.clone(), &key)?,
+                ],
+                IndexMap::new(),
+            )?;
+            entries.push(Value::Array(pair));
+        }
+        Ok(Value::Array(self.insert_array(entries, IndexMap::new())?))
+    }
+
+    fn call_object_has_own(&self, args: &[Value]) -> JsliteResult<Value> {
+        let target = args.first().cloned().unwrap_or(Value::Undefined);
+        let key = self.to_property_key(args.get(1).cloned().unwrap_or(Value::Undefined))?;
+        let has_key = match target {
+            Value::Object(object) => self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .properties
+                .contains_key(&key),
+            Value::Array(array) => {
+                let array = self
+                    .arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                key.parse::<usize>()
+                    .ok()
+                    .is_some_and(|index| index < array.elements.len())
+                    || array.properties.contains_key(&key)
+            }
+            _ => {
+                return Err(JsliteError::runtime(
+                    "TypeError: Object helpers currently only support plain objects and arrays",
+                ));
+            }
+        };
+        Ok(Value::Bool(has_key))
+    }
+
+    fn call_string_trim(&self, this_value: Value) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "trim")?;
+        Ok(Value::String(value.trim().to_string()))
+    }
+
+    fn call_string_includes(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "includes")?;
+        let chars = value.chars().collect::<Vec<_>>();
+        let needle = self
+            .to_string(args.first().cloned().unwrap_or(Value::Undefined))?
+            .chars()
+            .collect::<Vec<_>>();
+        let position = clamp_index(
+            self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
+            chars.len(),
+        );
+        let haystack = chars[position..].iter().collect::<String>();
+        Ok(Value::Bool(
+            haystack.contains(&needle.iter().collect::<String>()),
+        ))
+    }
+
+    fn call_string_starts_with(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "startsWith")?;
+        let chars = value.chars().collect::<Vec<_>>();
+        let needle = self
+            .to_string(args.first().cloned().unwrap_or(Value::Undefined))?
+            .chars()
+            .collect::<Vec<_>>();
+        let position = clamp_index(
+            self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
+            chars.len(),
+        );
+        Ok(Value::Bool(chars[position..].starts_with(&needle)))
+    }
+
+    fn call_string_ends_with(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "endsWith")?;
+        let chars = value.chars().collect::<Vec<_>>();
+        let needle = self
+            .to_string(args.first().cloned().unwrap_or(Value::Undefined))?
+            .chars()
+            .collect::<Vec<_>>();
+        let end = match args.get(1) {
+            Some(value) => clamp_index(self.to_integer(value.clone())?, chars.len()),
+            None => chars.len(),
+        };
+        Ok(Value::Bool(chars[..end].ends_with(&needle)))
+    }
+
+    fn call_string_slice(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "slice")?;
+        let chars = value.chars().collect::<Vec<_>>();
+        let start = normalize_relative_bound(
+            self.to_integer(args.first().cloned().unwrap_or(Value::Number(0.0)))?,
+            chars.len(),
+        );
+        let end = normalize_relative_bound(
+            match args.get(1) {
+                Some(value) => self.to_integer(value.clone())?,
+                None => chars.len() as i64,
+            },
+            chars.len(),
+        );
+        let end = end.max(start);
+        Ok(Value::String(chars[start..end].iter().collect()))
+    }
+
+    fn call_string_substring(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "substring")?;
+        let chars = value.chars().collect::<Vec<_>>();
+        let start = clamp_index(
+            self.to_integer(args.first().cloned().unwrap_or(Value::Number(0.0)))?,
+            chars.len(),
+        );
+        let end = match args.get(1) {
+            Some(value) => clamp_index(self.to_integer(value.clone())?, chars.len()),
+            None => chars.len(),
+        };
+        let (start, end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+        Ok(Value::String(chars[start..end].iter().collect()))
+    }
+
+    fn call_string_to_lower_case(&self, this_value: Value) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "toLowerCase")?;
+        Ok(Value::String(value.to_lowercase()))
+    }
+
+    fn call_string_to_upper_case(&self, this_value: Value) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "toUpperCase")?;
+        Ok(Value::String(value.to_uppercase()))
     }
 
     fn map_receiver(&self, value: Value, method: &str) -> JsliteResult<MapKey> {
@@ -5727,12 +6183,18 @@ impl Runtime {
                         .get(index)
                         .cloned()
                         .unwrap_or(Value::Undefined))
+                } else if let Some(value) = array.properties.get(&key) {
+                    Ok(value.clone())
                 } else {
-                    Ok(array
-                        .properties
-                        .get(&key)
-                        .cloned()
-                        .unwrap_or(Value::Undefined))
+                    match key.as_str() {
+                        "push" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPush)),
+                        "pop" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPop)),
+                        "slice" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySlice)),
+                        "join" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayJoin)),
+                        "includes" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIncludes)),
+                        "indexOf" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIndexOf)),
+                        _ => Ok(Value::Undefined),
+                    }
                 }
             }
             Value::Map(map) => {
@@ -5782,15 +6244,34 @@ impl Runtime {
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "isArray" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray))
             }
+            Value::BuiltinFunction(BuiltinFunction::ObjectCtor) => match key.as_str() {
+                "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectKeys)),
+                "values" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectValues)),
+                "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectEntries)),
+                "hasOwn" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectHasOwn)),
+                _ => Ok(Value::Undefined),
+            },
             Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "resolve" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::PromiseResolve))
             }
             Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "reject" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::PromiseReject))
             }
-            Value::String(value) if key == "length" => {
-                Ok(Value::Number(value.chars().count() as f64))
-            }
+            Value::String(value) => match key.as_str() {
+                "length" => Ok(Value::Number(value.chars().count() as f64)),
+                "trim" => Ok(Value::BuiltinFunction(BuiltinFunction::StringTrim)),
+                "includes" => Ok(Value::BuiltinFunction(BuiltinFunction::StringIncludes)),
+                "startsWith" => Ok(Value::BuiltinFunction(BuiltinFunction::StringStartsWith)),
+                "endsWith" => Ok(Value::BuiltinFunction(BuiltinFunction::StringEndsWith)),
+                "slice" => Ok(Value::BuiltinFunction(BuiltinFunction::StringSlice)),
+                "substring" => Ok(Value::BuiltinFunction(BuiltinFunction::StringSubstring)),
+                "toLowerCase" => Ok(Value::BuiltinFunction(BuiltinFunction::StringToLowerCase)),
+                "toUpperCase" => Ok(Value::BuiltinFunction(BuiltinFunction::StringToUpperCase)),
+                _ => {
+                    let _ = value;
+                    Ok(Value::Undefined)
+                }
+            },
             Value::Null | Value::Undefined => Err(JsliteError::runtime(
                 "TypeError: cannot read properties of nullish value",
             )),
@@ -5963,6 +6444,28 @@ impl Runtime {
                 ));
             }
         })
+    }
+
+    fn to_integer(&self, value: Value) -> JsliteResult<i64> {
+        let number = self.to_number(value)?;
+        if number.is_nan() || number == 0.0 {
+            Ok(0)
+        } else if number.is_infinite() {
+            Ok(if number.is_sign_positive() {
+                i64::MAX
+            } else {
+                i64::MIN
+            })
+        } else {
+            let truncated = number.trunc();
+            if truncated >= i64::MAX as f64 {
+                Ok(i64::MAX)
+            } else if truncated <= i64::MIN as f64 {
+                Ok(i64::MIN)
+            } else {
+                Ok(truncated as i64)
+            }
+        }
     }
 
     fn to_string(&self, value: Value) -> JsliteResult<String> {
@@ -6422,6 +6925,27 @@ fn canonicalize_collection_key(value: Value) -> Value {
         Value::Number(number) if number == 0.0 && number.is_sign_negative() => Value::Number(0.0),
         other => other,
     }
+}
+
+fn normalize_relative_bound(index: i64, len: usize) -> usize {
+    let len = len as i64;
+    if index < 0 {
+        (len + index).max(0) as usize
+    } else {
+        index.min(len) as usize
+    }
+}
+
+fn normalize_search_index(index: i64, len: usize) -> usize {
+    if index < 0 {
+        normalize_relative_bound(index, len)
+    } else {
+        clamp_index(index, len)
+    }
+}
+
+fn clamp_index(index: i64, len: usize) -> usize {
+    index.max(0).min(len as i64) as usize
 }
 
 fn property_name_to_key(name: &PropertyName) -> String {

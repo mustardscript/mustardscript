@@ -77,6 +77,54 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'array helpers',
+    source: `
+      const values = [1, 2];
+      values.push(3, 4);
+      [
+        values.pop(),
+        values.slice(1, 3),
+        values.join('-'),
+        values.includes(2),
+        values.indexOf(3),
+      ];
+    `,
+  },
+  {
+    name: 'string helpers',
+    source: `
+      const value = "  MiXeD Example  ";
+      [
+        value.trim(),
+        value.includes("XeD"),
+        value.startsWith("Mi", 2),
+        value.endsWith("ple  "),
+        value.slice(2, -2),
+        value.substring(8, 3),
+        value.toLowerCase(),
+        value.toUpperCase(),
+      ];
+    `,
+  },
+  {
+    name: 'Object and Math helpers',
+    source: `
+      const object = { zebra: 1, alpha: 2 };
+      const array = [4, 5];
+      array.extra = 6;
+      ({
+        keys: Object.keys(object),
+        values: Object.values(object),
+        entries: Object.entries(array),
+        hasOwn: Object.hasOwn(object, "alpha"),
+        pow: Math.pow(2, 5),
+        sqrt: Math.sqrt(81),
+        trunc: Math.trunc(-3.9),
+        sign: Math.sign(-12),
+      });
+    `,
+  },
+  {
     name: 'optional call on nullish and callable values',
     source: `
       const fn = (value) => value + 1;

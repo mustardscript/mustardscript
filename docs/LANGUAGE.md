@@ -163,13 +163,19 @@ extensions are called out explicitly instead of being implied.
 
 ## Observable Ordering
 
-- The only currently supported observable property-order surface is
-  `JSON.stringify` plus array `for...of`.
+- The currently supported observable property-order surface is `JSON.stringify`,
+  array `for...of`, and the supported `Object.keys` / `Object.values` /
+  `Object.entries` helpers.
 - `JSON.stringify` on plain objects renders string keys in sorted key order.
 - `JSON.stringify` on arrays renders elements in ascending numeric index order.
 - Non-index array properties are ignored by `JSON.stringify`.
 - Array `for...of` yields values in ascending numeric index order.
-- Enumeration APIs such as `Object.keys` and `for...in` remain unsupported.
+- `Object.keys`, `Object.values`, and `Object.entries` on plain objects render
+  string keys in sorted key order.
+- `Object.keys`, `Object.values`, and `Object.entries` on arrays enumerate
+  numeric indices in ascending order followed by custom string properties in
+  sorted key order.
+- `for...in` remains unsupported.
 
 ## Built-Ins and Global Names
 
@@ -194,6 +200,16 @@ extensions are called out explicitly instead of being implied.
 ### Currently Implemented Built-In Members
 
 - `Array.isArray`
+- `Array.prototype.push`
+- `Array.prototype.pop`
+- `Array.prototype.slice`
+- `Array.prototype.join`
+- `Array.prototype.includes`
+- `Array.prototype.indexOf`
+- `Object.keys`
+- `Object.values`
+- `Object.entries`
+- `Object.hasOwn`
 - `Map.prototype.get`
 - `Map.prototype.set`
 - `Map.prototype.has`
@@ -207,12 +223,24 @@ extensions are called out explicitly instead of being implied.
 - `Set.prototype.size`
 - `Promise.resolve`
 - `Promise.reject`
+- `String.prototype.trim`
+- `String.prototype.includes`
+- `String.prototype.startsWith`
+- `String.prototype.endsWith`
+- `String.prototype.slice`
+- `String.prototype.substring`
+- `String.prototype.toLowerCase`
+- `String.prototype.toUpperCase`
 - `Math.abs`
 - `Math.max`
 - `Math.min`
 - `Math.floor`
 - `Math.ceil`
 - `Math.round`
+- `Math.pow`
+- `Math.sqrt`
+- `Math.trunc`
+- `Math.sign`
 - `JSON.stringify`
 - `JSON.parse`
 - `console.log` when the host provides a `console.log` callback
