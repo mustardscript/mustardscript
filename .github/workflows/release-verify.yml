@@ -1,0 +1,100 @@
+name: Release Verify
+
+on:
+  workflow_dispatch:
+
+jobs:
+  source-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Test release candidate
+        run: cargo test --workspace
+
+      - name: Run Node and packaging tests
+        run: npm test
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Inspect package contents
+        run: npm pack --dry-run
+
+      - name: Pack npm tarball
+        run: npm pack
+
+      - name: Smoke test packed tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_root="$PWD"
+          tmpdir="$(mktemp -d)"
+          tarball="$(ls -1 jslite-*.tgz | head -n 1)"
+
+          mkdir "$tmpdir/consumer"
+          cd "$tmpdir/consumer"
+          npm init -y
+          npm install "$repo_root/$tarball"
+          node - <<'EOF'
+          const { Jslite } = require('jslite');
+
+          async function main() {
+            const runtime = new Jslite('let total = 1; total = total + 41; total;');
+            const value = await runtime.run();
+            if (value !== 42) {
+              throw new Error(`expected 42, got ${value}`);
+            }
+          }
+
+          main().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          EOF
+
+      - name: Reinstall tarball over existing consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_root="$PWD"
+          tmpdir="$(mktemp -d)"
+          tarball="$(ls -1 jslite-*.tgz | head -n 1)"
+
+          mkdir "$tmpdir/consumer"
+          cd "$tmpdir/consumer"
+          npm init -y
+          npm install "$repo_root/$tarball"
+          npm install "$repo_root/$tarball"
+          node - <<'EOF'
+          const { Jslite } = require('jslite');
+
+          async function main() {
+            const runtime = new Jslite('let total = 40; total = total + 2; total;');
+            const value = await runtime.run();
+            if (value !== 42) {
+              throw new Error(`expected 42, got ${value}`);
+            }
+          }
+
+          main().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          EOF
+
+      - name: Verify Rust package manifests
+        run: |
+          cargo package -p jslite --allow-dirty --list
+          cargo package -p jslite-node --allow-dirty --list
+          cargo package -p jslite-sidecar --allow-dirty --list

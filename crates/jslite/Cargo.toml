@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
+description = "Sandboxed subset-JavaScript runtime core for jslite"
 
 [dependencies]
 anyhow.workspace = true
@@ -19,3 +20,6 @@ serde.workspace = true
 serde_json.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+proptest = "1.9.0"
