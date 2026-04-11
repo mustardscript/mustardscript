@@ -170,7 +170,7 @@ Exit criteria:
 - [ ] Add tracebacks with guest source locations
 - [x] Add unit tests for bytecode decoding and instruction behavior
 - [x] Add execution tests for locals, branching, calls, and closures
-- [ ] Add pure-compute differential tests against Node for the supported subset
+- [x] Add pure-compute differential tests against Node for the supported subset
 
 Exit criteria:
 
