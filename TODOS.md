@@ -192,9 +192,9 @@ Exit criteria:
   first
 - [ ] If shapes are used, document them as an optimization layer rather than a
   semantic dependency
-- [ ] Define enumeration order for supported cases
+- [x] Define enumeration order for supported cases
 - [x] Implement property get and set semantics for supported cases
-- [ ] Decide whether property deletion is supported in v1 and document it
+- [x] Decide whether property deletion is supported in v1 and document it
 - [x] Implement array behavior for supported cases
 - [x] Implement `Object`, `Array`, `Math`, and `JSON`
 - [ ] Add heap accounting hooks

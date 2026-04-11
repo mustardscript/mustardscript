@@ -49,6 +49,7 @@ extensions are called out explicitly instead of being implied.
 ## Rejected With Validation Diagnostics
 
 - `import`, `export`, and dynamic `import()`
+- `delete`
 - free `eval` and free `Function`
 - free references to `process`, `module`, `exports`, `global`, `require`,
   `setTimeout`, `setInterval`, `queueMicrotask`, and `fetch`
@@ -87,6 +88,16 @@ extensions are called out explicitly instead of being implied.
   exact-expression locations.
 - Guest-facing rendering does not include host paths, internal filenames, or
   Rust implementation details.
+
+## Observable Ordering
+
+- The only currently supported observable property-order surface is
+  `JSON.stringify`.
+- `JSON.stringify` on plain objects renders string keys in sorted key order.
+- `JSON.stringify` on arrays renders elements in ascending numeric index order.
+- Non-index array properties are ignored by `JSON.stringify`.
+- Enumeration APIs such as `Object.keys`, `for...in`, and `for...of` remain
+  unsupported.
 
 ## Built-Ins and Global Names
 

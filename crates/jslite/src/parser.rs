@@ -962,6 +962,10 @@ impl<'a> Lowerer<'a> {
             UnaryOperator::LogicalNot => Some(UnaryOp::Not),
             UnaryOperator::Typeof => Some(UnaryOp::Typeof),
             UnaryOperator::Void => Some(UnaryOp::Void),
+            UnaryOperator::Delete => {
+                self.unsupported("delete is not supported in v1", Some(span.into()));
+                None
+            }
             _ => {
                 self.unsupported("unsupported unary operator in v1", Some(span.into()));
                 None
@@ -1093,5 +1097,13 @@ mod tests {
     fn rejects_module_syntax() {
         let error = compile("export const x = 1;").expect_err("module syntax should fail");
         assert!(error.to_string().contains("module syntax"));
+    }
+
+    #[test]
+    fn rejects_delete_operator() {
+        let error = compile("delete record.value;").expect_err("delete should fail");
+        let text = error.to_string();
+        assert!(text.contains("delete is not supported in v1"));
+        assert!(text.contains("[0..19]"));
     }
 }

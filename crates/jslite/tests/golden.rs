@@ -51,6 +51,14 @@ fn diagnostics_match_golden_files() {
         "free-function-constructor.txt",
         &function_error.to_string(),
     );
+
+    let delete_error =
+        compile("delete record.value;").expect_err("delete should be rejected explicitly");
+    assert_golden(
+        "diagnostics",
+        "delete-operator.txt",
+        &delete_error.to_string(),
+    );
 }
 
 #[test]

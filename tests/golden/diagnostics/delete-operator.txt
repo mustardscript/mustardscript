@@ -1,0 +1,1 @@
+Validation: delete is not supported in v1 [0..19]
