@@ -32,6 +32,7 @@ The current implementation already supports:
   basic control flow
 - `Math` and `JSON` built-ins
 - explicit named host capabilities with `start()` / `resume()` suspension
+- guest-safe runtime and limit errors with guest function-span tracebacks
 - same-version compiled-program and suspension snapshot round trips
 - a thin Node addon wrapper and a sidecar process that reuse the same Rust core
 
@@ -41,7 +42,6 @@ The current implementation does **not** yet execute:
 - `async` functions or `await`
 - deterministic console callbacks
 - cancellation, heap limits, call-depth limits, or outstanding-host-call limits
-- guest tracebacks with source locations
 
 ## Reference Docs
 

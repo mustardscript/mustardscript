@@ -138,7 +138,7 @@ Exit criteria:
 - [x] Reject `eval` and `Function` constructor use
 - [x] Define how unresolved free references to forbidden ambient globals are
   diagnosed
-- [ ] Preserve source spans for errors and tracebacks
+- [x] Preserve source spans for errors and tracebacks
 - [x] Define the internal IR data model
 - [x] Lower parser AST to IR
 - [x] Add parser acceptance tests for the supported subset
@@ -167,7 +167,7 @@ Exit criteria:
 - [x] Add a run-to-completion execution path
 - [x] Add instruction-budget accounting
 - [ ] Add cancellation checks at defined execution points
-- [ ] Add tracebacks with guest source locations
+- [x] Add tracebacks with guest source locations
 - [x] Add unit tests for bytecode decoding and instruction behavior
 - [x] Add execution tests for locals, branching, calls, and closures
 - [x] Add pure-compute differential tests against Node for the supported subset
@@ -178,7 +178,7 @@ Exit criteria:
 - [x] Closures work for representative cases
 - [ ] Instruction budget and cancellation behave predictably
 - [x] Bytecode validation and VM tests pass
-- [ ] Runtime errors include useful guest-facing location data
+- [x] Runtime errors include useful guest-facing location data
 
 ## Phase 3: Heap, Plain Objects, Arrays, and GC
 

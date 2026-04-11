@@ -53,6 +53,8 @@ The Node wrapper rethrows core failures as typed JavaScript errors:
 `JsliteParseError`, `JsliteValidationError`, `JsliteRuntimeError`,
 `JsliteLimitError`, and `JsliteSerializationError`. The original native error is
 preserved as the JavaScript `cause`.
+When those failures resume into guest execution, the runtime also renders a
+guest-only traceback with guest function names and source spans.
 
 ## Console Contract
 

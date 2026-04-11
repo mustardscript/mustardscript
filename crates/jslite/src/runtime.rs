@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 
 use crate::{
-    diagnostic::{DiagnosticKind, JsliteError, JsliteResult},
+    diagnostic::{DiagnosticKind, JsliteError, JsliteResult, TraceFrame},
     ir::{
         AssignOp, AssignTarget, BinaryOp, BindingKind, CompiledProgram, Expr, ForInit,
         FunctionExpr, LogicalOp, MemberProperty, Pattern, PropertyName, Stmt, UnaryOp,
@@ -195,6 +195,7 @@ pub fn dump_program(program: &BytecodeProgram) -> JsliteResult<Vec<u8>> {
         kind: DiagnosticKind::Serialization,
         message: error.to_string(),
         span: None,
+        traceback: Vec::new(),
     })
 }
 
@@ -204,6 +205,7 @@ pub fn load_program(bytes: &[u8]) -> JsliteResult<BytecodeProgram> {
             kind: DiagnosticKind::Serialization,
             message: error.to_string(),
             span: None,
+            traceback: Vec::new(),
         })?;
     if decoded.version != SERIAL_FORMAT_VERSION {
         return Err(JsliteError::Message {
@@ -213,6 +215,7 @@ pub fn load_program(bytes: &[u8]) -> JsliteResult<BytecodeProgram> {
                 SERIAL_FORMAT_VERSION, decoded.version
             ),
             span: None,
+            traceback: Vec::new(),
         });
     }
     validate_bytecode_program(&decoded.program)?;
@@ -228,6 +231,7 @@ pub fn dump_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<Vec<u8>> {
         kind: DiagnosticKind::Serialization,
         message: error.to_string(),
         span: None,
+        traceback: Vec::new(),
     })
 }
 
@@ -237,6 +241,7 @@ pub fn load_snapshot(bytes: &[u8]) -> JsliteResult<ExecutionSnapshot> {
             kind: DiagnosticKind::Serialization,
             message: error.to_string(),
             span: None,
+            traceback: Vec::new(),
         })?;
     if decoded.version != SERIAL_FORMAT_VERSION {
         return Err(JsliteError::Message {
@@ -246,6 +251,7 @@ pub fn load_snapshot(bytes: &[u8]) -> JsliteResult<ExecutionSnapshot> {
                 SERIAL_FORMAT_VERSION, decoded.version
             ),
             span: None,
+            traceback: Vec::new(),
         });
     }
     validate_snapshot(&decoded.snapshot)?;
@@ -553,6 +559,7 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
             kind: DiagnosticKind::Serialization,
             message: "snapshot validation failed: missing globals environment".to_string(),
             span: None,
+            traceback: Vec::new(),
         });
     }
     if runtime.frames.is_empty() {
@@ -560,6 +567,7 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
             kind: DiagnosticKind::Serialization,
             message: "snapshot validation failed: suspended runtime has no frames".to_string(),
             span: None,
+            traceback: Vec::new(),
         });
     }
 
@@ -574,6 +582,7 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
                     env_key, parent
                 ),
                 span: None,
+                traceback: Vec::new(),
             });
         }
         for cell in env.bindings.values() {
@@ -585,6 +594,7 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
                         env_key, cell
                     ),
                     span: None,
+                    traceback: Vec::new(),
                 });
             }
         }
@@ -599,6 +609,7 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
                     closure_key, closure.function_id
                 ),
                 span: None,
+                traceback: Vec::new(),
             });
         }
         if runtime.envs.get(closure.env).is_none() {
@@ -609,6 +620,7 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
                     closure_key, closure.env
                 ),
                 span: None,
+                traceback: Vec::new(),
             });
         }
     }
@@ -622,6 +634,7 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
                     frame.function_id
                 ),
                 span: None,
+                traceback: Vec::new(),
             });
         };
         if frame.ip >= function.code.len() {
@@ -632,6 +645,7 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
                     frame.ip, frame.function_id
                 ),
                 span: None,
+                traceback: Vec::new(),
             });
         }
         if runtime.envs.get(frame.env).is_none() {
@@ -642,6 +656,7 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
                     frame.env
                 ),
                 span: None,
+                traceback: Vec::new(),
             });
         }
         for env in &frame.scope_stack {
@@ -653,6 +668,7 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
                         env
                     ),
                     span: None,
+                    traceback: Vec::new(),
                 });
             }
         }
@@ -691,6 +707,7 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> JsliteResult<()> 
                     object
                 ),
                 span: None,
+                traceback: Vec::new(),
             })
         }
         Value::Array(array) if runtime.arrays.get(*array).is_none() => Err(JsliteError::Message {
@@ -700,6 +717,7 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> JsliteResult<()> 
                 array
             ),
             span: None,
+            traceback: Vec::new(),
         }),
         Value::Closure(closure) if runtime.closures.get(*closure).is_none() => {
             Err(JsliteError::Message {
@@ -709,6 +727,7 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> JsliteResult<()> 
                     closure
                 ),
                 span: None,
+                traceback: Vec::new(),
             })
         }
         _ => Ok(()),
@@ -1012,7 +1031,7 @@ impl Compiler {
                 context.scope_depth -= 1;
                 context.code.push(Instruction::PopEnv);
             }
-            Stmt::Break { .. } => {
+            Stmt::Break { span } => {
                 if let Some(loop_ctx) = context.loop_stack.last() {
                     for _ in loop_ctx.scope_depth..context.scope_depth {
                         context.code.push(Instruction::PopEnv);
@@ -1022,10 +1041,13 @@ impl Compiler {
                 if let Some(loop_ctx) = context.loop_stack.last_mut() {
                     loop_ctx.break_jumps.push(jump);
                 } else {
-                    return Err(JsliteError::runtime("`break` used outside of a loop"));
+                    return Err(JsliteError::runtime_at(
+                        "`break` used outside of a loop",
+                        *span,
+                    ));
                 }
             }
-            Stmt::Continue { .. } => {
+            Stmt::Continue { span } => {
                 if let Some(loop_ctx) = context.loop_stack.last() {
                     for _ in loop_ctx.scope_depth..context.scope_depth {
                         context.code.push(Instruction::PopEnv);
@@ -1035,7 +1057,10 @@ impl Compiler {
                 if let Some(loop_ctx) = context.loop_stack.last_mut() {
                     loop_ctx.continue_jumps.push(jump);
                 } else {
-                    return Err(JsliteError::runtime("`continue` used outside of a loop"));
+                    return Err(JsliteError::runtime_at(
+                        "`continue` used outside of a loop",
+                        *span,
+                    ));
                 }
             }
             Stmt::Return { value, .. } => {
@@ -1046,14 +1071,16 @@ impl Compiler {
                 }
                 context.code.push(Instruction::Return);
             }
-            Stmt::Throw { .. } => {
-                return Err(JsliteError::runtime(
+            Stmt::Throw { span, .. } => {
+                return Err(JsliteError::runtime_at(
                     "runtime support for throw/try/catch/finally is not implemented yet",
+                    *span,
                 ));
             }
-            Stmt::Try { .. } => {
-                return Err(JsliteError::runtime(
+            Stmt::Try { span, .. } => {
+                return Err(JsliteError::runtime_at(
                     "runtime support for try/catch/finally is not implemented yet",
+                    *span,
                 ));
             }
             Stmt::Switch {
@@ -1335,9 +1362,10 @@ impl Compiler {
                     }
                 }
             }
-            Expr::Await { .. } => {
-                return Err(JsliteError::runtime(
+            Expr::Await { span, .. } => {
+                return Err(JsliteError::runtime_at(
                     "runtime support for async/await is not implemented yet",
+                    *span,
                 ));
             }
         }
@@ -1642,6 +1670,11 @@ enum RunState {
     },
 }
 
+enum StepAction {
+    Continue,
+    Return(ExecutionStep),
+}
+
 impl Runtime {
     fn new(program: BytecodeProgram, options: ExecutionOptions) -> JsliteResult<Self> {
         let mut envs = SlotMap::with_key();
@@ -1678,18 +1711,41 @@ impl Runtime {
         self.run()
     }
 
+    fn traceback_frames(&self) -> Vec<TraceFrame> {
+        self.frames
+            .iter()
+            .rev()
+            .filter_map(|frame| {
+                self.program
+                    .functions
+                    .get(frame.function_id)
+                    .map(|function| TraceFrame {
+                        function_name: function.name.clone(),
+                        span: function.span,
+                    })
+            })
+            .collect()
+    }
+
+    fn annotate_runtime_error(&self, error: JsliteError) -> JsliteError {
+        error.with_traceback(self.traceback_frames())
+    }
+
     fn resume(&mut self, payload: ResumePayload) -> JsliteResult<ExecutionStep> {
         match payload {
             ResumePayload::Value(value) => {
-                let value = self.value_from_structured(value)?;
-                let frame = self
-                    .frames
-                    .last_mut()
-                    .ok_or_else(|| JsliteError::runtime("no suspended frame available"))?;
+                let value = self
+                    .value_from_structured(value)
+                    .map_err(|error| self.annotate_runtime_error(error))?;
+                let Some(frame) = self.frames.last_mut() else {
+                    return Err(self.annotate_runtime_error(JsliteError::runtime(
+                        "no suspended frame available",
+                    )));
+                };
                 frame.stack.push(value);
             }
             ResumePayload::Error(error) => {
-                return Err(JsliteError::runtime(format!(
+                return Err(self.annotate_runtime_error(JsliteError::runtime(format!(
                     "{}: {}{}{}",
                     error.name,
                     error.message,
@@ -1703,7 +1759,7 @@ impl Runtime {
                         .as_ref()
                         .map(|details| format!(" [details={details:?}]"))
                         .unwrap_or_default()
-                )));
+                ))));
             }
         }
         self.run()
@@ -1724,264 +1780,281 @@ impl Runtime {
                 .get(function_id)
                 .and_then(|function| function.code.get(ip))
                 .cloned()
-                .ok_or_else(|| JsliteError::runtime("instruction pointer out of range"))?;
+                .ok_or_else(|| JsliteError::runtime("instruction pointer out of range"))
+                .map_err(|error| self.annotate_runtime_error(error))?;
             self.frames[frame_index].ip += 1;
-            self.bump_instruction_budget()?;
-            match instruction {
-                Instruction::PushUndefined => self.frames[frame_index].stack.push(Value::Undefined),
-                Instruction::PushNull => self.frames[frame_index].stack.push(Value::Null),
-                Instruction::PushBool(value) => {
-                    self.frames[frame_index].stack.push(Value::Bool(value))
-                }
-                Instruction::PushNumber(value) => {
-                    self.frames[frame_index].stack.push(Value::Number(value))
-                }
-                Instruction::PushString(value) => {
-                    self.frames[frame_index].stack.push(Value::String(value))
-                }
-                Instruction::LoadName(name) => {
-                    let env = self.frames[frame_index].env;
-                    let value = self.lookup_name(env, &name)?;
-                    self.frames[frame_index].stack.push(value);
-                }
-                Instruction::StoreName(name) => {
-                    let value = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let env = self.frames[frame_index].env;
-                    self.assign_name(env, &name, value.clone())?;
-                    self.frames[frame_index].stack.push(value);
-                }
-                Instruction::InitializePattern(pattern) => {
-                    let value = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let env = self.frames[frame_index].env;
-                    self.initialize_pattern(env, &pattern, value)?;
-                }
-                Instruction::PushEnv => {
-                    let current_env = self.frames[frame_index].env;
-                    let env = self.new_env(Some(current_env));
-                    self.frames[frame_index].scope_stack.push(current_env);
-                    self.frames[frame_index].env = env;
-                }
-                Instruction::PopEnv => {
-                    let restored = self.frames[frame_index]
-                        .scope_stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("scope stack underflow"))?;
-                    self.frames[frame_index].env = restored;
-                }
-                Instruction::DeclareName { name, mutable } => {
-                    let env = self.frames[frame_index].env;
-                    self.declare_name(env, name, mutable)?;
-                }
-                Instruction::MakeClosure { function_id } => {
-                    let env = self.frames[frame_index].env;
-                    let closure = self.closures.insert(Closure { function_id, env });
-                    self.frames[frame_index].stack.push(Value::Closure(closure));
-                }
-                Instruction::MakeArray { count } => {
-                    let values = pop_many(&mut self.frames[frame_index].stack, count)?;
-                    let array = self.arrays.insert(ArrayObject {
-                        elements: values,
-                        properties: IndexMap::new(),
-                    });
-                    self.frames[frame_index].stack.push(Value::Array(array));
-                }
-                Instruction::MakeObject { keys } => {
-                    let values = pop_many(&mut self.frames[frame_index].stack, keys.len())?;
-                    let mut properties = IndexMap::new();
-                    for (key, value) in keys.into_iter().zip(values.into_iter()) {
-                        properties.insert(property_name_to_key(&key), value);
+            self.bump_instruction_budget()
+                .map_err(|error| self.annotate_runtime_error(error))?;
+            let action = (|| -> JsliteResult<StepAction> {
+                match instruction {
+                    Instruction::PushUndefined => {
+                        self.frames[frame_index].stack.push(Value::Undefined);
                     }
-                    let object = self.objects.insert(PlainObject {
-                        properties,
-                        kind: ObjectKind::Plain,
-                    });
-                    self.frames[frame_index].stack.push(Value::Object(object));
-                }
-                Instruction::GetPropStatic { name, optional } => {
-                    let object = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let value = self.get_property(object, Value::String(name), optional)?;
-                    self.frames[frame_index].stack.push(value);
-                }
-                Instruction::GetPropComputed { optional } => {
-                    let property = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let object = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let value = self.get_property(object, property, optional)?;
-                    self.frames[frame_index].stack.push(value);
-                }
-                Instruction::SetPropStatic { name } => {
-                    let value = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let object = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    self.set_property(object, Value::String(name), value.clone())?;
-                    self.frames[frame_index].stack.push(value);
-                }
-                Instruction::SetPropComputed => {
-                    let value = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let property = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let object = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    self.set_property(object, property, value.clone())?;
-                    self.frames[frame_index].stack.push(value);
-                }
-                Instruction::Unary(operator) => {
-                    let value = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let result = self.apply_unary(operator, value)?;
-                    self.frames[frame_index].stack.push(result);
-                }
-                Instruction::Binary(operator) => {
-                    let right = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let left = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let result = self.apply_binary(operator, left, right)?;
-                    self.frames[frame_index].stack.push(result);
-                }
-                Instruction::Pop => {
-                    self.frames[frame_index].stack.pop();
-                }
-                Instruction::Dup => {
-                    let value = self.frames[frame_index]
-                        .stack
-                        .last()
-                        .cloned()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    self.frames[frame_index].stack.push(value);
-                }
-                Instruction::Dup2 => {
-                    let len = self.frames[frame_index].stack.len();
-                    if len < 2 {
-                        return Err(JsliteError::runtime("stack underflow"));
+                    Instruction::PushNull => self.frames[frame_index].stack.push(Value::Null),
+                    Instruction::PushBool(value) => {
+                        self.frames[frame_index].stack.push(Value::Bool(value))
                     }
-                    let a = self.frames[frame_index].stack[len - 2].clone();
-                    let b = self.frames[frame_index].stack[len - 1].clone();
-                    self.frames[frame_index].stack.push(a);
-                    self.frames[frame_index].stack.push(b);
-                }
-                Instruction::Jump(target) => self.frames[frame_index].ip = target,
-                Instruction::JumpIfFalse(target) => {
-                    let value = self.frames[frame_index]
-                        .stack
-                        .last()
-                        .cloned()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    if !is_truthy(&value) {
-                        self.frames[frame_index].ip = target;
+                    Instruction::PushNumber(value) => {
+                        self.frames[frame_index].stack.push(Value::Number(value))
                     }
-                }
-                Instruction::JumpIfTrue(target) => {
-                    let value = self.frames[frame_index]
-                        .stack
-                        .last()
-                        .cloned()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    if is_truthy(&value) {
-                        self.frames[frame_index].ip = target;
+                    Instruction::PushString(value) => {
+                        self.frames[frame_index].stack.push(Value::String(value))
                     }
-                }
-                Instruction::JumpIfNullish(target) => {
-                    let value = self.frames[frame_index]
-                        .stack
-                        .last()
-                        .cloned()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    if matches!(value, Value::Null | Value::Undefined) {
-                        self.frames[frame_index].ip = target;
+                    Instruction::LoadName(name) => {
+                        let env = self.frames[frame_index].env;
+                        let value = self.lookup_name(env, &name)?;
+                        self.frames[frame_index].stack.push(value);
                     }
-                }
-                Instruction::Call {
-                    argc,
-                    with_this,
-                    optional,
-                } => {
-                    let args = pop_many(&mut self.frames[frame_index].stack, argc)?;
-                    let callee = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let this_value = if with_this {
-                        self.frames[frame_index]
+                    Instruction::StoreName(name) => {
+                        let value = self.frames[frame_index]
                             .stack
                             .pop()
-                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?
-                    } else {
-                        Value::Undefined
-                    };
-                    if optional && matches!(callee, Value::Undefined | Value::Null) {
-                        self.frames[frame_index].stack.push(Value::Undefined);
-                        continue;
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let env = self.frames[frame_index].env;
+                        self.assign_name(env, &name, value.clone())?;
+                        self.frames[frame_index].stack.push(value);
                     }
-                    match self.call_callable(callee, this_value, &args)? {
-                        RunState::Completed(value) => {
-                            self.frames[frame_index].stack.push(value);
+                    Instruction::InitializePattern(pattern) => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let env = self.frames[frame_index].env;
+                        self.initialize_pattern(env, &pattern, value)?;
+                    }
+                    Instruction::PushEnv => {
+                        let current_env = self.frames[frame_index].env;
+                        let env = self.new_env(Some(current_env));
+                        self.frames[frame_index].scope_stack.push(current_env);
+                        self.frames[frame_index].env = env;
+                    }
+                    Instruction::PopEnv => {
+                        let restored = self.frames[frame_index]
+                            .scope_stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("scope stack underflow"))?;
+                        self.frames[frame_index].env = restored;
+                    }
+                    Instruction::DeclareName { name, mutable } => {
+                        let env = self.frames[frame_index].env;
+                        self.declare_name(env, name, mutable)?;
+                    }
+                    Instruction::MakeClosure { function_id } => {
+                        let env = self.frames[frame_index].env;
+                        let closure = self.closures.insert(Closure { function_id, env });
+                        self.frames[frame_index].stack.push(Value::Closure(closure));
+                    }
+                    Instruction::MakeArray { count } => {
+                        let values = pop_many(&mut self.frames[frame_index].stack, count)?;
+                        let array = self.arrays.insert(ArrayObject {
+                            elements: values,
+                            properties: IndexMap::new(),
+                        });
+                        self.frames[frame_index].stack.push(Value::Array(array));
+                    }
+                    Instruction::MakeObject { keys } => {
+                        let values = pop_many(&mut self.frames[frame_index].stack, keys.len())?;
+                        let mut properties = IndexMap::new();
+                        for (key, value) in keys.into_iter().zip(values.into_iter()) {
+                            properties.insert(property_name_to_key(&key), value);
                         }
-                        RunState::PushedFrame => {}
-                        RunState::Suspended { capability, args } => {
-                            return Ok(ExecutionStep::Suspended(Box::new(Suspension {
-                                capability,
-                                args,
-                                snapshot: ExecutionSnapshot {
-                                    runtime: self.clone(),
-                                },
-                            })));
+                        let object = self.objects.insert(PlainObject {
+                            properties,
+                            kind: ObjectKind::Plain,
+                        });
+                        self.frames[frame_index].stack.push(Value::Object(object));
+                    }
+                    Instruction::GetPropStatic { name, optional } => {
+                        let object = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let value = self.get_property(object, Value::String(name), optional)?;
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    Instruction::GetPropComputed { optional } => {
+                        let property = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let object = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let value = self.get_property(object, property, optional)?;
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    Instruction::SetPropStatic { name } => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let object = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        self.set_property(object, Value::String(name), value.clone())?;
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    Instruction::SetPropComputed => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let property = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let object = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        self.set_property(object, property, value.clone())?;
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    Instruction::Unary(operator) => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let result = self.apply_unary(operator, value)?;
+                        self.frames[frame_index].stack.push(result);
+                    }
+                    Instruction::Binary(operator) => {
+                        let right = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let left = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let result = self.apply_binary(operator, left, right)?;
+                        self.frames[frame_index].stack.push(result);
+                    }
+                    Instruction::Pop => {
+                        self.frames[frame_index].stack.pop();
+                    }
+                    Instruction::Dup => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .last()
+                            .cloned()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    Instruction::Dup2 => {
+                        let len = self.frames[frame_index].stack.len();
+                        if len < 2 {
+                            return Err(JsliteError::runtime("stack underflow"));
+                        }
+                        let a = self.frames[frame_index].stack[len - 2].clone();
+                        let b = self.frames[frame_index].stack[len - 1].clone();
+                        self.frames[frame_index].stack.push(a);
+                        self.frames[frame_index].stack.push(b);
+                    }
+                    Instruction::Jump(target) => self.frames[frame_index].ip = target,
+                    Instruction::JumpIfFalse(target) => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .last()
+                            .cloned()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        if !is_truthy(&value) {
+                            self.frames[frame_index].ip = target;
+                        }
+                    }
+                    Instruction::JumpIfTrue(target) => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .last()
+                            .cloned()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        if is_truthy(&value) {
+                            self.frames[frame_index].ip = target;
+                        }
+                    }
+                    Instruction::JumpIfNullish(target) => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .last()
+                            .cloned()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        if matches!(value, Value::Null | Value::Undefined) {
+                            self.frames[frame_index].ip = target;
+                        }
+                    }
+                    Instruction::Call {
+                        argc,
+                        with_this,
+                        optional,
+                    } => {
+                        let args = pop_many(&mut self.frames[frame_index].stack, argc)?;
+                        let callee = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let this_value = if with_this {
+                            self.frames[frame_index]
+                                .stack
+                                .pop()
+                                .ok_or_else(|| JsliteError::runtime("stack underflow"))?
+                        } else {
+                            Value::Undefined
+                        };
+                        if optional && matches!(callee, Value::Undefined | Value::Null) {
+                            self.frames[frame_index].stack.push(Value::Undefined);
+                            return Ok(StepAction::Continue);
+                        }
+                        match self.call_callable(callee, this_value, &args)? {
+                            RunState::Completed(value) => {
+                                self.frames[frame_index].stack.push(value);
+                            }
+                            RunState::PushedFrame => {}
+                            RunState::Suspended { capability, args } => {
+                                return Ok(StepAction::Return(ExecutionStep::Suspended(Box::new(
+                                    Suspension {
+                                        capability,
+                                        args,
+                                        snapshot: ExecutionSnapshot {
+                                            runtime: self.clone(),
+                                        },
+                                    },
+                                ))));
+                            }
+                        }
+                    }
+                    Instruction::Construct { argc } => {
+                        let args = pop_many(&mut self.frames[frame_index].stack, argc)?;
+                        let callee = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                        let value = self.construct(callee, &args)?;
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    Instruction::Return => {
+                        let value = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .unwrap_or(Value::Undefined);
+                        self.frames.pop();
+                        if let Some(parent) = self.frames.last_mut() {
+                            parent.stack.push(value);
+                        } else {
+                            return Ok(StepAction::Return(ExecutionStep::Completed(
+                                self.value_to_structured(value)?,
+                            )));
                         }
                     }
                 }
-                Instruction::Construct { argc } => {
-                    let args = pop_many(&mut self.frames[frame_index].stack, argc)?;
-                    let callee = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
-                    let value = self.construct(callee, &args)?;
-                    self.frames[frame_index].stack.push(value);
-                }
-                Instruction::Return => {
-                    let value = self.frames[frame_index]
-                        .stack
-                        .pop()
-                        .unwrap_or(Value::Undefined);
-                    self.frames.pop();
-                    if let Some(parent) = self.frames.last_mut() {
-                        parent.stack.push(value);
-                    } else {
-                        return Ok(ExecutionStep::Completed(self.value_to_structured(value)?));
-                    }
-                }
+                Ok(StepAction::Continue)
+            })()
+            .map_err(|error| self.annotate_runtime_error(error))?;
+
+            match action {
+                StepAction::Continue => {}
+                StepAction::Return(step) => return Ok(step),
             }
         }
     }
@@ -2286,6 +2359,7 @@ impl Runtime {
                 kind: DiagnosticKind::Runtime,
                 message: format!("ReferenceError: `{name}` is not defined"),
                 span: None,
+                traceback: Vec::new(),
             })?;
         let cell = self
             .cells
@@ -2704,6 +2778,7 @@ impl Runtime {
                 kind: DiagnosticKind::Limit,
                 message: "instruction budget exhausted".to_string(),
                 span: None,
+                traceback: Vec::new(),
             });
         }
         Ok(())
@@ -3018,6 +3093,41 @@ mod tests {
         )
         .expect_err("infinite loop should exhaust budget");
         assert!(error.to_string().contains("instruction budget exhausted"));
+    }
+
+    #[test]
+    fn lowering_errors_preserve_source_spans() {
+        let program = compile("continue;").expect("source should compile");
+        let error =
+            lower_to_bytecode(&program).expect_err("continue outside a loop should fail lowering");
+        let rendered = error.to_string();
+        assert!(rendered.contains("`continue` used outside of a loop"));
+        assert!(rendered.contains("[0..9]"));
+    }
+
+    #[test]
+    fn runtime_errors_include_guest_tracebacks() {
+        let program = compile(
+            r#"
+            function outer() {
+              return inner();
+            }
+            function inner() {
+              const value = null;
+              return value.answer;
+            }
+            outer();
+            "#,
+        )
+        .expect("source should compile");
+        let error = execute(&program, ExecutionOptions::default())
+            .expect_err("nullish property access should fail");
+        let rendered = error.to_string();
+        assert!(rendered.contains("TypeError: cannot read properties of nullish value"));
+        assert!(rendered.contains("at inner ["));
+        assert!(rendered.contains("at outer ["));
+        assert!(rendered.contains("at <script> ["));
+        assert!(!rendered.contains(".rs"));
     }
 
     #[test]
