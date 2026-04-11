@@ -166,9 +166,7 @@ Exit criteria:
 - [x] Implement lexical scope and closures
 - [x] Add a run-to-completion execution path
 - [x] Add instruction-budget accounting
-- [ ] Add cancellation checks at defined execution points
-  Current blocker: the sync JSON/buffer addon boundary does not expose a shared
-  cancellation hook the core VM can poll mid-execution.
+- [x] Add cancellation checks at defined execution points
 - [x] Add tracebacks with guest source locations
 - [x] Add unit tests for bytecode decoding and instruction behavior
 - [x] Add execution tests for locals, branching, calls, and closures
@@ -178,7 +176,7 @@ Exit criteria:
 
 - [x] Pure compute programs run correctly
 - [x] Closures work for representative cases
-- [ ] Instruction budget and cancellation behave predictably
+- [x] Instruction budget and cancellation behave predictably
 - [x] Bytecode validation and VM tests pass
 - [x] Runtime errors include useful guest-facing location data
 
@@ -270,7 +268,7 @@ Exit criteria:
 - [x] Implement async host-call suspension and resume
 - [x] Finalize `Promise` in the built-in surface
 - [x] Ensure async execution composes correctly with exceptions
-- [ ] Define behavior for cancellation while guest code is awaiting a host
+- [x] Define behavior for cancellation while guest code is awaiting a host
   promise
 - [x] Define maximum outstanding host calls
 - [x] Add microtask ordering tests
@@ -366,10 +364,7 @@ Exit criteria:
 - [x] Add snapshot-load fuzzing
 - [x] Add sidecar-protocol fuzzing
 - [x] Add regression tests for security-sensitive behaviors
-- [ ] Add fault-injection tests for cancellation, limits, and corrupted state
-  Current blocker: cooperative cancellation is still architecturally blocked, so
-  the verified fault-injection coverage in this phase currently covers limits
-  and corrupted serialized state but not mid-execution cancellation hooks.
+- [x] Add fault-injection tests for cancellation, limits, and corrupted state
 - [x] Audit denial-of-service failure modes
 - [x] Verify resource failures stay guest-safe
 
@@ -408,7 +403,7 @@ Exit criteria:
 - [x] Publish sidecar-mode tradeoffs clearly
 - [x] Write embedding examples
 - [x] Prepare npm publishing flow
-- [ ] Add optional prebuilt-binary publishing only after package shape is stable
+- [x] Add optional prebuilt-binary publishing only after package shape is stable
 - [x] Prepare Rust crate publishing flow if needed
 - [x] Write release guidance
 - [x] Add release verification checklists for build, install, upgrade, and basic
@@ -420,9 +415,11 @@ Exit criteria:
 - [x] Users can embed `jslite` without tribal knowledge
 - [x] Release checklists are runnable and verified
 - [ ] Project is publishable and maintainable
-  Current blocker: a real public release now targets `@keppoai/jslite`, but the
-  final publish still requires an authenticated npm publisher with access to the
-  `@keppoai` scope, which repository-local dry runs cannot verify.
+  Current blocker: a real public release now targets `@keppoai/jslite` plus the
+  optional scoped prebuilt packages, but the final publish still requires an
+  authenticated npm publisher with permission for those `@keppoai` packages and
+  a GitHub Actions run with the needed publish secrets, which repository-local
+  dry runs cannot verify.
 
 ## First Real Milestone
 

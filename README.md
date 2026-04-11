@@ -40,13 +40,14 @@ The current implementation already supports:
   the host provides them explicitly
 - instruction, heap-byte, allocation-count, and outstanding-host-call budgets
   with guest-safe limit errors
+- cooperative cancellation for running compute, suspended progress objects, and
+  guest async waits on host promises
 - guest-safe runtime and limit errors with guest function-span tracebacks
 - same-version compiled-program and suspension snapshot round trips
 - a thin Node addon wrapper and a sidecar process that reuse the same Rust core
 
 The current implementation does **not** yet execute:
 
-- cooperative cancellation
 - call-depth limits
 
 ## Reference Docs
@@ -64,12 +65,12 @@ The current implementation does **not** yet execute:
 
 ## Installation
 
-`jslite` should currently be treated as a source-build-only package.
-
-The release package name is `@keppoai/jslite`. Until the first public npm
-publish exists, the verified installation path is still a clean checkout or a
-packed source tarball. In both cases, `npm install` compiles the native addon
-locally, so a Rust toolchain and Node.js are required on the target machine.
+The release package name is `@keppoai/jslite`. The default and fully verified
+path is still source-build installation from a clean checkout or packed source
+tarball, where `npm install` compiles the native addon locally. Optional
+prebuilt binaries now have a separate release flow for the documented target
+matrix, but source-build fallback remains the baseline path and still requires a
+Rust toolchain plus Node.js on the target machine.
 
 From a clean checkout:
 
@@ -280,7 +281,6 @@ JavaScript.
 
 ### Still Deferred Within The Async Surface
 
-- guest-visible cancellation while awaiting a host promise
 - `new Promise(...)`
 - promise instance methods such as `then`, `catch`, and `finally`
 
@@ -488,8 +488,10 @@ Current behavior:
 - host-boundary suspension and resume for async guest capability calls
 - enforced maximum outstanding host calls for async guest fan-out
 - no reentrancy into the same VM unless explicitly designed and documented
-- cooperative cancellation while awaiting host promises is still not
-  implemented
+- cooperative cancellation now fails top-level execution, including while guest
+  async code is awaiting host promises
+- same-thread addon `AbortSignal` delivery remains cooperative rather than
+  preemptive
 
 The host should not need to understand VM internals to resume guest execution.
 
