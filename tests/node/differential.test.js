@@ -66,6 +66,17 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'nullish assignment keeps existing values and fills missing ones',
+    source: `
+      let left;
+      left ??= 4;
+      const record = { present: 5, missing: undefined };
+      record.present ??= 8;
+      record.missing ??= 9;
+      [left, record.present, record.missing];
+    `,
+  },
+  {
     name: 'optional call on nullish and callable values',
     source: `
       const fn = (value) => value + 1;
