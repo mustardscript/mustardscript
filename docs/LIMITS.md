@@ -53,7 +53,9 @@ Cooperative cancellation is controlled separately through:
   cannot bypass the configured heap and allocation budgets.
 - Outstanding host-call limits are enforced for async guest execution across
   queued and currently suspended host capability requests.
-- Call-depth limits are still defined in the API but are not enforced yet.
+- Call-depth limits are enforced before each new guest frame is pushed, so
+  recursive or deeply nested guest calls fail with a guest-safe limit error
+  once the configured depth budget is exhausted.
 - Cooperative cancellation is implemented and checked before each instruction,
   before idle microtask or queued-host-call checkpoints, and on every resume
   entry.

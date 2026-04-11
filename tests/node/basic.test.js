@@ -19,6 +19,22 @@ test('run executes sync programs', async () => {
   assert.equal(result, 4);
 });
 
+test('run applies nullish assignment only to nullish identifiers and members', async () => {
+  const j = new Jslite(`
+    let missing;
+    missing ??= 7;
+    const box = { present: 5, absent: undefined };
+    box.present ??= 9;
+    box.absent ??= 11;
+    const key = 'dynamic';
+    box[key] ??= 13;
+    [missing, box.present, box.absent, box.dynamic];
+  `);
+
+  const result = await j.run();
+  assert.deepEqual(result, [7, 5, 11, 13]);
+});
+
 test('run exposes structured inputs with preserved numeric edge cases', async () => {
   const j = new Jslite(`
     ({ value, inf, negZero, nan });
@@ -380,6 +396,31 @@ test('run surfaces heap and allocation limit failures as typed errors', async ()
       error.name === 'JsliteLimitError' &&
       error.kind === 'Limit' &&
       /allocation budget exhausted/.test(error.message),
+  );
+});
+
+test('run surfaces call-depth limit failures as typed errors', async () => {
+  const j = new Jslite(`
+    function recurse(value) {
+      if (value === 0) {
+        return 0;
+      }
+      return recurse(value - 1);
+    }
+    recurse(3);
+  `);
+
+  await assert.rejects(
+    j.run({
+      limits: {
+        callDepthLimit: 3,
+      },
+    }),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteLimitError' &&
+      error.kind === 'Limit' &&
+      /call depth limit exceeded/.test(error.message),
   );
 });
 
