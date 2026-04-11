@@ -184,13 +184,13 @@ Exit criteria:
 
 ## Phase 3: Heap, Plain Objects, Arrays, and GC
 
-- [ ] Define `JsValue`
-- [ ] Define rooting and handle rules
+- [x] Define `JsValue`
+- [x] Define rooting and handle rules
 - [x] Implement heap allocation for strings, arrays, objects, and functions
 - [x] Start with a centralized plain-object and array semantic layer
 - [x] Choose an initial object storage strategy that optimizes for correctness
   first
-- [ ] If shapes are used, document them as an optimization layer rather than a
+- [x] If shapes are used, document them as an optimization layer rather than a
   semantic dependency
 - [x] Define enumeration order for supported cases
 - [x] Implement property get and set semantics for supported cases

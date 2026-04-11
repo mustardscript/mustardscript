@@ -52,6 +52,7 @@ The current implementation does **not** yet execute:
 - [Serialization](docs/SERIALIZATION.md)
 - [Limits](docs/LIMITS.md)
 - [Bytecode VM Model](docs/BYTECODE.md)
+- [Runtime Value Model](docs/RUNTIME_MODEL.md)
 - [Architecture ADRs](docs/ADRs/0001-core-architecture.md)
 
 ## Installation
