@@ -75,7 +75,15 @@ function runWithStartPlan(descriptor, source) {
       capability: step.capability,
       args: step.args,
     });
-    step = step.resume(payload);
+    const resumeValue =
+      payload &&
+      typeof payload === 'object' &&
+      !Array.isArray(payload) &&
+      'capability' in payload &&
+      'value' in payload
+        ? payload.value
+        : payload;
+    step = step.resume(resumeValue);
   }
 
   if (step instanceof Progress) {

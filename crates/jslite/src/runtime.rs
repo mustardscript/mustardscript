@@ -1,9 +1,12 @@
+use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use indexmap::IndexMap;
 use regress::Regex;
 use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
     cancellation::CancellationToken,
@@ -1882,10 +1885,12 @@ impl Compiler {
             } => {
                 self.compile_expr(context, test)?;
                 let else_jump = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
+                context.code.push(Instruction::Pop);
                 self.compile_expr(context, consequent)?;
                 let end_jump = self.emit_jump(context, Instruction::Jump(usize::MAX));
                 let else_ip = context.code.len();
                 self.patch_jump(context, else_jump, else_ip);
+                context.code.push(Instruction::Pop);
                 self.compile_expr(context, alternate)?;
                 let end_ip = context.code.len();
                 self.patch_jump(context, end_jump, end_ip);
@@ -2660,6 +2665,7 @@ enum Value {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 enum BuiltinFunction {
     ArrayCtor,
+    ArrayFrom,
     ArrayIsArray,
     ArrayPush,
     ArrayPop,
@@ -2667,6 +2673,7 @@ enum BuiltinFunction {
     ArrayJoin,
     ArrayIncludes,
     ArrayIndexOf,
+    ArraySort,
     ArrayValues,
     ArrayKeys,
     ArrayEntries,
@@ -2679,6 +2686,7 @@ enum BuiltinFunction {
     ArrayEvery,
     ArrayReduce,
     ObjectCtor,
+    ObjectFromEntries,
     ObjectKeys,
     ObjectValues,
     ObjectEntries,
@@ -2719,6 +2727,9 @@ enum BuiltinFunction {
     ReferenceErrorCtor,
     RangeErrorCtor,
     NumberCtor,
+    DateCtor,
+    DateNow,
+    DateGetTime,
     StringCtor,
     StringTrim,
     StringIncludes,
@@ -2733,6 +2744,7 @@ enum BuiltinFunction {
     StringReplaceAll,
     StringSearch,
     StringMatch,
+    StringMatchAll,
     BooleanCtor,
     MathAbs,
     MathMax,
@@ -2781,7 +2793,13 @@ enum ObjectKind {
     Json,
     Console,
     Error(String),
+    Date(DateObject),
     RegExp(RegExpObject),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DateObject {
+    timestamp_ms: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2825,6 +2843,7 @@ struct CallbackCallOptions<'a> {
     host_suspension_message: &'a str,
     unsettled_message: &'a str,
     allow_host_suspension: bool,
+    allow_pending_promise_result: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5763,6 +5782,7 @@ impl Runtime {
         match callee {
             Value::BuiltinFunction(
                 BuiltinFunction::ArrayCtor
+                | BuiltinFunction::DateCtor
                 | BuiltinFunction::ObjectCtor
                 | BuiltinFunction::MapCtor
                 | BuiltinFunction::SetCtor
@@ -5778,6 +5798,7 @@ impl Runtime {
             ) => match callee {
                 Value::BuiltinFunction(BuiltinFunction::MapCtor) => self.construct_map(args),
                 Value::BuiltinFunction(BuiltinFunction::SetCtor) => self.construct_set(args),
+                Value::BuiltinFunction(BuiltinFunction::DateCtor) => self.construct_date(args),
                 Value::BuiltinFunction(BuiltinFunction::RegExpCtor) => self.construct_regexp(args),
                 Value::BuiltinFunction(kind) => self.call_builtin(kind, Value::Undefined, args),
                 _ => unreachable!(),
@@ -5799,6 +5820,7 @@ impl Runtime {
                 let array = self.insert_array(args.to_vec(), IndexMap::new())?;
                 Ok(Value::Array(array))
             }
+            BuiltinFunction::ArrayFrom => self.call_array_from(args),
             BuiltinFunction::ArrayIsArray => {
                 Ok(Value::Bool(matches!(args.first(), Some(Value::Array(_)))))
             }
@@ -5808,6 +5830,7 @@ impl Runtime {
             BuiltinFunction::ArrayJoin => self.call_array_join(this_value, args),
             BuiltinFunction::ArrayIncludes => self.call_array_includes(this_value, args),
             BuiltinFunction::ArrayIndexOf => self.call_array_index_of(this_value, args),
+            BuiltinFunction::ArraySort => self.call_array_sort(this_value, args),
             BuiltinFunction::ArrayValues => self.call_array_values(this_value),
             BuiltinFunction::ArrayKeys => self.call_array_keys(this_value),
             BuiltinFunction::ArrayEntries => self.call_array_entries(this_value),
@@ -5827,6 +5850,7 @@ impl Runtime {
                     Ok(Value::Object(object))
                 }
             }
+            BuiltinFunction::ObjectFromEntries => self.call_object_from_entries(args),
             BuiltinFunction::ObjectKeys => self.call_object_keys(args),
             BuiltinFunction::ObjectValues => self.call_object_values(args),
             BuiltinFunction::ObjectEntries => self.call_object_entries(args),
@@ -5897,6 +5921,11 @@ impl Runtime {
             BuiltinFunction::NumberCtor => Ok(Value::Number(
                 self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?,
             )),
+            BuiltinFunction::DateCtor => Err(JsliteError::runtime(
+                "TypeError: Date constructor must be called with new",
+            )),
+            BuiltinFunction::DateNow => Ok(Value::Number(current_time_millis())),
+            BuiltinFunction::DateGetTime => self.call_date_get_time(this_value),
             BuiltinFunction::StringCtor => Ok(Value::String(
                 self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?,
             )),
@@ -5913,6 +5942,7 @@ impl Runtime {
             BuiltinFunction::StringReplaceAll => self.call_string_replace_all(this_value, args),
             BuiltinFunction::StringSearch => self.call_string_search(this_value, args),
             BuiltinFunction::StringMatch => self.call_string_match(this_value, args),
+            BuiltinFunction::StringMatchAll => self.call_string_match_all(this_value, args),
             BuiltinFunction::BooleanCtor => Ok(Value::Bool(is_truthy(
                 args.first().unwrap_or(&Value::Undefined),
             ))),
@@ -6011,6 +6041,11 @@ impl Runtime {
         self.define_global(
             "Array".to_string(),
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor),
+            false,
+        )?;
+        self.define_global(
+            "Date".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::DateCtor),
             false,
         )?;
         self.define_global(
@@ -6208,11 +6243,37 @@ impl Runtime {
         self.make_regexp_value(pattern, flags)
     }
 
+    fn construct_date(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        if args.len() > 1 {
+            return Err(JsliteError::runtime(
+                "TypeError: Date currently supports zero or one constructor argument",
+            ));
+        }
+        let timestamp_ms = match args {
+            [] => current_time_millis(),
+            [value] => self.date_timestamp_ms_from_value(value.clone())?,
+            _ => unreachable!(),
+        };
+        Ok(Value::Object(self.insert_object(
+            IndexMap::new(),
+            ObjectKind::Date(DateObject { timestamp_ms }),
+        )?))
+    }
+
     fn array_receiver(&self, value: Value, method: &str) -> JsliteResult<ArrayKey> {
         match value {
             Value::Array(key) => Ok(key),
             _ => Err(JsliteError::runtime(format!(
                 "TypeError: Array.prototype.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
+    fn date_receiver(&self, value: Value, method: &str) -> JsliteResult<ObjectKey> {
+        match value {
+            Value::Object(key) if self.is_date_object(key) => Ok(key),
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: Date.prototype.{method} called on incompatible receiver",
             ))),
         }
     }
@@ -6224,6 +6285,75 @@ impl Runtime {
                 "TypeError: String.prototype.{method} called on incompatible receiver",
             ))),
         }
+    }
+
+    fn call_array_from(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let iterable = args.first().cloned().unwrap_or(Value::Undefined);
+        let map_fn = match args.get(1).cloned() {
+            Some(Value::Undefined) | None => None,
+            Some(value) if is_callable(&value) => Some(value),
+            Some(_) => {
+                return Err(JsliteError::runtime(
+                    "TypeError: Array.from expects a callable map function",
+                ));
+            }
+        };
+        let this_arg = args.get(2).cloned().unwrap_or(Value::Undefined);
+        let iterator = self.create_iterator(iterable.clone())?;
+        let result = self.insert_array(Vec::new(), IndexMap::new())?;
+        let mut roots = vec![iterable, iterator.clone(), Value::Array(result)];
+        if let Some(map_fn) = &map_fn {
+            roots.push(map_fn.clone());
+            roots.push(this_arg.clone());
+        }
+        self.with_temporary_roots(&roots, |runtime| {
+            let mut index = 0usize;
+            loop {
+                let (value, done) = runtime.iterator_next(iterator.clone())?;
+                if done {
+                    break;
+                }
+                let mapped = if let Some(map_fn) = &map_fn {
+                    runtime.with_temporary_roots(
+                        &[
+                            iterator.clone(),
+                            Value::Array(result),
+                            map_fn.clone(),
+                            this_arg.clone(),
+                            value.clone(),
+                        ],
+                        |runtime| {
+                            runtime.call_callback(
+                                map_fn.clone(),
+                                this_arg.clone(),
+                                &[value.clone(), Value::Number(index as f64)],
+                                CallbackCallOptions {
+                                    non_callable_message:
+                                        "TypeError: Array.from expects a callable map function",
+                                    host_suspension_message:
+                                        "TypeError: Array.from mapping does not support host suspensions",
+                                    unsettled_message:
+                                        "synchronous Array.from mapping did not settle",
+                                    allow_host_suspension: false,
+                                    allow_pending_promise_result: true,
+                                },
+                            )
+                        },
+                    )?
+                } else {
+                    value
+                };
+                runtime
+                    .arrays
+                    .get_mut(result)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .push(mapped);
+                runtime.refresh_array_accounting(result)?;
+                index += 1;
+            }
+            Ok(Value::Array(result))
+        })
     }
 
     fn call_array_push(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
@@ -6348,6 +6478,94 @@ impl Runtime {
         Ok(Value::Number(index))
     }
 
+    fn sort_compare(
+        &mut self,
+        comparator: Option<Value>,
+        left: Value,
+        right: Value,
+    ) -> JsliteResult<Ordering> {
+        match comparator {
+            Some(comparator) => {
+                let result = self.with_temporary_roots(
+                    &[comparator.clone(), left.clone(), right.clone()],
+                    |runtime| {
+                        runtime.call_callback(
+                            comparator.clone(),
+                            Value::Undefined,
+                            &[left.clone(), right.clone()],
+                            CallbackCallOptions {
+                                non_callable_message:
+                                    "TypeError: Array.prototype.sort expects a callable comparator",
+                                host_suspension_message:
+                                    "TypeError: Array.prototype.sort does not support host suspensions",
+                                unsettled_message:
+                                    "synchronous Array.prototype.sort comparator did not settle",
+                                allow_host_suspension: false,
+                                allow_pending_promise_result: false,
+                            },
+                        )
+                    },
+                )?;
+                let ordering = self.to_number(result)?;
+                Ok(if ordering.is_nan() || ordering == 0.0 {
+                    Ordering::Equal
+                } else if ordering < 0.0 {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                })
+            }
+            None => Ok(self.to_string(left)?.cmp(&self.to_string(right)?)),
+        }
+    }
+
+    fn call_array_sort(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "sort")?;
+        let comparator = match args.first().cloned() {
+            Some(Value::Undefined) | None => None,
+            Some(value) if is_callable(&value) => Some(value),
+            Some(_) => {
+                return Err(JsliteError::runtime(
+                    "TypeError: Array.prototype.sort expects a callable comparator",
+                ));
+            }
+        };
+        let mut roots = vec![Value::Array(array)];
+        if let Some(comparator) = &comparator {
+            roots.push(comparator.clone());
+        }
+        self.with_temporary_roots(&roots, |runtime| {
+            let mut elements = runtime
+                .arrays
+                .get(array)
+                .ok_or_else(|| JsliteError::runtime("array missing"))?
+                .elements
+                .clone();
+            for index in 1..elements.len() {
+                let current = elements[index].clone();
+                let mut position = index;
+                while position > 0
+                    && runtime.sort_compare(
+                        comparator.clone(),
+                        current.clone(),
+                        elements[position - 1].clone(),
+                    )? == Ordering::Less
+                {
+                    elements[position] = elements[position - 1].clone();
+                    position -= 1;
+                }
+                elements[position] = current;
+            }
+            runtime
+                .arrays
+                .get_mut(array)
+                .ok_or_else(|| JsliteError::runtime("array missing"))?
+                .elements = elements;
+            runtime.refresh_array_accounting(array)?;
+            Ok(Value::Array(array))
+        })
+    }
+
     fn call_array_values(&mut self, this_value: Value) -> JsliteResult<Value> {
         let array = self.array_receiver(this_value, "values")?;
         Ok(Value::Iterator(self.insert_iterator(
@@ -6404,6 +6622,7 @@ impl Runtime {
                     .cloned()
                     .ok_or_else(|| JsliteError::runtime("closure not found"))?;
                 let env = self.new_env(Some(closure.env))?;
+                let had_async_boundary = self.current_async_boundary_index().is_some();
                 let (is_async, function_id) = self
                     .program
                     .functions
@@ -6424,6 +6643,9 @@ impl Runtime {
                         Some(PromiseOutcome::Rejected(rejection)) => {
                             self.pending_internal_exception = Some(rejection);
                             Err(JsliteError::runtime(INTERNAL_CALLBACK_THROW_MARKER))
+                        }
+                        None if options.allow_pending_promise_result && had_async_boundary => {
+                            Ok(Value::Promise(promise))
                         }
                         None => Err(JsliteError::runtime(options.unsettled_message)),
                     }
@@ -6474,6 +6696,7 @@ impl Runtime {
                     "TypeError: array callback helpers do not support synchronous host suspensions",
                 unsettled_message: "synchronous array callback did not settle",
                 allow_host_suspension: true,
+                allow_pending_promise_result: true,
             },
         )
     }
@@ -6833,6 +7056,47 @@ impl Runtime {
         Ok(Value::Array(self.insert_array(keys, IndexMap::new())?))
     }
 
+    fn call_object_from_entries(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let iterable = args.first().cloned().unwrap_or(Value::Undefined);
+        let iterator = self.create_iterator(iterable.clone())?;
+        let result = self.insert_object(IndexMap::new(), ObjectKind::Plain)?;
+        self.with_temporary_roots(
+            &[iterable, iterator.clone(), Value::Object(result)],
+            |runtime| {
+                loop {
+                    let (entry, done) = runtime.iterator_next(iterator.clone())?;
+                    if done {
+                        break;
+                    }
+                    let items = match entry {
+                        Value::Array(array) => runtime
+                            .arrays
+                            .get(array)
+                            .ok_or_else(|| JsliteError::runtime("array missing"))?
+                            .elements
+                            .clone(),
+                        _ => {
+                            return Err(JsliteError::runtime(
+                                "TypeError: Object.fromEntries expects an iterable of [key, value] pairs",
+                            ));
+                        }
+                    };
+                    let key = runtime
+                        .to_property_key(items.first().cloned().unwrap_or(Value::Undefined))?;
+                    let value = items.get(1).cloned().unwrap_or(Value::Undefined);
+                    runtime
+                        .objects
+                        .get_mut(result)
+                        .ok_or_else(|| JsliteError::runtime("object missing"))?
+                        .properties
+                        .insert(key, value);
+                    runtime.refresh_object_accounting(result)?;
+                }
+                Ok(Value::Object(result))
+            },
+        )
+    }
+
     fn call_object_values(&mut self, args: &[Value]) -> JsliteResult<Value> {
         let target = args.first().cloned().unwrap_or(Value::Undefined);
         let keys = self.enumerable_keys(target.clone())?;
@@ -7059,6 +7323,7 @@ impl Runtime {
                         "synchronous String.prototype.{method} callback did not settle"
                     ),
                     allow_host_suspension: false,
+                    allow_pending_promise_result: false,
                 },
             )
         })?;
@@ -7368,6 +7633,38 @@ impl Runtime {
                 }
             }
         }
+    }
+
+    fn call_string_match_all(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "matchAll")?;
+        let needle = self.string_search_pattern(
+            args.first().cloned().unwrap_or(Value::Undefined),
+            "matchAll",
+        )?;
+        let matches = match needle {
+            StringSearchPattern::Literal(needle) => collect_literal_matches(&value, &needle),
+            StringSearchPattern::RegExp { object, regex } => {
+                if !regex.flags.contains('g') {
+                    return Err(JsliteError::runtime(
+                        "TypeError: String.prototype.matchAll requires a global RegExp",
+                    ));
+                }
+                self.regexp_object_mut(object)?.last_index = 0;
+                self.refresh_object_accounting(object)?;
+                self.collect_regexp_matches_from_state(&regex, &value, true)?
+            }
+        };
+        let mut values = Vec::with_capacity(matches.len());
+        for matched in matches {
+            values.push(self.regexp_match_array_value(&value, &matched)?);
+        }
+        let array = self.insert_array(values, IndexMap::new())?;
+        self.call_array_values(Value::Array(array))
+    }
+
+    fn call_date_get_time(&self, this_value: Value) -> JsliteResult<Value> {
+        let date = self.date_receiver(this_value, "getTime")?;
+        Ok(Value::Number(self.date_object(date)?.timestamp_ms))
     }
 
     fn map_receiver(&self, value: Value, method: &str) -> JsliteResult<MapKey> {
@@ -7879,6 +8176,20 @@ impl Runtime {
         self.refresh_set_accounting(set)
     }
 
+    fn date_timestamp_ms_from_value(&self, value: Value) -> JsliteResult<f64> {
+        match value {
+            Value::Number(value) => Ok(value),
+            Value::String(value) => Ok(parse_date_timestamp_ms(&value)),
+            Value::Object(object) if self.is_date_object(object) => {
+                Ok(self.date_object(object)?.timestamp_ms)
+            }
+            Value::Undefined => Ok(f64::NAN),
+            _ => Err(JsliteError::runtime(
+                "TypeError: Date currently supports only numeric, string, or Date arguments",
+            )),
+        }
+    }
+
     fn make_regexp_value(&mut self, pattern: String, flags: String) -> JsliteResult<Value> {
         self.validate_regexp_flags(&flags)?;
         self.compile_regexp(&pattern, &flags)?;
@@ -7950,6 +8261,24 @@ impl Runtime {
         self.objects
             .get(key)
             .is_some_and(|object| matches!(object.kind, ObjectKind::RegExp(_)))
+    }
+
+    fn is_date_object(&self, key: ObjectKey) -> bool {
+        self.objects
+            .get(key)
+            .is_some_and(|object| matches!(object.kind, ObjectKind::Date(_)))
+    }
+
+    fn date_object(&self, key: ObjectKey) -> JsliteResult<&DateObject> {
+        match &self
+            .objects
+            .get(key)
+            .ok_or_else(|| JsliteError::runtime("object missing"))?
+            .kind
+        {
+            ObjectKind::Date(date) => Ok(date),
+            _ => Err(JsliteError::runtime("date missing")),
+        }
     }
 
     fn regexp_object(&self, key: ObjectKey) -> JsliteResult<&RegExpObject> {
@@ -8488,6 +8817,16 @@ impl Runtime {
                     .objects
                     .get(object)
                     .ok_or_else(|| JsliteError::runtime("object missing"))?;
+                if let ObjectKind::Date(date) = &object.kind {
+                    let built_in = match key.as_str() {
+                        "getTime" => Some(Value::BuiltinFunction(BuiltinFunction::DateGetTime)),
+                        "valueOf" => Some(Value::Number(date.timestamp_ms)),
+                        _ => None,
+                    };
+                    if let Some(value) = built_in {
+                        return Ok(value);
+                    }
+                }
                 if let ObjectKind::RegExp(regex) = &object.kind {
                     let built_in = match key.as_str() {
                         "source" => Some(Value::String(regex.pattern.clone())),
@@ -8534,6 +8873,7 @@ impl Runtime {
                     Ok(value.clone())
                 } else {
                     match key.as_str() {
+                        "sort" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySort)),
                         "push" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPush)),
                         "pop" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPop)),
                         "slice" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySlice)),
@@ -8603,13 +8943,20 @@ impl Runtime {
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "isArray" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray))
             }
+            Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "from" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFrom))
+            }
             Value::BuiltinFunction(BuiltinFunction::ObjectCtor) => match key.as_str() {
+                "fromEntries" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectFromEntries)),
                 "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectKeys)),
                 "values" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectValues)),
                 "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectEntries)),
                 "hasOwn" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectHasOwn)),
                 _ => Ok(Value::Undefined),
             },
+            Value::BuiltinFunction(BuiltinFunction::DateCtor) if key == "now" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::DateNow))
+            }
             Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "resolve" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::PromiseResolve))
             }
@@ -8644,6 +8991,7 @@ impl Runtime {
                 "replaceAll" => Ok(Value::BuiltinFunction(BuiltinFunction::StringReplaceAll)),
                 "search" => Ok(Value::BuiltinFunction(BuiltinFunction::StringSearch)),
                 "match" => Ok(Value::BuiltinFunction(BuiltinFunction::StringMatch)),
+                "matchAll" => Ok(Value::BuiltinFunction(BuiltinFunction::StringMatchAll)),
                 _ => {
                     let _ = value;
                     Ok(Value::Undefined)
@@ -8883,6 +9231,7 @@ impl Runtime {
                 .ok_or_else(|| JsliteError::runtime("object missing"))?
                 .kind
             {
+                ObjectKind::Date(_) => "[object Date]".to_string(),
                 ObjectKind::RegExp(regex) => format!("/{}/{}", regex.pattern, regex.flags),
                 _ => self
                     .error_summary(object)?
@@ -9074,15 +9423,26 @@ impl Runtime {
                     .map(|value| self.value_to_structured(value))
                     .collect::<JsliteResult<Vec<_>>>()?,
             ),
-            Value::Object(object) => StructuredValue::Object(
-                self.objects
+            Value::Object(object) => {
+                let object_ref = self
+                    .objects
                     .get(object)
-                    .ok_or_else(|| JsliteError::runtime("object missing"))?
-                    .properties
-                    .iter()
-                    .map(|(key, value)| Ok((key.clone(), self.value_to_structured(value.clone())?)))
-                    .collect::<JsliteResult<IndexMap<_, _>>>()?,
-            ),
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?;
+                if matches!(object_ref.kind, ObjectKind::Date(_)) {
+                    return Err(JsliteError::runtime(
+                        "Date values cannot cross the structured host boundary",
+                    ));
+                }
+                StructuredValue::Object(
+                    object_ref
+                        .properties
+                        .iter()
+                        .map(|(key, value)| {
+                            Ok((key.clone(), self.value_to_structured(value.clone())?))
+                        })
+                        .collect::<JsliteResult<IndexMap<_, _>>>()?,
+                )
+            }
             Value::Map(_) | Value::Set(_) => {
                 return Err(JsliteError::runtime(
                     "Map and Set values cannot cross the structured host boundary",
@@ -9402,6 +9762,58 @@ fn normalize_search_index(index: i64, len: usize) -> usize {
     } else {
         clamp_index(index, len)
     }
+}
+
+fn collect_literal_matches(value: &str, needle: &str) -> Vec<RegExpMatchData> {
+    if needle.is_empty() {
+        let total = value.chars().count();
+        return (0..=total)
+            .map(|index| {
+                let byte = char_index_to_byte_index(value, index);
+                RegExpMatchData {
+                    start_byte: byte,
+                    end_byte: byte,
+                    start_index: index,
+                    end_index: index,
+                    captures: Vec::new(),
+                    named_groups: IndexMap::new(),
+                }
+            })
+            .collect();
+    }
+
+    let mut matches = Vec::new();
+    let mut start_index = 0usize;
+    while let Some(matched) = find_string_pattern(value, needle, start_index).map(|index| {
+        let start_byte = char_index_to_byte_index(value, index);
+        let end_index = index + needle.chars().count();
+        let end_byte = char_index_to_byte_index(value, end_index);
+        RegExpMatchData {
+            start_byte,
+            end_byte,
+            start_index: index,
+            end_index,
+            captures: Vec::new(),
+            named_groups: IndexMap::new(),
+        }
+    }) {
+        start_index = matched.end_index;
+        matches.push(matched);
+    }
+    matches
+}
+
+fn current_time_millis() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs_f64() * 1000.0)
+        .unwrap_or(0.0)
+}
+
+fn parse_date_timestamp_ms(value: &str) -> f64 {
+    OffsetDateTime::parse(value, &Rfc3339)
+        .map(|parsed| parsed.unix_timestamp_nanos() as f64 / 1_000_000.0)
+        .unwrap_or(f64::NAN)
 }
 
 fn clamp_index(index: i64, len: usize) -> usize {

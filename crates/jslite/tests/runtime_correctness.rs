@@ -71,3 +71,44 @@ fn call_depth_limit_is_enforced() {
 
     assert!(error.to_string().contains("call depth limit exceeded"));
 }
+
+#[test]
+fn conditional_expressions_do_not_corrupt_enclosing_object_literals() {
+    let program = compile(
+        r#"
+        const customer = { arrUsd: 540000, openEscalations: 1 };
+        const noteHits = [1];
+        const actionQueue = [
+          { label: "page", priority: 75 },
+          { label: "notify", priority: customer.arrUsd > 250000 ? 95 : 60 },
+          { label: "stage", priority: noteHits.length > 0 || customer.openEscalations > 0 ? 90 : 40 },
+          { label: "offer", priority: noteHits.length > 0 ? 80 : 20 },
+        ];
+        actionQueue;
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Object(indexmap::IndexMap::from([
+                ("label".to_string(), "page".into()),
+                ("priority".to_string(), number(75.0)),
+            ])),
+            StructuredValue::Object(indexmap::IndexMap::from([
+                ("label".to_string(), "notify".into()),
+                ("priority".to_string(), number(95.0)),
+            ])),
+            StructuredValue::Object(indexmap::IndexMap::from([
+                ("label".to_string(), "stage".into()),
+                ("priority".to_string(), number(90.0)),
+            ])),
+            StructuredValue::Object(indexmap::IndexMap::from([
+                ("label".to_string(), "offer".into()),
+                ("priority".to_string(), number(80.0)),
+            ])),
+        ])
+    );
+}

@@ -301,3 +301,109 @@ fn promise_callbacks_can_suspend_through_host_capabilities() {
         ExecutionStep::Suspended(_) => panic!("expected completion after resume"),
     }
 }
+
+#[test]
+fn array_map_callbacks_can_feed_promise_all_from_async_guest_flows() {
+    let program = compile(
+        r#"
+        async function main() {
+          const values = await Promise.all([1, 2].map((value) => fetch_data(value)));
+          return values;
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let first = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+
+    assert_eq!(first.capability, "fetch_data");
+    assert_eq!(first.args, vec![number(1.0)]);
+
+    let second = match resume(first.snapshot, ResumePayload::Value(number(10.0)))
+        .expect("resume should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected a second suspension, got {value:?}"),
+    };
+
+    assert_eq!(second.capability, "fetch_data");
+    assert_eq!(second.args, vec![number(2.0)]);
+
+    let completed =
+        resume(second.snapshot, ResumePayload::Value(number(20.0))).expect("resume should succeed");
+    match completed {
+        ExecutionStep::Completed(value) => assert_eq!(
+            value,
+            StructuredValue::Array(vec![number(10.0), number(20.0)])
+        ),
+        ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
+    }
+}
+
+#[test]
+fn array_from_mapping_can_feed_promise_all_from_async_guest_flows() {
+    let program = compile(
+        r#"
+        async function main() {
+          const values = await Promise.all(
+            Array.from(new Set([1, 2]), (value) => fetch_data(value))
+          );
+          return values;
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let first = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+
+    assert_eq!(first.capability, "fetch_data");
+    assert_eq!(first.args, vec![number(1.0)]);
+
+    let second = match resume(first.snapshot, ResumePayload::Value(number(100.0)))
+        .expect("resume should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected a second suspension, got {value:?}"),
+    };
+
+    assert_eq!(second.capability, "fetch_data");
+    assert_eq!(second.args, vec![number(2.0)]);
+
+    let completed = resume(second.snapshot, ResumePayload::Value(number(200.0)))
+        .expect("resume should succeed");
+    match completed {
+        ExecutionStep::Completed(value) => assert_eq!(
+            value,
+            StructuredValue::Array(vec![number(100.0), number(200.0)])
+        ),
+        ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
+    }
+}

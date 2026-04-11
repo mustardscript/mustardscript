@@ -21,6 +21,7 @@ serde_json.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true
 regress.workspace = true
+time.workspace = true
 
 [dev-dependencies]
 proptest = "1.9.0"

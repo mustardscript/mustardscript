@@ -23,6 +23,7 @@ extensions are called out explicitly instead of being implied.
 - plain objects
 - `Map`
 - `Set`
+- conservative `Date` objects
 - guest functions
 
 ## Supported End-to-End Syntax
@@ -152,7 +153,7 @@ extensions are called out explicitly instead of being implied.
 - accessors
 - symbols
 - typed arrays
-- `Date`
+- full `Date` parity beyond the documented conservative subset
 - `Intl`
 - `Proxy`
 
@@ -202,6 +203,7 @@ extensions are called out explicitly instead of being implied.
 - `Set`
 - `Promise`
 - `RegExp`
+- `Date`
 - `String`
 - `Error`
 - `TypeError`
@@ -217,12 +219,14 @@ extensions are called out explicitly instead of being implied.
 ### Currently Implemented Built-In Members
 
 - `Array.isArray`
+- `Array.from`
 - `Array.prototype.push`
 - `Array.prototype.pop`
 - `Array.prototype.slice`
 - `Array.prototype.join`
 - `Array.prototype.includes`
 - `Array.prototype.indexOf`
+- `Array.prototype.sort`
 - `Array.prototype.values`
 - `Array.prototype.keys`
 - `Array.prototype.entries`
@@ -237,6 +241,7 @@ extensions are called out explicitly instead of being implied.
 - `Object.keys`
 - `Object.values`
 - `Object.entries`
+- `Object.fromEntries`
 - `Object.hasOwn`
 - `Map.prototype.get`
 - `Map.prototype.set`
@@ -266,6 +271,8 @@ extensions are called out explicitly instead of being implied.
 - `Promise.prototype.finally`
 - `RegExp.prototype.exec`
 - `RegExp.prototype.test`
+- `Date.now`
+- `Date.prototype.getTime`
 - `String.prototype.trim`
 - `String.prototype.includes`
 - `String.prototype.startsWith`
@@ -279,6 +286,7 @@ extensions are called out explicitly instead of being implied.
 - `String.prototype.replaceAll`
 - `String.prototype.search`
 - `String.prototype.match`
+- `String.prototype.matchAll`
 - `Math.abs`
 - `Math.max`
 - `Math.min`
@@ -300,13 +308,22 @@ extensions are called out explicitly instead of being implied.
 - array callback helpers snapshot the starting array length, read element values
   live by index, and pass `(value, index, array)` plus an optional `thisArg`
 - array callback helpers currently support guest callbacks, built-in callbacks,
-  and async host callbacks reached from an async guest boundary
+  and promise-valued callback results reached from an async guest boundary
 - synchronous host suspensions from array callback helpers fail closed with a
   runtime `TypeError`
+- `Array.from` accepts the supported iterable surface and an optional
+  synchronous map function plus `thisArg`; inside async guest flows, guest map
+  callbacks may yield promise values for downstream helpers such as `Promise.all`
 - `Array.prototype.reduce` throws a runtime `TypeError` when called on an empty
   array without an explicit initial value
+- `Array.prototype.sort` sorts in place, returns the original array value, and
+  accepts either the default string ordering or a synchronous comparator
+- `Object.fromEntries` accepts the supported iterable surface and expects each
+  produced item to be a guest array pair
 - `String.prototype.split`, `replace`, `replaceAll`, `search`, and `match`
   accept string-coercible patterns and real `RegExp` instances
+- `String.prototype.matchAll` returns a guest iterator over match-result arrays;
+  `RegExp` inputs must be global
 - callback replacements for `replace` / `replaceAll` are supported for guest
   callables, built-ins, and other synchronous guest-callable values
 - string replacement callbacks are synchronous-only; host suspensions fail
@@ -321,6 +338,11 @@ extensions are called out explicitly instead of being implied.
   strings for global `RegExp` patterns, or the first-match array for
   non-global patterns, with guest-visible `index`, `input`, and optional
   `groups` properties on that result array
+- `Date.now()` reads the host wall clock, `new Date(value)` currently supports
+  zero arguments or exactly one numeric, string, or existing `Date` value, and
+  `Date.prototype.getTime()` returns the stored epoch milliseconds
+- direct `Date()` calls, multi-argument `new Date(...)`, and returning `Date`
+  values across the structured host boundary all fail closed
 - real `RegExp` instances support `source`, `flags`, `global`, `ignoreCase`,
   `multiline`, `dotAll`, `unicode`, `sticky`, `lastIndex`, `exec`, and `test`
 - symbol-based match/replace protocol hooks and full ECMAScript `RegExp`

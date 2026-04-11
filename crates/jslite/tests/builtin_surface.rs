@@ -404,3 +404,128 @@ fn math_helpers_cover_numeric_transforms() {
         other => panic!("expected array result, got {other:?}"),
     }
 }
+
+#[test]
+fn iterable_conversion_helpers_cover_supported_iterables() {
+    let program = compile(
+        r#"
+        const set = new Set(["b", "a", "b"]);
+        const mapped = Array.from(set, (value, index) => value + index);
+        const fromEntries = Object.fromEntries(new Map([["alpha", 1], ["beta", 2]]));
+        const rows = [
+          { name: "low", score: 1 },
+          { name: "high", score: 3 },
+          { name: "mid", score: 2 },
+        ];
+        const sameRef = rows.sort((left, right) => right.score - left.score);
+        [mapped, fromEntries.alpha, fromEntries.beta, sameRef === rows, rows.map((row) => row.name)];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec!["b0".into(), "a1".into()]),
+            number(1.0),
+            number(2.0),
+            StructuredValue::Bool(true),
+            StructuredValue::Array(vec!["high".into(), "mid".into(), "low".into()]),
+        ])
+    );
+}
+
+#[test]
+fn match_all_and_date_helpers_cover_supported_surface() {
+    let program = compile(
+        r#"
+        const matches = [];
+        for (const match of "alpha-1 beta-2".matchAll(/([a-z]+)-(\d)/g)) {
+          matches.push([match[0], match[1], match[2], match.index, match.input]);
+        }
+        const before = Date.now();
+        const parsed = new Date("2026-04-10T14:00:00Z").getTime();
+        const cloned = new Date(new Date(5)).getTime();
+        const invalid = new Date("not-a-date").getTime();
+        const after = Date.now();
+        [matches, before <= after, parsed, cloned, invalid !== invalid];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![
+                StructuredValue::Array(vec![
+                    "alpha-1".into(),
+                    "alpha".into(),
+                    "1".into(),
+                    number(0.0),
+                    "alpha-1 beta-2".into(),
+                ]),
+                StructuredValue::Array(vec![
+                    "beta-2".into(),
+                    "beta".into(),
+                    "2".into(),
+                    number(8.0),
+                    "alpha-1 beta-2".into(),
+                ]),
+            ]),
+            StructuredValue::Bool(true),
+            number(1_775_829_600_000.0),
+            number(5.0),
+            StructuredValue::Bool(true),
+        ])
+    );
+}
+
+#[test]
+fn new_builtins_fail_closed_for_unsupported_inputs() {
+    let array_from = compile("Array.from({ length: 1, 0: 'a' });").expect("source should compile");
+    let error =
+        execute(&array_from, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("value is not iterable in the supported surface")
+    );
+
+    let from_entries = compile("Object.fromEntries([1]);").expect("source should compile");
+    let error =
+        execute(&from_entries, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Object.fromEntries expects an iterable of [key, value] pairs")
+    );
+
+    let match_all = compile(r#""abc".matchAll(/a/);"#).expect("source should compile");
+    let error =
+        execute(&match_all, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("String.prototype.matchAll requires a global RegExp")
+    );
+
+    let date_call = compile("Date();").expect("source should compile");
+    let error =
+        execute(&date_call, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Date constructor must be called with new")
+    );
+
+    let date_result = compile("new Date(0);").expect("source should compile");
+    let error =
+        execute(&date_result, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Date values cannot cross the structured host boundary")
+    );
+}

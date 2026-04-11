@@ -39,7 +39,10 @@ The current implementation already supports:
 - `async` functions, `await`, guest promises, Promise combinators and instance
   methods, and internal microtask scheduling for the supported subset
 - conservative array, string, object, and Math helper methods, including
-  callback-driven array helpers and string-pattern search/replacement helpers
+  callback-driven array helpers, iterable normalization helpers, and
+  string-pattern search/replacement helpers
+- a conservative `Date` subset with `Date.now()` plus
+  `new Date(value).getTime()` for realistic SLA and freshness checks
 - `throw`, `try`/`catch`/`finally`, and guest-visible `Error` objects
 - `Math` and `JSON` built-ins
 - explicit named host capabilities with `start()` / `resume()` suspension,
@@ -330,7 +333,7 @@ JavaScript.
 - Symbols
 - `WeakMap`, `WeakSet`
 - Typed arrays, `ArrayBuffer`, shared memory, and atomics
-- `Date`
+- Full `Date` parity beyond the documented conservative subset
 - `Intl`
 - `Proxy`
 - Full `RegExp` parity
