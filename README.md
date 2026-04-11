@@ -60,6 +60,10 @@ The current implementation does **not** yet execute:
 
 `jslite` should currently be treated as a source-build-only package.
 
+From a clean checkout or packed source tarball, `npm install` compiles the
+native addon locally. A Rust toolchain and Node.js are required on the target
+machine.
+
 From a clean checkout:
 
 ```sh
@@ -67,9 +71,9 @@ npm install
 npm test
 ```
 
-That flow builds the Rust addon locally and then runs the Node integration
-tests. Prebuilt binaries are intentionally deferred until the package shape is
-stable.
+That flow builds the Rust addon locally and then runs the Node and packaging
+smoke tests. Prebuilt binaries are intentionally deferred until the package
+shape is stable.
 
 ## Agent-Style Example
 

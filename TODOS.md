@@ -111,7 +111,7 @@ Exit criteria:
 - [x] Add Node integration and end-to-end test harnesses
 - [x] Add golden-file helpers for diagnostics, IR, and bytecode snapshots
 - [x] Configure formatting, linting, and CI
-- [ ] Add Linux, macOS, and Windows build coverage
+- [x] Add Linux, macOS, and Windows build coverage
 - [x] Add Node.js target coverage in CI
 - [x] Add minimal smoke test that loads the addon from Node
 - [x] Add minimal end-to-end smoke test that compiles and runs guest code
@@ -345,7 +345,7 @@ Exit criteria:
 - [x] Add TypeScript declarations
 - [x] Add TypeScript type tests for the public API
 - [x] Add Node integration tests
-- [ ] Add packaging smoke tests for source builds on supported platforms
+- [x] Add packaging smoke tests for source builds on supported platforms
 - [x] Add example usage for agent-style execution
 - [x] Defer prebuilt binaries until the package shape is stable
 
@@ -353,7 +353,7 @@ Exit criteria:
 
 - [x] Addon is usable from a real Node service
 - [x] TypeScript consumers get a clean typed API
-- [ ] Node integration and packaging smoke tests pass
+- [x] Node integration and packaging smoke tests pass
 - [x] Node wrapper remains thin and does not own core semantics
 
 ## Phase 10: Security Hardening, Fuzzing, and Hostile Inputs

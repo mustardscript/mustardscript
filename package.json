@@ -10,9 +10,11 @@
     "test": "tests"
   },
   "scripts": {
+    "install": "napi build --platform --manifest-path crates/jslite-node/Cargo.toml --js-package-name jslite --output-dir . --no-js",
     "build": "napi build --platform --manifest-path crates/jslite-node/Cargo.toml --js-package-name jslite --output-dir . --no-js",
-    "test": "npm run build && node --test tests/node/**/*.test.js && npm run test:types",
+    "test": "npm run build && node --test tests/node/**/*.test.js && npm run test:types && npm run test:package-smoke",
     "test:node": "node --test tests/node/**/*.test.js",
+    "test:package-smoke": "node --test tests/package-smoke.test.js",
     "test:types": "tsc --noEmit -p tsconfig.typecheck.json",
     "test:rust": "cargo test --workspace",
     "lint": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings"
@@ -31,8 +33,10 @@
   "author": "",
   "license": "MIT",
   "type": "commonjs",
+  "dependencies": {
+    "@napi-rs/cli": "^3.3.0"
+  },
   "devDependencies": {
-    "@napi-rs/cli": "^3.3.0",
     "@types/node": "^25.6.0",
     "typescript": "^6.0.2"
   },
