@@ -53,6 +53,7 @@ The current implementation does **not** yet execute:
 - [Limits](docs/LIMITS.md)
 - [Bytecode VM Model](docs/BYTECODE.md)
 - [Runtime Value Model](docs/RUNTIME_MODEL.md)
+- [Sidecar Protocol](docs/SIDECAR_PROTOCOL.md)
 - [Architecture ADRs](docs/ADRs/0001-core-architecture.md)
 
 ## Installation

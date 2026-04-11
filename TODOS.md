@@ -317,17 +317,17 @@ Exit criteria:
 - [x] Build a separate-process runner around the core runtime
 - [x] Support compiled-program loading in sidecar mode
 - [x] Support snapshot resume in sidecar mode
-- [ ] Define lifecycle, shutdown, and termination behavior
+- [x] Define lifecycle, shutdown, and termination behavior
 - [ ] Define kill semantics for stuck or over-budget executions
-- [ ] Decide how host capabilities are proxied across the sidecar boundary
+- [x] Decide how host capabilities are proxied across the sidecar boundary
 - [x] Document how sidecar mode interacts with OS-level sandboxing
 - [x] Add sidecar protocol and compatibility tests
 - [ ] Add crash-containment and forceful-termination tests
 
 Exit criteria:
 
-- [ ] Sidecar mode runs the same core runtime
-- [ ] Sidecar protocol is documented and tested
+- [x] Sidecar mode runs the same core runtime
+- [x] Sidecar protocol is documented and tested
 - [ ] Forceful termination is possible without corrupting the host process
 - [ ] Isolation tests pass
 

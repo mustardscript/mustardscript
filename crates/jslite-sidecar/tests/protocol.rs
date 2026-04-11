@@ -98,3 +98,26 @@ fn sidecar_compiles_starts_and_resumes() {
     let status = child.wait().expect("sidecar should exit cleanly");
     assert!(status.success());
 }
+
+#[test]
+fn sidecar_reports_invalid_requests_with_a_nonzero_exit() {
+    let exe = env!("CARGO_BIN_EXE_jslite-sidecar");
+    let mut child = Command::new(exe)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("sidecar should spawn");
+
+    let mut stdin = child.stdin.take().expect("stdin should be available");
+    writeln!(stdin, "{{").expect("invalid request should write");
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .expect("sidecar should terminate after invalid input");
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(stderr.contains("invalid request"));
+}
