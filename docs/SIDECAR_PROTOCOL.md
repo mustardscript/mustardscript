@@ -105,3 +105,12 @@ shipping host callbacks or JavaScript functions into the sidecar process.
   hard stop must terminate the sidecar process.
 - The sidecar is a separate process specifically so hosts can do that without
   corrupting the embedding process.
+- Hard-stop semantics are therefore OS-process semantics, not an in-band
+  protocol message. Hosts may use their platform kill primitive, job control,
+  container stop, or equivalent.
+- Once a sidecar is forcefully terminated, the embedding host must treat that
+  process as dead and must not reuse its stdio channel.
+- Any in-flight request is lost when the process is killed. To continue work,
+  the host starts a fresh sidecar and replays a previously persisted
+  compiled-program blob or suspension snapshot, or recompiles from source if no
+  resumable blob was saved.

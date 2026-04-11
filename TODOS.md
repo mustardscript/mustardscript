@@ -318,18 +318,18 @@ Exit criteria:
 - [x] Support compiled-program loading in sidecar mode
 - [x] Support snapshot resume in sidecar mode
 - [x] Define lifecycle, shutdown, and termination behavior
-- [ ] Define kill semantics for stuck or over-budget executions
+- [x] Define kill semantics for stuck or over-budget executions
 - [x] Decide how host capabilities are proxied across the sidecar boundary
 - [x] Document how sidecar mode interacts with OS-level sandboxing
 - [x] Add sidecar protocol and compatibility tests
-- [ ] Add crash-containment and forceful-termination tests
+- [x] Add crash-containment and forceful-termination tests
 
 Exit criteria:
 
 - [x] Sidecar mode runs the same core runtime
 - [x] Sidecar protocol is documented and tested
-- [ ] Forceful termination is possible without corrupting the host process
-- [ ] Isolation tests pass
+- [x] Forceful termination is possible without corrupting the host process
+- [x] Isolation tests pass
 
 ## Phase 9: Node Binding and Packaging
 
@@ -398,11 +398,11 @@ Exit criteria:
 
 ## Phase 12: Documentation and Release
 
-- [ ] Ensure `README.md` matches actual behavior
-- [ ] Publish the supported subset clearly
-- [ ] Publish the capability model clearly
-- [ ] Publish security guarantees and non-guarantees clearly
-- [ ] Publish sidecar-mode tradeoffs clearly
+- [x] Ensure `README.md` matches actual behavior
+- [x] Publish the supported subset clearly
+- [x] Publish the capability model clearly
+- [x] Publish security guarantees and non-guarantees clearly
+- [x] Publish sidecar-mode tradeoffs clearly
 - [x] Write embedding examples
 - [ ] Prepare npm publishing flow
 - [ ] Add optional prebuilt-binary publishing only after package shape is stable
@@ -413,8 +413,8 @@ Exit criteria:
 
 Exit criteria:
 
-- [ ] Docs match the implementation
-- [ ] Users can embed `jslite` without tribal knowledge
+- [x] Docs match the implementation
+- [x] Users can embed `jslite` without tribal knowledge
 - [ ] Release checklists are runnable and verified
 - [ ] Project is publishable and maintainable
 
