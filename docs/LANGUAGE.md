@@ -27,7 +27,9 @@ extensions are called out explicitly instead of being implied.
 
 - variable declarations with `let` and `const`
 - function declarations and expressions
+- `async` function declarations and expressions
 - arrow functions
+- `await` inside async functions
 - literals, arrays, and objects
 - `if`, `switch`, `while`, `do...while`, `for`, `break`, and `continue`
 - `return`
@@ -40,10 +42,16 @@ extensions are called out explicitly instead of being implied.
 - nullish coalescing
 - named host capability calls
 
-## Parsed But Not Yet Executable
+## Supported Async Surface
 
-- `async` functions
-- `await`
+- async functions return guest promise values
+- `await` suspends the current async continuation onto the runtime microtask
+  queue
+- host capability calls inside async guest code return guest promises and still
+  suspend through the existing `start()` / `resume()` boundary
+- `Promise.resolve(...)` and `Promise.reject(...)` are available
+- unsupported Promise construction and instance methods still fail closed at
+  runtime
 
 ## Rejected With Validation Diagnostics
 
@@ -64,7 +72,7 @@ extensions are called out explicitly instead of being implied.
 
 ## Explicit Deferrals
 
-- async runtime and promises
+- full Promise constructor semantics and promise instance methods
 - full `this` semantics beyond the current basic function-call behavior
 - iterator protocol support
 - module loading
@@ -107,6 +115,7 @@ extensions are called out explicitly instead of being implied.
 - `globalThis`
 - `Object`
 - `Array`
+- `Promise`
 - `String`
 - `Error`
 - `TypeError`
@@ -122,6 +131,8 @@ extensions are called out explicitly instead of being implied.
 ### Currently Implemented Built-In Members
 
 - `Array.isArray`
+- `Promise.resolve`
+- `Promise.reject`
 - `Math.abs`
 - `Math.max`
 - `Math.min`

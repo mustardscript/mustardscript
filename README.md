@@ -27,24 +27,27 @@ decision:
 
 The current implementation already supports:
 
-- parse -> validate -> IR -> bytecode -> VM execution for a synchronous subset
+- parse -> validate -> IR -> bytecode -> VM execution for the supported subset
 - `let`/`const`, functions and closures, arrays, plain objects, loops, and
   basic control flow
+- `async` functions, `await`, guest promises, and internal microtask scheduling
+  for the supported subset
 - `throw`, `try`/`catch`/`finally`, and guest-visible `Error` objects
 - `Math` and `JSON` built-ins
-- explicit named host capabilities with `start()` / `resume()` suspension
+- explicit named host capabilities with `start()` / `resume()` suspension,
+  including async guest fan-out across host capability calls
 - deterministic `console.log` / `console.warn` / `console.error` callbacks when
   the host provides them explicitly
-- instruction, heap-byte, and allocation-count budgets with guest-safe limit
-  errors
+- instruction, heap-byte, allocation-count, and outstanding-host-call budgets
+  with guest-safe limit errors
 - guest-safe runtime and limit errors with guest function-span tracebacks
 - same-version compiled-program and suspension snapshot round trips
 - a thin Node addon wrapper and a sidecar process that reuse the same Rust core
 
 The current implementation does **not** yet execute:
 
-- `async` functions or `await`
-- cancellation, call-depth limits, or outstanding-host-call limits
+- cooperative cancellation
+- call-depth limits
 
 ## Reference Docs
 
@@ -263,19 +266,23 @@ JavaScript.
 - Arrays and plain objects
 - `let` and `const`
 - Functions and closures
+- `async` functions and `await`
 - Arrow functions
 - `if`, `switch`, loops, `break`, and `continue`
 - `throw`, `try`, `catch`, and `finally`
 - Common-case destructuring
 - Template literals
 - Optional chaining and nullish coalescing
+- Internal guest promises and microtask checkpoints for the supported subset
 - Host capability calls
 - Suspension and resume at host boundaries
 - Snapshotting at safe suspension points
 
-### Parsed But Not Yet Executable
+### Still Deferred Within The Async Surface
 
-- `async` functions and `await`
+- guest-visible cancellation while awaiting a host promise
+- `new Promise(...)`
+- promise instance methods such as `then`, `catch`, and `finally`
 
 ### Explicitly Out of Scope for v1
 
@@ -324,6 +331,7 @@ Currently implemented built-ins:
 - `globalThis`
 - `Object`
 - `Array`
+- `Promise`
 - `String`
 - `Error`
 - `TypeError`
@@ -335,8 +343,11 @@ Currently implemented built-ins:
 - `JSON`
 - A placeholder `console` global object
 
-`Promise` should be considered part of the async milestone, not a separate early
-promise of compatibility before the internal async runtime exists.
+Current Promise support is intentionally narrow:
+
+- async functions return internal guest promises
+- `Promise.resolve(...)` and `Promise.reject(...)` are supported
+- `new Promise(...)` and instance methods remain unsupported and fail closed
 
 No default clock, random source, filesystem, network, timers, or environment
 access should exist in the guest runtime. If the host wants those capabilities,
@@ -468,16 +479,17 @@ Requirements:
 
 ### Async Runtime
 
-`jslite` should own its own async model.
+`jslite` owns its own async model.
 
-Requirements:
+Current behavior:
 
-- internal promise representation
-- internal microtask queue
-- explicit scheduling checkpoints
-- clear ordering rules
-- suspension at host boundaries
+- internal promise representation for async guest execution
+- internal microtask queue with explicit checkpoint draining
+- host-boundary suspension and resume for async guest capability calls
+- enforced maximum outstanding host calls for async guest fan-out
 - no reentrancy into the same VM unless explicitly designed and documented
+- cooperative cancellation while awaiting host promises is still not
+  implemented
 
 The host should not need to understand VM internals to resume guest execution.
 

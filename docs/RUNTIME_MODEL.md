@@ -11,7 +11,7 @@ stable serialized contract by themselves.
 The runtime represents guest values with an internal `Value` enum:
 
 - immediate scalars: `Undefined`, `Null`, `Bool`, `Number`, and `String`
-- heap handles: `Object`, `Array`, and `Closure`
+- heap handles: `Object`, `Array`, `Closure`, and `Promise`
 - callable built-ins: `BuiltinFunction`
 - explicit host entry points: `HostFunction`
 
@@ -26,6 +26,7 @@ Heap-backed state is stored indirectly through slotmap keys:
 - `ObjectKey` points to `PlainObject`
 - `ArrayKey` points to `ArrayObject`
 - `ClosureKey` points to `Closure`
+- `PromiseKey` points to `PromiseObject`
 - `EnvKey` points to lexical environments
 - `CellKey` points to mutable or immutable bindings
 
@@ -44,12 +45,16 @@ The collector walks an explicit root set:
 - the globals environment is always a root
 - active call frames are roots
 - each frame roots its current environment, scope stack, and operand stack
+- async frames also root their backing promise object when present
 - frame exception state also roots guest values and environments:
   pending exceptions, pending return/throw completions, and saved handler
   environments
+- internal microtask jobs root saved async continuations and their settled
+  values or rejections
+- queued or suspended host requests root the guest promise they will settle
 - environments root their cells
 - cells root the `Value` they contain
-- objects and arrays root their contained property and element values
+- objects, arrays, and promises root their contained values
 - closures root their captured environment chain
 - validated suspended snapshots restore the same runtime graph and therefore the
   same root categories after load

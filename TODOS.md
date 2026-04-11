@@ -262,28 +262,28 @@ Exit criteria:
 
 ## Phase 6: Async Runtime and Promise Semantics
 
-- [ ] Define internal promise representation
-- [ ] Define internal microtask queue
-- [ ] Define microtask checkpoints and ordering rules
-- [ ] Lower `async` functions into runtime form
-- [ ] Implement `await`
-- [ ] Implement async host-call suspension and resume
-- [ ] Finalize `Promise` in the built-in surface
-- [ ] Ensure async execution composes correctly with exceptions
+- [x] Define internal promise representation
+- [x] Define internal microtask queue
+- [x] Define microtask checkpoints and ordering rules
+- [x] Lower `async` functions into runtime form
+- [x] Implement `await`
+- [x] Implement async host-call suspension and resume
+- [x] Finalize `Promise` in the built-in surface
+- [x] Ensure async execution composes correctly with exceptions
 - [ ] Define behavior for cancellation while guest code is awaiting a host
   promise
-- [ ] Define maximum outstanding host calls
-- [ ] Add microtask ordering tests
-- [ ] Add guest async function tests
-- [ ] Add async host capability tests
-- [ ] Add async differential tests against supported Node behavior
+- [x] Define maximum outstanding host calls
+- [x] Add microtask ordering tests
+- [x] Add guest async function tests
+- [x] Add async host capability tests
+- [x] Add async differential tests against supported Node behavior
 
 Exit criteria:
 
-- [ ] Supported async programs run correctly
-- [ ] Async host calls suspend and resume cleanly
-- [ ] Microtask behavior is predictable within the supported subset
-- [ ] Async execution and differential tests pass
+- [x] Supported async programs run correctly
+- [x] Async host calls suspend and resume cleanly
+- [x] Microtask behavior is predictable within the supported subset
+- [x] Async execution and differential tests pass
 
 ## Phase 7: Serialization and Safe Snapshotting
 
@@ -461,3 +461,78 @@ Before claiming the project is ready for untrusted guest workloads:
 - [x] Guest diagnostics do not leak host internals
 - [x] Kill and cancellation behavior are documented and tested
 - [x] Supported subset and unsupported subset are both explicit
+
+## Post-v1 Extensions
+
+These items are intentionally outside the initial v1 release gate. They stay
+explicit here so future language growth remains documented and fail closed.
+
+### Iteration and `for...of`
+
+- [ ] Define the supported iterator protocol surface for the first iteration
+  milestone
+- [ ] Decide which existing types become iterable first and publish that matrix
+- [ ] Keep generators and custom iterator authoring deferred until explicitly
+  designed and implemented
+- [ ] Implement internal iterator runtime state for supported iterables
+- [ ] Implement `for...of`
+- [ ] Decide and document abrupt-completion behavior during `for...of`
+- [ ] Decide snapshot and resume behavior for active iterators and suspended
+  `for...of` frames
+- [ ] Wire iterator objects and iterator-owned references into heap accounting
+  and GC reachability
+- [ ] Fail closed on unsupported iterator-producing APIs and unsupported
+  iterable inputs
+- [ ] Add unit, integration, differential, and hostile-input tests for
+  supported iteration ordering and `for...of` behavior
+- [ ] Update `README.md`, `docs/LANGUAGE.md`, `docs/SERIALIZATION.md`, and
+  `docs/RUNTIME_MODEL.md` when iteration lands
+
+Exit criteria:
+
+- [ ] Supported `for...of` programs run correctly
+- [ ] Unsupported iteration surfaces fail closed with clear diagnostics
+- [ ] Heap accounting, GC, and snapshotting remain correct for iterators
+- [ ] Iteration tests pass
+
+### Keyed Collections (`Map` and `Set`)
+
+- [ ] Define the supported `Map` and `Set` API surface
+- [ ] Define and document insertion-order guarantees for supported `Map` and
+  `Set` operations
+- [ ] Decide `Map` key equality and `Set` membership semantics for numbers,
+  strings, objects, `NaN`, and `-0`
+- [ ] Stage constructor and iteration-dependent collection APIs behind the
+  iteration milestone explicitly
+- [ ] Reject iterator-dependent constructor inputs and iterator-returning APIs
+  until the iteration milestone lands
+- [ ] Implement heap-backed `Map` storage and supported mutation and lookup
+  operations
+- [ ] Implement heap-backed `Set` storage and supported mutation and membership
+  operations
+- [ ] Add `Map` (`get`, `set`, `has`, `delete`, `clear`, `size`) and `Set`
+  (`add`, `has`, `delete`, `clear`, `size`) to the built-in surface
+- [ ] Decide and document host-boundary, sidecar, and `StructuredValue`
+  behavior for `Map` and `Set`
+- [ ] Wire `Map` and `Set` into heap accounting and GC reachability
+- [ ] Extend snapshot serialization and validation to preserve supported `Map`
+  and `Set` values safely
+- [ ] Add diagnostics coverage for unsupported collection APIs, invalid method
+  receivers, and rejected iterator-dependent forms
+- [ ] Add GC stress coverage for object keys, cycles, and `delete` / `clear`
+  behavior under heap pressure
+- [ ] Add unit, integration, differential, and hostile-input tests for
+  supported `Map` and `Set` behavior
+- [ ] Update `README.md`, `docs/LANGUAGE.md`, `docs/HOST_API.md`,
+  `docs/SERIALIZATION.md`, and `docs/RUNTIME_MODEL.md` when keyed collections
+  land
+- [ ] Keep `WeakMap` and `WeakSet` deferred until their GC and reachability
+  semantics are designed explicitly
+
+Exit criteria:
+
+- [ ] Supported `Map` and `Set` programs run correctly
+- [ ] Unsupported iterator-dependent behavior fails closed
+- [ ] Heap accounting, GC, and snapshotting remain correct for keyed
+  collections
+- [ ] Collection tests pass

@@ -45,8 +45,9 @@ The Node wrapper exposes these fields through `run()` and `start()` as:
   identities.
 - Snapshot load recomputes heap accounting before resuming so serialized inputs
   cannot bypass the configured heap and allocation budgets.
-- Call-depth limits and outstanding host-call limits are still defined in the
-  API but are not enforced yet.
+- Outstanding host-call limits are enforced for async guest execution across
+  queued and currently suspended host capability requests.
+- Call-depth limits are still defined in the API but are not enforced yet.
 - Explicit cancellation is not implemented yet.
 
 ## Default Policy

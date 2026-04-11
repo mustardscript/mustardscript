@@ -18,6 +18,8 @@
   assignment expressions still produce a result.
 - `JumpIfFalse`, `JumpIfTrue`, and `JumpIfNullish` inspect the top-of-stack
   value without popping it.
+- `Await` pops one value, coerces it to an internal guest promise, and
+  suspends the current async continuation until a later microtask checkpoint.
 - `Return` completes the current frame and returns the top value, defaulting to
   `undefined` if the stack is empty.
 
@@ -30,6 +32,7 @@ Each frame currently tracks:
 - `env`: the current lexical environment
 - `scope_stack`: the nested lexical environments introduced by `PushEnv`
 - `stack`: the operand stack for the frame
+- `async_promise`: the backing promise for an async function frame when present
 
 `this` is stored in the frame's lexical environment as a normal binding.
 
@@ -43,7 +46,7 @@ Bytecode validation currently checks:
 - stack depth stays valid across every reachable control-flow edge
 - lexical scope depth stays valid across `PushEnv` and `PopEnv`
 - snapshots reference existing functions, environments, cells, objects, arrays,
-  and closures
+  closures, and promises
 
 Malformed bytecode and malformed snapshots fail validation before execution or
 restore.

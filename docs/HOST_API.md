@@ -31,12 +31,17 @@ Rejected values:
 - Capabilities are named host functions.
 - Capability lookup is explicit.
 - The core runtime represents capability calls as suspension points.
+- In synchronous guest code, a capability call suspends immediately.
+- In async guest code, a capability call produces an internal guest promise,
+  queues the host request, and suspends at the next runtime checkpoint.
 - `start()` returns a suspension object containing the capability name, the
   converted arguments, and a resumable snapshot.
 - `resume()` accepts either a structured success value or a sanitized host
   error payload.
 - The Node wrapper accepts sync or async JavaScript capability functions and
   bridges both cases by awaiting the host result before calling `resume()`.
+- `limits.maxOutstandingHostCalls` bounds the combined number of queued and
+  currently suspended host requests for async guest execution.
 
 ## Error Sanitization
 
@@ -86,5 +91,6 @@ guest-only traceback with guest function names and source spans.
 - The current addon boundary is synchronous and one-shot, so it does not yet
   expose a shared cancellation hook the Rust VM can poll mid-execution.
 - In-process hosts can stop awaiting a suspended execution, but that does not
-  currently inject a guest-visible cancellation signal.
+  currently inject a guest-visible cancellation signal, including when guest
+  async code is awaiting a host promise.
 - Sidecar hosts that need forceful aborts must terminate the sidecar process.

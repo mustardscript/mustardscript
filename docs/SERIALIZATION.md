@@ -29,13 +29,14 @@ the safety rules they are expected to follow.
   and checking the serialized version.
 - Compiled-program loads validate root function ids, closure targets, jump
   targets, and stack/scope discipline before execution.
-- Snapshot loads also validate live frame pointers and referenced runtime
-  objects before restore.
+- Snapshot loads also validate live frame pointers, referenced runtime objects,
+  promise references, and queued host-call state before restore.
 - Opaque host references, native handles, and host futures are never
   serialized.
 - Snapshots are only created at explicit suspension points.
-- Pending host work is represented by the suspended capability name plus the
-  resumable VM snapshot, not by native futures.
+- Pending host work is represented by suspended or queued capability metadata
+  plus the resumable VM snapshot and internal promise state, not by native
+  futures.
 - In the Node wrapper, `start()` and `Progress.dump()` happen before any async
   capability promise is awaited, so JavaScript `Promise` objects never enter the
   serialized snapshot.
