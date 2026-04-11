@@ -3,6 +3,7 @@ import type {
   CapabilityError,
   ExecutionOptions,
   Progress as ProgressType,
+  SerializedProgress,
   StructuredValue,
 } from 'jslite';
 
@@ -52,6 +53,8 @@ async function typecheck(): Promise<void> {
     const capabilityName: string = step.capability;
     const args: StructuredValue[] = step.args;
     const snapshot: Buffer = step.snapshot;
+    const dumpedProgress: SerializedProgress = step.dump();
+    const restored: ProgressType = Progress.load(dumpedProgress);
     const resumed: StructuredValue | ProgressType = step.resume(1);
     const hostError: CapabilityError = Object.assign(new Error('failed'), {
       name: 'CapabilityError',
@@ -62,6 +65,7 @@ async function typecheck(): Promise<void> {
     void capabilityName;
     void args;
     void snapshot;
+    void restored;
     void resumed;
     void resumedError;
   }

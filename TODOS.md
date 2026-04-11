@@ -339,17 +339,17 @@ Exit criteria:
 - [ ] Implement error conversion for syntax, runtime, resource, and snapshot
   errors
 - [x] Implement program dump/load APIs
-- [ ] Implement snapshot dump/load APIs
+- [x] Implement snapshot dump/load APIs
 - [x] Add TypeScript declarations
 - [x] Add TypeScript type tests for the public API
 - [x] Add Node integration tests
 - [ ] Add packaging smoke tests for source builds on supported platforms
-- [ ] Add example usage for agent-style execution
+- [x] Add example usage for agent-style execution
 - [x] Defer prebuilt binaries until the package shape is stable
 
 Exit criteria:
 
-- [ ] Addon is usable from a real Node service
+- [x] Addon is usable from a real Node service
 - [x] TypeScript consumers get a clean typed API
 - [ ] Node integration and packaging smoke tests pass
 - [ ] Node wrapper remains thin and does not own core semantics
@@ -401,7 +401,7 @@ Exit criteria:
 - [ ] Publish the capability model clearly
 - [ ] Publish security guarantees and non-guarantees clearly
 - [ ] Publish sidecar-mode tradeoffs clearly
-- [ ] Write embedding examples
+- [x] Write embedding examples
 - [ ] Prepare npm publishing flow
 - [ ] Add optional prebuilt-binary publishing only after package shape is stable
 - [ ] Prepare Rust crate publishing flow if needed

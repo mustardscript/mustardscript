@@ -178,6 +178,14 @@ class Progress {
     return Buffer.from(this.#snapshot);
   }
 
+  dump() {
+    return {
+      capability: this.capability,
+      args: this.args.slice(),
+      snapshot: this.snapshot,
+    };
+  }
+
   resume(value) {
     const step = parseStep(
       native.resumeProgram(this.#snapshot, encodeResumePayloadValue(value)),
@@ -190,6 +198,22 @@ class Progress {
       native.resumeProgram(this.#snapshot, encodeResumePayloadError(error)),
     );
     return materializeStep(step);
+  }
+
+  static load(state) {
+    if (!state || typeof state !== 'object') {
+      throw new TypeError('Progress.load() expects a dumped progress object');
+    }
+    if (typeof state.capability !== 'string') {
+      throw new TypeError('Progress.load() requires a string capability name');
+    }
+    if (!Array.isArray(state.args)) {
+      throw new TypeError('Progress.load() requires an args array');
+    }
+    if (!state.snapshot) {
+      throw new TypeError('Progress.load() requires snapshot bytes');
+    }
+    return new Progress(Buffer.from(state.snapshot), state.capability, state.args.slice());
   }
 }
 

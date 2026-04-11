@@ -125,6 +125,25 @@ test('start returns resumable progress objects', () => {
   assert.equal(finalValue, 8);
 });
 
+test('progress dump and load preserve suspended execution state', () => {
+  const j = new Jslite(`
+    const response = fetch_data(4);
+    response * 2;
+  `);
+
+  const progress = j.start({
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  const restored = Progress.load(progress.dump());
+  assert.ok(restored instanceof Progress);
+  assert.equal(restored.capability, 'fetch_data');
+  assert.deepEqual(restored.args, [4]);
+  assert.equal(restored.resume(4), 8);
+});
+
 test('dump and load preserve compiled programs', async () => {
   const j = new Jslite('Math.max(1, 8, 2);');
   const copy = Jslite.load(j.dump());

@@ -69,6 +69,12 @@ That flow builds the Rust addon locally and then runs the Node integration
 tests. Prebuilt binaries are intentionally deferred until the package shape is
 stable.
 
+## Agent-Style Example
+
+See [examples/agent-style.js](examples/agent-style.js) for a minimal host loop
+that starts guest execution, persists a suspended `Progress`, reloads it, and
+resumes with a host result.
+
 ## Project Goals
 
 `jslite` should provide:

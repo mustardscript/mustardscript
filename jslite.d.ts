@@ -25,13 +25,22 @@ export interface ExecutionOptions {
   capabilities?: Record<string, Capability>;
 }
 
+export interface SerializedProgress {
+  capability: string;
+  args: StructuredValue[];
+  snapshot: Buffer;
+}
+
 export class Progress {
   readonly capability: string;
   readonly args: StructuredValue[];
   readonly snapshot: Buffer;
 
+  dump(): SerializedProgress;
   resume(value: StructuredValue): StructuredValue | Progress;
   resumeError(error: unknown): StructuredValue | Progress;
+
+  static load(state: SerializedProgress): Progress;
 }
 
 export class Jslite {
