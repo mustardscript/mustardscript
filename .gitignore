@@ -3,6 +3,7 @@ dist
 node_modules
 *.log
 *.dSYM
+*.node
 Cargo.lock
 npm-debug.log*
 .DS_Store

@@ -10,5 +10,9 @@ pub use diagnostic::{Diagnostic, DiagnosticKind, JsliteError, JsliteResult};
 pub use ir::CompiledProgram;
 pub use limits::RuntimeLimits;
 pub use parser::compile;
-pub use runtime::{BytecodeProgram, ExecutionOptions, execute, lower_to_bytecode};
+pub use runtime::{
+    BytecodeProgram, ExecutionOptions, ExecutionSnapshot, ExecutionStep, HostError,
+    ResumePayload, Suspension, dump_program, dump_snapshot, execute, load_program,
+    load_snapshot, lower_to_bytecode, resume, start, start_bytecode,
+};
 pub use structured::StructuredValue;

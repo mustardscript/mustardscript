@@ -10,7 +10,7 @@
     "test": "tests"
   },
   "scripts": {
-    "build": "napi build --platform --cargo-name jslite-node crates/jslite-node",
+    "build": "napi build --platform --manifest-path crates/jslite-node/Cargo.toml --js-package-name jslite --output-dir . --no-js",
     "test": "npm run build && node --test tests/node/**/*.test.js",
     "test:node": "node --test tests/node/**/*.test.js",
     "test:rust": "cargo test --workspace",

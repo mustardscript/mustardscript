@@ -24,6 +24,7 @@ new_key_type! { struct ClosureKey; }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionOptions {
     pub inputs: IndexMap<String, StructuredValue>,
+    pub capabilities: Vec<String>,
     pub limits: RuntimeLimits,
 }
 
@@ -31,9 +32,42 @@ impl Default for ExecutionOptions {
     fn default() -> Self {
         Self {
             inputs: IndexMap::new(),
+            capabilities: Vec::new(),
             limits: RuntimeLimits::default(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostError {
+    pub name: String,
+    pub message: String,
+    pub code: Option<String>,
+    pub details: Option<StructuredValue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ResumePayload {
+    Value(StructuredValue),
+    Error(HostError),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionSnapshot {
+    runtime: Runtime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Suspension {
+    pub capability: String,
+    pub args: Vec<StructuredValue>,
+    pub snapshot: ExecutionSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExecutionStep {
+    Completed(StructuredValue),
+    Suspended(Suspension),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +75,8 @@ pub struct BytecodeProgram {
     pub functions: Vec<FunctionPrototype>,
     pub root: usize,
 }
+
+const SERIAL_FORMAT_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionPrototype {
@@ -95,10 +131,102 @@ pub fn lower_to_bytecode(program: &CompiledProgram) -> JsliteResult<BytecodeProg
 }
 
 pub fn execute(program: &CompiledProgram, options: ExecutionOptions) -> JsliteResult<StructuredValue> {
+    match start(program, options)? {
+        ExecutionStep::Completed(value) => Ok(value),
+        ExecutionStep::Suspended(suspension) => Err(JsliteError::runtime(format!(
+            "execution suspended on capability `{}`; use start()/resume() for iterative execution",
+            suspension.capability
+        ))),
+    }
+}
+
+pub fn start(program: &CompiledProgram, options: ExecutionOptions) -> JsliteResult<ExecutionStep> {
     let bytecode = lower_to_bytecode(program)?;
-    let mut runtime = Runtime::new(bytecode, options)?;
-    let value = runtime.run_root()?;
-    runtime.into_structured(value)
+    start_bytecode(&bytecode, options)
+}
+
+pub fn start_bytecode(program: &BytecodeProgram, options: ExecutionOptions) -> JsliteResult<ExecutionStep> {
+    let mut runtime = Runtime::new(program.clone(), options)?;
+    runtime.run_root()
+}
+
+pub fn resume(snapshot: ExecutionSnapshot, payload: ResumePayload) -> JsliteResult<ExecutionStep> {
+    let mut runtime = snapshot.runtime;
+    runtime.resume(payload)
+}
+
+pub fn dump_program(program: &BytecodeProgram) -> JsliteResult<Vec<u8>> {
+    bincode::serialize(&SerializedProgram {
+        version: SERIAL_FORMAT_VERSION,
+        program: program.clone(),
+    })
+    .map_err(|error| JsliteError::Message {
+        kind: DiagnosticKind::Serialization,
+        message: error.to_string(),
+        span: None,
+    })
+}
+
+pub fn load_program(bytes: &[u8]) -> JsliteResult<BytecodeProgram> {
+    let decoded: SerializedProgram = bincode::deserialize(bytes).map_err(|error| JsliteError::Message {
+        kind: DiagnosticKind::Serialization,
+        message: error.to_string(),
+        span: None,
+    })?;
+    if decoded.version != SERIAL_FORMAT_VERSION {
+        return Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: format!(
+                "serialized program version mismatch: expected {}, got {}",
+                SERIAL_FORMAT_VERSION, decoded.version
+            ),
+            span: None,
+        });
+    }
+    Ok(decoded.program)
+}
+
+pub fn dump_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<Vec<u8>> {
+    bincode::serialize(&SerializedSnapshot {
+        version: SERIAL_FORMAT_VERSION,
+        snapshot: snapshot.clone(),
+    })
+    .map_err(|error| JsliteError::Message {
+        kind: DiagnosticKind::Serialization,
+        message: error.to_string(),
+        span: None,
+    })
+}
+
+pub fn load_snapshot(bytes: &[u8]) -> JsliteResult<ExecutionSnapshot> {
+    let decoded: SerializedSnapshot = bincode::deserialize(bytes).map_err(|error| JsliteError::Message {
+        kind: DiagnosticKind::Serialization,
+        message: error.to_string(),
+        span: None,
+    })?;
+    if decoded.version != SERIAL_FORMAT_VERSION {
+        return Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: format!(
+                "serialized snapshot version mismatch: expected {}, got {}",
+                SERIAL_FORMAT_VERSION, decoded.version
+            ),
+            span: None,
+        });
+    }
+    Ok(decoded.snapshot)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SerializedProgram {
+    version: u32,
+    program: BytecodeProgram,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SerializedSnapshot {
+    version: u32,
+    snapshot: ExecutionSnapshot,
 }
 
 #[derive(Debug, Default)]
@@ -840,6 +968,7 @@ enum Value {
     Array(ArrayKey),
     Closure(ClosureKey),
     BuiltinFunction(BuiltinFunction),
+    HostFunction(String),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -909,6 +1038,7 @@ struct Frame {
     stack: Vec<Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Runtime {
     program: BytecodeProgram,
     limits: RuntimeLimits,
@@ -920,6 +1050,15 @@ struct Runtime {
     closures: SlotMap<ClosureKey, Closure>,
     frames: Vec<Frame>,
     instruction_counter: usize,
+}
+
+enum RunState {
+    Completed(Value),
+    PushedFrame,
+    Suspended {
+        capability: String,
+        args: Vec<StructuredValue>,
+    },
 }
 
 impl Runtime {
@@ -942,6 +1081,9 @@ impl Runtime {
             instruction_counter: 0,
         };
         runtime.install_builtins()?;
+        for capability in options.capabilities {
+            runtime.define_global(capability.clone(), Value::HostFunction(capability), false)?;
+        }
         for (name, value) in options.inputs {
             let value = runtime.from_structured(value)?;
             runtime.define_global(name, value, true)?;
@@ -949,13 +1091,44 @@ impl Runtime {
         Ok(runtime)
     }
 
-    fn run_root(&mut self) -> JsliteResult<Value> {
+    fn run_root(&mut self) -> JsliteResult<ExecutionStep> {
         let root_env = self.new_env(Some(self.globals));
         self.push_frame(self.program.root, root_env, &[])?;
         self.run()
     }
 
-    fn run(&mut self) -> JsliteResult<Value> {
+    fn resume(&mut self, payload: ResumePayload) -> JsliteResult<ExecutionStep> {
+        match payload {
+            ResumePayload::Value(value) => {
+                let value = self.from_structured(value)?;
+                let frame = self
+                    .frames
+                    .last_mut()
+                    .ok_or_else(|| JsliteError::runtime("no suspended frame available"))?;
+                frame.stack.push(value);
+            }
+            ResumePayload::Error(error) => {
+                return Err(JsliteError::runtime(format!(
+                    "{}: {}{}{}",
+                    error.name,
+                    error.message,
+                    error
+                        .code
+                        .as_ref()
+                        .map(|code| format!(" [code={code}]"))
+                        .unwrap_or_default(),
+                    error
+                        .details
+                        .as_ref()
+                        .map(|details| format!(" [details={details:?}]"))
+                        .unwrap_or_default()
+                )));
+            }
+        }
+        self.run()
+    }
+
+    fn run(&mut self) -> JsliteResult<ExecutionStep> {
         loop {
             let frame_index = self
                 .frames
@@ -1190,8 +1363,20 @@ impl Runtime {
                         self.frames[frame_index].stack.push(Value::Undefined);
                         continue;
                     }
-                    if let Some(value) = self.call_callable(callee, this_value, &args)? {
-                        self.frames[frame_index].stack.push(value);
+                    match self.call_callable(callee, this_value, &args)? {
+                        RunState::Completed(value) => {
+                            self.frames[frame_index].stack.push(value);
+                        }
+                        RunState::PushedFrame => {}
+                        RunState::Suspended { capability, args } => {
+                            return Ok(ExecutionStep::Suspended(Suspension {
+                                capability,
+                                args,
+                                snapshot: ExecutionSnapshot {
+                                    runtime: self.clone(),
+                                },
+                            }));
+                        }
                     }
                 }
                 Instruction::Construct { argc } => {
@@ -1212,7 +1397,7 @@ impl Runtime {
                     if let Some(parent) = self.frames.last_mut() {
                         parent.stack.push(value);
                     } else {
-                        return Ok(value);
+                        return Ok(ExecutionStep::Completed(self.into_structured(value)?));
                     }
                 }
             }
@@ -1260,7 +1445,7 @@ impl Runtime {
         callee: Value,
         _this_value: Value,
         args: &[Value],
-    ) -> JsliteResult<Option<Value>> {
+    ) -> JsliteResult<RunState> {
         match callee {
             Value::Closure(closure) => {
                 let closure = self
@@ -1270,9 +1455,17 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("closure not found"))?;
                 let env = self.new_env(Some(closure.env));
                 self.push_frame(closure.function_id, env, args)?;
-                Ok(None)
+                Ok(RunState::PushedFrame)
             }
-            Value::BuiltinFunction(function) => Ok(Some(self.call_builtin(function, args)?)),
+            Value::BuiltinFunction(function) => Ok(RunState::Completed(self.call_builtin(function, args)?)),
+            Value::HostFunction(capability) => Ok(RunState::Suspended {
+                capability,
+                args: args
+                    .iter()
+                    .cloned()
+                    .map(|value| self.into_structured(value))
+                    .collect::<JsliteResult<Vec<_>>>()?,
+            }),
             _ => Err(JsliteError::runtime("value is not callable")),
         }
     }
@@ -1688,7 +1881,7 @@ impl Runtime {
                 Value::Bool(_) => "boolean",
                 Value::Number(_) => "number",
                 Value::String(_) => "string",
-                Value::Closure(_) | Value::BuiltinFunction(_) => "function",
+                Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => "function",
                 Value::Object(_) | Value::Array(_) => "object",
             }
             .to_string())),
@@ -1734,7 +1927,11 @@ impl Runtime {
             }
             Value::Number(value) => value,
             Value::String(value) => value.parse::<f64>().unwrap_or(f64::NAN),
-            Value::Array(_) | Value::Object(_) | Value::Closure(_) | Value::BuiltinFunction(_) => {
+            Value::Array(_)
+            | Value::Object(_)
+            | Value::Closure(_)
+            | Value::BuiltinFunction(_)
+            | Value::HostFunction(_) => {
                 return Err(JsliteError::runtime("cannot coerce complex value to number"))
             }
         })
@@ -1765,7 +1962,9 @@ impl Runtime {
                 parts.join(",")
             }
             Value::Object(_) => "[object Object]".to_string(),
-            Value::Closure(_) | Value::BuiltinFunction(_) => "[Function]".to_string(),
+            Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
+                "[Function]".to_string()
+            }
         })
     }
 
@@ -1862,7 +2061,7 @@ impl Runtime {
                     .map(|(key, value)| Ok((key.clone(), self.into_structured(value.clone())?)))
                     .collect::<JsliteResult<IndexMap<_, _>>>()?,
             ),
-            Value::Closure(_) | Value::BuiltinFunction(_) => {
+            Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
                 return Err(JsliteError::runtime(
                     "functions cannot cross the structured host boundary",
                 ))
@@ -1916,7 +2115,11 @@ fn is_truthy(value: &Value) -> bool {
         Value::Bool(value) => *value,
         Value::Number(value) => *value != 0.0 && !value.is_nan(),
         Value::String(value) => !value.is_empty(),
-        Value::Object(_) | Value::Array(_) | Value::Closure(_) | Value::BuiltinFunction(_) => true,
+        Value::Object(_)
+        | Value::Array(_)
+        | Value::Closure(_)
+        | Value::BuiltinFunction(_)
+        | Value::HostFunction(_) => true,
     }
 }
 
@@ -2046,6 +2249,7 @@ mod tests {
             &program,
             ExecutionOptions {
                 inputs: IndexMap::new(),
+                capabilities: Vec::new(),
                 limits: RuntimeLimits {
                     instruction_budget: 100,
                     ..RuntimeLimits::default()
@@ -2054,5 +2258,84 @@ mod tests {
         )
         .expect_err("infinite loop should exhaust budget");
         assert!(error.to_string().contains("instruction budget exhausted"));
+    }
+
+    #[test]
+    fn suspends_and_resumes_host_capability_calls() {
+        let program = compile(
+            r#"
+            const value = fetch_data(41);
+            value + 1;
+            "#,
+        )
+        .expect("source should compile");
+
+        let step = start(
+            &program,
+            ExecutionOptions {
+                capabilities: vec!["fetch_data".to_string()],
+                ..ExecutionOptions::default()
+            },
+        )
+        .expect("execution should start");
+
+        let suspension = match step {
+            ExecutionStep::Suspended(suspension) => suspension,
+            other => panic!("expected suspension, got {other:?}"),
+        };
+        assert_eq!(suspension.capability, "fetch_data");
+        assert_eq!(
+            suspension.args,
+            vec![StructuredValue::Number(StructuredNumber::Finite(41.0))]
+        );
+
+        let resumed = resume(
+            suspension.snapshot,
+            ResumePayload::Value(StructuredValue::Number(StructuredNumber::Finite(41.0))),
+        )
+        .expect("resume should succeed");
+
+        match resumed {
+            ExecutionStep::Completed(value) => {
+                assert_eq!(value, StructuredValue::Number(StructuredNumber::Finite(42.0)));
+            }
+            other => panic!("expected completion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn round_trips_program_and_snapshot() {
+        let program = compile("const value = fetch_data(1); value + 2;").expect("compile should succeed");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+        let program_bytes = dump_program(&bytecode).expect("program dump should succeed");
+        let loaded_program = load_program(&program_bytes).expect("program load should succeed");
+        assert_eq!(loaded_program.root, bytecode.root);
+        assert_eq!(loaded_program.functions.len(), bytecode.functions.len());
+
+        let step = start(
+            &program,
+            ExecutionOptions {
+                capabilities: vec!["fetch_data".to_string()],
+                ..ExecutionOptions::default()
+            },
+        )
+        .expect("execution should suspend");
+        let suspension = match step {
+            ExecutionStep::Suspended(suspension) => suspension,
+            other => panic!("expected suspension, got {other:?}"),
+        };
+        let snapshot_bytes = dump_snapshot(&suspension.snapshot).expect("snapshot dump should succeed");
+        let loaded_snapshot = load_snapshot(&snapshot_bytes).expect("snapshot load should succeed");
+        let resumed = resume(
+            loaded_snapshot,
+            ResumePayload::Value(StructuredValue::Number(StructuredNumber::Finite(1.0))),
+        )
+        .expect("resume should succeed");
+        match resumed {
+            ExecutionStep::Completed(value) => {
+                assert_eq!(value, StructuredValue::Number(StructuredNumber::Finite(3.0)));
+            }
+            other => panic!("expected completion, got {other:?}"),
+        }
     }
 }
