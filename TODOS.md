@@ -382,7 +382,7 @@ Exit criteria:
 
 ## Phase 11: Conformance, Benchmarking, and Coverage Audit
 
-- [ ] Add unit tests for IR, bytecode, VM, GC, capabilities, async, and
+- [x] Add unit tests for IR, bytecode, VM, GC, capabilities, async, and
   serialization
 - [x] Expand differential tests against Node for the supported subset
 - [x] Import a curated `test262` subset
@@ -462,5 +462,5 @@ Before claiming the project is ready for untrusted guest workloads:
 - [x] Serialization validation is enabled
 - [x] Host errors are sanitized
 - [x] Guest diagnostics do not leak host internals
-- [ ] Kill and cancellation behavior are documented and tested
+- [x] Kill and cancellation behavior are documented and tested
 - [x] Supported subset and unsupported subset are both explicit
