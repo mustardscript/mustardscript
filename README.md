@@ -56,6 +56,7 @@ The current implementation already supports:
 
 ## Reference Docs
 
+- [Security Threat Model](SECURITY_THREAT_MODEL.md)
 - [Security Model](docs/SECURITY_MODEL.md)
 - [Language Contract](docs/LANGUAGE.md)
 - [Host API](docs/HOST_API.md)
