@@ -31,6 +31,11 @@ export interface ExecutionOptions {
   capabilities?: Record<string, Capability>;
   console?: ConsoleCallbacks;
   limits?: RuntimeLimits;
+  signal?: AbortSignal;
+}
+
+export interface ResumeOptions {
+  signal?: AbortSignal;
 }
 
 export interface RuntimeLimits {
@@ -68,8 +73,9 @@ export class Progress {
   readonly snapshot: Buffer;
 
   dump(): SerializedProgress;
-  resume(value: StructuredValue): StructuredValue | Progress;
-  resumeError(error: unknown): StructuredValue | Progress;
+  resume(value: StructuredValue, options?: ResumeOptions): StructuredValue | Progress;
+  resumeError(error: unknown, options?: ResumeOptions): StructuredValue | Progress;
+  cancel(): StructuredValue | Progress;
 
   static load(state: SerializedProgress): Progress;
 }

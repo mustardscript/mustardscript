@@ -141,6 +141,7 @@ fn handle(request: Request) -> Response {
                     inputs: options.inputs.into_iter().collect(),
                     capabilities: options.capabilities,
                     limits: options.limits.into_runtime_limits(),
+                    cancellation_token: None,
                 },
             )?;
             Ok(ResponsePayload::Step {

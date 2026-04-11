@@ -38,8 +38,13 @@ Rejected values:
   converted arguments, and a resumable snapshot.
 - `resume()` accepts either a structured success value or a sanitized host
   error payload.
+- `Progress.cancel()` injects an explicit cooperative cancellation failure into
+  a suspended execution instead of resuming it with a host value.
 - The Node wrapper accepts sync or async JavaScript capability functions and
   bridges both cases by awaiting the host result before calling `resume()`.
+- `run()` and `start()` accept an optional `AbortSignal`, and
+  `resume()` / `resumeError()` accept an optional `{ signal }` object for the
+  resumed compute segment.
 - `limits.maxOutstandingHostCalls` bounds the combined number of queued and
   currently suspended host requests for async guest execution.
 
@@ -87,10 +92,21 @@ guest-only traceback with guest function names and source spans.
 
 ## Cancellation and Abort Propagation
 
-- Explicit cancellation is not implemented yet in the core runtime.
-- The current addon boundary is synchronous and one-shot, so it does not yet
-  expose a shared cancellation hook the Rust VM can poll mid-execution.
-- In-process hosts can stop awaiting a suspended execution, but that does not
-  currently inject a guest-visible cancellation signal, including when guest
-  async code is awaiting a host promise.
-- Sidecar hosts that need forceful aborts must terminate the sidecar process.
+- The Rust core now exposes a pollable cooperative cancellation token and checks
+  it before each instruction dispatch, before idle microtask or queued-host-call
+  checkpoints, and on every `resume()` entry.
+- Cancellation fails as a top-level guest-safe limit error with the message
+  `execution cancelled`. It is host authority, not guest control flow, so guest
+  `try` / `catch` does not intercept it.
+- In the Node wrapper, hosts use `AbortSignal` to cancel active compute segments
+  and `Progress.cancel()` to abort a currently suspended execution.
+- Cancelling a suspended async host wait stops guest execution immediately, but
+  it does not force-stop the host promise or capability handler that was already
+  started.
+- The in-process addon still runs on the Node main thread, so a same-thread
+  `AbortSignal` cannot preempt synchronous guest compute until control returns
+  to the event loop. Hosts that need stronger kill guarantees should still use
+  sidecar mode plus OS-level termination controls.
+- Cancellation handles are runtime-only state. Serialized snapshots do not
+  preserve them, so hosts resuming a loaded snapshot must provide a fresh
+  cancellation signal or token if they want later compute to remain cancellable.

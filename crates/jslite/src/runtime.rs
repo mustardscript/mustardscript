@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 
 use crate::{
+    cancellation::CancellationToken,
     diagnostic::{DiagnosticKind, JsliteError, JsliteResult, TraceFrame},
     ir::{
         AssignOp, AssignTarget, BinaryOp, BindingKind, CompiledProgram, Expr, ForInit,
@@ -27,6 +28,8 @@ pub struct ExecutionOptions {
     pub inputs: IndexMap<String, StructuredValue>,
     pub capabilities: Vec<String>,
     pub limits: RuntimeLimits,
+    #[serde(skip, default)]
+    pub cancellation_token: Option<CancellationToken>,
 }
 
 impl Default for ExecutionOptions {
@@ -35,6 +38,7 @@ impl Default for ExecutionOptions {
             inputs: IndexMap::new(),
             capabilities: Vec::new(),
             limits: RuntimeLimits::default(),
+            cancellation_token: None,
         }
     }
 }
@@ -51,6 +55,12 @@ pub struct HostError {
 pub enum ResumePayload {
     Value(StructuredValue),
     Error(HostError),
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ResumeOptions {
+    pub cancellation_token: Option<CancellationToken>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,7 +214,16 @@ pub fn start_bytecode(
 }
 
 pub fn resume(snapshot: ExecutionSnapshot, payload: ResumePayload) -> JsliteResult<ExecutionStep> {
+    resume_with_options(snapshot, payload, ResumeOptions::default())
+}
+
+pub fn resume_with_options(
+    snapshot: ExecutionSnapshot,
+    payload: ResumePayload,
+    options: ResumeOptions,
+) -> JsliteResult<ExecutionStep> {
     let mut runtime = snapshot.runtime;
+    runtime.apply_resume_options(options);
     runtime.resume(payload)
 }
 
@@ -2375,6 +2394,7 @@ struct PendingHostCall {
     args: Vec<StructuredValue>,
     promise: PromiseKey,
     resume_behavior: ResumeBehavior,
+    traceback: Vec<TraceFrameSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2438,6 +2458,8 @@ struct Runtime {
     heap_bytes_used: usize,
     #[serde(skip, default)]
     allocation_count: usize,
+    #[serde(skip, default)]
+    cancellation_token: Option<CancellationToken>,
     pending_resume_behavior: ResumeBehavior,
 }
 
@@ -2491,6 +2513,12 @@ struct GarbageCollectionStats {
 
 impl Runtime {
     fn new(program: BytecodeProgram, options: ExecutionOptions) -> JsliteResult<Self> {
+        let ExecutionOptions {
+            inputs,
+            capabilities,
+            limits,
+            cancellation_token,
+        } = options;
         let mut envs = SlotMap::with_key();
         let globals = envs.insert(Env {
             parent: None,
@@ -2499,7 +2527,7 @@ impl Runtime {
         });
         let mut runtime = Self {
             program,
-            limits: options.limits,
+            limits,
             globals,
             envs,
             cells: SlotMap::with_key(),
@@ -2515,21 +2543,40 @@ impl Runtime {
             instruction_counter: 0,
             heap_bytes_used: 0,
             allocation_count: 0,
+            cancellation_token,
             pending_resume_behavior: ResumeBehavior::Value,
         };
         runtime.account_existing_env(globals)?;
         runtime.install_builtins()?;
-        for capability in options.capabilities {
+        for capability in capabilities {
             runtime.define_global(capability.clone(), Value::HostFunction(capability), false)?;
         }
-        for (name, value) in options.inputs {
+        for (name, value) in inputs {
             let value = runtime.value_from_structured(value)?;
             runtime.define_global(name, value, true)?;
         }
         Ok(runtime)
     }
 
+    fn apply_resume_options(&mut self, options: ResumeOptions) {
+        if options.cancellation_token.is_some() {
+            self.cancellation_token = options.cancellation_token;
+        }
+    }
+
+    fn check_cancellation(&self) -> JsliteResult<()> {
+        if self
+            .cancellation_token
+            .as_ref()
+            .is_some_and(CancellationToken::is_cancelled)
+        {
+            return Err(limit_error("execution cancelled"));
+        }
+        Ok(())
+    }
+
     fn run_root(&mut self) -> JsliteResult<ExecutionStep> {
+        self.check_cancellation()?;
         self.collect_garbage()?;
         let root_env = self.new_env(Some(self.globals))?;
         self.push_frame(self.program.root, root_env, &[], None)?;
@@ -3067,6 +3114,12 @@ impl Runtime {
     }
 
     fn resume(&mut self, payload: ResumePayload) -> JsliteResult<ExecutionStep> {
+        if let Err(error) = self.check_cancellation() {
+            if let Some(request) = self.suspended_host_call.as_ref() {
+                return Err(error.with_traceback(self.compose_traceback(&request.traceback)));
+            }
+            return Err(self.annotate_runtime_error(error));
+        }
         self.collect_garbage()
             .map_err(|error| self.annotate_runtime_error(error))?;
         if let Some(request) = self.suspended_host_call.take() {
@@ -3087,6 +3140,10 @@ impl Runtime {
                     span: None,
                     traceback: Vec::new(),
                 }),
+                ResumePayload::Cancelled => {
+                    return Err(limit_error("execution cancelled")
+                        .with_traceback(self.compose_traceback(&request.traceback)));
+                }
             };
             self.resolve_promise_with_outcome(request.promise, outcome)
                 .map_err(|error| self.annotate_runtime_error(error))?;
@@ -3119,12 +3176,17 @@ impl Runtime {
                     Err(error) => return Err(self.annotate_runtime_error(error)),
                 }
             }
+            ResumePayload::Cancelled => {
+                return Err(self.annotate_runtime_error(limit_error("execution cancelled")));
+            }
         }
         self.run()
     }
 
     fn run(&mut self) -> JsliteResult<ExecutionStep> {
         loop {
+            self.check_cancellation()
+                .map_err(|error| self.annotate_runtime_error(error))?;
             if self.frames.is_empty() {
                 match self.process_idle_state() {
                     Ok(Some(step)) => return Ok(step),
@@ -4253,6 +4315,7 @@ impl Runtime {
                         args,
                         promise,
                         resume_behavior,
+                        traceback: self.traceback_snapshots(),
                     });
                     Ok(RunState::Completed(Value::Promise(promise)))
                 } else {
@@ -5544,6 +5607,7 @@ mod tests {
                     instruction_budget: 100,
                     ..RuntimeLimits::default()
                 },
+                cancellation_token: None,
             },
         )
         .expect_err("infinite loop should exhaust budget");
@@ -5747,6 +5811,7 @@ mod tests {
                     allocation_budget: 256,
                     ..RuntimeLimits::default()
                 },
+                cancellation_token: None,
                 ..ExecutionOptions::default()
             },
         )

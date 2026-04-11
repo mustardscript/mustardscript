@@ -67,6 +67,7 @@ fn suspends_and_resumes_async_host_calls() {
             inputs: IndexMap::new(),
             capabilities: vec!["fetch_data".to_string()],
             limits: RuntimeLimits::default(),
+            cancellation_token: None,
         },
     )
     .expect("start should succeed")
@@ -108,6 +109,7 @@ fn async_await_catches_rejections() {
             inputs: IndexMap::new(),
             capabilities: vec!["fetch_data".to_string()],
             limits: RuntimeLimits::default(),
+            cancellation_token: None,
         },
     )
     .expect("start should succeed")
@@ -169,6 +171,7 @@ fn enforces_outstanding_host_call_limits_for_async_guest_code() {
                 max_outstanding_host_calls: 1,
                 ..RuntimeLimits::default()
             },
+            cancellation_token: None,
         },
     )
     .expect_err("execution should fail closed");
