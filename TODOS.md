@@ -340,8 +340,8 @@ Exit criteria:
   errors
 - [x] Implement program dump/load APIs
 - [ ] Implement snapshot dump/load APIs
-- [ ] Add TypeScript declarations
-- [ ] Add TypeScript type tests for the public API
+- [x] Add TypeScript declarations
+- [x] Add TypeScript type tests for the public API
 - [x] Add Node integration tests
 - [ ] Add packaging smoke tests for source builds on supported platforms
 - [ ] Add example usage for agent-style execution
@@ -350,7 +350,7 @@ Exit criteria:
 Exit criteria:
 
 - [ ] Addon is usable from a real Node service
-- [ ] TypeScript consumers get a clean typed API
+- [x] TypeScript consumers get a clean typed API
 - [ ] Node integration and packaging smoke tests pass
 - [ ] Node wrapper remains thin and does not own core semantics
 

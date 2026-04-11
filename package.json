@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Sandboxed, subset JavaScript runtime for Node services.",
   "main": "index.js",
-  "types": "index.d.ts",
+  "types": "jslite.d.ts",
   "directories": {
     "doc": "docs",
     "example": "examples",
@@ -11,8 +11,9 @@
   },
   "scripts": {
     "build": "napi build --platform --manifest-path crates/jslite-node/Cargo.toml --js-package-name jslite --output-dir . --no-js",
-    "test": "npm run build && node --test tests/node/**/*.test.js",
+    "test": "npm run build && node --test tests/node/**/*.test.js && npm run test:types",
     "test:node": "node --test tests/node/**/*.test.js",
+    "test:types": "tsc --noEmit -p tsconfig.typecheck.json",
     "test:rust": "cargo test --workspace",
     "lint": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings"
   },
@@ -31,7 +32,9 @@
   "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
-    "@napi-rs/cli": "^3.3.0"
+    "@napi-rs/cli": "^3.3.0",
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.2"
   },
   "bugs": {
     "url": "https://github.com/keppoai/jslite/issues"
