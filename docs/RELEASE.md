@@ -5,7 +5,7 @@ maintainers should run before publishing anything.
 
 ## Current Release Shape
 
-- The primary release artifact is the npm package `jslite`.
+- The primary release artifact is the npm package `@keppoai/jslite`.
 - The npm package is source-build-only today. `npm install` compiles the native
   addon locally from the bundled Rust sources.
 - Prebuilt `.node` binaries are intentionally deferred until the package shape
@@ -32,7 +32,9 @@ npm run verify:release
 ```
 
 That command runs the same release verification flow used by the manual GitHub
-Actions workflow in `.github/workflows/release-verify.yml`.
+Actions workflow in `.github/workflows/release-verify.yml`. It now verifies the
+scoped package name, the packed file list, and the default `npm publish
+--dry-run` path.
 
 ### 1. Build, test, and lint the release candidate
 
@@ -56,9 +58,11 @@ npm pack
 Check the dry-run output before keeping the generated tarball:
 
 - The tarball should include the Rust workspace files needed to build the
-  addon locally: `Cargo.toml`, `Cargo.lock`, `crates/jslite/**`,
-  `crates/jslite-node/**`, and the currently referenced workspace member
-  `crates/jslite-sidecar/**`.
+  addon locally: `Cargo.toml`, `crates/jslite/src/**`,
+  `crates/jslite/Cargo.toml`, `crates/jslite-node/src/**`,
+  `crates/jslite-node/build.rs`, `crates/jslite-node/Cargo.toml`,
+  `crates/jslite-sidecar/src/**`, and
+  `crates/jslite-sidecar/Cargo.toml`.
 - The tarball should include the public JS and type entrypoints:
   `index.js`, `index.d.ts`, and `jslite.d.ts`.
 - The tarball should not include local build products, `.github/`, tests,
@@ -76,7 +80,7 @@ cd "$tmpdir/consumer"
 npm init -y
 npm install "$repo_root/$tarball"
 node - <<'EOF'
-const { Jslite } = require('jslite');
+const { Jslite } = require('@keppoai/jslite');
 
 async function main() {
   const runtime = new Jslite('let total = 1; total = total + 41; total;');
@@ -105,7 +109,7 @@ code, reinstalls the same tarball, and reruns guest code from the consumer.
 ```sh
 npm install "$repo_root/$tarball"
 node - <<'EOF'
-const { Jslite } = require('jslite');
+const { Jslite } = require('@keppoai/jslite');
 
 async function main() {
   const runtime = new Jslite('let total = 40; total = total + 2; total;');
@@ -153,31 +157,28 @@ Interpretation:
   remaining metadata and remove the current path dependencies before attempting
   an actual publish.
 
-## npm Registry Blocker
+## npm Namespace And Registry Access
 
-As verified on April 11, 2026, `npm view jslite` resolves to an existing public
-package at version `1.1.12` with unrelated ownership and description.
+As verified on April 11, 2026, `npm view jslite` resolves to an unrelated
+public package at version `1.1.12`, so this repository now targets the scoped
+package name `@keppoai/jslite`.
 
-Practical effect:
+Current state:
 
-- `npm publish --dry-run` without an explicit tag fails immediately because
-  this repository is currently versioned as `0.1.0`.
-- `npm publish --dry-run --tag next` succeeds and is the command shape that the
-  automated release verification currently checks.
-
-Before an actual public npm release, maintainers still need to make one naming
-decision:
-
-- rename this package to a scoped or otherwise unclaimed name
-- or adopt an explicit npm dist-tag and versioning strategy for the existing
-  `jslite` package namespace
+- `npm view @keppoai/jslite` returns `404 Not Found`, which is compatible with a
+  first publish for this package name.
+- `npm publish --dry-run` is the command shape the automated release
+  verification now checks.
+- An actual public publish still requires an authenticated npm publisher with
+  access to the `@keppoai` scope. That permission check cannot be proven from
+  repository-local verification alone.
 
 ## Publishing The npm Package
 
 Once the checklist passes:
 
 ```sh
-npm publish --tag next
+npm publish
 ```
 
 Recommended follow-up:
@@ -188,9 +189,8 @@ Recommended follow-up:
 - link to `README.md`, `docs/LANGUAGE.md`, `docs/HOST_API.md`, and
   `docs/SECURITY_MODEL.md`
 
-If maintainers later rename the package or resolve namespace ownership so the
-default `latest` tag is appropriate, update both the release script and this
-document together.
+If maintainers ever move away from `@keppoai/jslite`, update the package name,
+smoke tests, release verification script, and this document together.
 
 ## Deferred Prebuilt Binary Flow
 

@@ -9,9 +9,9 @@ import type {
   RuntimeLimits,
   SerializedProgress,
   StructuredValue,
-} from 'jslite';
+} from '@keppoai/jslite';
 
-const { Jslite, JsliteError, Progress } = require('jslite') as typeof import('jslite');
+const { Jslite, JsliteError, Progress } = require('@keppoai/jslite') as typeof import('@keppoai/jslite');
 
 const runtime = new Jslite('const response = fetch_data(seed); response + 1;', {
   inputs: ['seed'],

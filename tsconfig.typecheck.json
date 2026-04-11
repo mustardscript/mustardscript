@@ -9,7 +9,7 @@
     "skipLibCheck": true,
     "ignoreDeprecations": "6.0",
     "paths": {
-      "jslite": ["./jslite.d.ts"]
+      "@keppoai/jslite": ["./jslite.d.ts"]
     },
     "types": ["node"]
   },

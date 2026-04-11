@@ -63,9 +63,10 @@ The current implementation does **not** yet execute:
 
 `jslite` should currently be treated as a source-build-only package.
 
-From a clean checkout or packed source tarball, `npm install` compiles the
-native addon locally. A Rust toolchain and Node.js are required on the target
-machine.
+The release package name is `@keppoai/jslite`. Until the first public npm
+publish exists, the verified installation path is still a clean checkout or a
+packed source tarball. In both cases, `npm install` compiles the native addon
+locally, so a Rust toolchain and Node.js are required on the target machine.
 
 From a clean checkout:
 
