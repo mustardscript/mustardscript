@@ -6,10 +6,11 @@ maintainers should run before publishing anything.
 ## Current Release Shape
 
 - The primary release artifact is the npm package `@keppoai/jslite`.
-- The npm package is source-build-only today. `npm install` compiles the native
+- The default npm install path still preserves source builds. If no matching
+  optional prebuilt package is installed, `npm install` compiles the native
   addon locally from the bundled Rust sources.
-- Prebuilt `.node` binaries are intentionally deferred until the package shape
-  and supported target matrix are stable.
+- Optional prebuilt `.node` binaries now have a separate release workflow and
+  verification path. They do not replace or weaken the source-build path.
 - The Rust crates are implementation crates first. A separate `cargo publish`
   flow is optional and is not required for the npm release path.
 
@@ -48,7 +49,20 @@ npm run lint
 This covers the current build path, the Rust workspace tests, the Node API
 tests, the typecheck, and the source-package smoke test.
 
-### 2. Verify the npm package shape
+### 2. Verify the optional prebuilt path if you intend to publish it
+
+```sh
+npm run verify:prebuilt
+```
+
+That command runs the prebuilt smoke coverage in
+`tests/package-smoke.test.js`. It verifies the configured `@napi-rs/cli`
+target metadata, stages a host-matching release binary into a generated npm
+package directory, installs the root tarball plus the matching optional package
+with lifecycle scripts disabled, and then proves `install.js` skips the source
+build when the matching prebuilt package is already present.
+
+### 3. Verify the npm package shape
 
 ```sh
 npm pack --dry-run
@@ -63,13 +77,15 @@ Check the dry-run output before keeping the generated tarball:
   `crates/jslite-node/build.rs`, `crates/jslite-node/Cargo.toml`,
   `crates/jslite-sidecar/src/**`, and
   `crates/jslite-sidecar/Cargo.toml`.
-- The tarball should include the public JS and type entrypoints:
-  `index.js`, `index.d.ts`, and `jslite.d.ts`.
+- The tarball should include the public JS and type entrypoints plus the
+  install/load helpers that preserve the source-build fallback:
+  `index.js`, `index.d.ts`, `jslite.d.ts`, `install.js`, and
+  `native-loader.js`.
 - The tarball should not include local build products, `.github/`, tests,
   planning documents, or a platform-specific `.node` binary from a maintainer
   machine.
 
-### 3. Install smoke test from the packed tarball
+### 4. Install smoke test from the packed tarball
 
 ```sh
 repo_root="$PWD"
@@ -99,7 +115,7 @@ EOF
 
 This validates the exact release tarball, not just the checkout.
 
-### 4. Upgrade or reinstall smoke test
+### 5. Upgrade or reinstall smoke test
 
 Run the tarball install again in the same temporary consumer and rerun the same
 smoke program. The repository now automates this in
@@ -131,7 +147,7 @@ pre-release proxy is reinstalling the candidate tarball over an existing
 consumer install. Once real published versions exist, replace this with an
 install-from-previous-version then upgrade-to-candidate flow.
 
-### 5. Verify Rust package readiness if a crate release is being considered
+### 6. Verify Rust package readiness if a crate release is being considered
 
 The default release path does not publish a Rust crate. If maintainers decide
 to publish one later, the current verifiable flow for the core crate is:
@@ -192,16 +208,47 @@ Recommended follow-up:
 If maintainers ever move away from `@keppoai/jslite`, update the package name,
 smoke tests, release verification script, and this document together.
 
-## Deferred Prebuilt Binary Flow
+## Optional Prebuilt Binary Flow
 
-Prebuilt binaries remain deliberately out of scope for the current release
-process. Do not attach or publish per-platform `.node` artifacts yet.
+The optional prebuilt flow is intentionally separate from the default
+source-build release path. It exists for maintainers who want faster installs
+on the explicitly supported target matrix without making prebuilt availability
+an assumption for every host.
 
-When the package shape and support policy are stable, add a separate prebuilt
-workflow with all of the following before enabling it:
+Current prebuilt target matrix:
 
-- an explicit supported target matrix
-- a reproducible binary naming and lookup strategy in `index.js`
-- checksum and provenance guidance
-- CI coverage for prebuilt download and fallback-to-source-build paths
-- documentation for when hosts should prefer source builds instead
+- `x86_64-unknown-linux-gnu` -> `@keppoai/jslite-linux-x64-gnu`
+- `aarch64-apple-darwin` -> `@keppoai/jslite-darwin-arm64`
+- `x86_64-apple-darwin` -> `@keppoai/jslite-darwin-x64`
+- `x86_64-pc-windows-msvc` -> `@keppoai/jslite-win32-x64-msvc`
+
+Current mechanics:
+
+- `package.json` carries the target list in the `napi.targets` field so
+  `@napi-rs/cli` can generate per-platform npm package directories.
+- `native-loader.js` first tries local `.node` files from a source build or
+  maintainer checkout, then falls back to the matching optional package if one
+  is installed.
+- `install.js` preserves the source-build path by only skipping `napi build`
+  when the matching optional package is already installed for the current host.
+- `.github/workflows/prebuilt-binaries.yml` is the manual, explicit prebuilt
+  workflow. It builds the configured targets, stages them with
+  `napi create-npm-dirs` plus `napi artifacts`, runs `npm run verify:prebuilt`,
+  and only publishes when `workflow_dispatch` is invoked with `publish=true`.
+
+Local verification hook:
+
+```sh
+npm run verify:prebuilt
+```
+
+That local hook verifies the host-matching prebuilt install path. Cross-platform
+artifact builds remain a GitHub Actions concern because they require the
+corresponding runner environments.
+
+External blocker for a real prebuilt publish:
+
+- The workflow still requires a real `NPM_TOKEN` with publish rights for the
+  `@keppoai` scope before `npx napi pre-publish` and the final root
+  `npm publish` can succeed. Repository-local verification cannot prove those
+  credentials or scope permissions.

@@ -1,34 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
-
-function loadNative() {
-  const roots = [
-    __dirname,
-    path.join(__dirname, 'crates', 'jslite-node'),
-  ];
-  const candidates = [];
-  for (const root of roots) {
-    if (!fs.existsSync(root)) {
-      continue;
-    }
-    for (const entry of fs.readdirSync(root)) {
-      if (entry.endsWith('.node')) {
-        candidates.push(path.join(root, entry));
-      }
-    }
-  }
-  for (const candidate of candidates) {
-    try {
-      return require(candidate);
-    } catch {
-      continue;
-    }
-  }
-  throw new Error('Unable to locate built jslite native addon');
-}
+const { loadNative } = require('./native-loader');
 
 const native = loadNative();
 const KNOWN_ERROR_KINDS = new Set([
