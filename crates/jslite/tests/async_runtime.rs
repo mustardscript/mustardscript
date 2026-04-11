@@ -182,3 +182,122 @@ fn enforces_outstanding_host_call_limits_for_async_guest_code() {
             .contains("outstanding host-call limit exhausted")
     );
 }
+
+#[test]
+fn promise_instance_methods_and_combinators_run_for_supported_cases() {
+    let program = compile(
+        r#"
+        async function main() {
+          let events = [];
+          const chained = await Promise.resolve(3)
+            .then((value) => {
+              events[events.length] = "then:" + value;
+              return value + 4;
+            })
+            .finally(() => {
+              events[events.length] = "finally";
+            });
+          const recovered = await Promise.reject("boom").catch((reason) => {
+            events[events.length] = "catch:" + reason;
+            return reason + ":handled";
+          });
+          const all = await Promise.all([1, Promise.resolve(2), chained]);
+          const race = await Promise.race([Promise.resolve("fast"), Promise.resolve("slow")]);
+          const any = await Promise.any([Promise.reject("x"), Promise.resolve("winner")]);
+          const settled = await Promise.allSettled([Promise.resolve(1), Promise.reject("nope")]);
+          return [chained, recovered, all, race, any, settled, events];
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            number(7.0),
+            "boom:handled".into(),
+            StructuredValue::Array(vec![number(1.0), number(2.0), number(7.0)]),
+            "fast".into(),
+            "winner".into(),
+            StructuredValue::Array(vec![
+                StructuredValue::Object(IndexMap::from([
+                    ("status".to_string(), "fulfilled".into()),
+                    ("value".to_string(), number(1.0)),
+                ])),
+                StructuredValue::Object(IndexMap::from([
+                    ("status".to_string(), "rejected".into()),
+                    ("reason".to_string(), "nope".into()),
+                ])),
+            ]),
+            StructuredValue::Array(vec!["then:3".into(), "finally".into(), "catch:boom".into(),]),
+        ])
+    );
+}
+
+#[test]
+fn promise_any_rejects_with_aggregate_error_details() {
+    let program = compile(
+        r#"
+        async function main() {
+          try {
+            await Promise.any([Promise.reject("alpha"), Promise.reject("beta")]);
+            return "unreachable";
+          } catch (error) {
+            return [error.name, error.message, error.errors];
+          }
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            "AggregateError".into(),
+            "All promises were rejected".into(),
+            StructuredValue::Array(vec!["alpha".into(), "beta".into()]),
+        ])
+    );
+}
+
+#[test]
+fn promise_callbacks_can_suspend_through_host_capabilities() {
+    let program = compile(
+        r#"
+        async function main() {
+          return await Promise.resolve(7).then(fetch_data);
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let suspended = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+
+    assert_eq!(suspended.capability, "fetch_data");
+    assert_eq!(suspended.args, vec![number(7.0)]);
+
+    let resumed = resume(suspended.snapshot, ResumePayload::Value(number(21.0)))
+        .expect("resume should succeed");
+    match resumed {
+        ExecutionStep::Completed(value) => assert_eq!(value, number(21.0)),
+        ExecutionStep::Suspended(_) => panic!("expected completion after resume"),
+    }
+}

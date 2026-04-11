@@ -61,9 +61,14 @@ extensions are called out explicitly instead of being implied.
   queue
 - host capability calls inside async guest code return guest promises and still
   suspend through the existing `start()` / `resume()` boundary
-- `Promise.resolve(...)` and `Promise.reject(...)` are available
-- unsupported Promise construction and instance methods still fail closed at
-  runtime
+- `Promise.resolve(...)`, `Promise.reject(...)`, `Promise.all(...)`,
+  `Promise.race(...)`, `Promise.any(...)`, and `Promise.allSettled(...)` are
+  available
+- promise instance methods `then(...)`, `catch(...)`, and `finally(...)` are
+  available
+- `Promise.any(...)` rejects with a guest-visible `AggregateError` object whose
+  `errors` property preserves rejection reasons in iteration order
+- `new Promise(...)` still fails closed at runtime
 
 ## Supported Iteration Surface
 
@@ -135,7 +140,7 @@ extensions are called out explicitly instead of being implied.
 
 ## Explicit Deferrals
 
-- full Promise constructor semantics and promise instance methods
+- full Promise constructor semantics and general thenable adoption
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
 - default parameter evaluation
@@ -243,6 +248,13 @@ extensions are called out explicitly instead of being implied.
 - `Set.prototype.values`
 - `Promise.resolve`
 - `Promise.reject`
+- `Promise.all`
+- `Promise.race`
+- `Promise.any`
+- `Promise.allSettled`
+- `Promise.prototype.then`
+- `Promise.prototype.catch`
+- `Promise.prototype.finally`
 - `String.prototype.trim`
 - `String.prototype.includes`
 - `String.prototype.startsWith`

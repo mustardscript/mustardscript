@@ -1129,6 +1129,60 @@ fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()> {
             PromiseState::Fulfilled(value) => validate_runtime_value(runtime, value)?,
             PromiseState::Rejected(rejection) => validate_runtime_value(runtime, &rejection.value)?,
         }
+        for reaction in &promise.reactions {
+            match reaction {
+                PromiseReaction::Then {
+                    on_fulfilled,
+                    on_rejected,
+                    ..
+                } => {
+                    if let Some(handler) = on_fulfilled {
+                        validate_runtime_value(runtime, handler)?;
+                    }
+                    if let Some(handler) = on_rejected {
+                        validate_runtime_value(runtime, handler)?;
+                    }
+                }
+                PromiseReaction::Finally { callback, .. } => {
+                    if let Some(callback) = callback {
+                        validate_runtime_value(runtime, callback)?;
+                    }
+                }
+                PromiseReaction::FinallyPassThrough {
+                    original_outcome, ..
+                } => match original_outcome {
+                    PromiseOutcome::Fulfilled(value) => validate_runtime_value(runtime, value)?,
+                    PromiseOutcome::Rejected(rejection) => {
+                        validate_runtime_value(runtime, &rejection.value)?
+                    }
+                },
+                PromiseReaction::Combinator { .. } => {}
+            }
+        }
+        if let Some(driver) = &promise.driver {
+            match driver {
+                PromiseDriver::All { values, .. } => {
+                    for value in values.iter().flatten() {
+                        validate_runtime_value(runtime, value)?;
+                    }
+                }
+                PromiseDriver::AllSettled { results, .. } => {
+                    for result in results.iter().flatten() {
+                        match result {
+                            PromiseSettledResult::Fulfilled(value)
+                            | PromiseSettledResult::Rejected(value) => {
+                                validate_runtime_value(runtime, value)?
+                            }
+                        }
+                    }
+                }
+                PromiseDriver::Any { reasons, .. } => {
+                    for value in reasons.iter().flatten() {
+                        validate_runtime_value(runtime, value)?;
+                    }
+                }
+            }
+        }
     }
 
     Ok(())
@@ -2631,6 +2685,13 @@ enum BuiltinFunction {
     PromiseCtor,
     PromiseResolve,
     PromiseReject,
+    PromiseThen,
+    PromiseCatch,
+    PromiseFinally,
+    PromiseAll,
+    PromiseRace,
+    PromiseAny,
+    PromiseAllSettled,
     ErrorCtor,
     TypeErrorCtor,
     ReferenceErrorCtor,
@@ -2780,6 +2841,8 @@ struct PromiseObject {
     state: PromiseState,
     awaiters: Vec<AsyncContinuation>,
     dependents: Vec<PromiseKey>,
+    reactions: Vec<PromiseReaction>,
+    driver: Option<PromiseDriver>,
     #[serde(skip, default)]
     accounted_bytes: usize,
 }
@@ -2816,9 +2879,65 @@ enum PromiseOutcome {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+enum PromiseReaction {
+    Then {
+        target: PromiseKey,
+        on_fulfilled: Option<Value>,
+        on_rejected: Option<Value>,
+    },
+    Finally {
+        target: PromiseKey,
+        callback: Option<Value>,
+    },
+    FinallyPassThrough {
+        target: PromiseKey,
+        original_outcome: PromiseOutcome,
+    },
+    Combinator {
+        target: PromiseKey,
+        index: usize,
+        kind: PromiseCombinatorKind,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+enum PromiseCombinatorKind {
+    All,
+    AllSettled,
+    Any,
+    Race,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum PromiseDriver {
+    All {
+        remaining: usize,
+        values: Vec<Option<Value>>,
+    },
+    AllSettled {
+        remaining: usize,
+        results: Vec<Option<PromiseSettledResult>>,
+    },
+    Any {
+        remaining: usize,
+        reasons: Vec<Option<Value>>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+enum PromiseSettledResult {
+    Fulfilled(Value),
+    Rejected(Value),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum MicrotaskJob {
     ResumeAsync {
         continuation: AsyncContinuation,
+        outcome: PromiseOutcome,
+    },
+    PromiseReaction {
+        reaction: PromiseReaction,
         outcome: PromiseOutcome,
     },
 }
@@ -3170,6 +3289,8 @@ impl Runtime {
             state,
             awaiters: Vec::new(),
             dependents: Vec::new(),
+            reactions: Vec::new(),
+            driver: None,
             accounted_bytes: 0,
         };
         promise.accounted_bytes = measure_promise_bytes(&promise);
@@ -3436,12 +3557,40 @@ impl Runtime {
         self.refresh_promise_accounting(promise)
     }
 
+    fn attach_promise_reaction(
+        &mut self,
+        promise: PromiseKey,
+        reaction: PromiseReaction,
+    ) -> JsliteResult<()> {
+        match self.promise_outcome(promise)? {
+            Some(outcome) => self.schedule_promise_reaction(reaction, outcome),
+            None => {
+                self.promises
+                    .get_mut(promise)
+                    .ok_or_else(|| JsliteError::runtime("promise missing"))?
+                    .reactions
+                    .push(reaction);
+                self.refresh_promise_accounting(promise)
+            }
+        }
+    }
+
+    fn schedule_promise_reaction(
+        &mut self,
+        reaction: PromiseReaction,
+        outcome: PromiseOutcome,
+    ) -> JsliteResult<()> {
+        self.microtasks
+            .push_back(MicrotaskJob::PromiseReaction { reaction, outcome });
+        Ok(())
+    }
+
     fn settle_promise_with_outcome(
         &mut self,
         promise: PromiseKey,
         outcome: PromiseOutcome,
     ) -> JsliteResult<()> {
-        let (awaiters, dependents) = {
+        let (awaiters, dependents, reactions) = {
             let promise_ref = self
                 .promises
                 .get_mut(promise)
@@ -3453,9 +3602,11 @@ impl Runtime {
                 PromiseOutcome::Fulfilled(value) => PromiseState::Fulfilled(value.clone()),
                 PromiseOutcome::Rejected(rejection) => PromiseState::Rejected(rejection.clone()),
             };
+            promise_ref.driver = None;
             (
                 std::mem::take(&mut promise_ref.awaiters),
                 std::mem::take(&mut promise_ref.dependents),
+                std::mem::take(&mut promise_ref.reactions),
             )
         };
         self.refresh_promise_accounting(promise)?;
@@ -3467,6 +3618,9 @@ impl Runtime {
         }
         for dependent in dependents {
             self.resolve_promise_with_outcome(dependent, outcome.clone())?;
+        }
+        for reaction in reactions {
+            self.schedule_promise_reaction(reaction, outcome.clone())?;
         }
         Ok(())
     }
@@ -3531,17 +3685,371 @@ impl Runtime {
         Ok(())
     }
 
+    fn promise_reaction_target(&self, reaction: &PromiseReaction) -> PromiseKey {
+        match reaction {
+            PromiseReaction::Then { target, .. }
+            | PromiseReaction::Finally { target, .. }
+            | PromiseReaction::FinallyPassThrough { target, .. }
+            | PromiseReaction::Combinator { target, .. } => *target,
+        }
+    }
+
+    fn runtime_error_to_promise_rejection(
+        &mut self,
+        error: JsliteError,
+    ) -> JsliteResult<PromiseRejection> {
+        match error {
+            JsliteError::Message {
+                kind: DiagnosticKind::Runtime,
+                message,
+                span,
+                traceback,
+            } => Ok(PromiseRejection {
+                value: self.value_from_runtime_message(&message)?,
+                span,
+                traceback: if traceback.is_empty() {
+                    self.traceback_snapshots()
+                } else {
+                    traceback
+                        .into_iter()
+                        .map(|frame| TraceFrameSnapshot {
+                            function_name: frame.function_name,
+                            span: frame.span,
+                        })
+                        .collect()
+                },
+            }),
+            other => Err(other),
+        }
+    }
+
+    fn reject_promise_from_error(
+        &mut self,
+        target: PromiseKey,
+        error: JsliteError,
+    ) -> JsliteResult<()> {
+        let rejection = self.runtime_error_to_promise_rejection(error)?;
+        self.reject_promise(target, rejection)
+    }
+
+    fn invoke_promise_handler(
+        &mut self,
+        handler: Value,
+        args: &[Value],
+        target: PromiseKey,
+    ) -> JsliteResult<()> {
+        match handler {
+            Value::Closure(closure) => {
+                let closure = self
+                    .closures
+                    .get(closure)
+                    .cloned()
+                    .ok_or_else(|| JsliteError::runtime("closure not found"))?;
+                let env = self.new_env(Some(closure.env))?;
+                let (is_async, function_id) = self
+                    .program
+                    .functions
+                    .get(closure.function_id)
+                    .map(|function| (function.is_async, closure.function_id))
+                    .ok_or_else(|| JsliteError::runtime("function not found"))?;
+                if is_async {
+                    let bridge = self.insert_promise(PromiseState::Pending)?;
+                    self.attach_dependent(bridge, target)?;
+                    self.push_frame(function_id, env, args, Value::Undefined, Some(bridge))?;
+                } else {
+                    self.push_frame(function_id, env, args, Value::Undefined, Some(target))?;
+                }
+                Ok(())
+            }
+            Value::BuiltinFunction(function) => {
+                let value = self.call_builtin(function, Value::Undefined, args)?;
+                self.resolve_promise(target, value)
+            }
+            Value::HostFunction(capability) => {
+                let outstanding =
+                    self.pending_host_calls.len() + usize::from(self.suspended_host_call.is_some());
+                if outstanding >= self.limits.max_outstanding_host_calls {
+                    return Err(limit_error("outstanding host-call limit exhausted"));
+                }
+                let args = args
+                    .iter()
+                    .cloned()
+                    .map(|value| self.value_to_structured(value))
+                    .collect::<JsliteResult<Vec<_>>>()?;
+                let promise = self.insert_promise(PromiseState::Pending)?;
+                self.attach_dependent(promise, target)?;
+                self.pending_host_calls.push_back(PendingHostCall {
+                    capability,
+                    args,
+                    promise,
+                    resume_behavior: ResumeBehavior::Value,
+                    traceback: self.traceback_snapshots(),
+                });
+                Ok(())
+            }
+            _ => Err(JsliteError::runtime("value is not callable")),
+        }
+    }
+
+    fn make_promise_all_settled_result(
+        &mut self,
+        result: PromiseSettledResult,
+    ) -> JsliteResult<Value> {
+        let properties = match result {
+            PromiseSettledResult::Fulfilled(value) => IndexMap::from([
+                ("status".to_string(), Value::String("fulfilled".to_string())),
+                ("value".to_string(), value),
+            ]),
+            PromiseSettledResult::Rejected(reason) => IndexMap::from([
+                ("status".to_string(), Value::String("rejected".to_string())),
+                ("reason".to_string(), reason),
+            ]),
+        };
+        Ok(Value::Object(
+            self.insert_object(properties, ObjectKind::Plain)?,
+        ))
+    }
+
+    fn make_aggregate_error(&mut self, reasons: Vec<Value>) -> JsliteResult<Value> {
+        let error = self.make_error_object(
+            "AggregateError",
+            &[Value::String("All promises were rejected".to_string())],
+            None,
+            None,
+        )?;
+        let errors = Value::Array(self.insert_array(reasons, IndexMap::new())?);
+        self.set_property(error.clone(), Value::String("errors".to_string()), errors)?;
+        Ok(error)
+    }
+
+    fn activate_promise_combinator(
+        &mut self,
+        target: PromiseKey,
+        index: usize,
+        kind: PromiseCombinatorKind,
+        outcome: PromiseOutcome,
+    ) -> JsliteResult<()> {
+        if self.promise_outcome(target)?.is_some() {
+            return Ok(());
+        }
+        match kind {
+            PromiseCombinatorKind::Race => self.resolve_promise_with_outcome(target, outcome),
+            PromiseCombinatorKind::All => {
+                let mut resolved_values = None;
+                let mut rejection = None;
+                {
+                    let promise = self
+                        .promises
+                        .get_mut(target)
+                        .ok_or_else(|| JsliteError::runtime("promise missing"))?;
+                    let PromiseState::Pending = promise.state else {
+                        return Ok(());
+                    };
+                    let PromiseDriver::All { remaining, values } = promise
+                        .driver
+                        .as_mut()
+                        .ok_or_else(|| JsliteError::runtime("promise combinator state missing"))?
+                    else {
+                        return Err(JsliteError::runtime("promise combinator kind mismatch"));
+                    };
+                    match outcome {
+                        PromiseOutcome::Fulfilled(value) => {
+                            values[index] = Some(value);
+                            *remaining = remaining.saturating_sub(1);
+                            if *remaining == 0 {
+                                resolved_values = Some(
+                                    values
+                                        .iter()
+                                        .map(|value| value.clone().unwrap_or(Value::Undefined))
+                                        .collect::<Vec<_>>(),
+                                );
+                            }
+                        }
+                        PromiseOutcome::Rejected(reason) => rejection = Some(reason),
+                    }
+                }
+                self.refresh_promise_accounting(target)?;
+                if let Some(rejection) = rejection {
+                    self.reject_promise(target, rejection)?;
+                } else if let Some(values) = resolved_values {
+                    let array = Value::Array(self.insert_array(values, IndexMap::new())?);
+                    self.resolve_promise(target, array)?;
+                }
+                Ok(())
+            }
+            PromiseCombinatorKind::AllSettled => {
+                let mut settled_results = None;
+                {
+                    let promise = self
+                        .promises
+                        .get_mut(target)
+                        .ok_or_else(|| JsliteError::runtime("promise missing"))?;
+                    let PromiseState::Pending = promise.state else {
+                        return Ok(());
+                    };
+                    let PromiseDriver::AllSettled { remaining, results } = promise
+                        .driver
+                        .as_mut()
+                        .ok_or_else(|| JsliteError::runtime("promise combinator state missing"))?
+                    else {
+                        return Err(JsliteError::runtime("promise combinator kind mismatch"));
+                    };
+                    results[index] = Some(match outcome {
+                        PromiseOutcome::Fulfilled(value) => PromiseSettledResult::Fulfilled(value),
+                        PromiseOutcome::Rejected(reason) => {
+                            PromiseSettledResult::Rejected(reason.value)
+                        }
+                    });
+                    *remaining = remaining.saturating_sub(1);
+                    if *remaining == 0 {
+                        settled_results = Some(
+                            results
+                                .iter()
+                                .map(|result| {
+                                    result.clone().unwrap_or(PromiseSettledResult::Fulfilled(
+                                        Value::Undefined,
+                                    ))
+                                })
+                                .collect::<Vec<_>>(),
+                        );
+                    }
+                }
+                self.refresh_promise_accounting(target)?;
+                if let Some(results) = settled_results {
+                    let mut values = Vec::with_capacity(results.len());
+                    for result in results {
+                        values.push(self.make_promise_all_settled_result(result)?);
+                    }
+                    let array = Value::Array(self.insert_array(values, IndexMap::new())?);
+                    self.resolve_promise(target, array)?;
+                }
+                Ok(())
+            }
+            PromiseCombinatorKind::Any => {
+                let mut rejection_values = None;
+                let mut fulfillment = None;
+                {
+                    let promise = self
+                        .promises
+                        .get_mut(target)
+                        .ok_or_else(|| JsliteError::runtime("promise missing"))?;
+                    let PromiseState::Pending = promise.state else {
+                        return Ok(());
+                    };
+                    let PromiseDriver::Any { remaining, reasons } = promise
+                        .driver
+                        .as_mut()
+                        .ok_or_else(|| JsliteError::runtime("promise combinator state missing"))?
+                    else {
+                        return Err(JsliteError::runtime("promise combinator kind mismatch"));
+                    };
+                    match outcome {
+                        PromiseOutcome::Fulfilled(value) => fulfillment = Some(value),
+                        PromiseOutcome::Rejected(reason) => {
+                            reasons[index] = Some(reason.value);
+                            *remaining = remaining.saturating_sub(1);
+                            if *remaining == 0 {
+                                rejection_values = Some(
+                                    reasons
+                                        .iter()
+                                        .map(|value| value.clone().unwrap_or(Value::Undefined))
+                                        .collect::<Vec<_>>(),
+                                );
+                            }
+                        }
+                    }
+                }
+                self.refresh_promise_accounting(target)?;
+                if let Some(value) = fulfillment {
+                    self.resolve_promise(target, value)?;
+                } else if let Some(reasons) = rejection_values {
+                    let rejection = PromiseRejection {
+                        value: self.make_aggregate_error(reasons)?,
+                        span: None,
+                        traceback: self.traceback_snapshots(),
+                    };
+                    self.reject_promise(target, rejection)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn activate_promise_reaction(
+        &mut self,
+        reaction: PromiseReaction,
+        outcome: PromiseOutcome,
+    ) -> JsliteResult<()> {
+        let target = self.promise_reaction_target(&reaction);
+        let result = (|| match reaction {
+            PromiseReaction::Then {
+                target,
+                on_fulfilled,
+                on_rejected,
+            } => match outcome {
+                PromiseOutcome::Fulfilled(value) => {
+                    if let Some(handler) = on_fulfilled {
+                        self.invoke_promise_handler(handler, &[value], target)
+                    } else {
+                        self.resolve_promise(target, value)
+                    }
+                }
+                PromiseOutcome::Rejected(rejection) => {
+                    if let Some(handler) = on_rejected {
+                        self.invoke_promise_handler(handler, &[rejection.value], target)
+                    } else {
+                        self.reject_promise(target, rejection)
+                    }
+                }
+            },
+            PromiseReaction::Finally { target, callback } => {
+                if let Some(callback) = callback {
+                    let bridge = self.insert_promise(PromiseState::Pending)?;
+                    self.attach_promise_reaction(
+                        bridge,
+                        PromiseReaction::FinallyPassThrough {
+                            target,
+                            original_outcome: outcome,
+                        },
+                    )?;
+                    self.invoke_promise_handler(callback, &[], bridge)
+                } else {
+                    self.resolve_promise_with_outcome(target, outcome)
+                }
+            }
+            PromiseReaction::FinallyPassThrough {
+                target,
+                original_outcome,
+            } => match outcome {
+                PromiseOutcome::Fulfilled(_) => {
+                    self.resolve_promise_with_outcome(target, original_outcome)
+                }
+                PromiseOutcome::Rejected(rejection) => self.reject_promise(target, rejection),
+            },
+            PromiseReaction::Combinator {
+                target,
+                index,
+                kind,
+            } => self.activate_promise_combinator(target, index, kind, outcome),
+        })();
+
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => self.reject_promise_from_error(target, error),
+        }
+    }
+
     fn activate_microtask(&mut self, job: MicrotaskJob) -> JsliteResult<()> {
+        if !self.frames.is_empty() {
+            return Err(JsliteError::runtime(
+                "microtask checkpoint ran while frames were still active",
+            ));
+        }
         match job {
             MicrotaskJob::ResumeAsync {
                 continuation,
                 outcome,
             } => {
-                if !self.frames.is_empty() {
-                    return Err(JsliteError::runtime(
-                        "microtask checkpoint ran while frames were still active",
-                    ));
-                }
                 self.frames = continuation.frames;
                 match outcome {
                     PromiseOutcome::Fulfilled(value) => {
@@ -3562,6 +4070,9 @@ impl Runtime {
                     }
                 }
             }
+            MicrotaskJob::PromiseReaction { reaction, outcome } => {
+                self.activate_promise_reaction(reaction, outcome)?;
+            }
         }
         Ok(())
     }
@@ -3572,7 +4083,9 @@ impl Runtime {
             || !self.microtasks.is_empty()
             || self.promises.values().any(|promise| {
                 matches!(promise.state, PromiseState::Pending)
-                    && (!promise.awaiters.is_empty() || !promise.dependents.is_empty())
+                    && (!promise.awaiters.is_empty()
+                        || !promise.dependents.is_empty()
+                        || !promise.reactions.is_empty())
             })
     }
 
@@ -4456,6 +4969,51 @@ impl Runtime {
                         }
                     }
                 }
+                MicrotaskJob::PromiseReaction { reaction, outcome } => {
+                    self.mark_promise(
+                        self.promise_reaction_target(reaction),
+                        &mut marks,
+                        &mut worklist,
+                    );
+                    match reaction {
+                        PromiseReaction::Then {
+                            on_fulfilled,
+                            on_rejected,
+                            ..
+                        } => {
+                            if let Some(handler) = on_fulfilled {
+                                self.mark_value(handler, &mut marks, &mut worklist);
+                            }
+                            if let Some(handler) = on_rejected {
+                                self.mark_value(handler, &mut marks, &mut worklist);
+                            }
+                        }
+                        PromiseReaction::Finally { callback, .. } => {
+                            if let Some(callback) = callback {
+                                self.mark_value(callback, &mut marks, &mut worklist);
+                            }
+                        }
+                        PromiseReaction::FinallyPassThrough {
+                            original_outcome, ..
+                        } => match original_outcome {
+                            PromiseOutcome::Fulfilled(value) => {
+                                self.mark_value(value, &mut marks, &mut worklist);
+                            }
+                            PromiseOutcome::Rejected(rejection) => {
+                                self.mark_value(&rejection.value, &mut marks, &mut worklist);
+                            }
+                        },
+                        PromiseReaction::Combinator { .. } => {}
+                    }
+                    match outcome {
+                        PromiseOutcome::Fulfilled(value) => {
+                            self.mark_value(value, &mut marks, &mut worklist);
+                        }
+                        PromiseOutcome::Rejected(rejection) => {
+                            self.mark_value(&rejection.value, &mut marks, &mut worklist);
+                        }
+                    }
+                }
             }
         }
         for request in &self.pending_host_calls {
@@ -4594,6 +5152,67 @@ impl Runtime {
                 }
                 for dependent in &promise.dependents {
                     self.mark_promise(*dependent, &mut marks, &mut worklist);
+                }
+                for reaction in &promise.reactions {
+                    self.mark_promise(
+                        self.promise_reaction_target(reaction),
+                        &mut marks,
+                        &mut worklist,
+                    );
+                    match reaction {
+                        PromiseReaction::Then {
+                            on_fulfilled,
+                            on_rejected,
+                            ..
+                        } => {
+                            if let Some(handler) = on_fulfilled {
+                                self.mark_value(handler, &mut marks, &mut worklist);
+                            }
+                            if let Some(handler) = on_rejected {
+                                self.mark_value(handler, &mut marks, &mut worklist);
+                            }
+                        }
+                        PromiseReaction::Finally { callback, .. } => {
+                            if let Some(callback) = callback {
+                                self.mark_value(callback, &mut marks, &mut worklist);
+                            }
+                        }
+                        PromiseReaction::FinallyPassThrough {
+                            original_outcome, ..
+                        } => match original_outcome {
+                            PromiseOutcome::Fulfilled(value) => {
+                                self.mark_value(value, &mut marks, &mut worklist);
+                            }
+                            PromiseOutcome::Rejected(rejection) => {
+                                self.mark_value(&rejection.value, &mut marks, &mut worklist);
+                            }
+                        },
+                        PromiseReaction::Combinator { .. } => {}
+                    }
+                }
+                if let Some(driver) = &promise.driver {
+                    match driver {
+                        PromiseDriver::All { values, .. } => {
+                            for value in values.iter().flatten() {
+                                self.mark_value(value, &mut marks, &mut worklist);
+                            }
+                        }
+                        PromiseDriver::AllSettled { results, .. } => {
+                            for result in results.iter().flatten() {
+                                match result {
+                                    PromiseSettledResult::Fulfilled(value)
+                                    | PromiseSettledResult::Rejected(value) => {
+                                        self.mark_value(value, &mut marks, &mut worklist);
+                                    }
+                                }
+                            }
+                        }
+                        PromiseDriver::Any { reasons, .. } => {
+                            for value in reasons.iter().flatten() {
+                                self.mark_value(value, &mut marks, &mut worklist);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -5125,6 +5744,13 @@ impl Runtime {
                     }),
                 )?))
             }
+            BuiltinFunction::PromiseThen => self.call_promise_then(this_value, args),
+            BuiltinFunction::PromiseCatch => self.call_promise_catch(this_value, args),
+            BuiltinFunction::PromiseFinally => self.call_promise_finally(this_value, args),
+            BuiltinFunction::PromiseAll => self.call_promise_all(args),
+            BuiltinFunction::PromiseRace => self.call_promise_race(args),
+            BuiltinFunction::PromiseAny => self.call_promise_any(args),
+            BuiltinFunction::PromiseAllSettled => self.call_promise_all_settled(args),
             BuiltinFunction::ErrorCtor => self.make_error_object("Error", args, None, None),
             BuiltinFunction::TypeErrorCtor => self.make_error_object("TypeError", args, None, None),
             BuiltinFunction::ReferenceErrorCtor => {
@@ -5949,6 +6575,185 @@ impl Runtime {
         Ok(Value::Object(result))
     }
 
+    fn promise_receiver(&self, value: Value, method: &str) -> JsliteResult<PromiseKey> {
+        match value {
+            Value::Promise(key) => Ok(key),
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: Promise.prototype.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
+    fn collect_iterable_values(&mut self, iterable: Value) -> JsliteResult<Vec<Value>> {
+        let iterator = self.create_iterator(iterable)?;
+        let mut values = Vec::new();
+        loop {
+            let (value, done) = self.iterator_next(iterator.clone())?;
+            if done {
+                break;
+            }
+            values.push(value);
+        }
+        Ok(values)
+    }
+
+    fn call_promise_then(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let promise = self.promise_receiver(this_value, "then")?;
+        let target = self.insert_promise(PromiseState::Pending)?;
+        let on_fulfilled = args.first().cloned().filter(is_callable);
+        let on_rejected = args.get(1).cloned().filter(is_callable);
+        self.attach_promise_reaction(
+            promise,
+            PromiseReaction::Then {
+                target,
+                on_fulfilled,
+                on_rejected,
+            },
+        )?;
+        Ok(Value::Promise(target))
+    }
+
+    fn call_promise_catch(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let promise = self.promise_receiver(this_value, "catch")?;
+        let target = self.insert_promise(PromiseState::Pending)?;
+        let on_rejected = args.first().cloned().filter(is_callable);
+        self.attach_promise_reaction(
+            promise,
+            PromiseReaction::Then {
+                target,
+                on_fulfilled: None,
+                on_rejected,
+            },
+        )?;
+        Ok(Value::Promise(target))
+    }
+
+    fn call_promise_finally(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let promise = self.promise_receiver(this_value, "finally")?;
+        let target = self.insert_promise(PromiseState::Pending)?;
+        let callback = args.first().cloned().filter(is_callable);
+        self.attach_promise_reaction(promise, PromiseReaction::Finally { target, callback })?;
+        Ok(Value::Promise(target))
+    }
+
+    fn call_promise_all(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let target = self.insert_promise(PromiseState::Pending)?;
+        let values =
+            self.collect_iterable_values(args.first().cloned().unwrap_or(Value::Undefined))?;
+        if values.is_empty() {
+            let array = Value::Array(self.insert_array(Vec::new(), IndexMap::new())?);
+            self.resolve_promise(target, array)?;
+            return Ok(Value::Promise(target));
+        }
+        self.promises
+            .get_mut(target)
+            .ok_or_else(|| JsliteError::runtime("promise missing"))?
+            .driver = Some(PromiseDriver::All {
+            remaining: values.len(),
+            values: vec![None; values.len()],
+        });
+        self.refresh_promise_accounting(target)?;
+        for (index, value) in values.into_iter().enumerate() {
+            let promise = self.coerce_to_promise(value)?;
+            self.attach_promise_reaction(
+                promise,
+                PromiseReaction::Combinator {
+                    target,
+                    index,
+                    kind: PromiseCombinatorKind::All,
+                },
+            )?;
+        }
+        Ok(Value::Promise(target))
+    }
+
+    fn call_promise_race(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let target = self.insert_promise(PromiseState::Pending)?;
+        for value in
+            self.collect_iterable_values(args.first().cloned().unwrap_or(Value::Undefined))?
+        {
+            let promise = self.coerce_to_promise(value)?;
+            self.attach_promise_reaction(
+                promise,
+                PromiseReaction::Combinator {
+                    target,
+                    index: 0,
+                    kind: PromiseCombinatorKind::Race,
+                },
+            )?;
+        }
+        Ok(Value::Promise(target))
+    }
+
+    fn call_promise_any(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let target = self.insert_promise(PromiseState::Pending)?;
+        let values =
+            self.collect_iterable_values(args.first().cloned().unwrap_or(Value::Undefined))?;
+        if values.is_empty() {
+            let error = self.make_aggregate_error(Vec::new())?;
+            self.reject_promise(
+                target,
+                PromiseRejection {
+                    value: error,
+                    span: None,
+                    traceback: self.traceback_snapshots(),
+                },
+            )?;
+            return Ok(Value::Promise(target));
+        }
+        self.promises
+            .get_mut(target)
+            .ok_or_else(|| JsliteError::runtime("promise missing"))?
+            .driver = Some(PromiseDriver::Any {
+            remaining: values.len(),
+            reasons: vec![None; values.len()],
+        });
+        self.refresh_promise_accounting(target)?;
+        for (index, value) in values.into_iter().enumerate() {
+            let promise = self.coerce_to_promise(value)?;
+            self.attach_promise_reaction(
+                promise,
+                PromiseReaction::Combinator {
+                    target,
+                    index,
+                    kind: PromiseCombinatorKind::Any,
+                },
+            )?;
+        }
+        Ok(Value::Promise(target))
+    }
+
+    fn call_promise_all_settled(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let target = self.insert_promise(PromiseState::Pending)?;
+        let values =
+            self.collect_iterable_values(args.first().cloned().unwrap_or(Value::Undefined))?;
+        if values.is_empty() {
+            let array = Value::Array(self.insert_array(Vec::new(), IndexMap::new())?);
+            self.resolve_promise(target, array)?;
+            return Ok(Value::Promise(target));
+        }
+        self.promises
+            .get_mut(target)
+            .ok_or_else(|| JsliteError::runtime("promise missing"))?
+            .driver = Some(PromiseDriver::AllSettled {
+            remaining: values.len(),
+            results: vec![None; values.len()],
+        });
+        self.refresh_promise_accounting(target)?;
+        for (index, value) in values.into_iter().enumerate() {
+            let promise = self.coerce_to_promise(value)?;
+            self.attach_promise_reaction(
+                promise,
+                PromiseReaction::Combinator {
+                    target,
+                    index,
+                    kind: PromiseCombinatorKind::AllSettled,
+                },
+            )?;
+        }
+        Ok(Value::Promise(target))
+    }
+
     fn map_get(&self, map: MapKey, key: &Value) -> JsliteResult<Option<MapEntry>> {
         let normalized = canonicalize_collection_key(key.clone());
         Ok(self
@@ -6544,7 +7349,12 @@ impl Runtime {
                 Ok(Value::BuiltinFunction(BuiltinFunction::IteratorNext))
             }
             Value::Iterator(_) => Ok(Value::Undefined),
-            Value::Promise(_) => Ok(Value::Undefined),
+            Value::Promise(_) => match key.as_str() {
+                "then" => Ok(Value::BuiltinFunction(BuiltinFunction::PromiseThen)),
+                "catch" => Ok(Value::BuiltinFunction(BuiltinFunction::PromiseCatch)),
+                "finally" => Ok(Value::BuiltinFunction(BuiltinFunction::PromiseFinally)),
+                _ => Ok(Value::Undefined),
+            },
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "isArray" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray))
             }
@@ -6560,6 +7370,18 @@ impl Runtime {
             }
             Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "reject" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::PromiseReject))
+            }
+            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "all" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseAll))
+            }
+            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "race" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseRace))
+            }
+            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "any" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseAny))
+            }
+            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "allSettled" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseAllSettled))
             }
             Value::String(value) => match key.as_str() {
                 "length" => Ok(Value::Number(value.chars().count() as f64)),
@@ -7149,10 +7971,60 @@ fn measure_promise_bytes(promise: &PromiseObject) -> usize {
                     .sum::<usize>()
         }
     };
+    let reaction_bytes = promise
+        .reactions
+        .iter()
+        .map(|reaction| match reaction {
+            PromiseReaction::Then {
+                on_fulfilled,
+                on_rejected,
+                ..
+            } => on_fulfilled
+                .iter()
+                .chain(on_rejected.iter())
+                .map(extra_value_bytes)
+                .sum::<usize>(),
+            PromiseReaction::Finally { callback, .. } => {
+                callback.iter().map(extra_value_bytes).sum::<usize>()
+            }
+            PromiseReaction::FinallyPassThrough {
+                original_outcome, ..
+            } => match original_outcome {
+                PromiseOutcome::Fulfilled(value) => extra_value_bytes(value),
+                PromiseOutcome::Rejected(rejection) => extra_value_bytes(&rejection.value),
+            },
+            PromiseReaction::Combinator { .. } => 0,
+        })
+        .sum::<usize>();
+    let driver_bytes = match &promise.driver {
+        Some(PromiseDriver::All { values, .. }) => values
+            .iter()
+            .flatten()
+            .map(extra_value_bytes)
+            .sum::<usize>(),
+        Some(PromiseDriver::AllSettled { results, .. }) => results
+            .iter()
+            .flatten()
+            .map(|result| match result {
+                PromiseSettledResult::Fulfilled(value) | PromiseSettledResult::Rejected(value) => {
+                    extra_value_bytes(value)
+                }
+            })
+            .sum::<usize>(),
+        Some(PromiseDriver::Any { reasons, .. }) => reasons
+            .iter()
+            .flatten()
+            .map(extra_value_bytes)
+            .sum::<usize>(),
+        None => 0,
+    };
     std::mem::size_of::<PromiseObject>()
         + promise.awaiters.len() * std::mem::size_of::<AsyncContinuation>()
         + promise.dependents.len() * std::mem::size_of::<PromiseKey>()
+        + promise.reactions.len() * std::mem::size_of::<PromiseReaction>()
         + state_bytes
+        + reaction_bytes
+        + driver_bytes
 }
 
 fn pop_many(stack: &mut Vec<Value>, count: usize) -> JsliteResult<Vec<Value>> {
@@ -7205,6 +8077,13 @@ fn is_truthy(value: &Value) -> bool {
         | Value::BuiltinFunction(_)
         | Value::HostFunction(_) => true,
     }
+}
+
+fn is_callable(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_)
+    )
 }
 
 fn strict_equal(left: &Value, right: &Value) -> bool {
@@ -7669,6 +8548,81 @@ mod tests {
         assert!(!runtime.sets.contains_key(garbage_set));
         assert!(!runtime.iterators.contains_key(garbage_map_iterator));
         assert!(!runtime.iterators.contains_key(garbage_set_iterator));
+    }
+
+    #[test]
+    fn promise_reactions_keep_target_promises_alive_for_gc() {
+        let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
+            .expect("lowering should succeed");
+        let mut runtime = Runtime::new(program, ExecutionOptions::default()).expect("runtime init");
+
+        let kept_source = runtime
+            .insert_promise(PromiseState::Pending)
+            .expect("source promise should allocate");
+        let kept_target = runtime
+            .insert_promise(PromiseState::Pending)
+            .expect("target promise should allocate");
+        runtime
+            .attach_promise_reaction(
+                kept_source,
+                PromiseReaction::Then {
+                    target: kept_target,
+                    on_fulfilled: None,
+                    on_rejected: None,
+                },
+            )
+            .expect("reaction should attach");
+
+        let frame_env = runtime
+            .new_env(Some(runtime.globals))
+            .expect("frame env should allocate");
+        let source_cell = runtime
+            .insert_cell(Value::Promise(kept_source), true, true)
+            .expect("promise cell should allocate");
+        runtime
+            .envs
+            .get_mut(frame_env)
+            .expect("frame env should exist")
+            .bindings
+            .insert("\0kept_promise".to_string(), source_cell);
+        runtime
+            .refresh_env_accounting(frame_env)
+            .expect("frame env accounting should refresh");
+        runtime.frames.push(Frame {
+            function_id: 0,
+            ip: 0,
+            env: frame_env,
+            scope_stack: Vec::new(),
+            stack: Vec::new(),
+            handlers: Vec::new(),
+            pending_exception: None,
+            pending_completions: Vec::new(),
+            active_finally: Vec::new(),
+            async_promise: None,
+        });
+
+        let garbage_source = runtime
+            .insert_promise(PromiseState::Pending)
+            .expect("garbage promise should allocate");
+        let garbage_target = runtime
+            .insert_promise(PromiseState::Pending)
+            .expect("garbage target should allocate");
+        runtime
+            .attach_promise_reaction(
+                garbage_source,
+                PromiseReaction::Then {
+                    target: garbage_target,
+                    on_fulfilled: None,
+                    on_rejected: None,
+                },
+            )
+            .expect("garbage reaction should attach");
+
+        runtime.collect_garbage().expect("gc should succeed");
+        assert!(runtime.promises.contains_key(kept_source));
+        assert!(runtime.promises.contains_key(kept_target));
+        assert!(!runtime.promises.contains_key(garbage_source));
+        assert!(!runtime.promises.contains_key(garbage_target));
     }
 
     #[test]

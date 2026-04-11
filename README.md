@@ -312,7 +312,7 @@ JavaScript.
 ### Still Deferred Within The Async Surface
 
 - `new Promise(...)`
-- promise instance methods such as `then`, `catch`, and `finally`
+- full Promise constructor and general thenable-adoption edge cases
 
 ### Explicitly Out of Scope for v1
 
@@ -378,8 +378,14 @@ Currently implemented built-ins:
 Current Promise support is intentionally narrow:
 
 - async functions return internal guest promises
-- `Promise.resolve(...)` and `Promise.reject(...)` are supported
-- `new Promise(...)` and instance methods remain unsupported and fail closed
+- `Promise.resolve(...)`, `Promise.reject(...)`, `Promise.all(...)`,
+  `Promise.race(...)`, `Promise.any(...)`, and `Promise.allSettled(...)` are
+  supported
+- promise instance methods `then(...)`, `catch(...)`, and `finally(...)` are
+  supported
+- `Promise.any(...)` rejects with a guest-visible `AggregateError` carrying an
+  `errors` array when every input rejects
+- `new Promise(...)` remains unsupported and fails closed
 
 Current built-in helper support is intentionally conservative:
 
@@ -391,8 +397,8 @@ Current built-in helper support is intentionally conservative:
   currently support plain objects and arrays
 - `Math.pow`, `Math.sqrt`, `Math.trunc`, and `Math.sign` are supported
 - callback-driven array helpers, descriptor/prototype helpers, regex-driven
-  string helpers, Promise instance/combinator helpers, and nondeterministic
-  helpers such as `Math.random` remain unsupported
+  string helpers, and nondeterministic helpers such as `Math.random` remain
+  unsupported
 
 Current function-call support is intentionally narrow:
 

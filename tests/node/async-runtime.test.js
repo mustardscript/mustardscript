@@ -115,6 +115,89 @@ test('run enforces maxOutstandingHostCalls for guest async fan-out', async () =>
   );
 });
 
+test('run supports Promise instance methods and combinators for the documented surface', async () => {
+  const runtime = new Jslite(`
+    async function main() {
+      let events = [];
+      const chained = await Promise.resolve(3)
+        .then((value) => {
+          events[events.length] = 'then:' + value;
+          return value + 4;
+        })
+        .finally(() => {
+          events[events.length] = 'finally';
+        });
+      const recovered = await Promise.reject('boom').catch((reason) => {
+        events[events.length] = 'catch:' + reason;
+        return reason + ':handled';
+      });
+      const all = await Promise.all([1, Promise.resolve(2), chained]);
+      const race = await Promise.race([Promise.resolve('fast'), Promise.resolve('slow')]);
+      const any = await Promise.any([Promise.reject('x'), Promise.resolve('winner')]);
+      const settled = await Promise.allSettled([Promise.resolve(1), Promise.reject('nope')]);
+      return [chained, recovered, all, race, any, settled, events];
+    }
+    main();
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, [
+    7,
+    'boom:handled',
+    [1, 2, 7],
+    'fast',
+    'winner',
+    [
+      { status: 'fulfilled', value: 1 },
+      { status: 'rejected', reason: 'nope' },
+    ],
+    ['then:3', 'finally', 'catch:boom'],
+  ]);
+});
+
+test('run rejects Promise.any with AggregateError details when every input rejects', async () => {
+  const runtime = new Jslite(`
+    async function main() {
+      try {
+        await Promise.any([Promise.reject('alpha'), Promise.reject('beta')]);
+        return 'unreachable';
+      } catch (error) {
+        return [error.name, error.message, error.errors];
+      }
+    }
+    main();
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, [
+    'AggregateError',
+    'All promises were rejected',
+    ['alpha', 'beta'],
+  ]);
+});
+
+test('start and resume drive host capability suspension from Promise callbacks', () => {
+  const runtime = new Jslite(`
+    async function main() {
+      return await Promise.resolve(7).then(fetch_data);
+    }
+    main();
+  `);
+
+  const progress = runtime.start({
+    capabilities: {
+      fetch_data() {
+        throw new Error('start should suspend before invoking JS handlers');
+      },
+    },
+  });
+
+  assert.ok(progress instanceof Progress);
+  assert.equal(progress.capability, 'fetch_data');
+  assert.deepEqual(progress.args, [7]);
+  assert.equal(progress.resume(21), 21);
+});
+
 test('matches Node for supported async microtask ordering', async () => {
   await assertDifferential(`
     let events = [];
@@ -129,6 +212,32 @@ test('matches Node for supported async microtask ordering', async () => {
       const second = tick('b', 2);
       events[events.length] = 'sync';
       return [await first, await second, events];
+    }
+    main();
+  `);
+});
+
+test('matches Node for supported Promise instance methods and combinators', async () => {
+  await assertDifferential(`
+    async function main() {
+      let events = [];
+      const chained = await Promise.resolve(3)
+        .then((value) => {
+          events[events.length] = 'then:' + value;
+          return value + 4;
+        })
+        .finally(() => {
+          events[events.length] = 'finally';
+        });
+      const recovered = await Promise.reject('boom').catch((reason) => {
+        events[events.length] = 'catch:' + reason;
+        return reason + ':handled';
+      });
+      const all = await Promise.all([1, Promise.resolve(2), chained]);
+      const race = await Promise.race([Promise.resolve('fast'), Promise.resolve('slow')]);
+      const any = await Promise.any([Promise.reject('x'), Promise.resolve('winner')]);
+      const settled = await Promise.allSettled([Promise.resolve(1), Promise.reject('nope')]);
+      return [chained, recovered, all, race, any, settled, events];
     }
     main();
   `);
