@@ -34,6 +34,9 @@ Use sidecar mode with host-managed OS controls for adversarial inputs.
 - Snapshot loading
 - Sidecar protocol decoding
 
+The maintained hostile-input suites, fuzz entry points, and denial-of-service
+audit notes live in `docs/HARDENING.md`.
+
 ## Security Issue Criteria
 
 The following are security issues:
