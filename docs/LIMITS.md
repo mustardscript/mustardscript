@@ -36,8 +36,13 @@ The Node wrapper exposes these fields through `run()` and `start()` as:
 
 - Instruction budgeting is implemented and enforced on every executed
   instruction.
-- Heap byte limits, allocation-count limits, call-depth limits, and outstanding
-  host-call limits are defined in the API but are not enforced yet.
+- Heap byte limits and allocation-count limits are implemented and enforced with
+  conservative accounting across guest heap allocations and heap-backed
+  mutations.
+- Snapshot load recomputes heap accounting before resuming so serialized inputs
+  cannot bypass the configured heap and allocation budgets.
+- Call-depth limits and outstanding host-call limits are still defined in the
+  API but are not enforced yet.
 - Explicit cancellation is not implemented yet.
 
 ## Default Policy

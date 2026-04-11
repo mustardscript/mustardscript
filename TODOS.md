@@ -197,7 +197,7 @@ Exit criteria:
 - [x] Decide whether property deletion is supported in v1 and document it
 - [x] Implement array behavior for supported cases
 - [x] Implement `Object`, `Array`, `Math`, and `JSON`
-- [ ] Add heap accounting hooks
+- [x] Add heap accounting hooks
 - [ ] Implement a non-moving mark-sweep collector
 - [ ] Define and test the GC root set
 - [x] Add object, array, and built-in behavior tests
@@ -207,7 +207,7 @@ Exit criteria:
 
 - [x] Plain-object and array programs run correctly
 - [x] Conservative built-ins behave correctly for supported cases
-- [ ] Heap limits and allocation accounting are wired into the runtime
+- [x] Heap limits and allocation accounting are wired into the runtime
 - [ ] GC collects unreachable cyclic data
 - [ ] Heap, property, and GC tests pass
 

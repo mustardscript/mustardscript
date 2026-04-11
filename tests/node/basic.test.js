@@ -353,6 +353,36 @@ test('run surfaces limit failures as typed errors', async () => {
   );
 });
 
+test('run surfaces heap and allocation limit failures as typed errors', async () => {
+  const j = new Jslite('1;');
+
+  await assert.rejects(
+    j.run({
+      limits: {
+        heapLimitBytes: 1,
+      },
+    }),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteLimitError' &&
+      error.kind === 'Limit' &&
+      /heap limit exceeded/.test(error.message),
+  );
+
+  await assert.rejects(
+    j.run({
+      limits: {
+        allocationBudget: 1,
+      },
+    }),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteLimitError' &&
+      error.kind === 'Limit' &&
+      /allocation budget exhausted/.test(error.message),
+  );
+});
+
 test('start returns resumable progress objects', () => {
   const j = new Jslite(`
     const response = fetch_data(4);

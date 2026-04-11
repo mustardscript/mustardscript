@@ -274,8 +274,10 @@ pub fn load_snapshot(bytes: &[u8]) -> JsliteResult<ExecutionSnapshot> {
             traceback: Vec::new(),
         });
     }
-    validate_snapshot(&decoded.snapshot)?;
-    Ok(decoded.snapshot)
+    let mut snapshot = decoded.snapshot;
+    validate_snapshot(&snapshot)?;
+    snapshot.runtime.recompute_accounting_after_load()?;
+    Ok(snapshot)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2215,6 +2217,8 @@ enum BuiltinFunction {
 struct Env {
     parent: Option<EnvKey>,
     bindings: IndexMap<String, CellKey>,
+    #[serde(skip, default)]
+    accounted_bytes: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2222,12 +2226,16 @@ struct Cell {
     value: Value,
     mutable: bool,
     initialized: bool,
+    #[serde(skip, default)]
+    accounted_bytes: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct PlainObject {
     properties: IndexMap<String, Value>,
     kind: ObjectKind,
+    #[serde(skip, default)]
+    accounted_bytes: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2244,12 +2252,16 @@ enum ObjectKind {
 struct ArrayObject {
     elements: Vec<Value>,
     properties: IndexMap<String, Value>,
+    #[serde(skip, default)]
+    accounted_bytes: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Closure {
     function_id: usize,
     env: EnvKey,
+    #[serde(skip, default)]
+    accounted_bytes: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2303,6 +2315,10 @@ struct Runtime {
     closures: SlotMap<ClosureKey, Closure>,
     frames: Vec<Frame>,
     instruction_counter: usize,
+    #[serde(skip, default)]
+    heap_bytes_used: usize,
+    #[serde(skip, default)]
+    allocation_count: usize,
     pending_resume_behavior: ResumeBehavior,
 }
 
@@ -2333,6 +2349,7 @@ impl Runtime {
         let globals = envs.insert(Env {
             parent: None,
             bindings: IndexMap::new(),
+            accounted_bytes: 0,
         });
         let mut runtime = Self {
             program,
@@ -2345,8 +2362,11 @@ impl Runtime {
             closures: SlotMap::with_key(),
             frames: Vec::new(),
             instruction_counter: 0,
+            heap_bytes_used: 0,
+            allocation_count: 0,
             pending_resume_behavior: ResumeBehavior::Value,
         };
+        runtime.account_existing_env(globals)?;
         runtime.install_builtins()?;
         for capability in options.capabilities {
             runtime.define_global(capability.clone(), Value::HostFunction(capability), false)?;
@@ -2359,9 +2379,259 @@ impl Runtime {
     }
 
     fn run_root(&mut self) -> JsliteResult<ExecutionStep> {
-        let root_env = self.new_env(Some(self.globals));
+        let root_env = self.new_env(Some(self.globals))?;
         self.push_frame(self.program.root, root_env, &[])?;
         self.run()
+    }
+
+    fn ensure_heap_capacity(&self, additional_bytes: usize) -> JsliteResult<()> {
+        let next = self
+            .heap_bytes_used
+            .checked_add(additional_bytes)
+            .ok_or_else(|| limit_error("heap limit exceeded"))?;
+        if next > self.limits.heap_limit_bytes {
+            return Err(limit_error("heap limit exceeded"));
+        }
+        Ok(())
+    }
+
+    fn account_new_allocation(&mut self, bytes: usize) -> JsliteResult<()> {
+        let next_allocations = self
+            .allocation_count
+            .checked_add(1)
+            .ok_or_else(|| limit_error("allocation budget exhausted"))?;
+        if next_allocations > self.limits.allocation_budget {
+            return Err(limit_error("allocation budget exhausted"));
+        }
+        self.ensure_heap_capacity(bytes)?;
+        self.allocation_count = next_allocations;
+        self.heap_bytes_used += bytes;
+        Ok(())
+    }
+
+    fn apply_heap_delta(&mut self, old_bytes: usize, new_bytes: usize) -> JsliteResult<()> {
+        if new_bytes >= old_bytes {
+            self.ensure_heap_capacity(new_bytes - old_bytes)?;
+            self.heap_bytes_used += new_bytes - old_bytes;
+        } else {
+            self.heap_bytes_used -= old_bytes - new_bytes;
+        }
+        Ok(())
+    }
+
+    fn insert_env(&mut self, parent: Option<EnvKey>) -> JsliteResult<EnvKey> {
+        let mut env = Env {
+            parent,
+            bindings: IndexMap::new(),
+            accounted_bytes: 0,
+        };
+        env.accounted_bytes = measure_env_bytes(&env);
+        self.account_new_allocation(env.accounted_bytes)?;
+        Ok(self.envs.insert(env))
+    }
+
+    fn insert_cell(
+        &mut self,
+        value: Value,
+        mutable: bool,
+        initialized: bool,
+    ) -> JsliteResult<CellKey> {
+        let mut cell = Cell {
+            value,
+            mutable,
+            initialized,
+            accounted_bytes: 0,
+        };
+        cell.accounted_bytes = measure_cell_bytes(&cell);
+        self.account_new_allocation(cell.accounted_bytes)?;
+        Ok(self.cells.insert(cell))
+    }
+
+    fn insert_object(
+        &mut self,
+        properties: IndexMap<String, Value>,
+        kind: ObjectKind,
+    ) -> JsliteResult<ObjectKey> {
+        let mut object = PlainObject {
+            properties,
+            kind,
+            accounted_bytes: 0,
+        };
+        object.accounted_bytes = measure_object_bytes(&object);
+        self.account_new_allocation(object.accounted_bytes)?;
+        Ok(self.objects.insert(object))
+    }
+
+    fn insert_array(
+        &mut self,
+        elements: Vec<Value>,
+        properties: IndexMap<String, Value>,
+    ) -> JsliteResult<ArrayKey> {
+        let mut array = ArrayObject {
+            elements,
+            properties,
+            accounted_bytes: 0,
+        };
+        array.accounted_bytes = measure_array_bytes(&array);
+        self.account_new_allocation(array.accounted_bytes)?;
+        Ok(self.arrays.insert(array))
+    }
+
+    fn insert_closure(&mut self, function_id: usize, env: EnvKey) -> JsliteResult<ClosureKey> {
+        let mut closure = Closure {
+            function_id,
+            env,
+            accounted_bytes: 0,
+        };
+        closure.accounted_bytes = measure_closure_bytes(&closure);
+        self.account_new_allocation(closure.accounted_bytes)?;
+        Ok(self.closures.insert(closure))
+    }
+
+    fn account_existing_env(&mut self, key: EnvKey) -> JsliteResult<()> {
+        let bytes = {
+            let env = self
+                .envs
+                .get(key)
+                .ok_or_else(|| JsliteError::runtime("environment missing"))?;
+            measure_env_bytes(env)
+        };
+        self.account_new_allocation(bytes)?;
+        self.envs
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("environment missing"))?
+            .accounted_bytes = bytes;
+        Ok(())
+    }
+
+    fn refresh_env_accounting(&mut self, key: EnvKey) -> JsliteResult<()> {
+        let (old_bytes, new_bytes) = {
+            let env = self
+                .envs
+                .get(key)
+                .ok_or_else(|| JsliteError::runtime("environment missing"))?;
+            (env.accounted_bytes, measure_env_bytes(env))
+        };
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.envs
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("environment missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    fn refresh_cell_accounting(&mut self, key: CellKey) -> JsliteResult<()> {
+        let (old_bytes, new_bytes) = {
+            let cell = self
+                .cells
+                .get(key)
+                .ok_or_else(|| JsliteError::runtime("binding cell missing"))?;
+            (cell.accounted_bytes, measure_cell_bytes(cell))
+        };
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.cells
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("binding cell missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    fn refresh_object_accounting(&mut self, key: ObjectKey) -> JsliteResult<()> {
+        let (old_bytes, new_bytes) = {
+            let object = self
+                .objects
+                .get(key)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?;
+            (object.accounted_bytes, measure_object_bytes(object))
+        };
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.objects
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("object missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    fn refresh_array_accounting(&mut self, key: ArrayKey) -> JsliteResult<()> {
+        let (old_bytes, new_bytes) = {
+            let array = self
+                .arrays
+                .get(key)
+                .ok_or_else(|| JsliteError::runtime("array missing"))?;
+            (array.accounted_bytes, measure_array_bytes(array))
+        };
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.arrays
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    fn recompute_accounting_after_load(&mut self) -> JsliteResult<()> {
+        let mut heap_bytes_used = 0usize;
+        let mut allocation_count = 0usize;
+
+        for env in self.envs.values_mut() {
+            env.accounted_bytes = measure_env_bytes(env);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(env.accounted_bytes)
+                .ok_or_else(|| {
+                    serialization_error("snapshot validation failed: heap accounting overflow")
+                })?;
+            allocation_count += 1;
+        }
+        for cell in self.cells.values_mut() {
+            cell.accounted_bytes = measure_cell_bytes(cell);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(cell.accounted_bytes)
+                .ok_or_else(|| {
+                    serialization_error("snapshot validation failed: heap accounting overflow")
+                })?;
+            allocation_count += 1;
+        }
+        for object in self.objects.values_mut() {
+            object.accounted_bytes = measure_object_bytes(object);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(object.accounted_bytes)
+                .ok_or_else(|| {
+                    serialization_error("snapshot validation failed: heap accounting overflow")
+                })?;
+            allocation_count += 1;
+        }
+        for array in self.arrays.values_mut() {
+            array.accounted_bytes = measure_array_bytes(array);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(array.accounted_bytes)
+                .ok_or_else(|| {
+                    serialization_error("snapshot validation failed: heap accounting overflow")
+                })?;
+            allocation_count += 1;
+        }
+        for closure in self.closures.values_mut() {
+            closure.accounted_bytes = measure_closure_bytes(closure);
+            heap_bytes_used = heap_bytes_used
+                .checked_add(closure.accounted_bytes)
+                .ok_or_else(|| {
+                    serialization_error("snapshot validation failed: heap accounting overflow")
+                })?;
+            allocation_count += 1;
+        }
+
+        if heap_bytes_used > self.limits.heap_limit_bytes {
+            return Err(serialization_error(
+                "snapshot validation failed: heap usage exceeds configured heap limit",
+            ));
+        }
+        if allocation_count > self.limits.allocation_budget {
+            return Err(serialization_error(
+                "snapshot validation failed: allocation count exceeds configured allocation budget",
+            ));
+        }
+
+        self.heap_bytes_used = heap_bytes_used;
+        self.allocation_count = allocation_count;
+        Ok(())
     }
 
     fn traceback_frames(&self) -> Vec<TraceFrame> {
@@ -2475,7 +2745,7 @@ impl Runtime {
                     }
                     Instruction::PushEnv => {
                         let current_env = self.frames[frame_index].env;
-                        let env = self.new_env(Some(current_env));
+                        let env = self.new_env(Some(current_env))?;
                         self.frames[frame_index].scope_stack.push(current_env);
                         self.frames[frame_index].env = env;
                     }
@@ -2492,15 +2762,12 @@ impl Runtime {
                     }
                     Instruction::MakeClosure { function_id } => {
                         let env = self.frames[frame_index].env;
-                        let closure = self.closures.insert(Closure { function_id, env });
+                        let closure = self.insert_closure(function_id, env)?;
                         self.frames[frame_index].stack.push(Value::Closure(closure));
                     }
                     Instruction::MakeArray { count } => {
                         let values = pop_many(&mut self.frames[frame_index].stack, count)?;
-                        let array = self.arrays.insert(ArrayObject {
-                            elements: values,
-                            properties: IndexMap::new(),
-                        });
+                        let array = self.insert_array(values, IndexMap::new())?;
                         self.frames[frame_index].stack.push(Value::Array(array));
                     }
                     Instruction::MakeObject { keys } => {
@@ -2509,10 +2776,7 @@ impl Runtime {
                         for (key, value) in keys.into_iter().zip(values.into_iter()) {
                             properties.insert(property_name_to_key(&key), value);
                         }
-                        let object = self.objects.insert(PlainObject {
-                            properties,
-                            kind: ObjectKind::Plain,
-                        });
+                        let object = self.insert_object(properties, ObjectKind::Plain)?;
                         self.frames[frame_index].stack.push(Value::Object(object));
                     }
                     Instruction::GetPropStatic { name, optional } => {
@@ -3035,16 +3299,13 @@ impl Runtime {
             .get(function_id)
             .map(|function| function.params.clone())
             .ok_or_else(|| JsliteError::runtime("function not found"))?;
-        let this_cell = self.cells.insert(Cell {
-            value: Value::Undefined,
-            mutable: true,
-            initialized: true,
-        });
+        let this_cell = self.insert_cell(Value::Undefined, true, true)?;
         self.envs
             .get_mut(env)
             .ok_or_else(|| JsliteError::runtime("environment missing"))?
             .bindings
             .insert("this".to_string(), this_cell);
+        self.refresh_env_accounting(env)?;
         for pattern in &params {
             for (name, _) in pattern_bindings(pattern) {
                 self.declare_name(env, name, true)?;
@@ -3081,7 +3342,7 @@ impl Runtime {
                     .get(closure)
                     .cloned()
                     .ok_or_else(|| JsliteError::runtime("closure not found"))?;
-                let env = self.new_env(Some(closure.env));
+                let env = self.new_env(Some(closure.env))?;
                 self.push_frame(closure.function_id, env, args)?;
                 Ok(RunState::PushedFrame)
             }
@@ -3129,10 +3390,7 @@ impl Runtime {
     fn call_builtin(&mut self, function: BuiltinFunction, args: &[Value]) -> JsliteResult<Value> {
         match function {
             BuiltinFunction::ArrayCtor => {
-                let array = self.arrays.insert(ArrayObject {
-                    elements: args.to_vec(),
-                    properties: IndexMap::new(),
-                });
+                let array = self.insert_array(args.to_vec(), IndexMap::new())?;
                 Ok(Value::Array(array))
             }
             BuiltinFunction::ArrayIsArray => {
@@ -3142,10 +3400,7 @@ impl Runtime {
                 if let Some(Value::Object(object)) = args.first() {
                     Ok(Value::Object(*object))
                 } else {
-                    let object = self.objects.insert(PlainObject {
-                        properties: IndexMap::new(),
-                        kind: ObjectKind::Plain,
-                    });
+                    let object = self.insert_object(IndexMap::new(), ObjectKind::Plain)?;
                     Ok(Value::Object(object))
                 }
             }
@@ -3213,10 +3468,7 @@ impl Runtime {
     }
 
     fn install_builtins(&mut self) -> JsliteResult<()> {
-        let global_object = self.objects.insert(PlainObject {
-            properties: IndexMap::new(),
-            kind: ObjectKind::Global,
-        });
+        let global_object = self.insert_object(IndexMap::new(), ObjectKind::Global)?;
         self.define_global(
             "globalThis".to_string(),
             Value::Object(global_object),
@@ -3268,8 +3520,8 @@ impl Runtime {
             false,
         )?;
 
-        let math = self.objects.insert(PlainObject {
-            properties: IndexMap::from([
+        let math = self.insert_object(
+            IndexMap::from([
                 (
                     "abs".to_string(),
                     Value::BuiltinFunction(BuiltinFunction::MathAbs),
@@ -3295,12 +3547,12 @@ impl Runtime {
                     Value::BuiltinFunction(BuiltinFunction::MathRound),
                 ),
             ]),
-            kind: ObjectKind::Math,
-        });
+            ObjectKind::Math,
+        )?;
         self.define_global("Math".to_string(), Value::Object(math), false)?;
 
-        let json = self.objects.insert(PlainObject {
-            properties: IndexMap::from([
+        let json = self.insert_object(
+            IndexMap::from([
                 (
                     "stringify".to_string(),
                     Value::BuiltinFunction(BuiltinFunction::JsonStringify),
@@ -3310,51 +3562,47 @@ impl Runtime {
                     Value::BuiltinFunction(BuiltinFunction::JsonParse),
                 ),
             ]),
-            kind: ObjectKind::Json,
-        });
+            ObjectKind::Json,
+        )?;
         self.define_global("JSON".to_string(), Value::Object(json), false)?;
 
-        let console = self.objects.insert(PlainObject {
-            properties: IndexMap::new(),
-            kind: ObjectKind::Console,
-        });
+        let console = self.insert_object(IndexMap::new(), ObjectKind::Console)?;
         self.define_global("console".to_string(), Value::Object(console), false)?;
         Ok(())
     }
 
-    fn new_env(&mut self, parent: Option<EnvKey>) -> EnvKey {
-        self.envs.insert(Env {
-            parent,
-            bindings: IndexMap::new(),
-        })
+    fn new_env(&mut self, parent: Option<EnvKey>) -> JsliteResult<EnvKey> {
+        self.insert_env(parent)
     }
 
     fn define_global(&mut self, name: String, value: Value, mutable: bool) -> JsliteResult<()> {
-        let cell = self.cells.insert(Cell {
-            value,
-            mutable,
-            initialized: true,
-        });
+        let cell = self.insert_cell(value, mutable, true)?;
         self.envs
             .get_mut(self.globals)
             .ok_or_else(|| JsliteError::runtime("missing globals environment"))?
             .bindings
             .insert(name, cell);
+        self.refresh_env_accounting(self.globals)?;
         Ok(())
     }
 
     fn declare_name(&mut self, env: EnvKey, name: String, mutable: bool) -> JsliteResult<()> {
-        let cell = self.cells.insert(Cell {
-            value: Value::Undefined,
-            mutable,
-            initialized: false,
-        });
+        if self
+            .envs
+            .get(env)
+            .ok_or_else(|| JsliteError::runtime("environment missing"))?
+            .bindings
+            .contains_key(&name)
+        {
+            return Ok(());
+        }
+        let cell = self.insert_cell(Value::Undefined, mutable, false)?;
         self.envs
             .get_mut(env)
             .ok_or_else(|| JsliteError::runtime("environment missing"))?
             .bindings
-            .entry(name)
-            .or_insert(cell);
+            .insert(name, cell);
+        self.refresh_env_accounting(env)?;
         Ok(())
     }
 
@@ -3383,21 +3631,24 @@ impl Runtime {
         let cell_key = self.find_cell(env, name).ok_or_else(|| {
             JsliteError::runtime(format!("ReferenceError: `{name}` is not defined"))
         })?;
-        let cell = self
-            .cells
-            .get_mut(cell_key)
-            .ok_or_else(|| JsliteError::runtime("binding cell missing"))?;
-        if !cell.initialized {
-            return Err(JsliteError::runtime(format!(
-                "ReferenceError: `{name}` accessed before initialization"
-            )));
+        {
+            let cell = self
+                .cells
+                .get_mut(cell_key)
+                .ok_or_else(|| JsliteError::runtime("binding cell missing"))?;
+            if !cell.initialized {
+                return Err(JsliteError::runtime(format!(
+                    "ReferenceError: `{name}` accessed before initialization"
+                )));
+            }
+            if !cell.mutable {
+                return Err(JsliteError::runtime(format!(
+                    "TypeError: assignment to constant variable `{name}`"
+                )));
+            }
+            cell.value = value;
         }
-        if !cell.mutable {
-            return Err(JsliteError::runtime(format!(
-                "TypeError: assignment to constant variable `{name}`"
-            )));
-        }
-        cell.value = value;
+        self.refresh_cell_accounting(cell_key)?;
         Ok(())
     }
 
@@ -3414,21 +3665,29 @@ impl Runtime {
             .ok_or_else(|| {
                 JsliteError::runtime(format!("binding `{name}` missing in current scope"))
             })?;
-        let cell = self
-            .cells
-            .get_mut(cell_key)
-            .ok_or_else(|| JsliteError::runtime("binding cell missing"))?;
-        if cell.initialized {
-            if !cell.mutable {
-                return Err(JsliteError::runtime(format!(
-                    "TypeError: binding `{name}` was already initialized"
-                )));
+        let mut was_initialized = false;
+        {
+            let cell = self
+                .cells
+                .get_mut(cell_key)
+                .ok_or_else(|| JsliteError::runtime("binding cell missing"))?;
+            if cell.initialized {
+                if !cell.mutable {
+                    return Err(JsliteError::runtime(format!(
+                        "TypeError: binding `{name}` was already initialized"
+                    )));
+                }
+                cell.value = value;
+                was_initialized = true;
+            } else {
+                cell.value = value;
+                cell.initialized = true;
             }
-            cell.value = value;
+        }
+        self.refresh_cell_accounting(cell_key)?;
+        if was_initialized {
             return Ok(());
         }
-        cell.value = value;
-        cell.initialized = true;
         Ok(())
     }
 
@@ -3490,10 +3749,10 @@ impl Runtime {
                     }
                 }
                 if let Some(rest) = rest {
-                    let array = self.arrays.insert(ArrayObject {
-                        elements: items.into_iter().skip(elements.len()).collect(),
-                        properties: IndexMap::new(),
-                    });
+                    let array = self.insert_array(
+                        items.into_iter().skip(elements.len()).collect(),
+                        IndexMap::new(),
+                    )?;
                     self.initialize_pattern(env, rest, Value::Array(array))?;
                 }
                 Ok(())
@@ -3533,10 +3792,7 @@ impl Runtime {
                         }
                         _ => {}
                     }
-                    let rest = self.objects.insert(PlainObject {
-                        properties: rest_object,
-                        kind: ObjectKind::Plain,
-                    });
+                    let rest = self.insert_object(rest_object, ObjectKind::Plain)?;
                     self.initialize_pattern(env, rest_pattern, Value::Object(rest))?;
                 }
                 Ok(())
@@ -3603,26 +3859,30 @@ impl Runtime {
         let key = self.to_property_key(property)?;
         match object {
             Value::Object(object) => {
-                let object = self
-                    .objects
+                self.objects
                     .get_mut(object)
-                    .ok_or_else(|| JsliteError::runtime("object missing"))?;
-                object.properties.insert(key, value);
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?
+                    .properties
+                    .insert(key, value);
+                self.refresh_object_accounting(object)?;
                 Ok(())
             }
             Value::Array(array) => {
-                let array = self
-                    .arrays
-                    .get_mut(array)
-                    .ok_or_else(|| JsliteError::runtime("array missing"))?;
-                if let Ok(index) = key.parse::<usize>() {
-                    if index >= array.elements.len() {
-                        array.elements.resize(index + 1, Value::Undefined);
+                {
+                    let array_ref = self
+                        .arrays
+                        .get_mut(array)
+                        .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                    if let Ok(index) = key.parse::<usize>() {
+                        if index >= array_ref.elements.len() {
+                            array_ref.elements.resize(index + 1, Value::Undefined);
+                        }
+                        array_ref.elements[index] = value;
+                    } else {
+                        array_ref.properties.insert(key, value);
                     }
-                    array.elements[index] = value;
-                } else {
-                    array.properties.insert(key, value);
                 }
+                self.refresh_array_accounting(array)?;
                 Ok(())
             }
             _ => Err(JsliteError::runtime("TypeError: value is not an object")),
@@ -3802,10 +4062,7 @@ impl Runtime {
         if let Some(details) = details {
             properties.insert("details".to_string(), details);
         }
-        let object = self.objects.insert(PlainObject {
-            properties,
-            kind: ObjectKind::Error(name.to_string()),
-        });
+        let object = self.insert_object(properties, ObjectKind::Error(name.to_string()))?;
         Ok(Value::Object(object))
     }
 
@@ -3913,12 +4170,7 @@ impl Runtime {
     fn bump_instruction_budget(&mut self) -> JsliteResult<()> {
         self.instruction_counter += 1;
         if self.instruction_counter > self.limits.instruction_budget {
-            return Err(JsliteError::Message {
-                kind: DiagnosticKind::Limit,
-                message: "instruction budget exhausted".to_string(),
-                span: None,
-                traceback: Vec::new(),
-            });
+            return Err(limit_error("instruction budget exhausted"));
         }
         Ok(())
     }
@@ -3935,10 +4187,7 @@ impl Runtime {
                 for item in items {
                     values.push(self.value_from_structured(item)?);
                 }
-                let array = self.arrays.insert(ArrayObject {
-                    elements: values,
-                    properties: IndexMap::new(),
-                });
+                let array = self.insert_array(values, IndexMap::new())?;
                 Value::Array(array)
             }
             StructuredValue::Object(object) => {
@@ -3946,10 +4195,7 @@ impl Runtime {
                 for (key, value) in object {
                     properties.insert(key, self.value_from_structured(value)?);
                 }
-                let object = self.objects.insert(PlainObject {
-                    properties,
-                    kind: ObjectKind::Plain,
-                });
+                let object = self.insert_object(properties, ObjectKind::Plain)?;
                 Value::Object(object)
             }
         })
@@ -4000,10 +4246,7 @@ impl Runtime {
                 for item in items {
                     values.push(self.value_from_json(item)?);
                 }
-                let array = self.arrays.insert(ArrayObject {
-                    elements: values,
-                    properties: IndexMap::new(),
-                });
+                let array = self.insert_array(values, IndexMap::new())?;
                 Ok(Value::Array(array))
             }
             serde_json::Value::Object(object) => {
@@ -4011,14 +4254,77 @@ impl Runtime {
                 for (key, value) in object {
                     properties.insert(key, self.value_from_json(value)?);
                 }
-                let object = self.objects.insert(PlainObject {
-                    properties,
-                    kind: ObjectKind::Plain,
-                });
+                let object = self.insert_object(properties, ObjectKind::Plain)?;
                 Ok(Value::Object(object))
             }
         }
     }
+}
+
+fn limit_error(message: impl Into<String>) -> JsliteError {
+    JsliteError::Message {
+        kind: DiagnosticKind::Limit,
+        message: message.into(),
+        span: None,
+        traceback: Vec::new(),
+    }
+}
+
+fn serialization_error(message: impl Into<String>) -> JsliteError {
+    JsliteError::Message {
+        kind: DiagnosticKind::Serialization,
+        message: message.into(),
+        span: None,
+        traceback: Vec::new(),
+    }
+}
+
+fn extra_value_bytes(value: &Value) -> usize {
+    match value {
+        Value::String(value) | Value::HostFunction(value) => value.len(),
+        _ => 0,
+    }
+}
+
+fn measure_bindings_bytes(bindings: &IndexMap<String, CellKey>) -> usize {
+    bindings.len() * std::mem::size_of::<(String, CellKey)>()
+        + bindings.keys().map(|key| key.len()).sum::<usize>()
+}
+
+fn measure_properties_bytes(properties: &IndexMap<String, Value>) -> usize {
+    properties.len() * std::mem::size_of::<(String, Value)>()
+        + properties
+            .iter()
+            .map(|(key, value)| key.len() + extra_value_bytes(value))
+            .sum::<usize>()
+}
+
+fn measure_env_bytes(env: &Env) -> usize {
+    std::mem::size_of::<Env>() + measure_bindings_bytes(&env.bindings)
+}
+
+fn measure_cell_bytes(cell: &Cell) -> usize {
+    std::mem::size_of::<Cell>() + extra_value_bytes(&cell.value)
+}
+
+fn measure_object_bytes(object: &PlainObject) -> usize {
+    std::mem::size_of::<PlainObject>()
+        + measure_properties_bytes(&object.properties)
+        + match &object.kind {
+            ObjectKind::Error(name) => name.len(),
+            _ => 0,
+        }
+}
+
+fn measure_array_bytes(array: &ArrayObject) -> usize {
+    std::mem::size_of::<ArrayObject>()
+        + array.elements.len() * std::mem::size_of::<Value>()
+        + array.elements.iter().map(extra_value_bytes).sum::<usize>()
+        + measure_properties_bytes(&array.properties)
+}
+
+fn measure_closure_bytes(_closure: &Closure) -> usize {
+    std::mem::size_of::<Closure>()
 }
 
 fn pop_many(stack: &mut Vec<Value>, count: usize) -> JsliteResult<Vec<Value>> {
@@ -4257,6 +4563,46 @@ mod tests {
         )
         .expect_err("infinite loop should exhaust budget");
         assert!(error.to_string().contains("instruction budget exhausted"));
+    }
+
+    #[test]
+    fn tracks_heap_growth_and_enforces_heap_limits() {
+        let program = lower_to_bytecode(&compile("1;").expect("source should compile"))
+            .expect("lowering should succeed");
+        let mut runtime = Runtime::new(program.clone(), ExecutionOptions::default())
+            .expect("runtime should initialize");
+
+        let baseline_heap = runtime.heap_bytes_used;
+        let array = runtime
+            .insert_array(vec![Value::String("payload".to_string())], IndexMap::new())
+            .expect("array allocation should succeed");
+        assert!(runtime.heap_bytes_used > baseline_heap);
+
+        let array_heap = runtime.heap_bytes_used;
+        runtime
+            .set_property(
+                Value::Array(array),
+                Value::String("extra".to_string()),
+                Value::String("more payload".to_string()),
+            )
+            .expect("array growth should succeed");
+        assert!(runtime.heap_bytes_used > array_heap);
+
+        let mut heap_limited = Runtime::new(program.clone(), ExecutionOptions::default())
+            .expect("runtime should initialize");
+        heap_limited.limits.heap_limit_bytes = heap_limited.heap_bytes_used;
+        let error = heap_limited
+            .insert_array(vec![Value::String("payload".to_string())], IndexMap::new())
+            .expect_err("next allocation should exceed the heap limit");
+        assert!(error.to_string().contains("heap limit exceeded"));
+
+        let mut allocation_limited =
+            Runtime::new(program, ExecutionOptions::default()).expect("runtime should initialize");
+        allocation_limited.limits.allocation_budget = allocation_limited.allocation_count;
+        let error = allocation_limited
+            .insert_object(IndexMap::new(), ObjectKind::Plain)
+            .expect_err("next allocation should exhaust the allocation budget");
+        assert!(error.to_string().contains("allocation budget exhausted"));
     }
 
     #[test]

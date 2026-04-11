@@ -35,6 +35,8 @@ The current implementation already supports:
 - explicit named host capabilities with `start()` / `resume()` suspension
 - deterministic `console.log` / `console.warn` / `console.error` callbacks when
   the host provides them explicitly
+- instruction, heap-byte, and allocation-count budgets with guest-safe limit
+  errors
 - guest-safe runtime and limit errors with guest function-span tracebacks
 - same-version compiled-program and suspension snapshot round trips
 - a thin Node addon wrapper and a sidecar process that reuse the same Rust core
@@ -42,7 +44,7 @@ The current implementation already supports:
 The current implementation does **not** yet execute:
 
 - `async` functions or `await`
-- cancellation, heap limits, call-depth limits, or outstanding-host-call limits
+- cancellation, call-depth limits, or outstanding-host-call limits
 
 ## Reference Docs
 
