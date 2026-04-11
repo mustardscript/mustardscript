@@ -368,7 +368,7 @@ Exit criteria:
 - [ ] Add regression tests for security-sensitive behaviors
 - [ ] Add fault-injection tests for cancellation, limits, and corrupted state
 - [ ] Audit denial-of-service failure modes
-- [ ] Verify resource failures stay guest-safe
+- [x] Verify resource failures stay guest-safe
 
 Exit criteria:
 

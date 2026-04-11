@@ -526,6 +526,36 @@ test('runtime errors do not leak host internals in guest tracebacks', async () =
   );
 });
 
+test('limit errors do not leak host internals', async () => {
+  const runaway = new Jslite('while (true) {}');
+  await assert.rejects(
+    runaway.run({
+      limits: {
+        instructionBudget: 100,
+      },
+    }),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteLimitError' &&
+      error.kind === 'Limit' &&
+      (assertGuestSafeMessage(error.message), true),
+  );
+
+  const tinyHeap = new Jslite('1;');
+  await assert.rejects(
+    tinyHeap.run({
+      limits: {
+        heapLimitBytes: 1,
+      },
+    }),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteLimitError' &&
+      error.kind === 'Limit' &&
+      (assertGuestSafeMessage(error.message), true),
+  );
+});
+
 test('serialization errors do not leak host internals', () => {
   const restored = Progress.load({
     capability: 'fetch_data',
