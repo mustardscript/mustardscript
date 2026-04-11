@@ -28,7 +28,7 @@ extensions are called out explicitly instead of being implied.
 ## Supported End-to-End Syntax
 
 - variable declarations with `let` and `const`
-- function declarations and expressions
+- function declarations and expressions, including rest parameters
 - `async` function declarations and expressions
 - arrow functions
 - `await` inside async functions
@@ -44,6 +44,15 @@ extensions are called out explicitly instead of being implied.
 - optional chaining
 - nullish coalescing
 - named host capability calls
+
+## Supported Function Call Surface
+
+- non-arrow guest member calls bind the computed receiver as `this`
+- arrow functions are supported, but this does not imply full lexical or
+  dynamic `this` parity beyond the currently documented subset
+- rest parameters are supported for function declarations, function
+  expressions, and arrow functions
+- `new` remains limited to the documented conservative built-in constructors
 
 ## Supported Async Surface
 
@@ -100,6 +109,9 @@ extensions are called out explicitly instead of being implied.
 
 - `import`, `export`, and dynamic `import()`
 - `delete`
+- default parameters
+- default destructuring
+- free `arguments`
 - free `eval` and free `Function`
 - free references to `process`, `module`, `exports`, `global`, `require`,
   `setTimeout`, `setInterval`, `queueMicrotask`, and `fetch`
@@ -119,6 +131,8 @@ extensions are called out explicitly instead of being implied.
 
 - full Promise constructor semantics and promise instance methods
 - full `this` semantics beyond the current basic function-call behavior
+- implicit `arguments` object semantics
+- default parameter evaluation
 - non-array iterable protocol support
 - iterable `Map` / `Set` constructors and collection iterator APIs
 - public iterator-producing APIs and custom iterator authoring

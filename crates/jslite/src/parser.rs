@@ -12,6 +12,7 @@ use crate::{
 };
 
 const FORBIDDEN_AMBIENT_GLOBALS: &[&str] = &[
+    "arguments",
     "eval",
     "process",
     "module",
@@ -474,12 +475,88 @@ impl<'a> Lowerer<'a> {
                     .and_then(|rest| self.lower_pattern(&rest.argument))
                     .map(Box::new),
             }),
-            BindingPattern::AssignmentPattern(pattern) => Some(Pattern::Default {
-                span: pattern.span.into(),
-                target: Box::new(self.lower_pattern(&pattern.left)?),
-                default_value: self.lower_expr(&pattern.right)?,
-            }),
+            BindingPattern::AssignmentPattern(pattern) => {
+                self.unsupported(
+                    "default destructuring is not supported in v1",
+                    Some(pattern.span.into()),
+                );
+                None
+            }
         }
+    }
+
+    fn validate_function_params(&mut self, params: &FormalParameters<'a>) -> bool {
+        let mut valid = true;
+        for param in &params.items {
+            if param.initializer.is_some() {
+                self.unsupported(
+                    "default parameters are not supported in v1",
+                    Some(param.span.into()),
+                );
+                valid = false;
+            }
+            if !self.validate_param_pattern(&param.pattern) {
+                valid = false;
+            }
+        }
+        if let Some(rest) = &params.rest
+            && !self.validate_param_pattern(&rest.rest.argument)
+        {
+            valid = false;
+        }
+        valid
+    }
+
+    fn validate_param_pattern(&mut self, pattern: &BindingPattern<'a>) -> bool {
+        match pattern {
+            BindingPattern::BindingIdentifier(_) => true,
+            BindingPattern::ObjectPattern(pattern) => {
+                pattern
+                    .properties
+                    .iter()
+                    .all(|property| self.validate_param_pattern(&property.value))
+                    && pattern
+                        .rest
+                        .as_ref()
+                        .is_none_or(|rest| self.validate_param_pattern(&rest.argument))
+            }
+            BindingPattern::ArrayPattern(pattern) => {
+                pattern
+                    .elements
+                    .iter()
+                    .flatten()
+                    .all(|element| self.validate_param_pattern(element))
+                    && pattern
+                        .rest
+                        .as_ref()
+                        .is_none_or(|rest| self.validate_param_pattern(&rest.argument))
+            }
+            BindingPattern::AssignmentPattern(pattern) => {
+                self.unsupported(
+                    "default parameters are not supported in v1",
+                    Some(pattern.span.into()),
+                );
+                false
+            }
+        }
+    }
+
+    fn lower_function_params(
+        &mut self,
+        params: &FormalParameters<'a>,
+    ) -> Option<(Vec<Pattern>, Option<Pattern>)> {
+        let mut lowered = Vec::with_capacity(params.items.len());
+        for param in &params.items {
+            lowered.push(self.lower_pattern(&param.pattern)?);
+        }
+        let rest = params
+            .rest
+            .as_ref()
+            .and_then(|rest| self.lower_pattern(&rest.rest.argument));
+        if params.rest.is_some() && rest.is_none() {
+            return None;
+        }
+        Some((lowered, rest))
     }
 
     fn lower_function(&mut self, function: &Function<'a>, is_arrow: bool) -> Option<FunctionExpr> {
@@ -497,12 +574,16 @@ impl<'a> Lowerer<'a> {
             );
             return None;
         };
-        self.push_scope();
-        for param in &function.params.items {
-            self.collect_pattern_bindings(&param.pattern);
+        if !self.validate_function_params(&function.params) {
+            return None;
         }
-        if let Some(rest) = &function.params.rest {
-            self.collect_pattern_bindings(&rest.rest.argument);
+        let (params, rest) = self.lower_function_params(&function.params)?;
+        self.push_scope();
+        for pattern in &params {
+            self.collect_ir_pattern_bindings(pattern);
+        }
+        if let Some(rest) = &rest {
+            self.collect_ir_pattern_bindings(rest);
         }
         self.predeclare_block(&body.statements);
         let lowered = body
@@ -514,22 +595,8 @@ impl<'a> Lowerer<'a> {
         Some(FunctionExpr {
             span: function.span.into(),
             name: function.id.as_ref().map(|id| id.name.as_str().to_string()),
-            params: function
-                .params
-                .items
-                .iter()
-                .filter_map(|param| {
-                    if param.initializer.is_some() {
-                        Some(Pattern::Default {
-                            span: param.span.into(),
-                            target: Box::new(self.lower_pattern(&param.pattern)?),
-                            default_value: self.lower_expr(param.initializer.as_deref()?)?,
-                        })
-                    } else {
-                        self.lower_pattern(&param.pattern)
-                    }
-                })
-                .collect(),
+            params,
+            rest,
             body: lowered,
             is_async: function.r#async,
             is_arrow,
@@ -540,12 +607,16 @@ impl<'a> Lowerer<'a> {
         &mut self,
         function: &ArrowFunctionExpression<'a>,
     ) -> Option<FunctionExpr> {
-        self.push_scope();
-        for param in &function.params.items {
-            self.collect_pattern_bindings(&param.pattern);
+        if !self.validate_function_params(&function.params) {
+            return None;
         }
-        if let Some(rest) = &function.params.rest {
-            self.collect_pattern_bindings(&rest.rest.argument);
+        let (params, rest) = self.lower_function_params(&function.params)?;
+        self.push_scope();
+        for pattern in &params {
+            self.collect_ir_pattern_bindings(pattern);
+        }
+        if let Some(rest) = &rest {
+            self.collect_ir_pattern_bindings(rest);
         }
         self.predeclare_block(&function.body.statements);
         let body = if function.expression {
@@ -577,26 +648,37 @@ impl<'a> Lowerer<'a> {
         Some(FunctionExpr {
             span: function.span.into(),
             name: None,
-            params: function
-                .params
-                .items
-                .iter()
-                .filter_map(|param| {
-                    if param.initializer.is_some() {
-                        Some(Pattern::Default {
-                            span: param.span.into(),
-                            target: Box::new(self.lower_pattern(&param.pattern)?),
-                            default_value: self.lower_expr(param.initializer.as_deref()?)?,
-                        })
-                    } else {
-                        self.lower_pattern(&param.pattern)
-                    }
-                })
-                .collect(),
+            params,
+            rest,
             body,
             is_async: function.r#async,
             is_arrow: true,
         })
+    }
+
+    fn collect_ir_pattern_bindings(&mut self, pattern: &Pattern) {
+        match pattern {
+            Pattern::Identifier { name, .. } => self.bind_name(name),
+            Pattern::Object {
+                properties, rest, ..
+            } => {
+                for property in properties {
+                    self.collect_ir_pattern_bindings(&property.value);
+                }
+                if let Some(rest) = rest {
+                    self.collect_ir_pattern_bindings(rest);
+                }
+            }
+            Pattern::Array { elements, rest, .. } => {
+                for element in elements.iter().flatten() {
+                    self.collect_ir_pattern_bindings(element);
+                }
+                if let Some(rest) = rest {
+                    self.collect_ir_pattern_bindings(rest);
+                }
+            }
+            Pattern::Default { target, .. } => self.collect_ir_pattern_bindings(target),
+        }
     }
 
     fn lower_for_init_expr(&mut self, init: &ForStatementInit<'a>) -> Option<Expr> {
@@ -1089,7 +1171,7 @@ mod tests {
     fn parses_basic_function_and_if() {
         let program = compile(
             r#"
-            const add = (a, b = 1) => {
+            const add = (a, b) => {
               if (a > b) {
                 return a + b;
               }
@@ -1132,6 +1214,30 @@ mod tests {
     }
 
     #[test]
+    fn rejects_free_arguments() {
+        let error = compile("function wrap() { return arguments[0]; }")
+            .expect_err("should reject arguments");
+        let text = error.to_string();
+        assert!(text.contains("forbidden ambient global `arguments`"));
+    }
+
+    #[test]
+    fn rejects_default_parameters() {
+        let error = compile("function wrap(value = 1) { return value; }")
+            .expect_err("should reject default parameters");
+        let text = error.to_string();
+        assert!(text.contains("default parameters are not supported in v1"));
+    }
+
+    #[test]
+    fn rejects_default_destructuring() {
+        let error =
+            compile("const { value = 1 } = {};").expect_err("should reject default destructuring");
+        let text = error.to_string();
+        assert!(text.contains("default destructuring is not supported in v1"));
+    }
+
+    #[test]
     fn allows_shadowed_require() {
         compile("const require = () => 1; require();").expect("shadowed require should compile");
     }
@@ -1140,6 +1246,11 @@ mod tests {
     fn allows_shadowed_function_identifier() {
         compile("const Function = (value) => value; Function(1);")
             .expect("shadowed Function should compile");
+    }
+
+    #[test]
+    fn allows_shadowed_arguments_identifier() {
+        compile("const arguments = [1]; arguments[0];").expect("shadowed arguments should compile");
     }
 
     #[test]

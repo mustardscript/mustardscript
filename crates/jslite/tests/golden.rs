@@ -6,7 +6,7 @@ use std::{
 use jslite::{compile, lower_to_bytecode};
 
 const GOLDEN_SOURCE: &str = r#"
-const makeTotal = (left, right = 1) => {
+const makeTotal = (left, right/**/) => {
   const pair = [left, right];
   return { total: pair[0] + pair[1] };
 };

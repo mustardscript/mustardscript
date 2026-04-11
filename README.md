@@ -28,8 +28,8 @@ decision:
 The current implementation already supports:
 
 - parse -> validate -> IR -> bytecode -> VM execution for the supported subset
-- `let`/`const`, functions and closures, arrays, plain objects, loops, and
-  basic control flow
+- `let`/`const`, functions and closures, rest parameters, arrays, plain
+  objects, loops, and basic control flow
 - array `for...of` with `let` / `const` loop bindings, destructuring, and
   snapshot-safe iterator state
 - `Map` and `Set` with zero-argument constructors, SameValueZero key and
@@ -355,6 +355,15 @@ Current Promise support is intentionally narrow:
 - async functions return internal guest promises
 - `Promise.resolve(...)` and `Promise.reject(...)` are supported
 - `new Promise(...)` and instance methods remain unsupported and fail closed
+
+Current function-call support is intentionally narrow:
+
+- non-arrow guest member calls bind the computed receiver as `this`
+- rest parameters are supported for functions and arrow functions
+- arrow functions are supported, but broader `this` semantics remain deferred
+- default parameters, default destructuring, and implicit free `arguments`
+  are rejected with validation diagnostics
+- `new` remains limited to the documented conservative built-in constructors
 
 Current keyed-collection support is intentionally narrow:
 
