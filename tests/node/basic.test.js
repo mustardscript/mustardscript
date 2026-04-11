@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, Progress } = require('../../index.js');
+const { Jslite, JsliteError, Progress } = require('../../index.js');
 
 test('run executes sync programs', async () => {
   const j = new Jslite(`
@@ -84,7 +84,33 @@ test('run surfaces sanitized host capability errors', async () => {
         },
       },
     }),
-    /CapabilityError: upstream failed \[code=E_UPSTREAM\]/,
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteRuntimeError' &&
+      error.kind === 'Runtime' &&
+      /CapabilityError: upstream failed \[code=E_UPSTREAM\]/.test(error.message),
+  );
+});
+
+test('constructor converts native parse failures into typed errors', () => {
+  assert.throws(
+    () => new Jslite('const value = ;'),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteParseError' &&
+      error.kind === 'Parse' &&
+      error.message.length > 0,
+  );
+});
+
+test('constructor converts native validation failures into typed errors', () => {
+  assert.throws(
+    () => new Jslite('export const value = 1;'),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteValidationError' &&
+      error.kind === 'Validation' &&
+      /module syntax is not supported/.test(error.message),
   );
 });
 
@@ -102,6 +128,22 @@ test('capability calls reject guest functions across the host boundary', async (
       },
     }),
     /functions cannot cross the structured host boundary/,
+  );
+});
+
+test('run surfaces limit failures as typed errors', async () => {
+  const j = new Jslite('while (true) {}');
+  await assert.rejects(
+    j.run({
+      limits: {
+        instructionBudget: 100,
+      },
+    }),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteLimitError' &&
+      error.kind === 'Limit' &&
+      /instruction budget exhausted/.test(error.message),
   );
 });
 
@@ -142,6 +184,21 @@ test('progress dump and load preserve suspended execution state', () => {
   assert.equal(restored.capability, 'fetch_data');
   assert.deepEqual(restored.args, [4]);
   assert.equal(restored.resume(4), 8);
+});
+
+test('progress resume surfaces snapshot failures as typed errors', () => {
+  const restored = Progress.load({
+    capability: 'fetch_data',
+    args: [],
+    snapshot: Buffer.from('not-a-valid-snapshot'),
+  });
+  assert.throws(
+    () => restored.resume(1),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteSerializationError' &&
+      error.kind === 'Serialization',
+  );
 });
 
 test('dump and load preserve compiled programs', async () => {

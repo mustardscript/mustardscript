@@ -23,6 +23,29 @@ export interface CompileOptions {
 export interface ExecutionOptions {
   inputs?: Record<string, StructuredValue>;
   capabilities?: Record<string, Capability>;
+  limits?: RuntimeLimits;
+}
+
+export interface RuntimeLimits {
+  instructionBudget?: number;
+  heapLimitBytes?: number;
+  allocationBudget?: number;
+  callDepthLimit?: number;
+  maxOutstandingHostCalls?: number;
+}
+
+export type JsliteErrorKind =
+  | 'Parse'
+  | 'Validation'
+  | 'Runtime'
+  | 'Limit'
+  | 'Serialization';
+
+export class JsliteError extends Error {
+  constructor(kind: JsliteErrorKind, message: string, cause?: unknown);
+
+  readonly kind: JsliteErrorKind;
+  readonly cause?: unknown;
 }
 
 export interface SerializedProgress {

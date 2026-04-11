@@ -49,6 +49,10 @@ Host failures cross the boundary with:
 
 The current runtime renders resumed host failures as guest-safe runtime errors
 using those fields. Guest-visible `Error` objects are not implemented yet.
+The Node wrapper rethrows core failures as typed JavaScript errors:
+`JsliteParseError`, `JsliteValidationError`, `JsliteRuntimeError`,
+`JsliteLimitError`, and `JsliteSerializationError`. The original native error is
+preserved as the JavaScript `cause`.
 
 ## Console Contract
 

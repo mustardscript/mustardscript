@@ -2,12 +2,15 @@ import type {
   Capability,
   CapabilityError,
   ExecutionOptions,
+  JsliteError as JsliteErrorType,
+  JsliteErrorKind,
   Progress as ProgressType,
+  RuntimeLimits,
   SerializedProgress,
   StructuredValue,
 } from 'jslite';
 
-const { Jslite, Progress } = require('jslite') as typeof import('jslite');
+const { Jslite, JsliteError, Progress } = require('jslite') as typeof import('jslite');
 
 const runtime = new Jslite('const response = fetch_data(seed); response + 1;', {
   inputs: ['seed'],
@@ -17,6 +20,9 @@ const executionOptions: ExecutionOptions = {
   inputs: {
     seed: 1,
     nested: { values: [1, 2, 3] },
+  },
+  limits: {
+    instructionBudget: 1000,
   },
   capabilities: {
     fetch_data(value) {
@@ -34,6 +40,11 @@ const structured: StructuredValue = {
   values: ['ready'],
 };
 
+const runtimeLimits: RuntimeLimits = {
+  instructionBudget: 10,
+};
+
+const errorKind: JsliteErrorKind = 'Runtime';
 const capability: Capability = async (...args) => args[0] ?? structured;
 
 async function typecheck(): Promise<void> {
@@ -74,6 +85,11 @@ async function typecheck(): Promise<void> {
 }
 
 void typecheck();
+
+const typedError: JsliteErrorType = new JsliteError(errorKind, 'boom', new Error('cause'));
+void typedError;
+void runtimeLimits;
+void errorKind;
 
 // @ts-expect-error symbols are not structured values
 runtime.run({ inputs: { bad: Symbol('nope') } });

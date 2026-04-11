@@ -30,6 +30,44 @@ function loadNative() {
 }
 
 const native = loadNative();
+const KNOWN_ERROR_KINDS = new Set([
+  'Parse',
+  'Validation',
+  'Runtime',
+  'Limit',
+  'Serialization',
+]);
+
+class JsliteError extends Error {
+  constructor(kind, message, cause) {
+    super(message, { cause });
+    this.kind = kind;
+    this.name = `Jslite${kind}Error`;
+  }
+}
+
+function normalizeNativeError(error) {
+  if (!(error instanceof Error)) {
+    return error;
+  }
+  const match = /^([A-Za-z]+):\s([\s\S]+)$/.exec(error.message);
+  if (!match) {
+    return error;
+  }
+  const [, kind, message] = match;
+  if (!KNOWN_ERROR_KINDS.has(kind)) {
+    return error;
+  }
+  return new JsliteError(kind, message, error);
+}
+
+function callNative(fn, ...args) {
+  try {
+    return fn(...args);
+  } catch (error) {
+    throw normalizeNativeError(error);
+  }
+}
 
 function encodeNumber(value) {
   if (Number.isNaN(value)) {
@@ -118,14 +156,31 @@ function decodeStructured(value) {
   throw new TypeError(`Unsupported structured value: ${JSON.stringify(value)}`);
 }
 
-function encodeStartOptions({ inputs = {}, capabilities = {} } = {}) {
+function encodeStartOptions({ inputs = {}, capabilities = {}, limits = {} } = {}) {
   const encodedInputs = {};
   for (const [key, value] of Object.entries(inputs)) {
     encodedInputs[key] = encodeStructured(value);
   }
+  const encodedLimits = {};
+  if (limits.instructionBudget !== undefined) {
+    encodedLimits.instruction_budget = limits.instructionBudget;
+  }
+  if (limits.heapLimitBytes !== undefined) {
+    encodedLimits.heap_limit_bytes = limits.heapLimitBytes;
+  }
+  if (limits.allocationBudget !== undefined) {
+    encodedLimits.allocation_budget = limits.allocationBudget;
+  }
+  if (limits.callDepthLimit !== undefined) {
+    encodedLimits.call_depth_limit = limits.callDepthLimit;
+  }
+  if (limits.maxOutstandingHostCalls !== undefined) {
+    encodedLimits.max_outstanding_host_calls = limits.maxOutstandingHostCalls;
+  }
   return JSON.stringify({
     inputs: encodedInputs,
     capabilities: Object.keys(capabilities),
+    limits: encodedLimits,
   });
 }
 
@@ -188,14 +243,14 @@ class Progress {
 
   resume(value) {
     const step = parseStep(
-      native.resumeProgram(this.#snapshot, encodeResumePayloadValue(value)),
+      callNative(native.resumeProgram, this.#snapshot, encodeResumePayloadValue(value)),
     );
     return materializeStep(step);
   }
 
   resumeError(error) {
     const step = parseStep(
-      native.resumeProgram(this.#snapshot, encodeResumePayloadError(error)),
+      callNative(native.resumeProgram, this.#snapshot, encodeResumePayloadError(error)),
     );
     return materializeStep(step);
   }
@@ -226,14 +281,14 @@ function materializeStep(step) {
 
 class Jslite {
   constructor(code, options = {}) {
-    this._program = native.compileProgram(code);
+    this._program = callNative(native.compileProgram, code);
     this._inputNames = options.inputs ?? [];
   }
 
   async run(options = {}) {
     const capabilities = options.capabilities ?? {};
     let step = parseStep(
-      native.startProgram(this._program, encodeStartOptions(options)),
+      callNative(native.startProgram, this._program, encodeStartOptions(options)),
     );
     while (step.type === 'suspended') {
       const capability = capabilities[step.capability];
@@ -243,11 +298,11 @@ class Jslite {
       try {
         const result = await capability(...step.args);
         step = parseStep(
-          native.resumeProgram(step.snapshot, encodeResumePayloadValue(result)),
+          callNative(native.resumeProgram, step.snapshot, encodeResumePayloadValue(result)),
         );
       } catch (error) {
         step = parseStep(
-          native.resumeProgram(step.snapshot, encodeResumePayloadError(error)),
+          callNative(native.resumeProgram, step.snapshot, encodeResumePayloadError(error)),
         );
       }
     }
@@ -256,7 +311,7 @@ class Jslite {
 
   start(options = {}) {
     const step = parseStep(
-      native.startProgram(this._program, encodeStartOptions(options)),
+      callNative(native.startProgram, this._program, encodeStartOptions(options)),
     );
     return materializeStep(step);
   }
@@ -274,6 +329,7 @@ class Jslite {
 }
 
 module.exports = {
+  JsliteError,
   Jslite,
   Progress,
 };

@@ -3,9 +3,9 @@ use std::io::{self, BufRead, Write};
 use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jslite::{
-    BytecodeProgram, ExecutionOptions, ExecutionStep, HostError, ResumePayload, StructuredValue,
-    compile, dump_program, dump_snapshot, load_program, load_snapshot, lower_to_bytecode, resume,
-    start_bytecode,
+    BytecodeProgram, ExecutionOptions, ExecutionStep, HostError, ResumePayload, RuntimeLimits,
+    StructuredValue, compile, dump_program, dump_snapshot, load_program, load_snapshot,
+    lower_to_bytecode, resume, start_bytecode,
 };
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +15,34 @@ struct StartOptionsDto {
     inputs: std::collections::BTreeMap<String, StructuredValue>,
     #[serde(default)]
     capabilities: Vec<String>,
+    #[serde(default)]
+    limits: RuntimeLimitsDto,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct RuntimeLimitsDto {
+    instruction_budget: Option<usize>,
+    heap_limit_bytes: Option<usize>,
+    allocation_budget: Option<usize>,
+    call_depth_limit: Option<usize>,
+    max_outstanding_host_calls: Option<usize>,
+}
+
+impl RuntimeLimitsDto {
+    fn into_runtime_limits(self) -> RuntimeLimits {
+        let defaults = RuntimeLimits::default();
+        RuntimeLimits {
+            instruction_budget: self
+                .instruction_budget
+                .unwrap_or(defaults.instruction_budget),
+            heap_limit_bytes: self.heap_limit_bytes.unwrap_or(defaults.heap_limit_bytes),
+            allocation_budget: self.allocation_budget.unwrap_or(defaults.allocation_budget),
+            call_depth_limit: self.call_depth_limit.unwrap_or(defaults.call_depth_limit),
+            max_outstanding_host_calls: self
+                .max_outstanding_host_calls
+                .unwrap_or(defaults.max_outstanding_host_calls),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -114,7 +142,7 @@ fn handle(request: Request) -> Response {
                 ExecutionOptions {
                     inputs: options.inputs.into_iter().collect(),
                     capabilities: options.capabilities,
-                    ..ExecutionOptions::default()
+                    limits: options.limits.into_runtime_limits(),
                 },
             )?;
             Ok(ResponsePayload::Step {

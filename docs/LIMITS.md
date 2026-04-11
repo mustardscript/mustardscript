@@ -14,6 +14,14 @@ The runtime exposes:
 - maximum outstanding host calls
 - cancellation control
 
+The Node wrapper exposes these fields through `run()` and `start()` as:
+
+- `limits.instructionBudget`
+- `limits.heapLimitBytes`
+- `limits.allocationBudget`
+- `limits.callDepthLimit`
+- `limits.maxOutstandingHostCalls`
+
 ## Defaults
 
 `RuntimeLimits::default()` currently sets:

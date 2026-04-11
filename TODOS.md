@@ -336,7 +336,7 @@ Exit criteria:
 - [x] Keep `run()` async while preserving explicit `start()` and `resume()`
 - [x] Implement input handling
 - [x] Implement capability registration in the Node wrapper
-- [ ] Implement error conversion for syntax, runtime, resource, and snapshot
+- [x] Implement error conversion for syntax, runtime, resource, and snapshot
   errors
 - [x] Implement program dump/load APIs
 - [x] Implement snapshot dump/load APIs
@@ -352,7 +352,7 @@ Exit criteria:
 - [x] Addon is usable from a real Node service
 - [x] TypeScript consumers get a clean typed API
 - [ ] Node integration and packaging smoke tests pass
-- [ ] Node wrapper remains thin and does not own core semantics
+- [x] Node wrapper remains thin and does not own core semantics
 
 ## Phase 10: Security Hardening, Fuzzing, and Hostile Inputs
 

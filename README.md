@@ -41,8 +41,7 @@ The current implementation does **not** yet execute:
 - `async` functions or `await`
 - deterministic console callbacks
 - cancellation, heap limits, call-depth limits, or outstanding-host-call limits
-- deep bytecode or snapshot structural validation beyond decode and version
-  checks
+- guest tracebacks with source locations
 
 ## Reference Docs
 
@@ -518,38 +517,40 @@ type HostValue =
   | HostValue[]
   | { [k: string]: HostValue }
 
-type Capability = (
-  args: HostValue[],
-  ctx: { name: string; signal?: AbortSignal }
-) => HostValue | Promise<HostValue>
+type Capability = (...args: HostValue[]) => HostValue | Promise<HostValue>
 
-const program = await Jslite.compile(source, {
-  inputs: ["x"],
+const program = new Jslite(source, {
+  inputs: ['x'],
 })
 
 const result = await program.run({
   inputs: { x: 1 },
   capabilities: {
-    fetch_data: async ([url]) => "...",
+    fetch_data: async (url) => '...',
   },
   limits: {
-    instructions: 100_000,
-    heapBytes: 8 << 20,
-    callDepth: 256,
+    instructionBudget: 100_000,
+    heapLimitBytes: 8 << 20,
+    callDepthLimit: 256,
   },
 })
 ```
 
 Lower-level control should exist for advanced hosts:
 
-- `compile(...)`
+- `new Jslite(...)`
 - `run(...)`
 - `start(...)`
-- `resume(...)`
-- `dumpProgram(...)`
-- `loadProgram(...)`
-- `dumpSnapshot(...)`
-- `loadSnapshot(...)`
+- `progress.resume(...)`
+- `progress.resumeError(...)`
+- `dump()`
+- `Jslite.load(...)`
+- `progress.dump()`
+- `Progress.load(...)`
+
+Native failures are surfaced in Node as typed JavaScript errors:
+`JsliteParseError`, `JsliteValidationError`, `JsliteRuntimeError`,
+`JsliteLimitError`, and `JsliteSerializationError`.
 
 The common path should be easy. The advanced path should remain explicit.
 
