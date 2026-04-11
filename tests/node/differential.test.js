@@ -179,6 +179,61 @@ const DIFFERENTIAL_CASES = [
       [fns[0](), fns[1]()];
     `,
   },
+  {
+    name: 'Map lookup and SameValueZero semantics',
+    source: `
+      const shared = {};
+      const nan = Number('nope');
+      const map = new Map();
+      map.set('alpha', 1);
+      map.set(nan, 'nan');
+      map.set(-0, 'zero');
+      map.set(shared, 7);
+      map.set('alpha', 2);
+      [
+        map.size,
+        map.get('alpha'),
+        map.has('alpha'),
+        map.get(nan),
+        map.has(0),
+        map.get(0),
+        map.get(shared),
+        map.delete('missing'),
+        map.delete(nan),
+        map.has(nan),
+        map.size,
+      ];
+    `,
+  },
+  {
+    name: 'Set membership and clear semantics',
+    source: `
+      const shared = {};
+      const nan = Number('nope');
+      const set = new Set();
+      set.add('alpha');
+      set.add(nan);
+      set.add(-0);
+      set.add(shared);
+      set.add(nan);
+      set.add(0);
+      const before = [
+        set.size,
+        set.has(nan),
+        set.has(0),
+        set.has(-0),
+        set.has(shared),
+      ];
+      const removed = [
+        set.delete('missing'),
+        set.delete(nan),
+        set.has(nan),
+        set.size,
+      ];
+      set.clear();
+      [before, removed, set.size, set.has(shared)];
+    `,
+  },
 ];
 
 for (const { name, source } of DIFFERENTIAL_CASES) {

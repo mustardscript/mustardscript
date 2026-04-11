@@ -20,11 +20,16 @@ Rejected values:
 - functions
 - symbols
 - bigint
+- `Map` and `Set`
 - cycles
 - class instances
 - accessors
 - custom prototypes
 - host objects
+
+Guest `Map` and `Set` values are runtime-internal heap objects. They may appear
+inside guest execution, snapshots, and guest-visible data structures, but they
+do not cross the structured host boundary in either addon mode or sidecar mode.
 
 ## Capability Calls
 

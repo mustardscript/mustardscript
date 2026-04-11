@@ -1,0 +1,344 @@
+use indexmap::IndexMap;
+
+use jslite::{
+    ExecutionOptions, ExecutionStep, RuntimeLimits, StructuredValue, compile, dump_snapshot,
+    execute, load_snapshot, resume, start,
+};
+
+fn number(value: f64) -> StructuredValue {
+    StructuredValue::from(value)
+}
+
+fn string(value: &str) -> StructuredValue {
+    StructuredValue::from(value)
+}
+
+#[test]
+fn map_supports_same_value_zero_identity_and_mutation_operations() {
+    let program = compile(
+        r#"
+        const shared = {};
+        const nan = Number('nope');
+        const map = new Map();
+        map.set('alpha', 1);
+        map.set(nan, 'nan');
+        map.set(-0, 'zero');
+        map.set(shared, 7);
+        map.set('alpha', 2);
+        [
+          map.size,
+          map.get('alpha'),
+          map.has('alpha'),
+          map.get(nan),
+          map.has(0),
+          map.get(0),
+          map.get(-0),
+          map.get(shared),
+          map.delete('missing'),
+          map.delete(nan),
+          map.has(nan),
+          map.size,
+        ];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            number(4.0),
+            number(2.0),
+            StructuredValue::Bool(true),
+            string("nan"),
+            StructuredValue::Bool(true),
+            string("zero"),
+            string("zero"),
+            number(7.0),
+            StructuredValue::Bool(false),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(false),
+            number(3.0),
+        ])
+    );
+}
+
+#[test]
+fn set_supports_same_value_zero_and_clear_operations() {
+    let program = compile(
+        r#"
+        const shared = {};
+        const nan = Number('nope');
+        const set = new Set();
+        set.add('alpha');
+        set.add(nan);
+        set.add(-0);
+        set.add(shared);
+        set.add(nan);
+        set.add(0);
+        const before = [
+          set.size,
+          set.has(nan),
+          set.has(0),
+          set.has(-0),
+          set.has(shared),
+        ];
+        const removed = [
+          set.delete('missing'),
+          set.delete(nan),
+          set.has(nan),
+          set.size,
+        ];
+        set.clear();
+        [before, removed, set.size, set.has(shared)];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![
+                number(4.0),
+                StructuredValue::Bool(true),
+                StructuredValue::Bool(true),
+                StructuredValue::Bool(true),
+                StructuredValue::Bool(true),
+            ]),
+            StructuredValue::Array(vec![
+                StructuredValue::Bool(false),
+                StructuredValue::Bool(true),
+                StructuredValue::Bool(false),
+                number(3.0),
+            ]),
+            number(0.0),
+            StructuredValue::Bool(false),
+        ])
+    );
+}
+
+#[test]
+fn collection_methods_require_compatible_receivers() {
+    let program = compile(
+        r#"
+        const map = new Map();
+        const set = new Set();
+        const mapGet = map.get;
+        const setAdd = set.add;
+        [
+          (() => {
+            try {
+              mapGet('alpha');
+              return 'unreachable';
+            } catch (error) {
+              return [error.name, error.message];
+            }
+          })(),
+          (() => {
+            try {
+              setAdd(1);
+              return 'unreachable';
+            } catch (error) {
+              return [error.name, error.message];
+            }
+          })(),
+        ];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![
+                string("TypeError"),
+                string("Map.prototype.get called on incompatible receiver"),
+            ]),
+            StructuredValue::Array(vec![
+                string("TypeError"),
+                string("Set.prototype.add called on incompatible receiver"),
+            ]),
+        ])
+    );
+}
+
+#[test]
+fn collection_iteration_dependent_forms_fail_closed() {
+    let map_ctor = compile("new Map([['alpha', 1]]);").expect("source should compile");
+    let error = execute(&map_ctor, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Map constructor iterable inputs are not supported")
+    );
+
+    let map_entries = compile("new Map().entries();").expect("source should compile");
+    let error =
+        execute(&map_entries, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Map iterator-producing APIs are not supported")
+    );
+
+    let set_ctor = compile("new Set([1, 2]);").expect("source should compile");
+    let error = execute(&set_ctor, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Set constructor iterable inputs are not supported")
+    );
+
+    let set_values = compile("new Set().values();").expect("source should compile");
+    let error =
+        execute(&set_values, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Set iterator-producing APIs are not supported")
+    );
+}
+
+#[test]
+fn maps_and_sets_reject_structured_host_boundary_crossing() {
+    let output = compile(
+        r#"
+        const map = new Map();
+        map.set('alpha', 1);
+        map;
+        "#,
+    )
+    .expect("source should compile");
+    let error = execute(&output, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Map and Set values cannot cross the structured host boundary")
+    );
+
+    let capability = compile(
+        r#"
+        const set = new Set();
+        set.add(1);
+        sink(set);
+        "#,
+    )
+    .expect("source should compile");
+    let error = start(
+        &capability,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["sink".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect_err("start should reject map/set arguments before suspension");
+    assert!(
+        error
+            .to_string()
+            .contains("Map and Set values cannot cross the structured host boundary")
+    );
+}
+
+#[test]
+fn snapshots_preserve_keyed_collections_and_cycles() {
+    let program = compile(
+        r#"
+        const key = { label: 'shared' };
+        const map = new Map();
+        const set = new Set();
+        map.set('count', 1);
+        map.set(key, set);
+        set.add(key);
+        set.add(map);
+        const value = fetch_data(41);
+        map.set('count', value);
+        ({
+          count: map.get('count'),
+          hasKey: map.has(key),
+          setHasMap: set.has(map),
+          setSize: set.size,
+          mapSize: map.size,
+        });
+        "#,
+    )
+    .expect("source should compile");
+
+    let first = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+    assert_eq!(first.capability, "fetch_data");
+    assert_eq!(first.args, vec![number(41.0)]);
+
+    let encoded = dump_snapshot(&first.snapshot).expect("snapshot should serialize");
+    let loaded = load_snapshot(&encoded).expect("snapshot should deserialize");
+
+    let completed =
+        resume(loaded, jslite::ResumePayload::Value(number(41.0))).expect("resume should work");
+    match completed {
+        ExecutionStep::Completed(value) => assert_eq!(
+            value,
+            StructuredValue::Object(IndexMap::from([
+                ("count".to_string(), number(41.0)),
+                ("hasKey".to_string(), StructuredValue::Bool(true)),
+                ("setHasMap".to_string(), StructuredValue::Bool(true)),
+                ("setSize".to_string(), number(2.0)),
+                ("mapSize".to_string(), number(2.0)),
+            ]))
+        ),
+        ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
+    }
+}
+
+#[test]
+fn keyed_collection_cycles_and_clear_delete_behavior_survive_heap_pressure() {
+    let program = compile(
+        r#"
+        let total = 0;
+        for (let i = 0; i < 80; i += 1) {
+          let map = new Map();
+          let set = new Set();
+          let key = { index: i };
+          map.set(key, set);
+          set.add(map);
+          set.add(key);
+          total += map.size + set.size;
+          map.delete(key);
+          set.delete(map);
+          set.clear();
+        }
+        total;
+        "#,
+    )
+    .expect("source should compile");
+
+    let value = execute(
+        &program,
+        ExecutionOptions {
+            limits: RuntimeLimits {
+                instruction_budget: 20_000,
+                heap_limit_bytes: 24 * 1024,
+                allocation_budget: 512,
+                ..RuntimeLimits::default()
+            },
+            cancellation_token: None,
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect("gc should reclaim keyed-collection cycles under pressure");
+    assert_eq!(value, number(240.0));
+}

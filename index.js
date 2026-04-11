@@ -85,6 +85,14 @@ function encodeNumber(value) {
   return { Number: { Finite: value } };
 }
 
+function isPlainStructuredObject(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function encodeStructured(value) {
   if (value === undefined) {
     return 'Undefined';
@@ -105,6 +113,11 @@ function encodeStructured(value) {
     return { Array: value.map(encodeStructured) };
   }
   if (typeof value === 'object') {
+    if (!isPlainStructuredObject(value)) {
+      throw new TypeError(
+        'Unsupported host value: only plain objects and arrays can cross the host boundary',
+      );
+    }
     const object = {};
     for (const [key, entry] of Object.entries(value)) {
       object[key] = encodeStructured(entry);

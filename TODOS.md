@@ -494,42 +494,42 @@ Exit criteria:
 
 ### Keyed Collections (`Map` and `Set`)
 
-- [ ] Define the supported `Map` and `Set` API surface
-- [ ] Define and document insertion-order guarantees for supported `Map` and
+- [x] Define the supported `Map` and `Set` API surface
+- [x] Define and document insertion-order guarantees for supported `Map` and
   `Set` operations
-- [ ] Decide `Map` key equality and `Set` membership semantics for numbers,
+- [x] Decide `Map` key equality and `Set` membership semantics for numbers,
   strings, objects, `NaN`, and `-0`
-- [ ] Stage constructor and iteration-dependent collection APIs behind the
+- [x] Stage constructor and iteration-dependent collection APIs behind the
   iteration milestone explicitly
-- [ ] Reject iterator-dependent constructor inputs and iterator-returning APIs
+- [x] Reject iterator-dependent constructor inputs and iterator-returning APIs
   until the iteration milestone lands
-- [ ] Implement heap-backed `Map` storage and supported mutation and lookup
+- [x] Implement heap-backed `Map` storage and supported mutation and lookup
   operations
-- [ ] Implement heap-backed `Set` storage and supported mutation and membership
+- [x] Implement heap-backed `Set` storage and supported mutation and membership
   operations
-- [ ] Add `Map` (`get`, `set`, `has`, `delete`, `clear`, `size`) and `Set`
+- [x] Add `Map` (`get`, `set`, `has`, `delete`, `clear`, `size`) and `Set`
   (`add`, `has`, `delete`, `clear`, `size`) to the built-in surface
-- [ ] Decide and document host-boundary, sidecar, and `StructuredValue`
+- [x] Decide and document host-boundary, sidecar, and `StructuredValue`
   behavior for `Map` and `Set`
-- [ ] Wire `Map` and `Set` into heap accounting and GC reachability
-- [ ] Extend snapshot serialization and validation to preserve supported `Map`
+- [x] Wire `Map` and `Set` into heap accounting and GC reachability
+- [x] Extend snapshot serialization and validation to preserve supported `Map`
   and `Set` values safely
-- [ ] Add diagnostics coverage for unsupported collection APIs, invalid method
+- [x] Add diagnostics coverage for unsupported collection APIs, invalid method
   receivers, and rejected iterator-dependent forms
-- [ ] Add GC stress coverage for object keys, cycles, and `delete` / `clear`
+- [x] Add GC stress coverage for object keys, cycles, and `delete` / `clear`
   behavior under heap pressure
-- [ ] Add unit, integration, differential, and hostile-input tests for
+- [x] Add unit, integration, differential, and hostile-input tests for
   supported `Map` and `Set` behavior
-- [ ] Update `README.md`, `docs/LANGUAGE.md`, `docs/HOST_API.md`,
+- [x] Update `README.md`, `docs/LANGUAGE.md`, `docs/HOST_API.md`,
   `docs/SERIALIZATION.md`, and `docs/RUNTIME_MODEL.md` when keyed collections
   land
-- [ ] Keep `WeakMap` and `WeakSet` deferred until their GC and reachability
+- [x] Keep `WeakMap` and `WeakSet` deferred until their GC and reachability
   semantics are designed explicitly
 
 Exit criteria:
 
-- [ ] Supported `Map` and `Set` programs run correctly
-- [ ] Unsupported iterator-dependent behavior fails closed
-- [ ] Heap accounting, GC, and snapshotting remain correct for keyed
+- [x] Supported `Map` and `Set` programs run correctly
+- [x] Unsupported iterator-dependent behavior fails closed
+- [x] Heap accounting, GC, and snapshotting remain correct for keyed
   collections
-- [ ] Collection tests pass
+- [x] Collection tests pass

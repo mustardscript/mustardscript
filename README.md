@@ -32,6 +32,9 @@ The current implementation already supports:
   basic control flow
 - array `for...of` with `let` / `const` loop bindings, destructuring, and
   snapshot-safe iterator state
+- `Map` and `Set` with zero-argument constructors, SameValueZero key and
+  membership semantics, insertion-order-preserving storage, and explicit
+  rejection of iterator-dependent collection APIs
 - `async` functions, `await`, guest promises, and internal microtask scheduling
   for the supported subset
 - `throw`, `try`/`catch`/`finally`, and guest-visible `Error` objects
@@ -266,7 +269,7 @@ JavaScript.
 ### Current Implemented Baseline
 
 - Numbers, booleans, strings, `null`, and `undefined`
-- Arrays and plain objects
+- Arrays, plain objects, `Map`, and `Set`
 - `let` and `const`
 - Functions and closures
 - `async` functions and `await`
@@ -297,7 +300,7 @@ JavaScript.
 - Generators, custom iterator authoring, and non-array iterable protocols
 - public iterator-producing built-ins such as array iterator helper methods
 - Symbols
-- `Map`, `Set`, `WeakMap`, `WeakSet`
+- `WeakMap`, `WeakSet`
 - Typed arrays, `ArrayBuffer`, shared memory, and atomics
 - `Date`
 - `Intl`
@@ -333,6 +336,8 @@ Currently implemented built-ins:
 - `globalThis`
 - `Object`
 - `Array`
+- `Map`
+- `Set`
 - `Promise`
 - `String`
 - `Error`
@@ -350,6 +355,17 @@ Current Promise support is intentionally narrow:
 - async functions return internal guest promises
 - `Promise.resolve(...)` and `Promise.reject(...)` are supported
 - `new Promise(...)` and instance methods remain unsupported and fail closed
+
+Current keyed-collection support is intentionally narrow:
+
+- `new Map()` and `new Set()` are supported with zero arguments only
+- `Map` supports `get`, `set`, `has`, `delete`, `clear`, and `size`
+- `Set` supports `add`, `has`, `delete`, `clear`, and `size`
+- `Map` keys and `Set` membership use SameValueZero semantics, so `NaN`
+  matches `NaN` and `-0` is treated the same as `0`
+- `Map` and `Set` preserve first-in insertion order internally, but
+  iterator-producing APIs and iterable constructor inputs remain unsupported
+  and fail closed
 
 No default clock, random source, filesystem, network, timers, or environment
 access should exist in the guest runtime. If the host wants those capabilities,
