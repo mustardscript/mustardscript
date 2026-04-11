@@ -380,6 +380,18 @@ Current Promise support is intentionally narrow:
 - `Promise.resolve(...)` and `Promise.reject(...)` are supported
 - `new Promise(...)` and instance methods remain unsupported and fail closed
 
+Current built-in helper support is intentionally conservative:
+
+- arrays support `push`, `pop`, `slice`, `join`, `includes`, and `indexOf`
+- strings support `trim`, `includes`, `startsWith`, `endsWith`, `slice`,
+  `substring`, `toLowerCase`, and `toUpperCase`
+- `Object.keys`, `Object.values`, `Object.entries`, and `Object.hasOwn`
+  currently support plain objects and arrays
+- `Math.pow`, `Math.sqrt`, `Math.trunc`, and `Math.sign` are supported
+- callback-driven array helpers, descriptor/prototype helpers, regex-driven
+  string helpers, iterable-based constructors, and nondeterministic helpers
+  such as `Math.random` remain unsupported
+
 Current function-call support is intentionally narrow:
 
 - non-arrow guest member calls bind the computed receiver as `this`

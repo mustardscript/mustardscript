@@ -19,6 +19,50 @@ test('run executes sync programs', async () => {
   assert.equal(result, 4);
 });
 
+test('run supports conservative array, string, object, and Math helper surface', async () => {
+  const j = new Jslite(`
+    const values = [1, 2];
+    values.push(3);
+    const object = { zebra: 1, alpha: 2 };
+    const arrayEntries = Object.entries(values);
+    ({
+      slice: values.slice(1).join('-'),
+      includes: values.includes(2),
+      indexOf: values.indexOf(3),
+      trim: "  MiXeD Example  ".trim(),
+      startsWith: "  MiXeD Example  ".startsWith("Mi", 2),
+      substring: "  MiXeD Example  ".substring(8, 3),
+      objectKeys: Object.keys(object),
+      objectValues: Object.values(object),
+      hasOwn: Object.hasOwn(object, "alpha"),
+      arrayEntries: arrayEntries,
+      pow: Math.pow(2, 5),
+      sqrt: Math.sqrt(81),
+      trunc: Math.trunc(-3.9),
+      sign: Math.sign(-0),
+    });
+  `);
+
+  const result = await j.run();
+  assert.deepEqual(result, {
+    slice: '2-3',
+    includes: true,
+    indexOf: 2,
+    trim: 'MiXeD Example',
+    startsWith: true,
+    substring: 'iXeD ',
+    objectKeys: ['alpha', 'zebra'],
+    objectValues: [2, 1],
+    hasOwn: true,
+    arrayEntries: [['0', 1], ['1', 2], ['2', 3]],
+    pow: 32,
+    sqrt: 9,
+    trunc: -3,
+    sign: -0,
+  });
+  assert.ok(Object.is(result.sign, -0));
+});
+
 test('run applies nullish assignment only to nullish identifiers and members', async () => {
   const j = new Jslite(`
     let missing;
