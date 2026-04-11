@@ -31,7 +31,8 @@ extensions are called out explicitly instead of being implied.
 - arrow functions
 - `await` inside async functions
 - literals, arrays, and objects
-- `if`, `switch`, `while`, `do...while`, `for`, `break`, and `continue`
+- `if`, `switch`, `while`, `do...while`, `for`, array `for...of`, `break`,
+  and `continue`
 - `return`
 - `throw`, `try`, `catch`, and `finally`
 - common destructuring
@@ -53,6 +54,28 @@ extensions are called out explicitly instead of being implied.
 - unsupported Promise construction and instance methods still fail closed at
   runtime
 
+## Supported Iteration Surface
+
+- `for...of` is currently supported only when the header declares exactly one
+  `let` or `const` binding pattern
+- only guest arrays are iterable in the current surface
+- header patterns can use the same identifier, array, and object destructuring
+  forms already supported elsewhere in the runtime
+- each `for...of` iteration gets a fresh lexical binding environment for the
+  loop header bindings
+- array iteration yields values in ascending numeric index order and ignores
+  non-index properties
+- active array iterators observe the live backing array length, so elements
+  appended before exhaustion are visited in order
+- array iterator helper methods such as `values()`, `keys()`, and `entries()`
+  are still absent from the built-in surface and therefore fail closed when
+  called
+- unsupported iterable inputs such as strings, plain objects, promises, and
+  custom iterables throw a runtime `TypeError`
+- abrupt completion from `break`, `continue`, `return`, or `throw` discards the
+  internal array iterator state with no user-visible iterator-close hook because
+  generators and custom iterators remain deferred
+
 ## Rejected With Validation Diagnostics
 
 - `import`, `export`, and dynamic `import()`
@@ -63,7 +86,9 @@ extensions are called out explicitly instead of being implied.
 - `with`
 - classes
 - generators and `yield`
-- `for...in` and `for...of`
+- `for...in`
+- `for await...of`
+- `for...of` forms that do not declare exactly one `let` or `const` binding
 - `debugger`
 - labeled statements
 - object spread and object-literal methods
@@ -74,7 +99,8 @@ extensions are called out explicitly instead of being implied.
 
 - full Promise constructor semantics and promise instance methods
 - full `this` semantics beyond the current basic function-call behavior
-- iterator protocol support
+- non-array iterable protocol support
+- public iterator-producing APIs and custom iterator authoring
 - module loading
 - property descriptor semantics
 - full prototype semantics
@@ -103,12 +129,12 @@ extensions are called out explicitly instead of being implied.
 ## Observable Ordering
 
 - The only currently supported observable property-order surface is
-  `JSON.stringify`.
+  `JSON.stringify` plus array `for...of`.
 - `JSON.stringify` on plain objects renders string keys in sorted key order.
 - `JSON.stringify` on arrays renders elements in ascending numeric index order.
 - Non-index array properties are ignored by `JSON.stringify`.
-- Enumeration APIs such as `Object.keys`, `for...in`, and `for...of` remain
-  unsupported.
+- Array `for...of` yields values in ascending numeric index order.
+- Enumeration APIs such as `Object.keys` and `for...in` remain unsupported.
 
 ## Built-Ins and Global Names
 

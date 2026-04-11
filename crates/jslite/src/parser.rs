@@ -218,6 +218,62 @@ impl<'a> Lowerer<'a> {
                     body: Box::new(self.lower_stmt(&statement.body)?),
                 })
             }
+            Statement::ForOfStatement(statement) => {
+                if statement.r#await {
+                    self.unsupported(
+                        "for await...of is not supported",
+                        Some(statement.span.into()),
+                    );
+                    return None;
+                }
+
+                let (kind, pattern, pattern_source) = match &statement.left {
+                    ForStatementLeft::VariableDeclaration(decl) => {
+                        if decl.declarations.len() != 1 {
+                            self.unsupported(
+                                "for...of currently requires exactly one let or const binding",
+                                Some(decl.span.into()),
+                            );
+                            return None;
+                        }
+                        let declarator = &decl.declarations[0];
+                        if declarator.init.is_some() {
+                            self.unsupported(
+                                "for...of binding initializers are not supported",
+                                Some(declarator.span.into()),
+                            );
+                            return None;
+                        }
+                        (
+                            self.lower_binding_kind(decl.kind, decl.span)?,
+                            self.lower_pattern(&declarator.id)?,
+                            &declarator.id,
+                        )
+                    }
+                    _ => {
+                        self.unsupported(
+                            "for...of currently requires a let or const binding declaration",
+                            Some(statement.left.span().into()),
+                        );
+                        return None;
+                    }
+                };
+
+                let iterable = self.lower_expr(&statement.right)?;
+                self.push_scope();
+                self.collect_pattern_bindings(pattern_source);
+                let body = self.lower_stmt(&statement.body);
+                self.pop_scope();
+                let body = Box::new(body?);
+
+                Some(Stmt::ForOf {
+                    span: statement.span.into(),
+                    kind,
+                    pattern,
+                    iterable,
+                    body,
+                })
+            }
             Statement::IfStatement(statement) => Some(Stmt::If {
                 span: statement.span.into(),
                 test: self.lower_expr(&statement.test)?,
@@ -314,13 +370,6 @@ impl<'a> Lowerer<'a> {
             Statement::ForInStatement(statement) => {
                 self.unsupported(
                     "for...in is not supported in v1",
-                    Some(statement.span.into()),
-                );
-                None
-            }
-            Statement::ForOfStatement(statement) => {
-                self.unsupported(
-                    "for...of is not supported in v1",
                     Some(statement.span.into()),
                 );
                 None
@@ -1105,5 +1154,43 @@ mod tests {
         let text = error.to_string();
         assert!(text.contains("delete is not supported in v1"));
         assert!(text.contains("[0..19]"));
+    }
+
+    #[test]
+    fn parses_array_for_of_with_const_binding() {
+        let program = compile(
+            r#"
+            let total = 0;
+            for (const value of [1, 2, 3]) {
+              total += value;
+            }
+            total;
+            "#,
+        )
+        .expect("for...of over arrays should compile");
+
+        assert!(matches!(program.script.body[1], Stmt::ForOf { .. }));
+    }
+
+    #[test]
+    fn rejects_for_of_without_binding_declaration() {
+        let error = compile("let value = 0; for (value of [1, 2]) { value; }")
+            .expect_err("assignment-target for...of should fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("for...of currently requires a let or const binding declaration")
+        );
+    }
+
+    #[test]
+    fn rejects_for_await_of() {
+        let error = compile("async function run() { for await (const value of [1]) { value; } }")
+            .expect_err("for await...of should fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("for await...of is not supported")
+        );
     }
 }

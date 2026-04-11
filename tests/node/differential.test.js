@@ -155,6 +155,30 @@ const DIFFERENTIAL_CASES = [
       ];
     `,
   },
+  {
+    name: 'array for...of observes order and growth',
+    source: `
+      const values = [1, 2];
+      const seen = [];
+      for (let value of values) {
+        seen[seen.length] = value;
+        if (value === 1) {
+          values[values.length] = 3;
+        }
+      }
+      seen;
+    `,
+  },
+  {
+    name: 'array for...of creates fresh iteration bindings',
+    source: `
+      const fns = [];
+      for (const [value] of [[1], [2]]) {
+        fns[fns.length] = () => value;
+      }
+      [fns[0](), fns[1]()];
+    `,
+  },
 ];
 
 for (const { name, source } of DIFFERENTIAL_CASES) {

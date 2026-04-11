@@ -56,6 +56,9 @@ fn stmt_contains_expr(stmt: &Stmt, predicate: &impl Fn(&Expr) -> bool) -> bool {
                     .is_some_and(|expression| expr_contains(expression, predicate))
                 || stmt_contains_expr(body, predicate)
         }
+        Stmt::ForOf { iterable, body, .. } => {
+            expr_contains(iterable, predicate) || stmt_contains_expr(body, predicate)
+        }
         Stmt::Return { value, .. } => value
             .as_ref()
             .is_some_and(|expression| expr_contains(expression, predicate)),

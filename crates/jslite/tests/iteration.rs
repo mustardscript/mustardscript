@@ -1,0 +1,179 @@
+use indexmap::IndexMap;
+
+use jslite::{
+    ExecutionOptions, ExecutionStep, ResumePayload, RuntimeLimits, StructuredValue, compile,
+    dump_snapshot, execute, load_snapshot, resume, start,
+};
+
+fn number(value: f64) -> StructuredValue {
+    StructuredValue::from(value)
+}
+
+#[test]
+fn array_for_of_preserves_index_order_and_observes_growth() {
+    let program = compile(
+        r#"
+        const values = [1, 2];
+        let seen = [];
+        for (let value of values) {
+          seen[seen.length] = value;
+          if (value === 1) {
+            values[values.length] = 3;
+          }
+        }
+        seen;
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![number(1.0), number(2.0), number(3.0)])
+    );
+}
+
+#[test]
+fn for_of_supports_destructuring_and_fresh_iteration_bindings() {
+    let program = compile(
+        r#"
+        const fns = [];
+        for (const [value] of [[1], [2]]) {
+          fns[fns.length] = () => value;
+        }
+        [fns[0](), fns[1]()];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![number(1.0), number(2.0)])
+    );
+}
+
+#[test]
+fn for_of_runs_finally_blocks_on_continue_and_break() {
+    let program = compile(
+        r#"
+        let total = 0;
+        let events = [];
+        for (const value of [1, 2, 3, 4]) {
+          try {
+            if (value === 2) {
+              continue;
+            }
+            if (value === 4) {
+              break;
+            }
+            total += value;
+          } finally {
+            events[events.length] = value;
+          }
+        }
+        ({ total, events });
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Object(IndexMap::from([
+            ("total".to_string(), number(4.0)),
+            (
+                "events".to_string(),
+                StructuredValue::Array(vec![number(1.0), number(2.0), number(3.0), number(4.0),]),
+            ),
+        ]))
+    );
+}
+
+#[test]
+fn for_of_rejects_non_array_iterables() {
+    let program = compile(
+        r#"
+        let total = 0;
+        for (const value of "hi") {
+          total += value.length;
+        }
+        total;
+        "#,
+    )
+    .expect("source should compile");
+
+    let error = execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("for...of currently only supports arrays")
+    );
+}
+
+#[test]
+fn iterator_producing_array_helpers_fail_closed() {
+    let program = compile("([1, 2]).values();").expect("source should compile");
+
+    let error = execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(error.to_string().contains("value is not callable"));
+}
+
+#[test]
+fn snapshot_round_trip_preserves_active_array_iterators() {
+    let program = compile(
+        r#"
+        let total = 0;
+        for (const value of [1, 2, 3]) {
+          total += fetch_data(value);
+        }
+        total;
+        "#,
+    )
+    .expect("source should compile");
+
+    let first = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+    assert_eq!(first.capability, "fetch_data");
+    assert_eq!(first.args, vec![number(1.0)]);
+
+    let encoded = dump_snapshot(&first.snapshot).expect("snapshot should serialize");
+    let loaded = load_snapshot(&encoded).expect("snapshot should deserialize");
+
+    let second = match resume(loaded, ResumePayload::Value(number(10.0)))
+        .expect("resume should work")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected a second suspension, got {value:?}"),
+    };
+    assert_eq!(second.capability, "fetch_data");
+    assert_eq!(second.args, vec![number(2.0)]);
+
+    let third = match resume(second.snapshot, ResumePayload::Value(number(20.0)))
+        .expect("second resume should work")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected a third suspension, got {value:?}"),
+    };
+    assert_eq!(third.capability, "fetch_data");
+    assert_eq!(third.args, vec![number(3.0)]);
+
+    let completed = resume(third.snapshot, ResumePayload::Value(number(30.0)))
+        .expect("final resume should work");
+    match completed {
+        ExecutionStep::Completed(value) => assert_eq!(value, number(60.0)),
+        ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
+    }
+}

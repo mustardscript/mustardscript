@@ -30,6 +30,8 @@ The current implementation already supports:
 - parse -> validate -> IR -> bytecode -> VM execution for the supported subset
 - `let`/`const`, functions and closures, arrays, plain objects, loops, and
   basic control flow
+- array `for...of` with `let` / `const` loop bindings, destructuring, and
+  snapshot-safe iterator state
 - `async` functions, `await`, guest promises, and internal microtask scheduling
   for the supported subset
 - `throw`, `try`/`catch`/`finally`, and guest-visible `Error` objects
@@ -292,8 +294,8 @@ JavaScript.
 - `Function` constructor
 - `with`
 - Classes
-- Generators and iterator protocol
-- `for...of`
+- Generators, custom iterator authoring, and non-array iterable protocols
+- public iterator-producing built-ins such as array iterator helper methods
 - Symbols
 - `Map`, `Set`, `WeakMap`, `WeakSet`
 - Typed arrays, `ArrayBuffer`, shared memory, and atomics

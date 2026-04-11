@@ -48,6 +48,35 @@ fn suspended_snapshot_bytes() -> Vec<u8> {
     dump_snapshot(&snapshot).expect("snapshot should serialize")
 }
 
+fn iterating_snapshot_bytes() -> Vec<u8> {
+    let program = compile(
+        r#"
+        let total = 0;
+        for (const value of [1, 2, 3]) {
+          total += fetch_data(value);
+        }
+        total;
+        "#,
+    )
+    .expect("compile should work");
+    let step = start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("program should start");
+
+    let snapshot = match step {
+        jslite::ExecutionStep::Completed(_) => panic!("program should suspend"),
+        jslite::ExecutionStep::Suspended(suspension) => suspension.snapshot,
+    };
+    dump_snapshot(&snapshot).expect("snapshot should serialize")
+}
+
 fn byte_mutations(bytes: &[u8]) -> Vec<Vec<u8>> {
     let mut cases = vec![
         Vec::new(),
@@ -162,6 +191,17 @@ fn mutated_serialized_programs_fail_safely() {
 #[test]
 fn mutated_snapshots_fail_safely() {
     let bytes = suspended_snapshot_bytes();
+
+    for mutated in byte_mutations(&bytes) {
+        if let Err(error) = load_snapshot(&mutated) {
+            assert_host_safe_message(&error.to_string());
+        }
+    }
+}
+
+#[test]
+fn mutated_iteration_snapshots_fail_safely() {
+    let bytes = iterating_snapshot_bytes();
 
     for mutated in byte_mutations(&bytes) {
         if let Err(error) = load_snapshot(&mutated) {
