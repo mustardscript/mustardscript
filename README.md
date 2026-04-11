@@ -362,6 +362,7 @@ Currently implemented built-ins:
 - `Map`
 - `Set`
 - `Promise`
+- `RegExp`
 - `String`
 - `Error`
 - `TypeError`
@@ -399,8 +400,12 @@ Current built-in helper support is intentionally conservative:
 - array callback helpers currently support guest callbacks, built-in callbacks,
   and async host callbacks reached from an async guest boundary; synchronous
   host suspensions from those helpers fail closed
-- string pattern helpers currently support string search patterns only;
-  callback replacements and full `RegExp` parity remain unsupported
+- string pattern helpers accept string-coercible patterns and real `RegExp`
+  instances, including callback replacements for `replace` and `replaceAll`
+- string replacement callbacks are synchronous-only; host suspensions fail
+  closed, and only `g`, `i`, `m`, `s`, `u`, and `y` flags are supported
+- full `RegExp` parity and symbol-based match/replace protocol hooks remain
+  unsupported
 - descriptor/prototype helpers and nondeterministic helpers such as
   `Math.random` remain unsupported
 

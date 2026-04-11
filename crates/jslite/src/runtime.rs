@@ -1,6 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 
 use indexmap::IndexMap;
+use regress::Regex;
 use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 
@@ -111,6 +112,10 @@ pub enum Instruction {
     PushBool(bool),
     PushNumber(f64),
     PushString(String),
+    PushRegExp {
+        pattern: String,
+        flags: String,
+    },
     LoadName(String),
     StoreName(String),
     InitializePattern(Pattern),
@@ -509,6 +514,7 @@ fn apply_validation_effect(
         | Instruction::PushBool(_)
         | Instruction::PushNumber(_)
         | Instruction::PushString(_)
+        | Instruction::PushRegExp { .. }
         | Instruction::LoadName(_)
         | Instruction::MakeClosure { .. }
         | Instruction::BeginCatch => ValidationState {
@@ -1791,6 +1797,10 @@ impl Compiler {
             Expr::Bool { value, .. } => context.code.push(Instruction::PushBool(*value)),
             Expr::Number { value, .. } => context.code.push(Instruction::PushNumber(*value)),
             Expr::String { value, .. } => context.code.push(Instruction::PushString(value.clone())),
+            Expr::RegExp { pattern, flags, .. } => context.code.push(Instruction::PushRegExp {
+                pattern: pattern.clone(),
+                flags: flags.clone(),
+            }),
             Expr::Identifier { name, .. } => context.code.push(Instruction::LoadName(name.clone())),
             Expr::This { .. } => context.code.push(Instruction::LoadName("this".to_string())),
             Expr::Array { elements, .. } => {
@@ -2701,6 +2711,9 @@ enum BuiltinFunction {
     PromiseRace,
     PromiseAny,
     PromiseAllSettled,
+    RegExpCtor,
+    RegExpExec,
+    RegExpTest,
     ErrorCtor,
     TypeErrorCtor,
     ReferenceErrorCtor,
@@ -2768,6 +2781,50 @@ enum ObjectKind {
     Json,
     Console,
     Error(String),
+    RegExp(RegExpObject),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RegExpObject {
+    pattern: String,
+    flags: String,
+    last_index: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RegExpFlagsState {
+    global: bool,
+    ignore_case: bool,
+    multiline: bool,
+    dot_all: bool,
+    unicode: bool,
+    sticky: bool,
+}
+
+#[derive(Debug, Clone)]
+struct RegExpMatchData {
+    start_byte: usize,
+    end_byte: usize,
+    start_index: usize,
+    end_index: usize,
+    captures: Vec<Option<String>>,
+    named_groups: IndexMap<String, Option<String>>,
+}
+
+#[derive(Debug, Clone)]
+enum StringSearchPattern {
+    Literal(String),
+    RegExp {
+        object: ObjectKey,
+        regex: RegExpObject,
+    },
+}
+
+struct CallbackCallOptions<'a> {
+    non_callable_message: &'a str,
+    host_suspension_message: &'a str,
+    unsettled_message: &'a str,
+    allow_host_suspension: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -4269,6 +4326,10 @@ impl Runtime {
             Instruction::PushString(value) => {
                 self.frames[frame_index].stack.push(Value::String(value))
             }
+            Instruction::PushRegExp { pattern, flags } => {
+                let value = self.make_regexp_value(pattern, flags)?;
+                self.frames[frame_index].stack.push(value);
+            }
             Instruction::LoadName(name) => {
                 let env = self.frames[frame_index].env;
                 let value = self.lookup_name(env, &name)?;
@@ -5706,6 +5767,7 @@ impl Runtime {
                 | BuiltinFunction::MapCtor
                 | BuiltinFunction::SetCtor
                 | BuiltinFunction::PromiseCtor
+                | BuiltinFunction::RegExpCtor
                 | BuiltinFunction::ErrorCtor
                 | BuiltinFunction::TypeErrorCtor
                 | BuiltinFunction::ReferenceErrorCtor
@@ -5716,6 +5778,7 @@ impl Runtime {
             ) => match callee {
                 Value::BuiltinFunction(BuiltinFunction::MapCtor) => self.construct_map(args),
                 Value::BuiltinFunction(BuiltinFunction::SetCtor) => self.construct_set(args),
+                Value::BuiltinFunction(BuiltinFunction::RegExpCtor) => self.construct_regexp(args),
                 Value::BuiltinFunction(kind) => self.call_builtin(kind, Value::Undefined, args),
                 _ => unreachable!(),
             },
@@ -5820,6 +5883,9 @@ impl Runtime {
             BuiltinFunction::PromiseRace => self.call_promise_race(args),
             BuiltinFunction::PromiseAny => self.call_promise_any(args),
             BuiltinFunction::PromiseAllSettled => self.call_promise_all_settled(args),
+            BuiltinFunction::RegExpCtor => self.construct_regexp(args),
+            BuiltinFunction::RegExpExec => self.call_regexp_exec(this_value, args),
+            BuiltinFunction::RegExpTest => self.call_regexp_test(this_value, args),
             BuiltinFunction::ErrorCtor => self.make_error_object("Error", args, None, None),
             BuiltinFunction::TypeErrorCtor => self.make_error_object("TypeError", args, None, None),
             BuiltinFunction::ReferenceErrorCtor => {
@@ -5950,6 +6016,11 @@ impl Runtime {
         self.define_global(
             "Promise".to_string(),
             Value::BuiltinFunction(BuiltinFunction::PromiseCtor),
+            false,
+        )?;
+        self.define_global(
+            "RegExp".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::RegExpCtor),
             false,
         )?;
         self.define_global(
@@ -6106,6 +6177,35 @@ impl Runtime {
         }
 
         Ok(Value::Set(set))
+    }
+
+    fn construct_regexp(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let pattern_arg = args.first().cloned().unwrap_or(Value::Undefined);
+        let flags_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let (pattern, flags) = match pattern_arg {
+            Value::Object(object) if self.is_regexp_object(object) => {
+                let regex = self.regexp_object(object)?.clone();
+                if matches!(flags_arg, Value::Undefined) {
+                    (regex.pattern, regex.flags)
+                } else {
+                    (regex.pattern, self.to_string(flags_arg)?)
+                }
+            }
+            value => {
+                let pattern = if matches!(value, Value::Undefined) {
+                    String::new()
+                } else {
+                    self.to_string(value)?
+                };
+                let flags = if matches!(flags_arg, Value::Undefined) {
+                    String::new()
+                } else {
+                    self.to_string(flags_arg)?
+                };
+                (pattern, flags)
+            }
+        };
+        self.make_regexp_value(pattern, flags)
     }
 
     fn array_receiver(&self, value: Value, method: &str) -> JsliteResult<ArrayKey> {
@@ -6289,11 +6389,12 @@ impl Runtime {
         Ok((callback, this_arg))
     }
 
-    fn call_array_callback(
+    fn call_callback(
         &mut self,
         callback: Value,
         this_arg: Value,
         args: &[Value],
+        options: CallbackCallOptions<'_>,
     ) -> JsliteResult<Value> {
         match callback {
             Value::Closure(closure) => {
@@ -6324,18 +6425,14 @@ impl Runtime {
                             self.pending_internal_exception = Some(rejection);
                             Err(JsliteError::runtime(INTERNAL_CALLBACK_THROW_MARKER))
                         }
-                        None => Err(JsliteError::runtime(
-                            "synchronous array callback did not settle",
-                        )),
+                        None => Err(JsliteError::runtime(options.unsettled_message)),
                     }
                 }
             }
             Value::BuiltinFunction(function) => self.call_builtin(function, this_arg, args),
             Value::HostFunction(capability) => {
-                if self.current_async_boundary_index().is_none() {
-                    return Err(JsliteError::runtime(
-                        "TypeError: array callback helpers do not support synchronous host suspensions",
-                    ));
+                if !options.allow_host_suspension || self.current_async_boundary_index().is_none() {
+                    return Err(JsliteError::runtime(options.host_suspension_message));
                 }
                 let outstanding =
                     self.pending_host_calls.len() + usize::from(self.suspended_host_call.is_some());
@@ -6357,10 +6454,28 @@ impl Runtime {
                 });
                 Ok(Value::Promise(promise))
             }
-            _ => Err(JsliteError::runtime(
-                "TypeError: array callback is not callable",
-            )),
+            _ => Err(JsliteError::runtime(options.non_callable_message)),
         }
+    }
+
+    fn call_array_callback(
+        &mut self,
+        callback: Value,
+        this_arg: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        self.call_callback(
+            callback,
+            this_arg,
+            args,
+            CallbackCallOptions {
+                non_callable_message: "TypeError: array callback is not callable",
+                host_suspension_message:
+                    "TypeError: array callback helpers do not support synchronous host suspensions",
+                unsettled_message: "synchronous array callback did not settle",
+                allow_host_suspension: true,
+            },
+        )
     }
 
     fn array_callback_value(&self, array: ArrayKey, index: usize) -> JsliteResult<Value> {
@@ -6871,21 +6986,82 @@ impl Runtime {
         Ok(Value::String(value.to_uppercase()))
     }
 
-    fn string_search_pattern(&self, value: Value, method: &str) -> JsliteResult<String> {
-        if is_callable(&value) {
-            return Err(JsliteError::runtime(format!(
-                "TypeError: String.prototype.{method} does not support callback patterns",
-            )));
+    fn string_search_pattern(
+        &self,
+        value: Value,
+        method: &str,
+    ) -> JsliteResult<StringSearchPattern> {
+        match value {
+            Value::Object(object) if self.is_regexp_object(object) => {
+                Ok(StringSearchPattern::RegExp {
+                    object,
+                    regex: self.regexp_object(object)?.clone(),
+                })
+            }
+            value => {
+                if is_callable(&value) {
+                    return Err(JsliteError::runtime(format!(
+                        "TypeError: String.prototype.{method} does not support callback patterns",
+                    )));
+                }
+                Ok(StringSearchPattern::Literal(self.to_string(value)?))
+            }
         }
-        self.to_string(value)
     }
 
-    fn string_replacement_value(&self, value: Value, method: &str) -> JsliteResult<String> {
-        if is_callable(&value) {
-            return Err(JsliteError::runtime(format!(
-                "TypeError: String.prototype.{method} does not support callback replacements",
-            )));
+    fn string_callback_replacement(
+        &mut self,
+        method: &str,
+        callback: Value,
+        input: &str,
+        matched: &RegExpMatchData,
+    ) -> JsliteResult<String> {
+        let mut args = vec![Value::String(
+            input[matched.start_byte..matched.end_byte].to_string(),
+        )];
+        args.extend(
+            matched
+                .captures
+                .iter()
+                .map(|value| value.clone().map_or(Value::Undefined, Value::String)),
+        );
+        args.push(Value::Number(matched.start_index as f64));
+        args.push(Value::String(input.to_string()));
+        if !matched.named_groups.is_empty() {
+            let groups = matched
+                .named_groups
+                .iter()
+                .map(|(name, value)| {
+                    (
+                        name.clone(),
+                        value.clone().map_or(Value::Undefined, Value::String),
+                    )
+                })
+                .collect::<IndexMap<_, _>>();
+            let object = self.insert_object(groups, ObjectKind::Plain)?;
+            args.push(Value::Object(object));
         }
+        let mut roots = vec![callback.clone()];
+        roots.extend(args.iter().cloned());
+        let value = self.with_temporary_roots(&roots, |runtime| {
+            runtime.call_callback(
+                callback.clone(),
+                Value::Undefined,
+                &args,
+                CallbackCallOptions {
+                    non_callable_message: &format!(
+                        "TypeError: String.prototype.{method} replacement callback is not callable"
+                    ),
+                    host_suspension_message: &format!(
+                        "TypeError: String.prototype.{method} callback replacements do not support host suspensions"
+                    ),
+                    unsettled_message: &format!(
+                        "synchronous String.prototype.{method} callback did not settle"
+                    ),
+                    allow_host_suspension: false,
+                },
+            )
+        })?;
         self.to_string(value)
     }
 
@@ -6907,75 +7083,291 @@ impl Runtime {
                 self.insert_array(Vec::new(), IndexMap::new())?,
             ));
         }
-        let separator = match args.first() {
+        let pattern = match args.first() {
             None | Some(Value::Undefined) => None,
             Some(value) => Some(self.string_search_pattern(value.clone(), "split")?),
         };
-        let parts = split_string_by_pattern(&value, separator.as_deref(), limit);
+        let elements = match pattern {
+            None => vec![Value::String(value)],
+            Some(StringSearchPattern::Literal(separator)) => {
+                split_string_by_pattern(&value, Some(separator.as_str()), limit)
+                    .into_iter()
+                    .map(Value::String)
+                    .collect()
+            }
+            Some(StringSearchPattern::RegExp { regex, .. }) => {
+                let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
+                let mut elements = Vec::new();
+                let mut last_end = 0usize;
+                for matched in matches {
+                    if elements.len() >= limit {
+                        break;
+                    }
+                    elements.push(Value::String(
+                        value[last_end..matched.start_byte].to_string(),
+                    ));
+                    if elements.len() >= limit {
+                        break;
+                    }
+                    for capture in matched.captures {
+                        elements.push(capture.map_or(Value::Undefined, Value::String));
+                        if elements.len() >= limit {
+                            break;
+                        }
+                    }
+                    last_end = matched.end_byte;
+                }
+                if elements.len() < limit {
+                    elements.push(Value::String(value[last_end..].to_string()));
+                }
+                elements
+            }
+        };
         Ok(Value::Array(self.insert_array(
-            parts.into_iter().map(Value::String).collect(),
+            elements.into_iter().take(limit).collect(),
             IndexMap::new(),
         )?))
     }
 
-    fn call_string_replace(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+    fn call_string_replace(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
         let value = self.string_receiver(this_value, "replace")?;
         let search = self
             .string_search_pattern(args.first().cloned().unwrap_or(Value::Undefined), "replace")?;
-        let replacement = self.string_replacement_value(
-            args.get(1).cloned().unwrap_or(Value::Undefined),
-            "replace",
-        )?;
-        Ok(Value::String(replace_first_string_match(
-            &value,
-            &search,
-            &replacement,
-        )))
+        let replacement = args.get(1).cloned().unwrap_or(Value::Undefined);
+        match (search, replacement.clone()) {
+            (StringSearchPattern::Literal(search), replacement) if is_callable(&replacement) => {
+                let matched = if search.is_empty() {
+                    Some(RegExpMatchData {
+                        start_byte: 0,
+                        end_byte: 0,
+                        start_index: 0,
+                        end_index: 0,
+                        captures: Vec::new(),
+                        named_groups: IndexMap::new(),
+                    })
+                } else {
+                    self.literal_match_data(&value, &search, 0)
+                };
+                if let Some(matched) = matched {
+                    let replacement =
+                        self.string_callback_replacement("replace", replacement, &value, &matched)?;
+                    let mut result = String::new();
+                    result.push_str(&value[..matched.start_byte]);
+                    result.push_str(&replacement);
+                    result.push_str(&value[matched.end_byte..]);
+                    Ok(Value::String(result))
+                } else {
+                    Ok(Value::String(value))
+                }
+            }
+            (StringSearchPattern::Literal(search), replacement) => Ok(Value::String(
+                replace_first_string_match(&value, &search, &self.to_string(replacement)?),
+            )),
+            (StringSearchPattern::RegExp { regex, .. }, replacement)
+                if is_callable(&replacement) =>
+            {
+                let all = regex.flags.contains('g');
+                let matches = self.collect_regexp_matches_from_state(&regex, &value, all)?;
+                if matches.is_empty() {
+                    return Ok(Value::String(value));
+                }
+                let mut result = String::new();
+                let mut last_end = 0usize;
+                for matched in &matches {
+                    result.push_str(&value[last_end..matched.start_byte]);
+                    result.push_str(&self.string_callback_replacement(
+                        "replace",
+                        replacement.clone(),
+                        &value,
+                        matched,
+                    )?);
+                    last_end = matched.end_byte;
+                }
+                result.push_str(&value[last_end..]);
+                Ok(Value::String(result))
+            }
+            (StringSearchPattern::RegExp { regex, .. }, replacement) => {
+                let all = regex.flags.contains('g');
+                let matches = self.collect_regexp_matches_from_state(&regex, &value, all)?;
+                if matches.is_empty() {
+                    return Ok(Value::String(value));
+                }
+                let replacement = self.to_string(replacement)?;
+                let mut result = String::new();
+                let mut last_end = 0usize;
+                for matched in &matches {
+                    result.push_str(&value[last_end..matched.start_byte]);
+                    result.push_str(&expand_regexp_replacement_template(
+                        &replacement,
+                        &value,
+                        matched,
+                    ));
+                    last_end = matched.end_byte;
+                }
+                result.push_str(&value[last_end..]);
+                Ok(Value::String(result))
+            }
+        }
     }
 
-    fn call_string_replace_all(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+    fn call_string_replace_all(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
         let value = self.string_receiver(this_value, "replaceAll")?;
         let search = self.string_search_pattern(
             args.first().cloned().unwrap_or(Value::Undefined),
             "replaceAll",
         )?;
-        let replacement = self.string_replacement_value(
-            args.get(1).cloned().unwrap_or(Value::Undefined),
-            "replaceAll",
-        )?;
-        Ok(Value::String(replace_all_string_matches(
-            &value,
-            &search,
-            &replacement,
-        )))
+        let replacement = args.get(1).cloned().unwrap_or(Value::Undefined);
+        match search {
+            StringSearchPattern::Literal(search) if is_callable(&replacement) => {
+                let mut matches = Vec::new();
+                if search.is_empty() {
+                    let total = value.chars().count();
+                    for index in 0..=total {
+                        let byte = char_index_to_byte_index(&value, index);
+                        matches.push(RegExpMatchData {
+                            start_byte: byte,
+                            end_byte: byte,
+                            start_index: index,
+                            end_index: index,
+                            captures: Vec::new(),
+                            named_groups: IndexMap::new(),
+                        });
+                    }
+                } else {
+                    let mut start_index = 0usize;
+                    while let Some(matched) = self.literal_match_data(&value, &search, start_index)
+                    {
+                        start_index = matched.end_index;
+                        matches.push(matched);
+                    }
+                }
+                let mut result = String::new();
+                let mut last_end = 0usize;
+                for matched in &matches {
+                    result.push_str(&value[last_end..matched.start_byte]);
+                    result.push_str(&self.string_callback_replacement(
+                        "replaceAll",
+                        replacement.clone(),
+                        &value,
+                        matched,
+                    )?);
+                    last_end = matched.end_byte;
+                }
+                result.push_str(&value[last_end..]);
+                Ok(Value::String(result))
+            }
+            StringSearchPattern::Literal(search) => Ok(Value::String(replace_all_string_matches(
+                &value,
+                &search,
+                &self.to_string(replacement)?,
+            ))),
+            StringSearchPattern::RegExp { regex, .. } => {
+                if !regex.flags.contains('g') {
+                    return Err(JsliteError::runtime(
+                        "TypeError: String.prototype.replaceAll requires a global RegExp",
+                    ));
+                }
+                let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
+                if matches.is_empty() {
+                    return Ok(Value::String(value));
+                }
+                let mut result = String::new();
+                let mut last_end = 0usize;
+                if is_callable(&replacement) {
+                    for matched in &matches {
+                        result.push_str(&value[last_end..matched.start_byte]);
+                        result.push_str(&self.string_callback_replacement(
+                            "replaceAll",
+                            replacement.clone(),
+                            &value,
+                            matched,
+                        )?);
+                        last_end = matched.end_byte;
+                    }
+                } else {
+                    let replacement = self.to_string(replacement)?;
+                    for matched in &matches {
+                        result.push_str(&value[last_end..matched.start_byte]);
+                        result.push_str(&expand_regexp_replacement_template(
+                            &replacement,
+                            &value,
+                            matched,
+                        ));
+                        last_end = matched.end_byte;
+                    }
+                }
+                result.push_str(&value[last_end..]);
+                Ok(Value::String(result))
+            }
+        }
     }
 
     fn call_string_search(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
         let value = self.string_receiver(this_value, "search")?;
         let needle = self
             .string_search_pattern(args.first().cloned().unwrap_or(Value::Undefined), "search")?;
-        Ok(Value::Number(
-            find_string_pattern(&value, &needle, 0)
+        Ok(Value::Number(match needle {
+            StringSearchPattern::Literal(needle) => find_string_pattern(&value, &needle, 0)
                 .map(|index| index as f64)
                 .unwrap_or(-1.0),
-        ))
+            StringSearchPattern::RegExp { regex, .. } => self
+                .first_regexp_match_from_state(&regex, &value, 0)?
+                .map(|matched| matched.start_index as f64)
+                .unwrap_or(-1.0),
+        }))
     }
 
     fn call_string_match(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
         let value = self.string_receiver(this_value, "match")?;
         let needle =
             self.string_search_pattern(args.first().cloned().unwrap_or(Value::Undefined), "match")?;
-        let Some(index) = find_string_pattern(&value, &needle, 0) else {
-            return Ok(Value::Null);
-        };
-        let match_array = self.insert_array(
-            vec![Value::String(needle.clone())],
-            IndexMap::from([
-                ("index".to_string(), Value::Number(index as f64)),
-                ("input".to_string(), Value::String(value)),
-            ]),
-        )?;
-        Ok(Value::Array(match_array))
+        match needle {
+            StringSearchPattern::Literal(needle) => {
+                let Some(index) = find_string_pattern(&value, &needle, 0) else {
+                    return Ok(Value::Null);
+                };
+                let match_array = self.insert_array(
+                    vec![Value::String(needle.clone())],
+                    IndexMap::from([
+                        ("index".to_string(), Value::Number(index as f64)),
+                        ("input".to_string(), Value::String(value)),
+                    ]),
+                )?;
+                Ok(Value::Array(match_array))
+            }
+            StringSearchPattern::RegExp { object, regex } => {
+                if regex.flags.contains('g') {
+                    self.regexp_object_mut(object)?.last_index = 0;
+                    self.refresh_object_accounting(object)?;
+                    let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
+                    if matches.is_empty() {
+                        return Ok(Value::Null);
+                    }
+                    let array = self.insert_array(
+                        matches
+                            .into_iter()
+                            .map(|matched| {
+                                Value::String(
+                                    value[matched.start_byte..matched.end_byte].to_string(),
+                                )
+                            })
+                            .collect(),
+                        IndexMap::new(),
+                    )?;
+                    Ok(Value::Array(array))
+                } else {
+                    let Some(matched) = self.first_regexp_match_from_state(&regex, &value, 0)?
+                    else {
+                        return Ok(Value::Null);
+                    };
+                    self.regexp_match_array_value(&value, &matched)
+                }
+            }
+        }
     }
 
     fn map_receiver(&self, value: Value, method: &str) -> JsliteResult<MapKey> {
@@ -7003,6 +7395,70 @@ impl Runtime {
                 "TypeError: iterator.{method} called on incompatible receiver",
             ))),
         }
+    }
+
+    fn regexp_receiver(&self, value: Value, method: &str) -> JsliteResult<ObjectKey> {
+        match value {
+            Value::Object(key) if self.is_regexp_object(key) => Ok(key),
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: RegExp.prototype.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
+    fn regexp_match_array_value(
+        &mut self,
+        input: &str,
+        matched: &RegExpMatchData,
+    ) -> JsliteResult<Value> {
+        let mut groups = IndexMap::new();
+        for (name, value) in &matched.named_groups {
+            groups.insert(
+                name.clone(),
+                value.clone().map_or(Value::Undefined, Value::String),
+            );
+        }
+        let mut properties = IndexMap::from([
+            (
+                "index".to_string(),
+                Value::Number(matched.start_index as f64),
+            ),
+            ("input".to_string(), Value::String(input.to_string())),
+        ]);
+        if !groups.is_empty() {
+            properties.insert(
+                "groups".to_string(),
+                Value::Object(self.insert_object(groups, ObjectKind::Plain)?),
+            );
+        }
+        let mut elements = Vec::with_capacity(matched.captures.len() + 1);
+        elements.push(Value::String(
+            input[matched.start_byte..matched.end_byte].to_string(),
+        ));
+        elements.extend(
+            matched
+                .captures
+                .iter()
+                .map(|value| value.clone().map_or(Value::Undefined, Value::String)),
+        );
+        Ok(Value::Array(self.insert_array(elements, properties)?))
+    }
+
+    fn call_regexp_exec(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let regex = self.regexp_receiver(this_value, "exec")?;
+        let input = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        let Some(matched) = self.first_regexp_match(regex, &input)? else {
+            return Ok(Value::Null);
+        };
+        self.regexp_match_array_value(&input, &matched)
+    }
+
+    fn call_regexp_test(&mut self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let regex = self.regexp_receiver(this_value, "test")?;
+        let input = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        Ok(Value::Bool(
+            self.first_regexp_match(regex, &input)?.is_some(),
+        ))
     }
 
     fn call_map_get(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
@@ -7423,6 +7879,223 @@ impl Runtime {
         self.refresh_set_accounting(set)
     }
 
+    fn make_regexp_value(&mut self, pattern: String, flags: String) -> JsliteResult<Value> {
+        self.validate_regexp_flags(&flags)?;
+        self.compile_regexp(&pattern, &flags)?;
+        let object = self.insert_object(
+            IndexMap::new(),
+            ObjectKind::RegExp(RegExpObject {
+                pattern,
+                flags,
+                last_index: 0,
+            }),
+        )?;
+        Ok(Value::Object(object))
+    }
+
+    fn validate_regexp_flags(&self, flags: &str) -> JsliteResult<RegExpFlagsState> {
+        let mut state = RegExpFlagsState {
+            global: false,
+            ignore_case: false,
+            multiline: false,
+            dot_all: false,
+            unicode: false,
+            sticky: false,
+        };
+        let mut seen = HashSet::new();
+        for flag in flags.chars() {
+            if !seen.insert(flag) {
+                return Err(JsliteError::runtime(format!(
+                    "SyntaxError: duplicate regular expression flag `{flag}`",
+                )));
+            }
+            match flag {
+                'g' => state.global = true,
+                'i' => state.ignore_case = true,
+                'm' => state.multiline = true,
+                's' => state.dot_all = true,
+                'u' => state.unicode = true,
+                'y' => state.sticky = true,
+                _ => {
+                    return Err(JsliteError::runtime(format!(
+                        "SyntaxError: unsupported regular expression flag `{flag}`",
+                    )));
+                }
+            }
+        }
+        Ok(state)
+    }
+
+    fn compile_regexp(&self, pattern: &str, flags: &str) -> JsliteResult<Regex> {
+        let flags = self.validate_regexp_flags(flags)?;
+        let mut engine_flags = String::new();
+        if flags.ignore_case {
+            engine_flags.push('i');
+        }
+        if flags.multiline {
+            engine_flags.push('m');
+        }
+        if flags.dot_all {
+            engine_flags.push('s');
+        }
+        if flags.unicode {
+            engine_flags.push('u');
+        }
+        Regex::with_flags(pattern, engine_flags.as_str()).map_err(|error| {
+            JsliteError::runtime(format!("SyntaxError: invalid regular expression: {error}"))
+        })
+    }
+
+    fn is_regexp_object(&self, key: ObjectKey) -> bool {
+        self.objects
+            .get(key)
+            .is_some_and(|object| matches!(object.kind, ObjectKind::RegExp(_)))
+    }
+
+    fn regexp_object(&self, key: ObjectKey) -> JsliteResult<&RegExpObject> {
+        match &self
+            .objects
+            .get(key)
+            .ok_or_else(|| JsliteError::runtime("object missing"))?
+            .kind
+        {
+            ObjectKind::RegExp(regex) => Ok(regex),
+            _ => Err(JsliteError::runtime("regexp missing")),
+        }
+    }
+
+    fn regexp_object_mut(&mut self, key: ObjectKey) -> JsliteResult<&mut RegExpObject> {
+        match &mut self
+            .objects
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("object missing"))?
+            .kind
+        {
+            ObjectKind::RegExp(regex) => Ok(regex),
+            _ => Err(JsliteError::runtime("regexp missing")),
+        }
+    }
+
+    fn first_regexp_match_from_state(
+        &self,
+        regex: &RegExpObject,
+        text: &str,
+        start_index: usize,
+    ) -> JsliteResult<Option<RegExpMatchData>> {
+        let flags = self.validate_regexp_flags(&regex.flags)?;
+        let compiled = self.compile_regexp(&regex.pattern, &regex.flags)?;
+        let start_byte = char_index_to_byte_index(text, start_index);
+        let matched = compiled.find_from(text, start_byte).next();
+        let Some(matched) = matched else {
+            return Ok(None);
+        };
+        if flags.sticky && matched.start() != start_byte {
+            return Ok(None);
+        }
+        let named_groups = matched
+            .named_groups()
+            .map(|(name, range)| {
+                (
+                    name.to_string(),
+                    range.map(|range| text[range.start..range.end].to_string()),
+                )
+            })
+            .collect::<IndexMap<_, _>>();
+        Ok(Some(RegExpMatchData {
+            start_byte: matched.start(),
+            end_byte: matched.end(),
+            start_index: byte_index_to_char_index(text, matched.start()),
+            end_index: byte_index_to_char_index(text, matched.end()),
+            captures: matched
+                .captures
+                .iter()
+                .map(|range| {
+                    range
+                        .clone()
+                        .map(|range| text[range.start..range.end].to_string())
+                })
+                .collect(),
+            named_groups,
+        }))
+    }
+
+    fn first_regexp_match(
+        &mut self,
+        regex_key: ObjectKey,
+        text: &str,
+    ) -> JsliteResult<Option<RegExpMatchData>> {
+        let regex = self.regexp_object(regex_key)?.clone();
+        let flags = self.validate_regexp_flags(&regex.flags)?;
+        let start_index = if flags.global || flags.sticky {
+            regex.last_index
+        } else {
+            0
+        };
+        let matched = self.first_regexp_match_from_state(&regex, text, start_index)?;
+        if flags.global || flags.sticky {
+            let next_index = matched.as_ref().map_or(0, |matched| {
+                if matched.start_byte == matched.end_byte {
+                    advance_char_index(text, matched.start_index)
+                } else {
+                    matched.end_index
+                }
+            });
+            self.regexp_object_mut(regex_key)?.last_index = next_index;
+            self.refresh_object_accounting(regex_key)?;
+        }
+        Ok(matched)
+    }
+
+    fn collect_regexp_matches_from_state(
+        &self,
+        regex: &RegExpObject,
+        text: &str,
+        all: bool,
+    ) -> JsliteResult<Vec<RegExpMatchData>> {
+        let mut matches = Vec::new();
+        let mut start_index = 0usize;
+        loop {
+            let Some(matched) = self.first_regexp_match_from_state(regex, text, start_index)?
+            else {
+                break;
+            };
+            let next_index = if matched.start_byte == matched.end_byte {
+                advance_char_index(text, matched.start_index)
+            } else {
+                matched.end_index
+            };
+            matches.push(matched);
+            if !all {
+                break;
+            }
+            if next_index < start_index {
+                break;
+            }
+            start_index = next_index;
+        }
+        Ok(matches)
+    }
+
+    fn literal_match_data(
+        &self,
+        value: &str,
+        needle: &str,
+        start_index: usize,
+    ) -> Option<RegExpMatchData> {
+        let start_index = find_string_pattern(value, needle, start_index)?;
+        let start_byte = char_index_to_byte_index(value, start_index);
+        let end_index = start_index + needle.chars().count();
+        let end_byte = char_index_to_byte_index(value, end_index);
+        Some(RegExpMatchData {
+            start_byte,
+            end_byte,
+            start_index,
+            end_index,
+            captures: Vec::new(),
+            named_groups: IndexMap::new(),
+        })
+    }
+
     fn new_env(&mut self, parent: Option<EnvKey>) -> JsliteResult<EnvKey> {
         self.insert_env(parent)
     }
@@ -7815,6 +8488,25 @@ impl Runtime {
                     .objects
                     .get(object)
                     .ok_or_else(|| JsliteError::runtime("object missing"))?;
+                if let ObjectKind::RegExp(regex) = &object.kind {
+                    let built_in = match key.as_str() {
+                        "source" => Some(Value::String(regex.pattern.clone())),
+                        "flags" => Some(Value::String(regex.flags.clone())),
+                        "global" => Some(Value::Bool(regex.flags.contains('g'))),
+                        "ignoreCase" => Some(Value::Bool(regex.flags.contains('i'))),
+                        "multiline" => Some(Value::Bool(regex.flags.contains('m'))),
+                        "dotAll" => Some(Value::Bool(regex.flags.contains('s'))),
+                        "unicode" => Some(Value::Bool(regex.flags.contains('u'))),
+                        "sticky" => Some(Value::Bool(regex.flags.contains('y'))),
+                        "lastIndex" => Some(Value::Number(regex.last_index as f64)),
+                        "exec" => Some(Value::BuiltinFunction(BuiltinFunction::RegExpExec)),
+                        "test" => Some(Value::BuiltinFunction(BuiltinFunction::RegExpTest)),
+                        _ => None,
+                    };
+                    if let Some(value) = built_in {
+                        return Ok(value);
+                    }
+                }
                 if let Some(value) = object.properties.get(&key) {
                     return Ok(value.clone());
                 }
@@ -7936,6 +8628,7 @@ impl Runtime {
             Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "allSettled" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::PromiseAllSettled))
             }
+            Value::BuiltinFunction(BuiltinFunction::RegExpCtor) => Ok(Value::Undefined),
             Value::String(value) => match key.as_str() {
                 "length" => Ok(Value::Number(value.chars().count() as f64)),
                 "trim" => Ok(Value::BuiltinFunction(BuiltinFunction::StringTrim)),
@@ -7967,6 +8660,12 @@ impl Runtime {
         let key = self.to_property_key(property)?;
         match object {
             Value::Object(object) => {
+                if self.is_regexp_object(object) && key == "lastIndex" {
+                    let index = self.to_integer(value.clone())?.max(0) as usize;
+                    self.regexp_object_mut(object)?.last_index = index;
+                    self.refresh_object_accounting(object)?;
+                    return Ok(());
+                }
                 self.objects
                     .get_mut(object)
                     .ok_or_else(|| JsliteError::runtime("object missing"))?
@@ -8178,9 +8877,17 @@ impl Runtime {
             }
             Value::Map(_) => "[object Map]".to_string(),
             Value::Set(_) => "[object Set]".to_string(),
-            Value::Object(object) => self
-                .error_summary(object)?
-                .unwrap_or_else(|| "[object Object]".to_string()),
+            Value::Object(object) => match &self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::RegExp(regex) => format!("/{}/{}", regex.pattern, regex.flags),
+                _ => self
+                    .error_summary(object)?
+                    .unwrap_or_else(|| "[object Object]".to_string()),
+            },
             Value::Iterator(_) => "[object Iterator]".to_string(),
             Value::Promise(_) => "[object Promise]".to_string(),
             Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
@@ -8470,6 +9177,7 @@ fn measure_object_bytes(object: &PlainObject) -> usize {
         + measure_properties_bytes(&object.properties)
         + match &object.kind {
             ObjectKind::Error(name) => name.len(),
+            ObjectKind::RegExp(regex) => regex.pattern.len() + regex.flags.len(),
             _ => 0,
         }
 }
@@ -8700,6 +9408,25 @@ fn clamp_index(index: i64, len: usize) -> usize {
     index.max(0).min(len as i64) as usize
 }
 
+fn char_index_to_byte_index(value: &str, index: usize) -> usize {
+    if index == 0 {
+        return 0;
+    }
+    value
+        .char_indices()
+        .nth(index)
+        .map_or_else(|| value.len(), |(byte_index, _)| byte_index)
+}
+
+fn byte_index_to_char_index(value: &str, byte_index: usize) -> usize {
+    value[..byte_index.min(value.len())].chars().count()
+}
+
+fn advance_char_index(value: &str, index: usize) -> usize {
+    let total = value.chars().count();
+    (index + 1).min(total)
+}
+
 fn find_char_subsequence(haystack: &[char], needle: &[char], start: usize) -> Option<usize> {
     if needle.is_empty() {
         return Some(start.min(haystack.len()));
@@ -8784,6 +9511,88 @@ fn replace_all_string_matches(value: &str, search: &str, replacement: &str) -> S
         start = index + needle.len();
     }
     result.push_str(&haystack[start..].iter().collect::<String>());
+    result
+}
+
+fn expand_regexp_replacement_template(
+    template: &str,
+    input: &str,
+    matched: &RegExpMatchData,
+) -> String {
+    let full_match = &input[matched.start_byte..matched.end_byte];
+    let mut result = String::new();
+    let chars = template.chars().collect::<Vec<_>>();
+    let mut index = 0usize;
+    while index < chars.len() {
+        if chars[index] != '$' {
+            result.push(chars[index]);
+            index += 1;
+            continue;
+        }
+        let Some(next) = chars.get(index + 1).copied() else {
+            result.push('$');
+            break;
+        };
+        match next {
+            '$' => {
+                result.push('$');
+                index += 2;
+            }
+            '&' => {
+                result.push_str(full_match);
+                index += 2;
+            }
+            '`' => {
+                result.push_str(&input[..matched.start_byte]);
+                index += 2;
+            }
+            '\'' => {
+                result.push_str(&input[matched.end_byte..]);
+                index += 2;
+            }
+            '<' => {
+                let mut end = index + 2;
+                while end < chars.len() && chars[end] != '>' {
+                    end += 1;
+                }
+                if end < chars.len() {
+                    let name = chars[index + 2..end].iter().collect::<String>();
+                    if let Some(value) = matched
+                        .named_groups
+                        .get(&name)
+                        .and_then(|value| value.as_ref())
+                    {
+                        result.push_str(value);
+                    }
+                    index = end + 1;
+                } else {
+                    result.push('$');
+                    index += 1;
+                }
+            }
+            digit if digit.is_ascii_digit() => {
+                let mut end = index + 2;
+                while end < chars.len() && end < index + 3 && chars[end].is_ascii_digit() {
+                    end += 1;
+                }
+                let capture = chars[index + 1..end].iter().collect::<String>();
+                if let Ok(group) = capture.parse::<usize>()
+                    && group > 0
+                    && let Some(Some(value)) = matched.captures.get(group - 1)
+                {
+                    result.push_str(value);
+                    index = end;
+                    continue;
+                }
+                result.push('$');
+                index += 1;
+            }
+            _ => {
+                result.push('$');
+                index += 1;
+            }
+        }
+    }
     result
 }
 

@@ -137,6 +137,46 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'RegExp helpers and callback replacements',
+    source: `
+      const exec = /(?<letters>[a-z]+)(\\d+)/g;
+      const first = exec.exec("ab12cd34");
+      const firstLast = exec.lastIndex;
+      const second = exec.exec("ab12cd34");
+      const secondLast = exec.lastIndex;
+      const third = exec.exec("ab12cd34");
+      const thirdLast = exec.lastIndex;
+      const sticky = /a/y;
+      sticky.lastIndex = 1;
+      const stickyFirst = sticky.exec("ba");
+      const stickyFirstLast = sticky.lastIndex;
+      const stickySecond = sticky.exec("ba");
+      const stickySecondLast = sticky.lastIndex;
+      const matched = "abc123".match(/(?<letters>[a-z]+)(\\d+)/);
+      ({
+        split: "a1b2".split(/(\\d)/),
+        replaceLiteralCallback: "abc".replace("a", (match, offset, input) => \`\${match}:\${offset}:\${input}\`),
+        replaceRegexTemplate: "abc123".replace(/(?<letters>[a-z]+)(\\d+)/, "$<letters>-$2"),
+        replaceAllRegexCallback: "alpha-1 beta-2".replaceAll(
+          /([a-z]+)-(\\d)/g,
+          (match, word, digit, offset, input) => \`\${word.toUpperCase()}:\${digit}:\${offset}:\${input.length}\`,
+        ),
+        search: "abc123".search(/\\d+/),
+        matchSingle: [matched[0], matched[1], matched[2], matched.index, matched.input, matched.groups.letters],
+        matchGlobal: "ab12cd34".match(/\\d+/g),
+        firstExec: [first[0], first[1], first[2], first.index, first.input, first.groups.letters, firstLast],
+        secondExec: [second[0], second.index, secondLast],
+        thirdExec: [third === null, thirdLast],
+        testState: (() => {
+          const regex = /a/g;
+          return [regex.test("ba"), regex.lastIndex, regex.test("ba"), regex.lastIndex];
+        })(),
+        stickyState: [stickyFirst[0], stickyFirst.index, stickyFirstLast, stickySecond === null, stickySecondLast],
+        ctor: [RegExp("a", "gi").flags, new RegExp(/b/g).source, new RegExp(/b/g).flags],
+      });
+    `,
+  },
+  {
     name: 'Object and Math helpers',
     source: `
       const object = { alpha: 2, zebra: 1 };

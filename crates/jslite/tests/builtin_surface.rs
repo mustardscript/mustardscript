@@ -155,15 +155,164 @@ fn string_helpers_cover_trimming_queries_and_case_changes() {
 }
 
 #[test]
-fn regex_style_string_helpers_fail_closed_for_callback_replacements() {
-    let program = compile("'abc'.replace('a', (value) => value);").expect("source should compile");
+fn regex_helpers_cover_patterns_callbacks_and_state() {
+    let program = compile(
+        r#"
+        const exec = /(?<letters>[a-z]+)(\d+)/g;
+        const first = exec.exec("ab12cd34");
+        const firstLast = exec.lastIndex;
+        const second = exec.exec("ab12cd34");
+        const secondLast = exec.lastIndex;
+        const third = exec.exec("ab12cd34");
+        const thirdLast = exec.lastIndex;
+        const sticky = /a/y;
+        sticky.lastIndex = 1;
+        const stickyFirst = sticky.exec("ba");
+        const stickyFirstLast = sticky.lastIndex;
+        const stickySecond = sticky.exec("ba");
+        const stickySecondLast = sticky.lastIndex;
+        const matched = "abc123".match(/(?<letters>[a-z]+)(\d+)/);
+        ({
+          split: "a1b2".split(/(\d)/),
+          replaceLiteralCallback: "abc".replace("a", (match, offset, input) => `${match}:${offset}:${input}`),
+          replaceRegexTemplate: "abc123".replace(/(?<letters>[a-z]+)(\d+)/, "$<letters>-$2"),
+          replaceAllRegexCallback: "alpha-1 beta-2".replaceAll(
+            /([a-z]+)-(\d)/g,
+            (match, word, digit, offset, input) => `${word.toUpperCase()}:${digit}:${offset}:${input.length}`
+          ),
+          search: "abc123".search(/\d+/),
+          matchSingle: [matched[0], matched[1], matched[2], matched.index, matched.input, matched.groups.letters],
+          matchGlobal: "ab12cd34".match(/\d+/g),
+          firstExec: [first[0], first[1], first[2], first.index, first.input, first.groups.letters, firstLast],
+          secondExec: [second[0], second.index, secondLast],
+          thirdExec: [third === null, thirdLast],
+          testState: (() => {
+            const regex = /a/g;
+            return [regex.test("ba"), regex.lastIndex, regex.test("ba"), regex.lastIndex];
+          })(),
+          stickyState: [stickyFirst[0], stickyFirst.index, stickyFirstLast, stickySecond === null, stickySecondLast],
+          ctor: [RegExp("a", "gi").flags, new RegExp(/b/g).source, new RegExp(/b/g).flags],
+        });
+        "#,
+    )
+    .expect("source should compile");
 
-    let error = execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Object(IndexMap::from([
+            (
+                "split".to_string(),
+                StructuredValue::Array(vec![
+                    "a".into(),
+                    "1".into(),
+                    "b".into(),
+                    "2".into(),
+                    "".into(),
+                ]),
+            ),
+            ("replaceLiteralCallback".to_string(), "a:0:abcbc".into(),),
+            ("replaceRegexTemplate".to_string(), "abc-123".into()),
+            (
+                "replaceAllRegexCallback".to_string(),
+                "ALPHA:1:0:14 BETA:2:8:14".into(),
+            ),
+            ("search".to_string(), number(3.0)),
+            (
+                "matchSingle".to_string(),
+                StructuredValue::Array(vec![
+                    "abc123".into(),
+                    "abc".into(),
+                    "123".into(),
+                    number(0.0),
+                    "abc123".into(),
+                    "abc".into(),
+                ]),
+            ),
+            (
+                "matchGlobal".to_string(),
+                StructuredValue::Array(vec!["12".into(), "34".into()]),
+            ),
+            (
+                "firstExec".to_string(),
+                StructuredValue::Array(vec![
+                    "ab12".into(),
+                    "ab".into(),
+                    "12".into(),
+                    number(0.0),
+                    "ab12cd34".into(),
+                    "ab".into(),
+                    number(4.0),
+                ]),
+            ),
+            (
+                "secondExec".to_string(),
+                StructuredValue::Array(vec!["cd34".into(), number(4.0), number(8.0)]),
+            ),
+            (
+                "thirdExec".to_string(),
+                StructuredValue::Array(vec![StructuredValue::Bool(true), number(0.0)]),
+            ),
+            (
+                "testState".to_string(),
+                StructuredValue::Array(vec![
+                    StructuredValue::Bool(true),
+                    number(2.0),
+                    StructuredValue::Bool(false),
+                    number(0.0),
+                ]),
+            ),
+            (
+                "stickyState".to_string(),
+                StructuredValue::Array(vec![
+                    "a".into(),
+                    number(1.0),
+                    number(2.0),
+                    StructuredValue::Bool(true),
+                    number(0.0),
+                ]),
+            ),
+            (
+                "ctor".to_string(),
+                StructuredValue::Array(vec!["gi".into(), "b".into(), "g".into()]),
+            ),
+        ]))
+    );
+}
+
+#[test]
+fn regex_helpers_fail_closed_for_unsupported_flags_and_sync_host_replacements() {
+    let invalid_flags = compile(r#"new RegExp("a", "dg");"#).expect("source should compile");
+    let error =
+        execute(&invalid_flags, ExecutionOptions::default()).expect_err("execution should fail");
     assert!(
         error
             .to_string()
-            .contains("String.prototype.replace does not support callback replacements")
+            .contains("unsupported regular expression flag `d`")
     );
+
+    let replace_all = compile(r#""abc".replaceAll(/a/, "z");"#).expect("source should compile");
+    let error =
+        execute(&replace_all, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("String.prototype.replaceAll requires a global RegExp")
+    );
+
+    let host_callback =
+        compile(r#""abc".replace("a", fetch_data);"#).expect("source should compile");
+    let error = execute(
+        &host_callback,
+        ExecutionOptions {
+            capabilities: vec!["fetch_data".to_string()],
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("execution should fail");
+    assert!(error.to_string().contains(
+        "String.prototype.replace callback replacements do not support host suspensions"
+    ));
 }
 
 #[test]

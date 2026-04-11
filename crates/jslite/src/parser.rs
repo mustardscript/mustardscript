@@ -919,13 +919,11 @@ impl<'a> Lowerer<'a> {
                 );
                 None
             }
-            Expression::RegExpLiteral(expression) => {
-                self.unsupported(
-                    "RegExp literals are not supported in v1",
-                    Some(expression.span.into()),
-                );
-                None
-            }
+            Expression::RegExpLiteral(expression) => Some(Expr::RegExp {
+                span: expression.span.into(),
+                pattern: expression.regex.pattern.text.as_str().to_string(),
+                flags: expression.regex.flags.to_inline_string().to_string(),
+            }),
             Expression::SequenceExpression(expression) => {
                 self.unsupported(
                     "sequence expressions are not supported in v1",

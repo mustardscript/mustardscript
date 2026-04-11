@@ -131,13 +131,95 @@ test('array callback helpers fail closed for invalid callbacks and synchronous h
   );
 });
 
-test('regex-heavy string helpers fail closed for callback replacements', async () => {
+test('run supports RegExp helpers, regex string patterns, and callback replacements', async () => {
+  const j = new Jslite(`
+    const exec = /(?<letters>[a-z]+)(\\d+)/g;
+    const first = exec.exec("ab12cd34");
+    const firstLast = exec.lastIndex;
+    const second = exec.exec("ab12cd34");
+    const secondLast = exec.lastIndex;
+    const third = exec.exec("ab12cd34");
+    const thirdLast = exec.lastIndex;
+    const sticky = /a/y;
+    sticky.lastIndex = 1;
+    const stickyFirst = sticky.exec("ba");
+    const stickyFirstLast = sticky.lastIndex;
+    const stickySecond = sticky.exec("ba");
+    const stickySecondLast = sticky.lastIndex;
+    const matched = "abc123".match(/(?<letters>[a-z]+)(\\d+)/);
+    ({
+      split: "a1b2".split(/(\\d)/),
+      replaceLiteralCallback: "abc".replace("a", (match, offset, input) => \`\${match}:\${offset}:\${input}\`),
+      replaceRegexTemplate: "abc123".replace(/(?<letters>[a-z]+)(\\d+)/, "$<letters>-$2"),
+      replaceAllRegexCallback: "alpha-1 beta-2".replaceAll(
+        /([a-z]+)-(\\d)/g,
+        (match, word, digit, offset, input) => \`\${word.toUpperCase()}:\${digit}:\${offset}:\${input.length}\`,
+      ),
+      search: "abc123".search(/\\d+/),
+      matchSingle: [matched[0], matched[1], matched[2], matched.index, matched.input, matched.groups.letters],
+      matchGlobal: "ab12cd34".match(/\\d+/g),
+      firstExec: [first[0], first[1], first[2], first.index, first.input, first.groups.letters, firstLast],
+      secondExec: [second[0], second.index, secondLast],
+      thirdExec: [third === null, thirdLast],
+      testState: (() => {
+        const regex = /a/g;
+        return [regex.test("ba"), regex.lastIndex, regex.test("ba"), regex.lastIndex];
+      })(),
+      stickyState: [stickyFirst[0], stickyFirst.index, stickyFirstLast, stickySecond === null, stickySecondLast],
+      ctor: [RegExp("a", "gi").flags, new RegExp(/b/g).source, new RegExp(/b/g).flags],
+    });
+  `);
+
+  const result = await j.run();
+  assert.deepEqual(result, {
+    split: ['a', '1', 'b', '2', ''],
+    replaceLiteralCallback: 'a:0:abcbc',
+    replaceRegexTemplate: 'abc-123',
+    replaceAllRegexCallback: 'ALPHA:1:0:14 BETA:2:8:14',
+    search: 3,
+    matchSingle: ['abc123', 'abc', '123', 0, 'abc123', 'abc'],
+    matchGlobal: ['12', '34'],
+    firstExec: ['ab12', 'ab', '12', 0, 'ab12cd34', 'ab', 4],
+    secondExec: ['cd34', 4, 8],
+    thirdExec: [true, 0],
+    testState: [true, 2, false, 0],
+    stickyState: ['a', 1, 2, true, 0],
+    ctor: ['gi', 'b', 'g'],
+  });
+});
+
+test('RegExp helpers fail closed for unsupported flags, non-global replaceAll, and sync host replacements', async () => {
   await assert.rejects(
-    () => new Jslite("'abc'.replace('a', (value) => value);").run(),
+    () => new Jslite('new RegExp("a", "dg");').run(),
     (error) =>
       error instanceof JsliteError &&
       error.kind === 'Runtime' &&
-      error.message.includes('String.prototype.replace does not support callback replacements'),
+      error.message.includes('unsupported regular expression flag `d`'),
+  );
+
+  await assert.rejects(
+    () => new Jslite('"abc".replaceAll(/a/, "z");').run(),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Runtime' &&
+      error.message.includes('String.prototype.replaceAll requires a global RegExp'),
+  );
+
+  await assert.rejects(
+    () =>
+      new Jslite('"abc".replace("a", fetch_data);').run({
+        capabilities: {
+          fetch_data(value) {
+            return value;
+          },
+        },
+      }),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Runtime' &&
+      error.message.includes(
+        'String.prototype.replace callback replacements do not support host suspensions',
+      ),
   );
 });
 

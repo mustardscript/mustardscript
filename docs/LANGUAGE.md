@@ -136,7 +136,7 @@ extensions are called out explicitly instead of being implied.
 - labeled statements
 - object spread and object-literal methods
 - array spread and array holes
-- bigint, regexp literals, and sequence expressions
+- bigint and sequence expressions
 
 ## Explicit Deferrals
 
@@ -201,6 +201,7 @@ extensions are called out explicitly instead of being implied.
 - `Map`
 - `Set`
 - `Promise`
+- `RegExp`
 - `String`
 - `Error`
 - `TypeError`
@@ -263,6 +264,8 @@ extensions are called out explicitly instead of being implied.
 - `Promise.prototype.then`
 - `Promise.prototype.catch`
 - `Promise.prototype.finally`
+- `RegExp.prototype.exec`
+- `RegExp.prototype.test`
 - `String.prototype.trim`
 - `String.prototype.includes`
 - `String.prototype.startsWith`
@@ -303,9 +306,22 @@ extensions are called out explicitly instead of being implied.
 - `Array.prototype.reduce` throws a runtime `TypeError` when called on an empty
   array without an explicit initial value
 - `String.prototype.split`, `replace`, `replaceAll`, `search`, and `match`
-  currently support string search patterns only
-- callback replacements for `replace` / `replaceAll` and callback pattern
-  objects for the string search helpers fail closed with runtime `TypeError`s
-- `String.prototype.match` currently returns either `null` or a guest array for
-  the first string-pattern match, with `index` and `input` string properties on
-  that result array
+  accept string-coercible patterns and real `RegExp` instances
+- callback replacements for `replace` / `replaceAll` are supported for guest
+  callables, built-ins, and other synchronous guest-callable values
+- string replacement callbacks are synchronous-only; host suspensions fail
+  closed with a runtime `TypeError`
+- replacement strings support `$$`, `$&`, ``$` ``, `$'`, `$1`...`$99`, and
+  `$<name>` template expansion for `RegExp` matches
+- `String.prototype.replaceAll` requires a global `RegExp` when the search
+  value is a `RegExp`
+- supported `RegExp` flags are `g`, `i`, `m`, `s`, `u`, and `y`; unsupported
+  flags fail closed with a runtime `SyntaxError`
+- `String.prototype.match` returns either `null`, a guest array of matched
+  strings for global `RegExp` patterns, or the first-match array for
+  non-global patterns, with guest-visible `index`, `input`, and optional
+  `groups` properties on that result array
+- real `RegExp` instances support `source`, `flags`, `global`, `ignoreCase`,
+  `multiline`, `dotAll`, `unicode`, `sticky`, `lastIndex`, `exec`, and `test`
+- symbol-based match/replace protocol hooks and full ECMAScript `RegExp`
+  parity remain deferred

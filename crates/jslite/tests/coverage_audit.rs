@@ -108,6 +108,7 @@ fn expr_contains(expr: &Expr, predicate: &impl Fn(&Expr) -> bool) -> bool {
         | Expr::Bool { .. }
         | Expr::Number { .. }
         | Expr::String { .. }
+        | Expr::RegExp { .. }
         | Expr::Identifier { .. }
         | Expr::This { .. } => false,
         Expr::Array { elements, .. } => {
@@ -215,6 +216,23 @@ fn ir_covers_supported_destructuring_and_short_circuit_forms() {
     assert!(stmt_contains_expr(
         &program.script.body[2],
         &|expr| matches!(expr, Expr::Call { optional: true, .. })
+    ));
+}
+
+#[test]
+fn ir_covers_regexp_literals() {
+    let program = compile(r#"/(?<word>[a-z]+)\d+/gi;"#).expect("source should compile");
+
+    assert!(stmt_contains_expr(
+        &program.script.body[0],
+        &|expr| matches!(
+            expr,
+            Expr::RegExp {
+                pattern,
+                flags,
+                ..
+            } if pattern == "(?<word>[a-z]+)\\d+" && flags == "gi"
+        )
     ));
 }
 

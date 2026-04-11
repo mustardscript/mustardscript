@@ -197,6 +197,11 @@ pub enum Expr {
         span: SourceSpan,
         value: String,
     },
+    RegExp {
+        span: SourceSpan,
+        pattern: String,
+        flags: String,
+    },
     Identifier {
         span: SourceSpan,
         name: String,

@@ -231,10 +231,6 @@ const unsupportedValidationCaseArbitrary = fc.oneof(
     messageIncludes: 'array hole',
   }),
   fc.constant({
-    source: '/abc/;',
-    messageIncludes: 'regexp',
-  }),
-  fc.constant({
     source: '(1, 2);',
     messageIncludes: 'sequence expression',
   }),
