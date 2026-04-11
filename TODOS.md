@@ -407,11 +407,7 @@ Exit criteria:
 - [x] Publish security guarantees and non-guarantees clearly
 - [x] Publish sidecar-mode tradeoffs clearly
 - [x] Write embedding examples
-- [ ] Prepare npm publishing flow
-  Current blocker: `npm view jslite` currently resolves to an unrelated public
-  package at version `1.1.12`, so this repository cannot publish
-  `jslite@0.1.0` to the default `latest` tag without either renaming the
-  package or adopting an explicit npm dist-tag and versioning strategy.
+- [x] Prepare npm publishing flow
 - [ ] Add optional prebuilt-binary publishing only after package shape is stable
 - [x] Prepare Rust crate publishing flow if needed
 - [x] Write release guidance
@@ -424,8 +420,9 @@ Exit criteria:
 - [x] Users can embed `jslite` without tribal knowledge
 - [x] Release checklists are runnable and verified
 - [ ] Project is publishable and maintainable
-  Current blocker: public npm release is not fully resolved while the package
-  name `jslite` conflicts with an existing npm package.
+  Current blocker: a real public release now targets `@keppoai/jslite`, but the
+  final publish still requires an authenticated npm publisher with access to the
+  `@keppoai` scope, which repository-local dry runs cannot verify.
 
 ## First Real Milestone
 

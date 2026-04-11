@@ -9,6 +9,11 @@ const test = require('node:test');
 
 const repoRoot = path.resolve(__dirname, '..');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const packageInfo = require(path.join(repoRoot, 'package.json'));
+
+function tarballFilenameForPackage(name, version) {
+  return `${name.replace(/^@/, '').replace(/\//g, '-')}-${version}.tgz`;
+}
 
 function run(command, args, cwd) {
   return execFileSync(command, args, {
@@ -24,7 +29,7 @@ function runGuestProgram(consumerRoot, source) {
     [
       '-e',
       `
-        const { Jslite } = require('jslite');
+        const { Jslite } = require(${JSON.stringify(packageInfo.name)});
         (async () => {
           const runtime = new Jslite(${JSON.stringify(source)});
           const value = await runtime.run();
@@ -42,7 +47,7 @@ function runGuestProgram(consumerRoot, source) {
 test('published source package installs, reinstalls, and runs from a fresh consumer project', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-package-smoke-'));
   const consumerRoot = path.join(tempRoot, 'consumer');
-  const tarballName = `jslite-${require(path.join(repoRoot, 'package.json')).version}.tgz`;
+  const tarballName = tarballFilenameForPackage(packageInfo.name, packageInfo.version);
   const tarballPath = path.join(repoRoot, tarballName);
 
   fs.mkdirSync(consumerRoot);
@@ -51,6 +56,7 @@ test('published source package installs, reinstalls, and runs from a fresh consu
   try {
     const packOutput = run(npmCommand, ['pack', '--json'], repoRoot);
     const [packed] = JSON.parse(packOutput);
+    assert.equal(packed.name, packageInfo.name);
     assert.equal(packed.filename, tarballName);
 
     run(npmCommand, ['init', '-y'], consumerRoot);

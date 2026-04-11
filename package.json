@@ -1,18 +1,21 @@
 {
-  "name": "jslite",
+  "name": "@keppoai/jslite",
   "version": "0.1.0",
   "description": "Sandboxed, subset JavaScript runtime for Node services.",
   "main": "index.js",
   "types": "jslite.d.ts",
   "files": [
     "Cargo.toml",
-    "Cargo.lock",
     "index.js",
     "index.d.ts",
     "jslite.d.ts",
-    "crates/jslite/**",
-    "crates/jslite-node/**",
-    "crates/jslite-sidecar/**"
+    "crates/jslite/Cargo.toml",
+    "crates/jslite/src/**",
+    "crates/jslite-node/Cargo.toml",
+    "crates/jslite-node/build.rs",
+    "crates/jslite-node/src/**",
+    "crates/jslite-sidecar/Cargo.toml",
+    "crates/jslite-sidecar/src/**"
   ],
   "directories": {
     "doc": "docs",
@@ -20,8 +23,8 @@
     "test": "tests"
   },
   "scripts": {
-    "install": "napi build --platform --manifest-path crates/jslite-node/Cargo.toml --js-package-name jslite --output-dir . --no-js",
-    "build": "napi build --platform --manifest-path crates/jslite-node/Cargo.toml --js-package-name jslite --output-dir . --no-js",
+    "install": "napi build --platform --manifest-path crates/jslite-node/Cargo.toml --js-package-name @keppoai/jslite --output-dir . --no-js",
+    "build": "napi build --platform --manifest-path crates/jslite-node/Cargo.toml --js-package-name @keppoai/jslite --output-dir . --no-js",
     "test": "npm run build && node --test tests/node/**/*.test.js && npm run test:types && npm run test:package-smoke",
     "test:conformance": "npm run test:differential && npm run test:test262",
     "test:differential": "node --test tests/node/differential.test.js tests/node/coverage-audit.test.js",
