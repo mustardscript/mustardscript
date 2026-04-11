@@ -167,6 +167,8 @@ Exit criteria:
 - [x] Add a run-to-completion execution path
 - [x] Add instruction-budget accounting
 - [ ] Add cancellation checks at defined execution points
+  Current blocker: the sync JSON/buffer addon boundary does not expose a shared
+  cancellation hook the core VM can poll mid-execution.
 - [x] Add tracebacks with guest source locations
 - [x] Add unit tests for bytecode decoding and instruction behavior
 - [x] Add execution tests for locals, branching, calls, and closures
@@ -241,7 +243,7 @@ Exit criteria:
 - [x] Implement async host calls that suspend guest execution
 - [x] Sanitize host-thrown or rejected errors into guest-safe errors with
   `name`, `message`, `code`, and `details`
-- [ ] Define and implement non-reentrant execution rules
+- [x] Define and implement non-reentrant execution rules
 - [x] Implement suspension objects for iterative execution
 - [x] Implement `start()` and `resume()` flow
 - [ ] Implement deterministic console or print callback support

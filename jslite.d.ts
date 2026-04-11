@@ -52,6 +52,7 @@ export interface SerializedProgress {
   capability: string;
   args: StructuredValue[];
   snapshot: Buffer;
+  token?: string;
 }
 
 export class Progress {

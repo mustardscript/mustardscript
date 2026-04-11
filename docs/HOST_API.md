@@ -65,14 +65,18 @@ guest-only traceback with guest function names and source spans.
 ## Reentrancy
 
 - Execution is single-threaded and non-reentrant.
-- A host must not call `resume()` on the same suspended execution more than
-  once.
+- The Node `Progress` wrapper is single-use and rejects repeated
+  `resume()`/`resumeError()` calls for the same suspended snapshot.
+- `Progress.dump()` / `Progress.load()` preserve that single-use identity within
+  one Node process, so cloned dumped progress objects cannot both be resumed.
 - Hosts must not attempt to run nested guest execution on the same runtime
   state while another `run()`, `start()`, or `resume()` is active.
 
 ## Cancellation and Abort Propagation
 
 - Explicit cancellation is not implemented yet in the core runtime.
+- The current addon boundary is synchronous and one-shot, so it does not yet
+  expose a shared cancellation hook the Rust VM can poll mid-execution.
 - In-process hosts can stop awaiting a suspended execution, but that does not
   currently inject a guest-visible cancellation signal.
 - Sidecar hosts that need forceful aborts must terminate the sidecar process.

@@ -167,6 +167,29 @@ test('start returns resumable progress objects', () => {
   assert.equal(finalValue, 8);
 });
 
+test('progress objects are single-use', () => {
+  const j = new Jslite(`
+    const response = fetch_data(4);
+    response * 2;
+  `);
+
+  const progress = j.start({
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  assert.equal(progress.resume(4), 8);
+  assert.throws(
+    () => progress.resume(4),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteRuntimeError' &&
+      error.kind === 'Runtime' &&
+      /single-use/.test(error.message),
+  );
+});
+
 test('progress dump and load preserve suspended execution state', () => {
   const j = new Jslite(`
     const response = fetch_data(4);
@@ -184,6 +207,31 @@ test('progress dump and load preserve suspended execution state', () => {
   assert.equal(restored.capability, 'fetch_data');
   assert.deepEqual(restored.args, [4]);
   assert.equal(restored.resume(4), 8);
+});
+
+test('progress.load rejects reused snapshots in the same process', () => {
+  const j = new Jslite(`
+    const response = fetch_data(4);
+    response * 2;
+  `);
+
+  const progress = j.start({
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+  const dumped = progress.dump();
+  assert.equal(progress.resume(4), 8);
+
+  const restored = Progress.load(dumped);
+  assert.throws(
+    () => restored.resume(4),
+    (error) =>
+      error instanceof JsliteError &&
+      error.name === 'JsliteRuntimeError' &&
+      error.kind === 'Runtime' &&
+      /single-use/.test(error.message),
+  );
 });
 
 test('progress resume surfaces snapshot failures as typed errors', () => {

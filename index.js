@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -37,6 +38,7 @@ const KNOWN_ERROR_KINDS = new Set([
   'Limit',
   'Serialization',
 ]);
+const USED_PROGRESS_TOKENS = new Set();
 
 class JsliteError extends Error {
   constructor(kind, message, cause) {
@@ -221,13 +223,26 @@ function parseStep(stepJson) {
 }
 
 class Progress {
-  constructor(snapshot, capability, args) {
+  constructor(snapshot, capability, args, token = crypto.randomUUID()) {
     this.capability = capability;
     this.args = args;
     this.#snapshot = snapshot;
+    this.#token = token;
   }
 
   #snapshot;
+  #token;
+
+  #claimSnapshot() {
+    if (USED_PROGRESS_TOKENS.has(this.#token)) {
+      throw new JsliteError(
+        'Runtime',
+        'Progress objects are single-use; this suspended execution was already resumed',
+      );
+    }
+    USED_PROGRESS_TOKENS.add(this.#token);
+    return Buffer.from(this.#snapshot);
+  }
 
   get snapshot() {
     return Buffer.from(this.#snapshot);
@@ -238,19 +253,22 @@ class Progress {
       capability: this.capability,
       args: this.args.slice(),
       snapshot: this.snapshot,
+      token: this.#token,
     };
   }
 
   resume(value) {
+    const payload = encodeResumePayloadValue(value);
     const step = parseStep(
-      callNative(native.resumeProgram, this.#snapshot, encodeResumePayloadValue(value)),
+      callNative(native.resumeProgram, this.#claimSnapshot(), payload),
     );
     return materializeStep(step);
   }
 
   resumeError(error) {
+    const payload = encodeResumePayloadError(error);
     const step = parseStep(
-      callNative(native.resumeProgram, this.#snapshot, encodeResumePayloadError(error)),
+      callNative(native.resumeProgram, this.#claimSnapshot(), payload),
     );
     return materializeStep(step);
   }
@@ -268,7 +286,12 @@ class Progress {
     if (!state.snapshot) {
       throw new TypeError('Progress.load() requires snapshot bytes');
     }
-    return new Progress(Buffer.from(state.snapshot), state.capability, state.args.slice());
+    return new Progress(
+      Buffer.from(state.snapshot),
+      state.capability,
+      state.args.slice(),
+      typeof state.token === 'string' ? state.token : crypto.randomUUID(),
+    );
   }
 }
 
