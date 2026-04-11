@@ -381,20 +381,20 @@ Exit criteria:
 
 - [ ] Add unit tests for IR, bytecode, VM, GC, capabilities, async, and
   serialization
-- [ ] Expand differential tests against Node for the supported subset
-- [ ] Import a curated `test262` subset
-- [ ] Exclude unsupported features explicitly
-- [ ] Add performance smoke benchmarks
-- [ ] Define startup, memory, and suspension overhead budgets
-- [ ] Audit earlier-phase test coverage
-- [ ] Fill coverage gaps before release
+- [x] Expand differential tests against Node for the supported subset
+- [x] Import a curated `test262` subset
+- [x] Exclude unsupported features explicitly
+- [x] Add performance smoke benchmarks
+- [x] Define startup, memory, and suspension overhead budgets
+- [x] Audit earlier-phase test coverage
+- [x] Fill coverage gaps before release
 
 Exit criteria:
 
-- [ ] Supported subset is well covered
-- [ ] Differential tests are stable
-- [ ] `test262` coverage is deliberate rather than accidental
-- [ ] Benchmark and coverage results are available to maintainers
+- [x] Supported subset is well covered
+- [x] Differential tests are stable
+- [x] `test262` coverage is deliberate rather than accidental
+- [x] Benchmark and coverage results are available to maintainers
 
 ## Phase 12: Documentation and Release
 
