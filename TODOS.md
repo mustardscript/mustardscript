@@ -205,8 +205,8 @@ Exit criteria:
 
 Exit criteria:
 
-- [ ] Plain-object and array programs run correctly
-- [ ] Conservative built-ins behave correctly for supported cases
+- [x] Plain-object and array programs run correctly
+- [x] Conservative built-ins behave correctly for supported cases
 - [ ] Heap limits and allocation accounting are wired into the runtime
 - [ ] GC collects unreachable cyclic data
 - [ ] Heap, property, and GC tests pass
