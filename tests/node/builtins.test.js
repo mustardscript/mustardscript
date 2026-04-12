@@ -568,6 +568,249 @@ test('run binds member-call receivers for guest functions', async () => {
   assert.equal(result, 42);
 });
 
+test('run aligns globalThis, top-level this, and arrow lexical this with the real global object', async () => {
+  const result = await runtime(`
+    globalThis.answer = 7;
+    const box = {
+      value: 3,
+      method() {
+        return (() => this.value)();
+      },
+    };
+    ({
+      globalSelf: globalThis.globalThis === globalThis,
+      objectCtor: globalThis.Object === Object,
+      hasObject: "Object" in globalThis,
+      lookup: answer,
+      topLevelThis: this === globalThis,
+      arrowThis: box.method(),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    globalSelf: true,
+    objectCtor: true,
+    hasObject: true,
+    lookup: 7,
+    topLevelThis: true,
+    arrowThis: 3,
+  });
+});
+
+test('run exposes callable metadata and constructor links for supported callables', async () => {
+  const result = await runtime(`
+    function declared(alpha, beta) {}
+    declared.extra = 5;
+    const arrow = (left, right) => left + right;
+    const method = [].map;
+    ({
+      declared: {
+        name: declared.name,
+        length: declared.length,
+        prototypeType: typeof declared.prototype,
+        extra: declared.extra,
+        keys: Object.keys(declared),
+        instanceofObject: declared instanceof Object,
+      },
+      arrow: {
+        name: arrow.name,
+        length: arrow.length,
+        prototypeType: typeof arrow.prototype,
+        instanceofObject: arrow instanceof Object,
+      },
+      builtins: {
+        arrayName: Array.name,
+        arrayLength: Array.length,
+        arrayPrototypeType: typeof Array.prototype,
+        arrayObject: Array instanceof Object,
+        arrayOwnLength: Object.hasOwn(Array, "length"),
+        methodName: method.name,
+        methodLength: method.length,
+        methodObject: method instanceof Object,
+      },
+      constructors: {
+        array: [].constructor === Array,
+        object: ({}).constructor === Object,
+        promise: Promise.resolve(1).constructor === Promise,
+        date: new Date(0).constructor === Date,
+        regexp: /a/.constructor === RegExp,
+      },
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    declared: {
+      name: 'declared',
+      length: 2,
+      prototypeType: 'object',
+      extra: 5,
+      keys: ['extra'],
+      instanceofObject: true,
+    },
+    arrow: {
+      name: 'arrow',
+      length: 2,
+      prototypeType: 'undefined',
+      instanceofObject: true,
+    },
+    builtins: {
+      arrayName: 'Array',
+      arrayLength: 1,
+      arrayPrototypeType: 'object',
+      arrayObject: true,
+      arrayOwnLength: true,
+      methodName: 'map',
+      methodLength: 1,
+      methodObject: true,
+    },
+    constructors: {
+      array: true,
+      object: true,
+      promise: true,
+      date: true,
+      regexp: true,
+    },
+  });
+});
+
+test('run matches supported Array, Object, and primitive-wrapper constructor semantics', async () => {
+  const result = await runtime(`
+    const array = Array(3);
+    const built = new Array(3);
+    const existing = [1, 2];
+    const map = new Map([[1, 2]]);
+    const boxedString = Object("ab");
+    const boxedNumber = new Number(1);
+    const boxedText = new String("ab");
+    const boxedBoolean = new Boolean(false);
+    ({
+      arrayLength: array.length,
+      arrayKeys: Object.keys(array),
+      builtLength: built.length,
+      builtJson: JSON.stringify(built),
+      invalidLength: (() => {
+        try {
+          new Array(2.5);
+          return null;
+        } catch (error) {
+          return [error.name, error.message];
+        }
+      })(),
+      sameArray: Object(existing) === existing,
+      sameMap: Object(map) === map,
+      boxedString: {
+        object: boxedString instanceof Object,
+        string: boxedString instanceof String,
+        length: boxedString.length,
+        first: boxedString[0],
+        value: String(boxedString),
+      },
+      boxedNumber: {
+        type: typeof boxedNumber,
+        object: boxedNumber instanceof Object,
+        number: boxedNumber instanceof Number,
+        value: String(boxedNumber),
+      },
+      boxedText: {
+        type: typeof boxedText,
+        object: boxedText instanceof Object,
+        string: boxedText instanceof String,
+        value: String(boxedText),
+      },
+      boxedBoolean: {
+        type: typeof boxedBoolean,
+        object: boxedBoolean instanceof Object,
+        boolean: boxedBoolean instanceof Boolean,
+        truthy: !!boxedBoolean,
+      },
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    arrayLength: 3,
+    arrayKeys: [],
+    builtLength: 3,
+    builtJson: '[null,null,null]',
+    invalidLength: ['RangeError', 'Invalid array length'],
+    sameArray: true,
+    sameMap: true,
+    boxedString: {
+      object: true,
+      string: true,
+      length: 2,
+      first: 'a',
+      value: 'ab',
+    },
+    boxedNumber: {
+      type: 'object',
+      object: true,
+      number: true,
+      value: '1',
+    },
+    boxedText: {
+      type: 'object',
+      object: true,
+      string: true,
+      value: 'ab',
+    },
+    boxedBoolean: {
+      type: 'object',
+      object: true,
+      boolean: true,
+      truthy: true,
+    },
+  });
+});
+
+test('run keeps Array.prototype.reduce callback this undefined when an initial accumulator is present', async () => {
+  const result = await runtime(`
+    const seed = { tag: "seed" };
+    [1].reduce(function (acc, value) {
+      return {
+        same: this === acc,
+        thisType: typeof this,
+        thisTag: this && this.tag,
+        accTag: acc.tag,
+        value,
+      };
+    }, seed);
+  `).run();
+
+  assert.deepEqual(result, {
+    same: false,
+    thisType: 'undefined',
+    thisTag: undefined,
+    accTag: 'seed',
+    value: 1,
+  });
+});
+
+test('run truncates Date timestamps to integer milliseconds', async () => {
+  const expectedParsed = Date.parse('2026-04-10T14:00:00.123456789Z');
+  const result = await runtime(`
+    const now = Date.now();
+    const current = new Date().getTime();
+    const positive = new Date(1.9).getTime();
+    const negative = new Date(-1.9).getTime();
+    const parsed = new Date("2026-04-10T14:00:00.123456789Z").getTime();
+    ({
+      nowIsInteger: now === Math.trunc(now),
+      currentIsInteger: current === Math.trunc(current),
+      positive,
+      negative,
+      parsed,
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    nowIsInteger: true,
+    currentIsInteger: true,
+    positive: 1,
+    negative: -1,
+    parsed: expectedParsed,
+  });
+});
+
 test('run binds rest parameters for functions and arrows', async () => {
   const result = await runtime(`
     function collect(head, ...tail) {

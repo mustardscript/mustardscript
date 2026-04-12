@@ -22,10 +22,10 @@ fn member_calls_bind_receivers_for_guest_functions() {
 }
 
 #[test]
-fn member_calls_do_not_add_dynamic_receivers_to_arrow_functions() {
+fn member_calls_do_not_override_lexical_receivers_for_arrow_functions() {
     let program = compile(
         r#"
-        const method = () => this === undefined;
+        const method = () => this === globalThis;
         const obj = { method: method };
         obj.method();
         "#,

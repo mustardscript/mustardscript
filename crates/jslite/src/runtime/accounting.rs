@@ -140,15 +140,42 @@ impl Runtime {
         &mut self,
         function_id: usize,
         env: EnvKey,
+        this_value: Value,
     ) -> JsliteResult<ClosureKey> {
         let mut closure = Closure {
             function_id,
             env,
+            name: self
+                .program
+                .functions
+                .get(function_id)
+                .and_then(|function| function.name.clone()),
+            this_value,
+            prototype: None,
+            properties: IndexMap::new(),
             accounted_bytes: 0,
         };
         closure.accounted_bytes = measure_closure_bytes(&closure);
         self.account_new_allocation(closure.accounted_bytes)?;
-        Ok(self.closures.insert(closure))
+        let key = self.closures.insert(closure);
+        let is_arrow = self
+            .program
+            .functions
+            .get(function_id)
+            .map(|function| function.is_arrow)
+            .ok_or_else(|| JsliteError::runtime("function not found"))?;
+        if !is_arrow {
+            let prototype = self.insert_object(
+                IndexMap::new(),
+                ObjectKind::FunctionPrototype(Value::Closure(key)),
+            )?;
+            self.closures
+                .get_mut(key)
+                .ok_or_else(|| JsliteError::runtime("closure missing"))?
+                .prototype = Some(prototype);
+            self.refresh_closure_accounting(key)?;
+        }
+        Ok(key)
     }
 
     pub(super) fn insert_promise(&mut self, state: PromiseState) -> JsliteResult<PromiseKey> {
@@ -289,6 +316,22 @@ impl Runtime {
         self.iterators
             .get_mut(key)
             .ok_or_else(|| JsliteError::runtime("iterator missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    pub(super) fn refresh_closure_accounting(&mut self, key: ClosureKey) -> JsliteResult<()> {
+        let (old_bytes, new_bytes) = {
+            let closure = self
+                .closures
+                .get(key)
+                .ok_or_else(|| JsliteError::runtime("closure missing"))?;
+            (closure.accounted_bytes, measure_closure_bytes(closure))
+        };
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.closures
+            .get_mut(key)
+            .ok_or_else(|| JsliteError::runtime("closure missing"))?
             .accounted_bytes = new_bytes;
         Ok(())
     }
@@ -436,8 +479,10 @@ fn measure_object_bytes(object: &PlainObject) -> usize {
     std::mem::size_of::<PlainObject>()
         + measure_properties_bytes(&object.properties)
         + match &object.kind {
+            ObjectKind::FunctionPrototype(constructor) => extra_value_bytes(constructor),
             ObjectKind::Error(name) => name.len(),
             ObjectKind::RegExp(regex) => regex.pattern.len() + regex.flags.len(),
+            ObjectKind::StringObject(value) => value.len(),
             _ => 0,
         }
 }
@@ -485,8 +530,11 @@ fn measure_iterator_bytes(iterator: &IteratorObject) -> usize {
     std::mem::size_of::<IteratorObject>() + state_bytes
 }
 
-fn measure_closure_bytes(_closure: &Closure) -> usize {
+fn measure_closure_bytes(closure: &Closure) -> usize {
     std::mem::size_of::<Closure>()
+        + closure.name.as_ref().map_or(0, String::len)
+        + extra_value_bytes(&closure.this_value)
+        + measure_properties_bytes(&closure.properties)
 }
 
 fn measure_promise_bytes(promise: &PromiseObject) -> usize {

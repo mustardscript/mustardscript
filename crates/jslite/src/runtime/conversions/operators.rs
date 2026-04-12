@@ -172,10 +172,20 @@ impl Runtime {
                         | Value::Set(_)
                         | Value::Iterator(_)
                         | Value::Promise(_)
+                        | Value::Closure(_)
+                        | Value::BuiltinFunction(_)
+                        | Value::HostFunction(_)
                 )),
                 BuiltinFunction::MapCtor => Ok(matches!(left, Value::Map(_))),
                 BuiltinFunction::SetCtor => Ok(matches!(left, Value::Set(_))),
                 BuiltinFunction::PromiseCtor => Ok(matches!(left, Value::Promise(_))),
+                BuiltinFunction::NumberCtor => Ok(matches!(
+                    left,
+                    Value::Object(object)
+                        if self.objects.get(object).is_some_and(
+                            |object| matches!(object.kind, ObjectKind::NumberObject(_))
+                        )
+                )),
                 BuiltinFunction::DateCtor => Ok(matches!(
                     left,
                     Value::Object(object)
@@ -191,6 +201,20 @@ impl Runtime {
                             .objects
                             .get(object)
                             .is_some_and(|object| matches!(object.kind, ObjectKind::RegExp(_)))
+                )),
+                BuiltinFunction::StringCtor => Ok(matches!(
+                    left,
+                    Value::Object(object)
+                        if self.objects.get(object).is_some_and(
+                            |object| matches!(object.kind, ObjectKind::StringObject(_))
+                        )
+                )),
+                BuiltinFunction::BooleanCtor => Ok(matches!(
+                    left,
+                    Value::Object(object)
+                        if self.objects.get(object).is_some_and(
+                            |object| matches!(object.kind, ObjectKind::BooleanObject(_))
+                        )
                 )),
                 BuiltinFunction::ErrorCtor => Ok(matches!(
                     left,

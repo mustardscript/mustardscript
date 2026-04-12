@@ -43,6 +43,9 @@ impl Runtime {
         let mut worklist = GarbageCollectionWorklist::default();
 
         self.mark_env(self.globals, &mut marks, &mut worklist);
+        for prototype in self.builtin_prototypes.values() {
+            self.mark_value(&Value::Object(*prototype), &mut marks, &mut worklist);
+        }
         if let Some(root_result) = &self.root_result {
             self.mark_value(root_result, &mut marks, &mut worklist);
         }
@@ -161,6 +164,9 @@ impl Runtime {
                     .objects
                     .get(key)
                     .ok_or_else(|| JsliteError::runtime("gc encountered missing object"))?;
+                if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
+                    self.mark_value(constructor, &mut marks, &mut worklist);
+                }
                 for value in object.properties.values() {
                     self.mark_value(value, &mut marks, &mut worklist);
                 }
@@ -231,6 +237,13 @@ impl Runtime {
                     .get(key)
                     .ok_or_else(|| JsliteError::runtime("gc encountered missing closure"))?;
                 self.mark_env(closure.env, &mut marks, &mut worklist);
+                self.mark_value(&closure.this_value, &mut marks, &mut worklist);
+                if let Some(prototype) = closure.prototype {
+                    self.mark_value(&Value::Object(prototype), &mut marks, &mut worklist);
+                }
+                for value in closure.properties.values() {
+                    self.mark_value(value, &mut marks, &mut worklist);
+                }
             }
 
             while let Some(key) = worklist.promises.pop() {

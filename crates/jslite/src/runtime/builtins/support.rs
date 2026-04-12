@@ -36,13 +36,13 @@ pub(super) enum StringSearchPattern {
 pub(super) fn current_time_millis() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs_f64() * 1000.0)
+        .map(|duration| duration.as_millis() as f64)
         .unwrap_or(0.0)
 }
 
 pub(super) fn parse_date_timestamp_ms(value: &str) -> f64 {
     OffsetDateTime::parse(value, &Rfc3339)
-        .map(|datetime| datetime.unix_timestamp_nanos() as f64 / 1_000_000.0)
+        .map(|datetime| (datetime.unix_timestamp_nanos() as f64 / 1_000_000.0).trunc())
         .unwrap_or(f64::NAN)
 }
 

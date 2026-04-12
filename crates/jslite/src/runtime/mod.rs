@@ -80,6 +80,7 @@ impl Runtime {
             microtasks: VecDeque::new(),
             pending_host_calls: VecDeque::new(),
             suspended_host_call: None,
+            builtin_prototypes: IndexMap::new(),
             snapshot_nonce: next_snapshot_nonce(),
             instruction_counter: 0,
             heap_bytes_used: 0,
@@ -179,20 +180,25 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("closure not found"))?;
                 let env = self.new_env(Some(closure.env))?;
                 let had_async_boundary = self.current_async_boundary_index().is_some();
-                let (is_async, function_id) = self
+                let (is_async, is_arrow, function_id) = self
                     .program
                     .functions
                     .get(closure.function_id)
-                    .map(|function| (function.is_async, closure.function_id))
+                    .map(|function| (function.is_async, function.is_arrow, closure.function_id))
                     .ok_or_else(|| JsliteError::runtime("function not found"))?;
+                let frame_this = if is_arrow {
+                    closure.this_value.clone()
+                } else {
+                    this_arg
+                };
                 if is_async {
                     let promise = self.insert_promise(PromiseState::Pending)?;
-                    self.push_frame(function_id, env, args, this_arg, Some(promise))?;
+                    self.push_frame(function_id, env, args, frame_this, Some(promise))?;
                     Ok(Value::Promise(promise))
                 } else {
                     let promise = self.insert_promise(PromiseState::Pending)?;
                     let base_depth = self.frames.len();
-                    self.push_frame(function_id, env, args, this_arg, Some(promise))?;
+                    self.push_frame(function_id, env, args, frame_this, Some(promise))?;
                     self.run_until_frame_depth(base_depth, options.host_suspension_message)?;
                     match self.promise_outcome(promise)? {
                         Some(PromiseOutcome::Fulfilled(value)) => Ok(value),

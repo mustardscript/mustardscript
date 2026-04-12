@@ -21,13 +21,23 @@ impl Runtime {
                 .ok_or_else(|| JsliteError::runtime("object missing"))?
                 .kind
             {
-                ObjectKind::Plain => Ok(()),
+                ObjectKind::Plain
+                | ObjectKind::FunctionPrototype(_)
+                | ObjectKind::NumberObject(_)
+                | ObjectKind::StringObject(_)
+                | ObjectKind::BooleanObject(_) => Ok(()),
                 _ => Err(Self::object_helper_type_error()),
             },
             Value::Array(array) => {
                 self.arrays
                     .get(array)
                     .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                Ok(())
+            }
+            Value::Closure(closure) => {
+                self.closures
+                    .get(closure)
+                    .ok_or_else(|| JsliteError::runtime("closure missing"))?;
                 Ok(())
             }
             _ => Err(Self::object_helper_type_error()),
@@ -62,10 +72,19 @@ impl Runtime {
                         .objects
                         .get(object)
                         .ok_or_else(|| JsliteError::runtime("object missing"))?;
-                    (
-                        object.properties.len(),
-                        ordered_own_property_keys(&object.properties),
-                    )
+                    match &object.kind {
+                        ObjectKind::StringObject(value) => {
+                            let mut keys = (0..value.chars().count())
+                                .map(|index| index.to_string())
+                                .collect::<Vec<_>>();
+                            keys.extend(ordered_own_property_keys(&object.properties));
+                            (keys.len(), keys)
+                        }
+                        _ => (
+                            object.properties.len(),
+                            ordered_own_property_keys(&object.properties),
+                        ),
+                    }
                 };
                 self.charge_native_helper_work(count)?;
                 Ok(keys)
@@ -93,18 +112,42 @@ impl Runtime {
                 keys.extend(extra_keys);
                 Ok(keys)
             }
+            Value::Closure(closure) => {
+                let keys = self
+                    .closures
+                    .get(closure)
+                    .ok_or_else(|| JsliteError::runtime("closure missing"))?
+                    .properties
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>();
+                self.charge_native_helper_work(keys.len())?;
+                Ok(keys)
+            }
+            Value::BuiltinFunction(_) => Ok(Vec::new()),
             _ => Err(Self::object_helper_type_error()),
         }
     }
 
     fn enumerable_value(&self, target: Value, key: &str) -> JsliteResult<Value> {
         match target {
-            Value::Object(object) => self
-                .objects
-                .get(object)
-                .and_then(|object| object.properties.get(key))
-                .cloned()
-                .ok_or_else(|| JsliteError::runtime("object property missing")),
+            Value::Object(object) => {
+                let object = self
+                    .objects
+                    .get(object)
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?;
+                if let ObjectKind::StringObject(value) = &object.kind
+                    && let Some(index) = array_index_from_property_key(key)
+                    && let Some(ch) = value.chars().nth(index)
+                {
+                    return Ok(Value::String(ch.to_string()));
+                }
+                object
+                    .properties
+                    .get(key)
+                    .cloned()
+                    .ok_or_else(|| JsliteError::runtime("object property missing"))
+            }
             Value::Array(array) => {
                 let array = self
                     .arrays
@@ -125,6 +168,12 @@ impl Runtime {
                         .ok_or_else(|| JsliteError::runtime("array property missing"))
                 }
             }
+            Value::Closure(closure) => self
+                .closures
+                .get(closure)
+                .and_then(|closure| closure.properties.get(key))
+                .cloned()
+                .ok_or_else(|| JsliteError::runtime("closure property missing")),
             _ => Err(Self::object_helper_type_error()),
         }
     }
@@ -165,6 +214,35 @@ impl Runtime {
         }
 
         Ok(target)
+    }
+
+    pub(crate) fn call_object_ctor(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        match args.first().cloned().unwrap_or(Value::Undefined) {
+            Value::Undefined | Value::Null => Ok(Value::Object(
+                self.insert_object(IndexMap::new(), ObjectKind::Plain)?,
+            )),
+            Value::Bool(value) => Ok(Value::Object(
+                self.insert_object(IndexMap::new(), ObjectKind::BooleanObject(value))?,
+            )),
+            Value::Number(value) => Ok(Value::Object(
+                self.insert_object(IndexMap::new(), ObjectKind::NumberObject(value))?,
+            )),
+            Value::String(value) => Ok(Value::Object(
+                self.insert_object(IndexMap::new(), ObjectKind::StringObject(value))?,
+            )),
+            value @ (Value::Object(_)
+            | Value::Array(_)
+            | Value::Map(_)
+            | Value::Set(_)
+            | Value::Iterator(_)
+            | Value::Promise(_)
+            | Value::Closure(_)
+            | Value::BuiltinFunction(_)
+            | Value::HostFunction(_)) => Ok(value),
+            Value::BigInt(_) => Err(JsliteError::runtime(
+                "TypeError: BigInt values cannot be boxed with Object in the supported surface",
+            )),
+        }
     }
 
     pub(crate) fn reject_object_create(&self) -> JsliteResult<Value> {
@@ -271,20 +349,31 @@ impl Runtime {
         let target = args.first().cloned().unwrap_or(Value::Undefined);
         let key = self.to_property_key(args.get(1).cloned().unwrap_or(Value::Undefined))?;
         let has_key = match target {
-            Value::Object(object) => self
-                .objects
-                .get(object)
-                .ok_or_else(|| JsliteError::runtime("object missing"))?
-                .properties
-                .contains_key(&key),
+            Value::Object(object) => {
+                let object = self
+                    .objects
+                    .get(object)
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?;
+                object.properties.contains_key(&key)
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(_) if key == "constructor")
+                    || matches!(&object.kind, ObjectKind::StringObject(_) if key == "length")
+                    || matches!(&object.kind, ObjectKind::StringObject(value)
+                        if array_index_from_property_key(&key)
+                            .is_some_and(|index| value.chars().nth(index).is_some()))
+            }
             Value::Array(array) => {
                 let array = self
                     .arrays
                     .get(array)
                     .ok_or_else(|| JsliteError::runtime("array missing"))?;
-                array_index_from_property_key(&key)
-                    .is_some_and(|index| array.elements.get(index).is_some_and(Option::is_some))
+                key == "length"
+                    || array_index_from_property_key(&key)
+                        .is_some_and(|index| array.elements.get(index).is_some_and(Option::is_some))
                     || array.properties.contains_key(&key)
+            }
+            Value::Closure(closure) => self.closure_has_own_property(closure, &key)?,
+            Value::BuiltinFunction(function) => {
+                self.builtin_function_own_property(function, &key).is_some()
             }
             _ => return Err(Self::object_helper_type_error()),
         };

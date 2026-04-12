@@ -32,6 +32,354 @@ impl Runtime {
             .unwrap_or(Value::Undefined))
     }
 
+    fn function_length(patterns: &[Pattern]) -> usize {
+        let mut count = 0usize;
+        for pattern in patterns {
+            if matches!(pattern, Pattern::Default { .. }) {
+                break;
+            }
+            count += 1;
+        }
+        count
+    }
+
+    pub(super) fn closure_own_property(
+        &self,
+        closure: ClosureKey,
+        key: &str,
+    ) -> JsliteResult<Option<Value>> {
+        let closure_ref = self
+            .closures
+            .get(closure)
+            .ok_or_else(|| JsliteError::runtime("closure missing"))?;
+        let function = self
+            .program
+            .functions
+            .get(closure_ref.function_id)
+            .ok_or_else(|| JsliteError::runtime("function not found"))?;
+        Ok(match key {
+            "name" => Some(Value::String(
+                closure_ref
+                    .name
+                    .clone()
+                    .or_else(|| function.name.clone())
+                    .unwrap_or_default(),
+            )),
+            "length" => Some(Value::Number(Self::function_length(&function.params) as f64)),
+            "prototype" => closure_ref.prototype.map(Value::Object),
+            _ => closure_ref.properties.get(key).cloned(),
+        })
+    }
+
+    pub(super) fn closure_has_own_property(
+        &self,
+        closure: ClosureKey,
+        key: &str,
+    ) -> JsliteResult<bool> {
+        Ok(self.closure_own_property(closure, key)?.is_some())
+    }
+
+    fn set_closure_property(
+        &mut self,
+        closure: ClosureKey,
+        key: String,
+        value: Value,
+    ) -> JsliteResult<()> {
+        if matches!(key.as_str(), "name" | "length" | "prototype") {
+            return Err(JsliteError::runtime(
+                "TypeError: cannot assign to read-only function metadata",
+            ));
+        }
+        self.closures
+            .get_mut(closure)
+            .ok_or_else(|| JsliteError::runtime("closure missing"))?
+            .properties
+            .insert(key, value);
+        self.refresh_closure_accounting(closure)?;
+        Ok(())
+    }
+
+    fn builtin_function_name(function: BuiltinFunction) -> &'static str {
+        match function {
+            BuiltinFunction::ArrayCtor => "Array",
+            BuiltinFunction::ArrayFrom => "from",
+            BuiltinFunction::ArrayOf => "of",
+            BuiltinFunction::ArrayIsArray => "isArray",
+            BuiltinFunction::ArrayPush => "push",
+            BuiltinFunction::ArrayPop => "pop",
+            BuiltinFunction::ArraySlice => "slice",
+            BuiltinFunction::ArraySplice => "splice",
+            BuiltinFunction::ArrayConcat => "concat",
+            BuiltinFunction::ArrayAt => "at",
+            BuiltinFunction::ArrayJoin => "join",
+            BuiltinFunction::ArrayIncludes => "includes",
+            BuiltinFunction::ArrayIndexOf => "indexOf",
+            BuiltinFunction::ArraySort => "sort",
+            BuiltinFunction::ArrayValues => "values",
+            BuiltinFunction::ArrayKeys => "keys",
+            BuiltinFunction::ArrayEntries => "entries",
+            BuiltinFunction::ArrayForEach => "forEach",
+            BuiltinFunction::ArrayMap => "map",
+            BuiltinFunction::ArrayFilter => "filter",
+            BuiltinFunction::ArrayFind => "find",
+            BuiltinFunction::ArrayFindIndex => "findIndex",
+            BuiltinFunction::ArraySome => "some",
+            BuiltinFunction::ArrayEvery => "every",
+            BuiltinFunction::ArrayFlat => "flat",
+            BuiltinFunction::ArrayFlatMap => "flatMap",
+            BuiltinFunction::ArrayReduce => "reduce",
+            BuiltinFunction::ObjectCtor => "Object",
+            BuiltinFunction::ObjectAssign => "assign",
+            BuiltinFunction::ObjectCreate => "create",
+            BuiltinFunction::ObjectFreeze => "freeze",
+            BuiltinFunction::ObjectSeal => "seal",
+            BuiltinFunction::ObjectFromEntries => "fromEntries",
+            BuiltinFunction::ObjectKeys => "keys",
+            BuiltinFunction::ObjectValues => "values",
+            BuiltinFunction::ObjectEntries => "entries",
+            BuiltinFunction::ObjectHasOwn => "hasOwn",
+            BuiltinFunction::MapCtor => "Map",
+            BuiltinFunction::MapGet => "get",
+            BuiltinFunction::MapSet => "set",
+            BuiltinFunction::MapHas => "has",
+            BuiltinFunction::MapDelete => "delete",
+            BuiltinFunction::MapClear => "clear",
+            BuiltinFunction::MapEntries => "entries",
+            BuiltinFunction::MapKeys => "keys",
+            BuiltinFunction::MapValues => "values",
+            BuiltinFunction::SetCtor => "Set",
+            BuiltinFunction::SetAdd => "add",
+            BuiltinFunction::SetHas => "has",
+            BuiltinFunction::SetDelete => "delete",
+            BuiltinFunction::SetClear => "clear",
+            BuiltinFunction::SetEntries => "entries",
+            BuiltinFunction::SetKeys => "keys",
+            BuiltinFunction::SetValues => "values",
+            BuiltinFunction::IteratorNext => "next",
+            BuiltinFunction::PromiseCtor => "Promise",
+            BuiltinFunction::PromiseResolve => "resolve",
+            BuiltinFunction::PromiseReject => "reject",
+            BuiltinFunction::PromiseResolveFunction(_) => "",
+            BuiltinFunction::PromiseRejectFunction(_) => "",
+            BuiltinFunction::PromiseThen => "then",
+            BuiltinFunction::PromiseCatch => "catch",
+            BuiltinFunction::PromiseFinally => "finally",
+            BuiltinFunction::PromiseAll => "all",
+            BuiltinFunction::PromiseRace => "race",
+            BuiltinFunction::PromiseAny => "any",
+            BuiltinFunction::PromiseAllSettled => "allSettled",
+            BuiltinFunction::RegExpCtor => "RegExp",
+            BuiltinFunction::RegExpExec => "exec",
+            BuiltinFunction::RegExpTest => "test",
+            BuiltinFunction::ErrorCtor => "Error",
+            BuiltinFunction::TypeErrorCtor => "TypeError",
+            BuiltinFunction::ReferenceErrorCtor => "ReferenceError",
+            BuiltinFunction::RangeErrorCtor => "RangeError",
+            BuiltinFunction::NumberCtor => "Number",
+            BuiltinFunction::DateCtor => "Date",
+            BuiltinFunction::DateNow => "now",
+            BuiltinFunction::DateGetTime => "getTime",
+            BuiltinFunction::StringCtor => "String",
+            BuiltinFunction::StringTrim => "trim",
+            BuiltinFunction::StringIncludes => "includes",
+            BuiltinFunction::StringStartsWith => "startsWith",
+            BuiltinFunction::StringEndsWith => "endsWith",
+            BuiltinFunction::StringSlice => "slice",
+            BuiltinFunction::StringSubstring => "substring",
+            BuiltinFunction::StringToLowerCase => "toLowerCase",
+            BuiltinFunction::StringToUpperCase => "toUpperCase",
+            BuiltinFunction::StringSplit => "split",
+            BuiltinFunction::StringReplace => "replace",
+            BuiltinFunction::StringReplaceAll => "replaceAll",
+            BuiltinFunction::StringSearch => "search",
+            BuiltinFunction::StringMatch => "match",
+            BuiltinFunction::StringMatchAll => "matchAll",
+            BuiltinFunction::BooleanCtor => "Boolean",
+            BuiltinFunction::MathAbs => "abs",
+            BuiltinFunction::MathMax => "max",
+            BuiltinFunction::MathMin => "min",
+            BuiltinFunction::MathFloor => "floor",
+            BuiltinFunction::MathCeil => "ceil",
+            BuiltinFunction::MathRound => "round",
+            BuiltinFunction::MathPow => "pow",
+            BuiltinFunction::MathSqrt => "sqrt",
+            BuiltinFunction::MathTrunc => "trunc",
+            BuiltinFunction::MathSign => "sign",
+            BuiltinFunction::MathLog => "log",
+            BuiltinFunction::MathRandom => "random",
+            BuiltinFunction::JsonStringify => "stringify",
+            BuiltinFunction::JsonParse => "parse",
+        }
+    }
+
+    fn builtin_function_length(function: BuiltinFunction) -> usize {
+        match function {
+            BuiltinFunction::ArrayCtor => 1,
+            BuiltinFunction::ArrayFrom => 1,
+            BuiltinFunction::ArrayOf => 0,
+            BuiltinFunction::ArrayIsArray => 1,
+            BuiltinFunction::ArrayPush => 1,
+            BuiltinFunction::ArrayPop => 0,
+            BuiltinFunction::ArraySlice => 2,
+            BuiltinFunction::ArraySplice => 2,
+            BuiltinFunction::ArrayConcat => 1,
+            BuiltinFunction::ArrayAt => 1,
+            BuiltinFunction::ArrayJoin => 1,
+            BuiltinFunction::ArrayIncludes => 1,
+            BuiltinFunction::ArrayIndexOf => 1,
+            BuiltinFunction::ArraySort => 1,
+            BuiltinFunction::ArrayValues => 0,
+            BuiltinFunction::ArrayKeys => 0,
+            BuiltinFunction::ArrayEntries => 0,
+            BuiltinFunction::ArrayForEach => 1,
+            BuiltinFunction::ArrayMap => 1,
+            BuiltinFunction::ArrayFilter => 1,
+            BuiltinFunction::ArrayFind => 1,
+            BuiltinFunction::ArrayFindIndex => 1,
+            BuiltinFunction::ArraySome => 1,
+            BuiltinFunction::ArrayEvery => 1,
+            BuiltinFunction::ArrayFlat => 0,
+            BuiltinFunction::ArrayFlatMap => 1,
+            BuiltinFunction::ArrayReduce => 1,
+            BuiltinFunction::ObjectCtor => 1,
+            BuiltinFunction::ObjectAssign => 2,
+            BuiltinFunction::ObjectCreate => 2,
+            BuiltinFunction::ObjectFreeze => 1,
+            BuiltinFunction::ObjectSeal => 1,
+            BuiltinFunction::ObjectFromEntries => 1,
+            BuiltinFunction::ObjectKeys => 1,
+            BuiltinFunction::ObjectValues => 1,
+            BuiltinFunction::ObjectEntries => 1,
+            BuiltinFunction::ObjectHasOwn => 2,
+            BuiltinFunction::MapCtor => 0,
+            BuiltinFunction::MapGet => 1,
+            BuiltinFunction::MapSet => 2,
+            BuiltinFunction::MapHas => 1,
+            BuiltinFunction::MapDelete => 1,
+            BuiltinFunction::MapClear => 0,
+            BuiltinFunction::MapEntries => 0,
+            BuiltinFunction::MapKeys => 0,
+            BuiltinFunction::MapValues => 0,
+            BuiltinFunction::SetCtor => 0,
+            BuiltinFunction::SetAdd => 1,
+            BuiltinFunction::SetHas => 1,
+            BuiltinFunction::SetDelete => 1,
+            BuiltinFunction::SetClear => 0,
+            BuiltinFunction::SetEntries => 0,
+            BuiltinFunction::SetKeys => 0,
+            BuiltinFunction::SetValues => 0,
+            BuiltinFunction::IteratorNext => 0,
+            BuiltinFunction::PromiseCtor => 1,
+            BuiltinFunction::PromiseResolve => 1,
+            BuiltinFunction::PromiseReject => 1,
+            BuiltinFunction::PromiseResolveFunction(_) => 1,
+            BuiltinFunction::PromiseRejectFunction(_) => 1,
+            BuiltinFunction::PromiseThen => 2,
+            BuiltinFunction::PromiseCatch => 1,
+            BuiltinFunction::PromiseFinally => 1,
+            BuiltinFunction::PromiseAll => 1,
+            BuiltinFunction::PromiseRace => 1,
+            BuiltinFunction::PromiseAny => 1,
+            BuiltinFunction::PromiseAllSettled => 1,
+            BuiltinFunction::RegExpCtor => 2,
+            BuiltinFunction::RegExpExec => 1,
+            BuiltinFunction::RegExpTest => 1,
+            BuiltinFunction::ErrorCtor => 1,
+            BuiltinFunction::TypeErrorCtor => 1,
+            BuiltinFunction::ReferenceErrorCtor => 1,
+            BuiltinFunction::RangeErrorCtor => 1,
+            BuiltinFunction::NumberCtor => 1,
+            BuiltinFunction::DateCtor => 7,
+            BuiltinFunction::DateNow => 0,
+            BuiltinFunction::DateGetTime => 0,
+            BuiltinFunction::StringCtor => 1,
+            BuiltinFunction::StringTrim => 0,
+            BuiltinFunction::StringIncludes => 1,
+            BuiltinFunction::StringStartsWith => 1,
+            BuiltinFunction::StringEndsWith => 1,
+            BuiltinFunction::StringSlice => 2,
+            BuiltinFunction::StringSubstring => 2,
+            BuiltinFunction::StringToLowerCase => 0,
+            BuiltinFunction::StringToUpperCase => 0,
+            BuiltinFunction::StringSplit => 2,
+            BuiltinFunction::StringReplace => 2,
+            BuiltinFunction::StringReplaceAll => 2,
+            BuiltinFunction::StringSearch => 1,
+            BuiltinFunction::StringMatch => 1,
+            BuiltinFunction::StringMatchAll => 1,
+            BuiltinFunction::BooleanCtor => 1,
+            BuiltinFunction::MathAbs => 1,
+            BuiltinFunction::MathMax => 2,
+            BuiltinFunction::MathMin => 2,
+            BuiltinFunction::MathFloor => 1,
+            BuiltinFunction::MathCeil => 1,
+            BuiltinFunction::MathRound => 1,
+            BuiltinFunction::MathPow => 2,
+            BuiltinFunction::MathSqrt => 1,
+            BuiltinFunction::MathTrunc => 1,
+            BuiltinFunction::MathSign => 1,
+            BuiltinFunction::MathLog => 1,
+            BuiltinFunction::MathRandom => 0,
+            BuiltinFunction::JsonStringify => 3,
+            BuiltinFunction::JsonParse => 2,
+        }
+    }
+
+    pub(super) fn builtin_function_own_property(
+        &self,
+        function: BuiltinFunction,
+        key: &str,
+    ) -> Option<Value> {
+        match key {
+            "name" => Some(Value::String(
+                Self::builtin_function_name(function).to_string(),
+            )),
+            "length" => Some(Value::Number(Self::builtin_function_length(function) as f64)),
+            "prototype" => self
+                .builtin_prototypes
+                .get(&function)
+                .copied()
+                .map(Value::Object),
+            _ => match function {
+                BuiltinFunction::ArrayCtor => match key {
+                    "isArray" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray)),
+                    "from" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayFrom)),
+                    "of" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayOf)),
+                    _ => None,
+                },
+                BuiltinFunction::ObjectCtor => match key {
+                    "assign" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectAssign)),
+                    "create" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectCreate)),
+                    "freeze" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectFreeze)),
+                    "seal" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectSeal)),
+                    "fromEntries" => {
+                        Some(Value::BuiltinFunction(BuiltinFunction::ObjectFromEntries))
+                    }
+                    "keys" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectKeys)),
+                    "values" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectValues)),
+                    "entries" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectEntries)),
+                    "hasOwn" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectHasOwn)),
+                    _ => None,
+                },
+                BuiltinFunction::DateCtor if key == "now" => {
+                    Some(Value::BuiltinFunction(BuiltinFunction::DateNow))
+                }
+                BuiltinFunction::PromiseCtor => match key {
+                    "resolve" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseResolve)),
+                    "reject" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseReject)),
+                    "all" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseAll)),
+                    "race" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseRace)),
+                    "any" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseAny)),
+                    "allSettled" => {
+                        Some(Value::BuiltinFunction(BuiltinFunction::PromiseAllSettled))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            },
+        }
+    }
+
     pub(super) fn has_property_in_supported_surface(
         &self,
         object: Value,
@@ -48,6 +396,7 @@ impl Runtime {
                     return Ok(true);
                 }
                 Ok(match &object.kind {
+                    ObjectKind::FunctionPrototype(_) => key == "constructor",
                     ObjectKind::Date(_) => matches!(key.as_str(), "getTime" | "valueOf"),
                     ObjectKind::RegExp(_) => matches!(
                         key.as_str(),
@@ -63,8 +412,21 @@ impl Runtime {
                             | "exec"
                             | "test"
                     ),
+                    ObjectKind::StringObject(value) => {
+                        key == "constructor"
+                            || key == "length"
+                            || array_index_from_property_key(&key)
+                                .is_some_and(|index| value.chars().nth(index).is_some())
+                    }
+                    ObjectKind::NumberObject(_) | ObjectKind::BooleanObject(_) => {
+                        key == "constructor"
+                    }
                     ObjectKind::Console => self.console_method(&key).is_some(),
-                    _ => false,
+                    ObjectKind::Plain
+                    | ObjectKind::Global
+                    | ObjectKind::Math
+                    | ObjectKind::Json
+                    | ObjectKind::Error(_) => key == "constructor",
                 })
             }
             Value::Array(array) => {
@@ -79,10 +441,12 @@ impl Runtime {
                     || array.properties.contains_key(&key)
                     || matches!(
                         key.as_str(),
-                        "sort"
+                        "constructor"
+                            | "sort"
                             | "push"
                             | "pop"
                             | "slice"
+                            | "splice"
                             | "concat"
                             | "at"
                             | "join"
@@ -98,6 +462,8 @@ impl Runtime {
                             | "findIndex"
                             | "some"
                             | "every"
+                            | "flat"
+                            | "flatMap"
                             | "reduce"
                     ))
             }
@@ -107,7 +473,8 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("map missing"))?;
                 Ok(matches!(
                     key.as_str(),
-                    "size"
+                    "constructor"
+                        | "size"
                         | "get"
                         | "set"
                         | "has"
@@ -124,48 +491,36 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("set missing"))?;
                 Ok(matches!(
                     key.as_str(),
-                    "size" | "add" | "has" | "delete" | "clear" | "entries" | "keys" | "values"
+                    "constructor"
+                        | "size"
+                        | "add"
+                        | "has"
+                        | "delete"
+                        | "clear"
+                        | "entries"
+                        | "keys"
+                        | "values"
                 ))
             }
             Value::Iterator(iterator) => {
                 self.iterators
                     .get(iterator)
                     .ok_or_else(|| JsliteError::runtime("iterator missing"))?;
-                Ok(key == "next")
+                Ok(matches!(key.as_str(), "constructor" | "next"))
             }
             Value::Promise(promise) => {
                 self.promises
                     .get(promise)
                     .ok_or_else(|| JsliteError::runtime("promise missing"))?;
-                Ok(matches!(key.as_str(), "then" | "catch" | "finally"))
-            }
-            Value::BuiltinFunction(function) => Ok(match function {
-                BuiltinFunction::ArrayCtor => matches!(key.as_str(), "isArray" | "from" | "of"),
-                BuiltinFunction::ObjectCtor => matches!(
+                Ok(matches!(
                     key.as_str(),
-                    "assign"
-                        | "create"
-                        | "freeze"
-                        | "seal"
-                        | "fromEntries"
-                        | "keys"
-                        | "values"
-                        | "entries"
-                        | "hasOwn"
-                ),
-                BuiltinFunction::DateCtor => key == "now",
-                BuiltinFunction::PromiseCtor => matches!(
-                    key.as_str(),
-                    "resolve" | "reject" | "all" | "race" | "any" | "allSettled"
-                ),
-                _ => false,
-            }),
-            Value::Closure(closure) => {
-                self.closures
-                    .get(closure)
-                    .ok_or_else(|| JsliteError::runtime("closure missing"))?;
-                Ok(false)
+                    "constructor" | "then" | "catch" | "finally"
+                ))
             }
+            Value::BuiltinFunction(function) => {
+                Ok(self.builtin_function_own_property(function, &key).is_some())
+            }
+            Value::Closure(closure) => self.closure_has_own_property(closure, &key),
             Value::HostFunction(_) => Ok(false),
             Value::Undefined
             | Value::Null
@@ -358,6 +713,7 @@ impl Runtime {
                     let built_in = match key.as_str() {
                         "getTime" => Some(Value::BuiltinFunction(BuiltinFunction::DateGetTime)),
                         "valueOf" => Some(Value::Number(date.timestamp_ms)),
+                        "constructor" => Some(Value::BuiltinFunction(BuiltinFunction::DateCtor)),
                         _ => None,
                     };
                     if let Some(value) = built_in {
@@ -377,19 +733,61 @@ impl Runtime {
                         "lastIndex" => Some(Value::Number(regex.last_index as f64)),
                         "exec" => Some(Value::BuiltinFunction(BuiltinFunction::RegExpExec)),
                         "test" => Some(Value::BuiltinFunction(BuiltinFunction::RegExpTest)),
+                        "constructor" => Some(Value::BuiltinFunction(BuiltinFunction::RegExpCtor)),
                         _ => None,
                     };
                     if let Some(value) = built_in {
                         return Ok(value);
                     }
                 }
+                if let ObjectKind::StringObject(value) = &object.kind {
+                    if key == "length" {
+                        return Ok(Value::Number(value.chars().count() as f64));
+                    }
+                    if let Some(index) = array_index_from_property_key(&key)
+                        && let Some(ch) = value.chars().nth(index)
+                    {
+                        return Ok(Value::String(ch.to_string()));
+                    }
+                }
                 if let Some(value) = object.properties.get(&key) {
                     return Ok(value.clone());
+                }
+                if let ObjectKind::FunctionPrototype(constructor) = &object.kind
+                    && key == "constructor"
+                {
+                    return Ok(constructor.clone());
+                }
+                if let ObjectKind::StringObject(_) = &object.kind
+                    && key == "constructor"
+                {
+                    return Ok(Value::BuiltinFunction(BuiltinFunction::StringCtor));
+                }
+                if let ObjectKind::NumberObject(_) = &object.kind
+                    && key == "constructor"
+                {
+                    return Ok(Value::BuiltinFunction(BuiltinFunction::NumberCtor));
+                }
+                if let ObjectKind::BooleanObject(_) = &object.kind
+                    && key == "constructor"
+                {
+                    return Ok(Value::BuiltinFunction(BuiltinFunction::BooleanCtor));
                 }
                 if matches!(object.kind, ObjectKind::Console)
                     && let Some(value) = self.console_method(&key)
                 {
                     return Ok(value);
+                }
+                if matches!(
+                    object.kind,
+                    ObjectKind::Plain
+                        | ObjectKind::Global
+                        | ObjectKind::Math
+                        | ObjectKind::Json
+                        | ObjectKind::Error(_)
+                ) && key == "constructor"
+                {
+                    return Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCtor));
                 }
                 Ok(Value::Undefined)
             }
@@ -400,6 +798,8 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("array missing"))?;
                 if key == "length" {
                     Ok(Value::Number(array.elements.len() as f64))
+                } else if key == "constructor" {
+                    Ok(Value::BuiltinFunction(BuiltinFunction::ArrayCtor))
                 } else if let Some(index) = array_index_from_property_key(&key) {
                     Ok(array
                         .elements
@@ -444,6 +844,7 @@ impl Runtime {
                     .get(map)
                     .ok_or_else(|| JsliteError::runtime("map missing"))?;
                 match key.as_str() {
+                    "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::MapCtor)),
                     "size" => Ok(Value::Number(map.entries.len() as f64)),
                     "get" => Ok(Value::BuiltinFunction(BuiltinFunction::MapGet)),
                     "set" => Ok(Value::BuiltinFunction(BuiltinFunction::MapSet)),
@@ -462,6 +863,7 @@ impl Runtime {
                     .get(set)
                     .ok_or_else(|| JsliteError::runtime("set missing"))?;
                 match key.as_str() {
+                    "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::SetCtor)),
                     "size" => Ok(Value::Number(set.entries.len() as f64)),
                     "add" => Ok(Value::BuiltinFunction(BuiltinFunction::SetAdd)),
                     "has" => Ok(Value::BuiltinFunction(BuiltinFunction::SetHas)),
@@ -476,56 +878,23 @@ impl Runtime {
             Value::Iterator(_) if key == "next" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::IteratorNext))
             }
+            Value::Iterator(_) if key == "constructor" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCtor))
+            }
             Value::Iterator(_) => Ok(Value::Undefined),
             Value::Promise(_) => match key.as_str() {
+                "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::PromiseCtor)),
                 "then" => Ok(Value::BuiltinFunction(BuiltinFunction::PromiseThen)),
                 "catch" => Ok(Value::BuiltinFunction(BuiltinFunction::PromiseCatch)),
                 "finally" => Ok(Value::BuiltinFunction(BuiltinFunction::PromiseFinally)),
                 _ => Ok(Value::Undefined),
             },
-            Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "isArray" => {
-                Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray))
-            }
-            Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "from" => {
-                Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFrom))
-            }
-            Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "of" => {
-                Ok(Value::BuiltinFunction(BuiltinFunction::ArrayOf))
-            }
-            Value::BuiltinFunction(BuiltinFunction::ObjectCtor) => match key.as_str() {
-                "assign" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectAssign)),
-                "create" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCreate)),
-                "freeze" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectFreeze)),
-                "seal" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectSeal)),
-                "fromEntries" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectFromEntries)),
-                "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectKeys)),
-                "values" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectValues)),
-                "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectEntries)),
-                "hasOwn" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectHasOwn)),
-                _ => Ok(Value::Undefined),
-            },
-            Value::BuiltinFunction(BuiltinFunction::DateCtor) if key == "now" => {
-                Ok(Value::BuiltinFunction(BuiltinFunction::DateNow))
-            }
-            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "resolve" => {
-                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseResolve))
-            }
-            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "reject" => {
-                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseReject))
-            }
-            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "all" => {
-                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseAll))
-            }
-            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "race" => {
-                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseRace))
-            }
-            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "any" => {
-                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseAny))
-            }
-            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) if key == "allSettled" => {
-                Ok(Value::BuiltinFunction(BuiltinFunction::PromiseAllSettled))
-            }
-            Value::BuiltinFunction(BuiltinFunction::RegExpCtor) => Ok(Value::Undefined),
+            Value::BuiltinFunction(function) => Ok(self
+                .builtin_function_own_property(function, &key)
+                .unwrap_or(Value::Undefined)),
+            Value::Closure(closure) => Ok(self
+                .closure_own_property(closure, &key)?
+                .unwrap_or(Value::Undefined)),
             Value::String(value) => match key.as_str() {
                 "length" => Ok(Value::Number(value.chars().count() as f64)),
                 "trim" => Ok(Value::BuiltinFunction(BuiltinFunction::StringTrim)),
@@ -601,6 +970,7 @@ impl Runtime {
             Value::Set(_) => Err(JsliteError::runtime(
                 "TypeError: custom properties on Set values are not supported",
             )),
+            Value::Closure(closure) => self.set_closure_property(closure, key, value),
             _ => Err(JsliteError::runtime("TypeError: value is not an object")),
         }
     }

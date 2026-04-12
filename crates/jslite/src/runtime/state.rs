@@ -22,8 +22,9 @@ new_key_type! { pub(super) struct IteratorKey; }
 new_key_type! { pub(super) struct ClosureKey; }
 new_key_type! { pub(super) struct PromiseKey; }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(super) enum Value {
+    #[default]
     Undefined,
     Null,
     Bool(bool),
@@ -41,7 +42,7 @@ pub(super) enum Value {
     BigInt(BigInt),
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub(super) enum BuiltinFunction {
     ArrayCtor,
     ArrayFrom,
@@ -185,9 +186,13 @@ pub(super) enum ObjectKind {
     Math,
     Json,
     Console,
+    FunctionPrototype(Value),
     Error(String),
     Date(DateObject),
     RegExp(RegExpObject),
+    NumberObject(f64),
+    StringObject(String),
+    BooleanObject(bool),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -278,6 +283,14 @@ pub(super) struct SetIteratorState {
 pub(super) struct Closure {
     pub(super) function_id: usize,
     pub(super) env: EnvKey,
+    #[serde(default)]
+    pub(super) name: Option<String>,
+    #[serde(default)]
+    pub(super) this_value: Value,
+    #[serde(default)]
+    pub(super) prototype: Option<ObjectKey>,
+    #[serde(default)]
+    pub(super) properties: IndexMap<String, Value>,
     #[serde(skip, default)]
     pub(super) accounted_bytes: usize,
 }
@@ -459,6 +472,8 @@ pub(super) struct Runtime {
     pub(super) microtasks: VecDeque<MicrotaskJob>,
     pub(super) pending_host_calls: VecDeque<PendingHostCall>,
     pub(super) suspended_host_call: Option<PendingHostCall>,
+    #[serde(default)]
+    pub(super) builtin_prototypes: IndexMap<BuiltinFunction, ObjectKey>,
     pub(super) snapshot_nonce: u64,
     pub(super) instruction_counter: usize,
     #[serde(skip, default)]

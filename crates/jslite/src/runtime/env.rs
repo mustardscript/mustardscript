@@ -1,6 +1,62 @@
 use super::*;
 
 impl Runtime {
+    pub(super) fn global_object_key(&self) -> Option<ObjectKey> {
+        let cell = self
+            .envs
+            .get(self.globals)?
+            .bindings
+            .get("globalThis")
+            .copied()?;
+        match self.cells.get(cell)?.value {
+            Value::Object(object) => Some(object),
+            _ => None,
+        }
+    }
+
+    fn global_property_value(&self, name: &str) -> Option<Value> {
+        let global_object = self.global_object_key()?;
+        self.objects
+            .get(global_object)?
+            .properties
+            .get(name)
+            .cloned()
+    }
+
+    fn set_global_property_value(&mut self, name: String, value: Value) -> JsliteResult<()> {
+        let Some(global_object) = self.global_object_key() else {
+            return Ok(());
+        };
+        self.objects
+            .get_mut(global_object)
+            .ok_or_else(|| JsliteError::runtime("global object missing"))?
+            .properties
+            .insert(name, value);
+        self.refresh_object_accounting(global_object)?;
+        Ok(())
+    }
+
+    fn infer_closure_name_from_binding(&mut self, value: &Value, name: &str) -> JsliteResult<()> {
+        let Value::Closure(closure) = value else {
+            return Ok(());
+        };
+        let needs_name = self
+            .closures
+            .get(*closure)
+            .ok_or_else(|| JsliteError::runtime("closure missing"))?
+            .name
+            .is_none();
+        if !needs_name {
+            return Ok(());
+        }
+        self.closures
+            .get_mut(*closure)
+            .ok_or_else(|| JsliteError::runtime("closure missing"))?
+            .name = Some(name.to_string());
+        self.refresh_closure_accounting(*closure)?;
+        Ok(())
+    }
+
     pub(super) fn new_env(&mut self, parent: Option<EnvKey>) -> JsliteResult<EnvKey> {
         self.insert_env(parent)
     }
@@ -11,6 +67,7 @@ impl Runtime {
         value: Value,
         mutable: bool,
     ) -> JsliteResult<()> {
+        let binding_name = name.clone();
         let cell = self.insert_cell(value, mutable, true)?;
         self.envs
             .get_mut(self.globals)
@@ -18,6 +75,13 @@ impl Runtime {
             .bindings
             .insert(name, cell);
         self.refresh_env_accounting(self.globals)?;
+        let value = self
+            .cells
+            .get(cell)
+            .ok_or_else(|| JsliteError::runtime("binding cell missing"))?
+            .value
+            .clone();
+        self.set_global_property_value(binding_name, value)?;
         Ok(())
     }
 
@@ -47,14 +111,17 @@ impl Runtime {
     }
 
     pub(super) fn lookup_name(&self, env: EnvKey, name: &str) -> JsliteResult<Value> {
-        let cell = self
-            .find_cell(env, name)
-            .ok_or_else(|| JsliteError::Message {
+        let Some(cell) = self.find_cell(env, name) else {
+            if let Some(value) = self.global_property_value(name) {
+                return Ok(value);
+            }
+            return Err(JsliteError::Message {
                 kind: DiagnosticKind::Runtime,
                 message: format!("ReferenceError: `{name}` is not defined"),
                 span: None,
                 traceback: Vec::new(),
-            })?;
+            });
+        };
         let cell = self
             .cells
             .get(cell)
@@ -73,9 +140,15 @@ impl Runtime {
         name: &str,
         value: Value,
     ) -> JsliteResult<()> {
-        let cell_key = self.find_cell(env, name).ok_or_else(|| {
-            JsliteError::runtime(format!("ReferenceError: `{name}` is not defined"))
-        })?;
+        self.infer_closure_name_from_binding(&value, name)?;
+        let Some(cell_key) = self.find_cell(env, name) else {
+            if self.global_property_value(name).is_some() {
+                return self.set_global_property_value(name.to_string(), value);
+            }
+            return Err(JsliteError::runtime(format!(
+                "ReferenceError: `{name}` is not defined"
+            )));
+        };
         {
             let cell = self
                 .cells
@@ -94,6 +167,20 @@ impl Runtime {
             cell.value = value;
         }
         self.refresh_cell_accounting(cell_key)?;
+        if self
+            .envs
+            .get(self.globals)
+            .and_then(|globals| globals.bindings.get(name))
+            .is_some_and(|bound| *bound == cell_key)
+        {
+            let value = self
+                .cells
+                .get(cell_key)
+                .ok_or_else(|| JsliteError::runtime("binding cell missing"))?
+                .value
+                .clone();
+            self.set_global_property_value(name.to_string(), value)?;
+        }
         Ok(())
     }
 
@@ -103,6 +190,7 @@ impl Runtime {
         name: &str,
         value: Value,
     ) -> JsliteResult<()> {
+        self.infer_closure_name_from_binding(&value, name)?;
         let cell_key = self
             .envs
             .get(env)
@@ -130,6 +218,15 @@ impl Runtime {
             }
         }
         self.refresh_cell_accounting(cell_key)?;
+        if env == self.globals {
+            let value = self
+                .cells
+                .get(cell_key)
+                .ok_or_else(|| JsliteError::runtime("binding cell missing"))?
+                .value
+                .clone();
+            self.set_global_property_value(name.to_string(), value)?;
+        }
         if was_initialized {
             return Ok(());
         }

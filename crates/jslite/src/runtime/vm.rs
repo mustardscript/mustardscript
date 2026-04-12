@@ -7,7 +7,16 @@ impl Runtime {
         self.collect_garbage()?;
         self.check_call_depth()?;
         let root_env = self.new_env(Some(self.globals))?;
-        self.push_frame(self.program.root, root_env, &[], Value::Undefined, None)?;
+        self.push_frame(
+            self.program.root,
+            root_env,
+            &[],
+            Value::Object(
+                self.global_object_key()
+                    .ok_or_else(|| JsliteError::runtime("missing global object"))?,
+            ),
+            None,
+        )?;
         self.run()
     }
 
@@ -91,7 +100,8 @@ impl Runtime {
             }
             Instruction::MakeClosure { function_id } => {
                 let env = self.frames[frame_index].env;
-                let closure = self.insert_closure(function_id, env)?;
+                let this_value = self.lookup_name(env, "this").unwrap_or(Value::Undefined);
+                let closure = self.insert_closure(function_id, env, this_value)?;
                 self.frames[frame_index].stack.push(Value::Closure(closure));
             }
             Instruction::MakeArray { count } => {
@@ -706,7 +716,7 @@ impl Runtime {
                     .map(|function| (function.is_async, function.is_arrow))
                     .ok_or_else(|| JsliteError::runtime("function not found"))?;
                 let frame_this = if is_arrow {
-                    Value::Undefined
+                    closure.this_value.clone()
                 } else {
                     this_value
                 };
@@ -781,6 +791,11 @@ impl Runtime {
                     self.construct_promise(args)
                 }
                 Value::BuiltinFunction(BuiltinFunction::RegExpCtor) => self.construct_regexp(args),
+                Value::BuiltinFunction(BuiltinFunction::NumberCtor) => self.construct_number(args),
+                Value::BuiltinFunction(BuiltinFunction::StringCtor) => self.construct_string(args),
+                Value::BuiltinFunction(BuiltinFunction::BooleanCtor) => {
+                    self.construct_boolean(args)
+                }
                 Value::BuiltinFunction(kind) => self.call_builtin(kind, Value::Undefined, args),
                 _ => unreachable!(),
             },

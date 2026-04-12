@@ -8,7 +8,7 @@ impl Runtime {
         args: &[Value],
     ) -> JsliteResult<Value> {
         match function {
-            BuiltinFunction::ArrayCtor => self.call_array_of(args),
+            BuiltinFunction::ArrayCtor => self.call_array_ctor(args),
             BuiltinFunction::ArrayFrom => self.call_array_from(args),
             BuiltinFunction::ArrayOf => self.call_array_of(args),
             BuiltinFunction::ArrayIsArray => {
@@ -37,14 +37,7 @@ impl Runtime {
             BuiltinFunction::ArrayFlat => self.call_array_flat(this_value, args),
             BuiltinFunction::ArrayFlatMap => self.call_array_flat_map(this_value, args),
             BuiltinFunction::ArrayReduce => self.call_array_reduce(this_value, args),
-            BuiltinFunction::ObjectCtor => {
-                if let Some(Value::Object(object)) = args.first() {
-                    Ok(Value::Object(*object))
-                } else {
-                    let object = self.insert_object(IndexMap::new(), ObjectKind::Plain)?;
-                    Ok(Value::Object(object))
-                }
-            }
+            BuiltinFunction::ObjectCtor => self.call_object_ctor(args),
             BuiltinFunction::ObjectAssign => self.call_object_assign(args),
             BuiltinFunction::ObjectCreate => self.reject_object_create(),
             BuiltinFunction::ObjectFreeze => self.reject_object_freeze(),
@@ -165,6 +158,24 @@ impl Runtime {
 
     pub(crate) fn install_builtins(&mut self) -> JsliteResult<()> {
         let global_object = self.insert_object(IndexMap::new(), ObjectKind::Global)?;
+        for function in [
+            BuiltinFunction::ObjectCtor,
+            BuiltinFunction::MapCtor,
+            BuiltinFunction::SetCtor,
+            BuiltinFunction::ArrayCtor,
+            BuiltinFunction::DateCtor,
+            BuiltinFunction::PromiseCtor,
+            BuiltinFunction::RegExpCtor,
+            BuiltinFunction::StringCtor,
+            BuiltinFunction::ErrorCtor,
+            BuiltinFunction::TypeErrorCtor,
+            BuiltinFunction::ReferenceErrorCtor,
+            BuiltinFunction::RangeErrorCtor,
+            BuiltinFunction::NumberCtor,
+            BuiltinFunction::BooleanCtor,
+        ] {
+            self.register_builtin_prototype(function)?;
+        }
         self.define_global(
             "globalThis".to_string(),
             Value::Object(global_object),
@@ -313,6 +324,15 @@ impl Runtime {
 
         let console = self.insert_object(IndexMap::new(), ObjectKind::Console)?;
         self.define_global("console".to_string(), Value::Object(console), false)?;
+        Ok(())
+    }
+
+    fn register_builtin_prototype(&mut self, function: BuiltinFunction) -> JsliteResult<()> {
+        let prototype = self.insert_object(
+            IndexMap::new(),
+            ObjectKind::FunctionPrototype(Value::BuiltinFunction(function)),
+        )?;
+        self.builtin_prototypes.insert(function, prototype);
         Ok(())
     }
 }

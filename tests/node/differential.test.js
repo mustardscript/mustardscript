@@ -25,6 +25,26 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'global object and lexical this semantics',
+    source: `
+      globalThis.answer = 7;
+      const box = {
+        value: 3,
+        method() {
+          return (() => this.value)();
+        },
+      };
+      ({
+        globalSelf: globalThis.globalThis === globalThis,
+        objectCtor: globalThis.Object === Object,
+        hasObject: "Object" in globalThis,
+        lookup: answer,
+        topLevelThis: this === globalThis,
+        arrowThis: box.method(),
+      });
+    `,
+  },
+  {
     name: 'branching, loops, and switch',
     source: `
       let total = 0;
@@ -423,6 +443,102 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'callable metadata and constructor links',
+    source: `
+      function declared(alpha, beta) {}
+      declared.extra = 5;
+      const arrow = (left, right) => left + right;
+      const method = [].map;
+      ({
+        declared: {
+          name: declared.name,
+          length: declared.length,
+          prototypeType: typeof declared.prototype,
+          extra: declared.extra,
+          keys: Object.keys(declared),
+          instanceofObject: declared instanceof Object,
+        },
+        arrow: {
+          name: arrow.name,
+          length: arrow.length,
+          prototypeType: typeof arrow.prototype,
+          instanceofObject: arrow instanceof Object,
+        },
+        builtins: {
+          arrayName: Array.name,
+          arrayLength: Array.length,
+          arrayPrototypeType: typeof Array.prototype,
+          arrayObject: Array instanceof Object,
+          arrayOwnLength: Object.hasOwn(Array, "length"),
+          methodName: method.name,
+          methodLength: method.length,
+          methodObject: method instanceof Object,
+        },
+        constructors: {
+          array: [].constructor === Array,
+          object: ({}).constructor === Object,
+          promise: Promise.resolve(1).constructor === Promise,
+          date: new Date(0).constructor === Date,
+          regexp: /a/.constructor === RegExp,
+        },
+      });
+    `,
+  },
+  {
+    name: 'Array Object and primitive-wrapper constructor semantics',
+    source: `
+      const array = Array(3);
+      const built = new Array(3);
+      const existing = [1, 2];
+      const map = new Map([[1, 2]]);
+      const boxedString = Object("ab");
+      const boxedNumber = new Number(1);
+      const boxedText = new String("ab");
+      const boxedBoolean = new Boolean(false);
+      ({
+        arrayLength: array.length,
+        arrayKeys: Object.keys(array),
+        builtLength: built.length,
+        builtJson: JSON.stringify(built),
+        invalidLength: (() => {
+          try {
+            new Array(2.5);
+            return null;
+          } catch (error) {
+            return [error.name, error.message];
+          }
+        })(),
+        sameArray: Object(existing) === existing,
+        sameMap: Object(map) === map,
+        boxedString: {
+          object: boxedString instanceof Object,
+          string: boxedString instanceof String,
+          length: boxedString.length,
+          first: boxedString[0],
+          value: String(boxedString),
+        },
+        boxedNumber: {
+          type: typeof boxedNumber,
+          object: boxedNumber instanceof Object,
+          number: boxedNumber instanceof Number,
+          value: String(boxedNumber),
+        },
+        boxedText: {
+          type: typeof boxedText,
+          object: boxedText instanceof Object,
+          string: boxedText instanceof String,
+          value: String(boxedText),
+        },
+        boxedBoolean: {
+          type: typeof boxedBoolean,
+          object: boxedBoolean instanceof Object,
+          boolean: boxedBoolean instanceof Boolean,
+          truthy: !!boxedBoolean,
+        },
+      });
+    `,
+  },
+  {
     name: 'property order and JSON.stringify rendering',
     source: `
       const object = {};
@@ -449,6 +565,31 @@ const DIFFERENTIAL_CASES = [
           skipFunction: () => 1,
           values: [undefined, () => 2, -0, (1 / 0)],
         }),
+      });
+    `,
+  },
+  {
+    name: 'reduce callback this and Date millisecond truncation',
+    source: `
+      const seed = { tag: "seed" };
+      const reduced = [1].reduce(function (acc, value) {
+        return {
+          same: this === acc,
+          thisType: typeof this,
+          thisTag: this && this.tag,
+          accTag: acc.tag,
+          value,
+        };
+      }, seed);
+      const now = Date.now();
+      const current = new Date().getTime();
+      ({
+        reduced,
+        nowIsInteger: now === Math.trunc(now),
+        currentIsInteger: current === Math.trunc(current),
+        positive: new Date(1.9).getTime(),
+        negative: new Date(-1.9).getTime(),
+        parsed: new Date("2026-04-10T14:00:00.123456789Z").getTime(),
       });
     `,
   },

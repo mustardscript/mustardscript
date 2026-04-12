@@ -3,6 +3,25 @@ use std::cmp::Ordering;
 use super::*;
 
 impl Runtime {
+    pub(crate) fn call_array_ctor(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        if args.len() == 1
+            && let Value::Number(length) = args[0]
+        {
+            if !length.is_finite()
+                || length < 0.0
+                || length.fract() != 0.0
+                || length > u32::MAX as f64
+            {
+                return Err(JsliteError::runtime("RangeError: Invalid array length"));
+            }
+            let length = length as usize;
+            return Ok(Value::Array(
+                self.insert_sparse_array(vec![None; length], IndexMap::new())?,
+            ));
+        }
+        self.call_array_of(args)
+    }
+
     fn array_slots(&self, array: ArrayKey) -> JsliteResult<Vec<Option<Value>>> {
         Ok(self
             .arrays
@@ -876,7 +895,13 @@ impl Runtime {
         args: &[Value],
     ) -> JsliteResult<Value> {
         let array = self.array_receiver(this_value, "reduce")?;
-        let (callback, this_arg) = self.array_callback(args, "reduce")?;
+        let callback = args.first().cloned().unwrap_or(Value::Undefined);
+        if !is_callable(&callback) {
+            return Err(JsliteError::runtime(
+                "TypeError: Array.prototype.reduce expects a callable callback",
+            ));
+        }
+        let this_arg = Value::Undefined;
         let length = self
             .arrays
             .get(array)

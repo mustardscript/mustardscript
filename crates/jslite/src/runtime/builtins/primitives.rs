@@ -118,7 +118,8 @@ impl Runtime {
             [] => current_time_millis(),
             [value] => self.date_timestamp_ms_from_value(value.clone())?,
             _ => unreachable!(),
-        };
+        }
+        .trunc();
         Ok(Value::Object(self.insert_object(
             IndexMap::new(),
             ObjectKind::Date(DateObject { timestamp_ms }),
@@ -141,8 +142,8 @@ impl Runtime {
 
     fn date_timestamp_ms_from_value(&self, value: Value) -> JsliteResult<f64> {
         match value {
-            Value::Number(value) => Ok(value),
-            Value::String(value) => Ok(parse_date_timestamp_ms(&value)),
+            Value::Number(value) => Ok(value.trunc()),
+            Value::String(value) => Ok(parse_date_timestamp_ms(&value).trunc()),
             Value::Object(object) if self.is_date_object(object) => {
                 Ok(self.date_object(object)?.timestamp_ms)
             }
@@ -173,6 +174,30 @@ impl Runtime {
         Ok(Value::Bool(is_truthy(
             args.first().unwrap_or(&Value::Undefined),
         )))
+    }
+
+    pub(crate) fn construct_number(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let value = self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?;
+        Ok(Value::Object(self.insert_object(
+            IndexMap::new(),
+            ObjectKind::NumberObject(value),
+        )?))
+    }
+
+    pub(crate) fn construct_string(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let value = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        Ok(Value::Object(self.insert_object(
+            IndexMap::new(),
+            ObjectKind::StringObject(value),
+        )?))
+    }
+
+    pub(crate) fn construct_boolean(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let value = is_truthy(args.first().unwrap_or(&Value::Undefined));
+        Ok(Value::Object(self.insert_object(
+            IndexMap::new(),
+            ObjectKind::BooleanObject(value),
+        )?))
     }
 
     pub(crate) fn call_math_abs(&self, args: &[Value]) -> JsliteResult<Value> {

@@ -92,6 +92,7 @@ pub(super) fn strict_equal(left: &Value, right: &Value) -> bool {
         (Value::Promise(left), Value::Promise(right)) => left == right,
         (Value::Closure(left), Value::Closure(right)) => left == right,
         (Value::BuiltinFunction(left), Value::BuiltinFunction(right)) => left == right,
+        (Value::HostFunction(left), Value::HostFunction(right)) => left == right,
         _ => false,
     }
 }

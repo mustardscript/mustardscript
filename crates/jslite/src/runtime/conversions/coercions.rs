@@ -19,11 +19,31 @@ impl Runtime {
                 ));
             }
             Value::String(value) => value.parse::<f64>().unwrap_or(f64::NAN),
+            Value::Object(object) => match &self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::NumberObject(value) => *value,
+                ObjectKind::StringObject(value) => value.parse::<f64>().unwrap_or(f64::NAN),
+                ObjectKind::BooleanObject(value) => {
+                    if *value {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+                _ => {
+                    return Err(JsliteError::runtime(
+                        "cannot coerce complex value to number",
+                    ));
+                }
+            },
             Value::Array(_)
             | Value::Map(_)
             | Value::Set(_)
             | Value::Iterator(_)
-            | Value::Object(_)
             | Value::Promise(_)
             | Value::Closure(_)
             | Value::BuiltinFunction(_)
@@ -95,6 +115,15 @@ impl Runtime {
             {
                 ObjectKind::Date(_) => "[object Date]".to_string(),
                 ObjectKind::RegExp(regex) => format!("/{}/{}", regex.pattern, regex.flags),
+                ObjectKind::NumberObject(value) => {
+                    if value.fract() == 0.0 {
+                        format!("{}", *value as i64)
+                    } else {
+                        value.to_string()
+                    }
+                }
+                ObjectKind::StringObject(value) => value.clone(),
+                ObjectKind::BooleanObject(value) => value.to_string(),
                 _ => self
                     .error_summary(object)?
                     .unwrap_or_else(|| "[object Object]".to_string()),
