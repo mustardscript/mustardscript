@@ -1,22 +1,15 @@
 'use strict';
 
 const fc = require('fast-check');
+const {
+  FORBIDDEN_AMBIENT_GLOBALS,
+  VALIDATION_REJECT_CASES,
+} = require('./conformance-contract.js');
 
 const PROPERTY_RUNS = process.env.CI ? 100 : 50;
 const IDENTIFIERS = ['alpha', 'beta', 'gamma', 'delta', 'omega', 'theta'];
 const ASCII_CHARS = ['a', 'b', 'c', 'd', 'e', 'x', 'y', 'z', ' ', '-', ',', '_'];
 const LETTER_CHARS = ['a', 'b', 'c', 'd', 'e', 'x', 'y', 'z'];
-const FORBIDDEN_AMBIENT_GLOBALS = [
-  'process',
-  'module',
-  'exports',
-  'global',
-  'require',
-  'setTimeout',
-  'setInterval',
-  'queueMicrotask',
-  'fetch',
-];
 
 const identifierArbitrary = fc.constantFrom(...IDENTIFIERS);
 const smallStringArbitrary = fc
@@ -542,6 +535,10 @@ const supportedProgramArbitraries = [
 
 const supportedProgramArbitrary = fc.oneof(...supportedProgramArbitraries);
 
+const contractValidationCaseArbitraries = VALIDATION_REJECT_CASES.map(({ source, messageIncludes }) =>
+  fc.constant({ source, messageIncludes }),
+);
+
 const unsupportedValidationCaseArbitraries = [
   identifierArbitrary.map((name) => ({
     source: `function ${name}(value = 1) { return value; }`,
@@ -557,36 +554,10 @@ const unsupportedValidationCaseArbitraries = [
   fc.constantFrom(...FORBIDDEN_AMBIENT_GLOBALS).map((name) =>
     validationCase(`${name};`, `forbidden ambient global \`${name}\``),
   ),
-  fc.constant(validationCase('import value from "pkg";', 'module syntax is not supported')),
-  fc.constant(validationCase('export const value = 1;', 'module syntax is not supported')),
-  fc.constant(validationCase('import("pkg");', 'dynamic import() is not supported')),
-  fc.constant(validationCase('delete value.prop;', 'delete is not supported in v1')),
-  fc.constant(validationCase('for (const key in { alpha: 1 }) { key; }', 'for...in is not supported in v1')),
-  fc.constant(validationCase('async function run() { for await (const value of [1, 2]) { value; } }', 'for await...of is not supported')),
   fc.constant(validationCase('for (value of [1, 2]) { value; }', 'for...of currently requires a let or const binding declaration')),
   fc.constant(validationCase('for (let value = 1 of [1, 2]) { value; }', 'for...of binding initializers are not supported')),
-  fc.constant(validationCase('class Example {}', 'classes are not supported in v1')),
-  fc.constant(validationCase('function* make() { yield 1; }', 'generators are not supported in v1')),
-  fc.constant(validationCase('debugger;', 'debugger statements are not supported')),
-  fc.constant(validationCase('label: 1;', 'labeled statements are not supported in v1')),
-  fc.constant(validationCase('with ({ alpha: 1 }) { alpha; }', 'with is not supported')),
-  fc.constant(validationCase('({ ...value });', 'object spread is not supported in v1')),
-  fc.constant(validationCase('({ value() { return 1; } });', 'object literal methods are not supported in v1')),
-  fc.constant(validationCase('[...value];', 'array spread is not supported in v1')),
   fc.constant(validationCase('[1, , 2];', 'array holes are not supported in v1')),
-  fc.constant(validationCase('(1, 2);', 'sequence expressions are not supported in v1')),
-  fc.constant(validationCase('value.#secret;', 'private fields are not supported in v1')),
-  fc.constant(validationCase('new.target;', 'meta properties are not supported')),
-  fc.constant(validationCase('super.value;', 'super is not supported in v1')),
-  fc.constant(validationCase('value++;', 'update expressions are not supported in v1')),
-  fc.constant(validationCase('tag`value`;', 'tagged templates are not supported in v1')),
-  fc.constant(validationCase('run(...values);', 'spread arguments are not supported in v1')),
-  fc.constant(validationCase('[value] = [1];', 'destructuring assignment is not supported in v1')),
-  fc.constant(validationCase('~1;', 'unsupported unary operator in v1')),
-  fc.constant(validationCase('1 instanceof Number;', 'unsupported binary operator in v1')),
-  fc.constant(validationCase('let value = 1; value **= 2;', 'unsupported assignment operator in v1')),
-  fc.constant(validationCase('({ [value]: 1 });', 'unsupported property key in v1')),
-  fc.constant(validationCase('var value = 1;', 'only let and const are supported')),
+  ...contractValidationCaseArbitraries,
 ];
 
 const unsupportedValidationCaseArbitrary = fc.oneof(...unsupportedValidationCaseArbitraries);

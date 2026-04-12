@@ -18,6 +18,9 @@
 
 ## Generated Coverage
 
+The machine-readable source of truth for these buckets lives in
+`tests/node/conformance-contract.js`.
+
 The property-based conformance generator is split intentionally:
 
 - `supportedProgramArbitrary` only emits programs from the current Node-parity
@@ -27,6 +30,9 @@ The property-based conformance generator is split intentionally:
 - `conformanceCaseArbitrary` mixes both domains and asserts that each generated
   case has only two legal outcomes: Node-equivalent execution or validation
   failure.
+- `ast-conformance.js` adds a second generated layer that works on a small
+  typed AST, supports bounded exhaustive enumeration, renders trace-sensitive
+  programs, and feeds metamorphic rewrites from the same source AST.
 
 This is more useful than a naive source fuzzer because the generated programs
 stay inside deliberate semantic buckets and produce canonicalizable outputs.

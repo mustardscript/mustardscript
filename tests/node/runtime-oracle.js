@@ -105,10 +105,191 @@ function runNode(source) {
   return vm.runInNewContext(`"use strict";\n${source}`, Object.create(null));
 }
 
+function normalizeTraceEvent(event) {
+  if ('error' in event) {
+    return {
+      type: event.type,
+      name: event.name,
+      phase: event.phase,
+      error: normalizeError(event.error),
+    };
+  }
+
+  if ('value' in event) {
+    return {
+      type: event.type,
+      name: event.name,
+      phase: event.phase,
+      value: normalizeValue(event.value),
+    };
+  }
+
+  return {
+    type: event.type,
+    name: event.name,
+    phase: event.phase,
+    args: (event.args ?? []).map(normalizeValue),
+  };
+}
+
+function stripGuestSpanText(text) {
+  return typeof text === 'string' ? text.replace(/\[\d+\.\.\d+\]/g, '[span]') : text;
+}
+
+function normalizeMetamorphicTraceRecord(record) {
+  if (
+    record.outcome.type === 'rejected' &&
+    record.outcome.value.type === 'error' &&
+    typeof record.outcome.value.value.message === 'string'
+  ) {
+    return {
+      ...record,
+      outcome: {
+        ...record.outcome,
+        value: {
+          ...record.outcome.value,
+          value: {
+            ...record.outcome.value.value,
+            message: stripGuestSpanText(record.outcome.value.value.message),
+          },
+        },
+      },
+    };
+  }
+
+  return record;
+}
+
+function wrapTraceCallable(events, type, name, impl, options = {}) {
+  const { returnsUndefined = false } = options;
+
+  return (...args) => {
+    events.push({
+      type,
+      name,
+      phase: 'call',
+      args,
+    });
+
+    try {
+      const result = impl(...args);
+      if (result && typeof result.then === 'function') {
+        return result.then(
+          (value) => {
+            events.push({
+              type,
+              name,
+              phase: 'return',
+              value,
+            });
+            return returnsUndefined ? undefined : value;
+          },
+          (error) => {
+            events.push({
+              type,
+              name,
+              phase: 'throw',
+              error,
+            });
+            throw error;
+          },
+        );
+      }
+
+      events.push({
+        type,
+        name,
+        phase: 'return',
+        value: result,
+      });
+      return returnsUndefined ? undefined : result;
+    } catch (error) {
+      events.push({
+        type,
+        name,
+        phase: 'throw',
+        error,
+      });
+      throw error;
+    }
+  };
+}
+
+function createTraceHarness(options = {}) {
+  const events = [];
+  const capabilityImpls = options.capabilities ?? {
+    probe(value) {
+      return value;
+    },
+  };
+
+  const consoleImpls = options.console ?? {};
+  const console = {};
+  for (const method of ['log', 'warn', 'error']) {
+    console[method] = wrapTraceCallable(
+      events,
+      'console',
+      method,
+      consoleImpls[method] ?? (() => undefined),
+      { returnsUndefined: true },
+    );
+  }
+
+  const capabilities = Object.fromEntries(
+    Object.entries(capabilityImpls).map(([name, impl]) => [
+      name,
+      wrapTraceCallable(events, 'capability', name, impl),
+    ]),
+  );
+
+  return {
+    events,
+    jsliteOptions: {
+      capabilities,
+      console,
+      inputs: options.inputs,
+    },
+    nodeContext: {
+      console,
+      ...capabilities,
+      ...(options.inputs ?? {}),
+    },
+  };
+}
+
+async function captureTraceOutcome(run, events) {
+  return {
+    outcome: await captureOutcome(run),
+    trace: events.map(normalizeTraceEvent),
+  };
+}
+
+async function runJsliteWithTrace(source, options = {}) {
+  const runtime = new Jslite(source);
+  const harness = createTraceHarness(options);
+  return captureTraceOutcome(() => runtime.run(harness.jsliteOptions), harness.events);
+}
+
+async function runNodeWithTrace(source, options = {}) {
+  const harness = createTraceHarness(options);
+  return captureTraceOutcome(
+    () => Promise.resolve(vm.runInNewContext(source, harness.nodeContext)),
+    harness.events,
+  );
+}
+
 async function assertDifferential(source) {
   const [actual, expected] = await Promise.all([
     captureOutcome(() => runJslite(source)),
     captureOutcome(() => Promise.resolve(runNode(source))),
+  ]);
+  assert.deepEqual(actual, expected);
+}
+
+async function assertTraceDifferential(source, options) {
+  const [actual, expected] = await Promise.all([
+    runJsliteWithTrace(source, options),
+    runNodeWithTrace(source, options),
   ]);
   assert.deepEqual(actual, expected);
 }
@@ -142,13 +323,35 @@ async function assertMatchesNodeOrValidation(source, { messageIncludes } = {}) {
   await assertDifferential(source);
 }
 
+async function assertMetamorphicDifferential(originalSource, rewrittenSource, options) {
+  const [nodeOriginal, nodeRewritten, jsliteOriginal, jsliteRewritten] = await Promise.all([
+    runNodeWithTrace(originalSource, options),
+    runNodeWithTrace(rewrittenSource, options),
+    runJsliteWithTrace(originalSource, options),
+    runJsliteWithTrace(rewrittenSource, options),
+  ]);
+
+  assert.deepEqual(nodeOriginal, nodeRewritten);
+  assert.deepEqual(
+    normalizeMetamorphicTraceRecord(jsliteOriginal),
+    normalizeMetamorphicTraceRecord(jsliteRewritten),
+  );
+  assert.deepEqual(jsliteOriginal, nodeOriginal);
+  assert.deepEqual(jsliteRewritten, nodeRewritten);
+}
+
 module.exports = {
   assertDifferential,
+  assertMetamorphicDifferential,
   assertMatchesNodeOrValidation,
+  assertTraceDifferential,
   assertJsliteFailure,
   captureOutcome,
+  captureTraceOutcome,
   isValidationError,
   normalizeValue,
   runJslite,
+  runJsliteWithTrace,
   runNode,
+  runNodeWithTrace,
 };
