@@ -78,6 +78,24 @@ impl Compiler {
 
     fn compile_function_body(&mut self, function: &FunctionExpr) -> JsliteResult<usize> {
         let mut context = CompileContext::default();
+        for statement in &function.param_init {
+            if let Stmt::VariableDecl { declarators, .. } = statement {
+                for declarator in declarators {
+                    for (name, _) in pattern_bindings(&declarator.pattern) {
+                        context.code.push(Instruction::DeclareName {
+                            name,
+                            mutable: true,
+                        });
+                    }
+                    if let Some(initializer) = &declarator.initializer {
+                        self.compile_expr(&mut context, initializer)?;
+                    } else {
+                        context.code.push(Instruction::PushUndefined);
+                    }
+                    self.compile_pattern_binding(&mut context, &declarator.pattern)?;
+                }
+            }
+        }
         self.emit_block_prologue(&mut context, &function.body)?;
         for statement in &function.body {
             self.compile_stmt(&mut context, statement)?;

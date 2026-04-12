@@ -52,6 +52,7 @@ impl<'a> Lowerer<'a> {
             BinaryOperator::Remainder => Some(BinaryOp::Rem),
             BinaryOperator::Exponential => Some(BinaryOp::Pow),
             BinaryOperator::In => Some(BinaryOp::In),
+            BinaryOperator::Instanceof => Some(BinaryOp::Instanceof),
             BinaryOperator::Equality => Some(BinaryOp::Eq),
             BinaryOperator::Inequality => Some(BinaryOp::NotEq),
             BinaryOperator::StrictEquality => Some(BinaryOp::StrictEq),

@@ -40,7 +40,7 @@
                         "start": 20,
                         "end": 24
                       },
-                      "name": "left"
+                      "name": "\u0000jslite_param_0"
                     }
                   },
                   {
@@ -49,11 +49,83 @@
                         "start": 26,
                         "end": 31
                       },
-                      "name": "right"
+                      "name": "\u0000jslite_param_1"
                     }
                   }
                 ],
                 "rest": null,
+                "param_init": [
+                  {
+                    "VariableDecl": {
+                      "span": {
+                        "start": 20,
+                        "end": 24
+                      },
+                      "kind": "Let",
+                      "declarators": [
+                        {
+                          "span": {
+                            "start": 20,
+                            "end": 24
+                          },
+                          "pattern": {
+                            "Identifier": {
+                              "span": {
+                                "start": 20,
+                                "end": 24
+                              },
+                              "name": "left"
+                            }
+                          },
+                          "initializer": {
+                            "Identifier": {
+                              "span": {
+                                "start": 20,
+                                "end": 24
+                              },
+                              "name": "\u0000jslite_param_0"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "VariableDecl": {
+                      "span": {
+                        "start": 26,
+                        "end": 31
+                      },
+                      "kind": "Let",
+                      "declarators": [
+                        {
+                          "span": {
+                            "start": 26,
+                            "end": 31
+                          },
+                          "pattern": {
+                            "Identifier": {
+                              "span": {
+                                "start": 26,
+                                "end": 31
+                              },
+                              "name": "right"
+                            }
+                          },
+                          "initializer": {
+                            "Identifier": {
+                              "span": {
+                                "start": 26,
+                                "end": 31
+                              },
+                              "name": "\u0000jslite_param_1"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
                 "body": [
                   {
                     "VariableDecl": {

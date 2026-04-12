@@ -20,16 +20,14 @@ impl<'a> Lowerer<'a> {
             );
             return None;
         };
-        if !self.validate_function_params(&function.params) {
-            return None;
-        }
-        let (params, rest) = self.lower_function_params(&function.params)?;
+        let (params, rest, param_init) = self.lower_function_params(&function.params)?;
         self.push_scope();
-        for pattern in &params {
-            self.collect_ir_pattern_bindings(pattern);
-        }
-        if let Some(rest) = &rest {
-            self.collect_ir_pattern_bindings(rest);
+        for statement in &param_init {
+            if let Stmt::VariableDecl { declarators, .. } = statement {
+                for declarator in declarators {
+                    self.collect_ir_pattern_bindings(&declarator.pattern);
+                }
+            }
         }
         self.predeclare_block(&body.statements);
         let lowered = body
@@ -43,6 +41,7 @@ impl<'a> Lowerer<'a> {
             name: function.id.as_ref().map(|id| id.name.as_str().to_string()),
             params,
             rest,
+            param_init,
             body: lowered,
             is_async: function.r#async,
             is_arrow,
@@ -53,16 +52,14 @@ impl<'a> Lowerer<'a> {
         &mut self,
         function: &ArrowFunctionExpression<'a>,
     ) -> Option<FunctionExpr> {
-        if !self.validate_function_params(&function.params) {
-            return None;
-        }
-        let (params, rest) = self.lower_function_params(&function.params)?;
+        let (params, rest, param_init) = self.lower_function_params(&function.params)?;
         self.push_scope();
-        for pattern in &params {
-            self.collect_ir_pattern_bindings(pattern);
-        }
-        if let Some(rest) = &rest {
-            self.collect_ir_pattern_bindings(rest);
+        for statement in &param_init {
+            if let Stmt::VariableDecl { declarators, .. } = statement {
+                for declarator in declarators {
+                    self.collect_ir_pattern_bindings(&declarator.pattern);
+                }
+            }
         }
         self.predeclare_block(&function.body.statements);
         let body = if function.expression {
@@ -96,6 +93,7 @@ impl<'a> Lowerer<'a> {
             name: None,
             params,
             rest,
+            param_init,
             body,
             is_async: function.r#async,
             is_arrow: true,
@@ -315,7 +313,7 @@ impl<'a> Lowerer<'a> {
             }),
             Expression::AssignmentExpression(expression) => Some(Expr::Assignment {
                 span: expression.span.into(),
-                target: self.lower_assignment_target(&expression.left)?,
+                target: Box::new(self.lower_assignment_target(&expression.left)?),
                 operator: self.lower_assign_op(expression.operator, expression.span)?,
                 value: Box::new(self.lower_expr(&expression.right)?),
             }),
@@ -415,13 +413,15 @@ impl<'a> Lowerer<'a> {
                 );
                 None
             }
-            Expression::UpdateExpression(expression) => {
-                self.unsupported(
-                    "update expressions are not supported in v1",
-                    Some(expression.span.into()),
-                );
-                None
-            }
+            Expression::UpdateExpression(expression) => Some(Expr::Update {
+                span: expression.span.into(),
+                target: Box::new(self.lower_simple_assignment_target(&expression.argument)?),
+                operator: match expression.operator {
+                    UpdateOperator::Increment => UpdateOp::Increment,
+                    UpdateOperator::Decrement => UpdateOp::Decrement,
+                },
+                prefix: expression.prefix,
+            }),
             Expression::YieldExpression(expression) => {
                 self.unsupported("yield is not supported in v1", Some(expression.span.into()));
                 None
@@ -518,18 +518,10 @@ impl<'a> Lowerer<'a> {
                 None
             }
             AssignmentTarget::ArrayAssignmentTarget(target) => {
-                self.unsupported(
-                    "destructuring assignment is not supported in v1",
-                    Some(target.span.into()),
-                );
-                None
+                self.lower_array_assignment_target(target)
             }
             AssignmentTarget::ObjectAssignmentTarget(target) => {
-                self.unsupported(
-                    "destructuring assignment is not supported in v1",
-                    Some(target.span.into()),
-                );
-                None
+                self.lower_object_assignment_target(target)
             }
             _ => {
                 self.unsupported(
@@ -574,16 +566,54 @@ impl<'a> Lowerer<'a> {
                 None
             }
             ForStatementLeft::ArrayAssignmentTarget(target) => {
+                self.lower_array_assignment_target(target)
+            }
+            ForStatementLeft::ObjectAssignmentTarget(target) => {
+                self.lower_object_assignment_target(target)
+            }
+            _ => {
                 self.unsupported(
-                    "destructuring assignment is not supported in v1",
-                    Some(target.span.into()),
+                    "unsupported assignment target in v1",
+                    Some(target.span().into()),
                 );
                 None
             }
-            ForStatementLeft::ObjectAssignmentTarget(target) => {
+        }
+    }
+
+    fn lower_simple_assignment_target(
+        &mut self,
+        target: &SimpleAssignmentTarget<'a>,
+    ) -> Option<AssignTarget> {
+        match target {
+            SimpleAssignmentTarget::AssignmentTargetIdentifier(identifier) => {
+                Some(AssignTarget::Identifier {
+                    span: identifier.span.into(),
+                    name: identifier.name.as_str().to_string(),
+                })
+            }
+            SimpleAssignmentTarget::ComputedMemberExpression(member) => {
+                Some(AssignTarget::Member {
+                    span: member.span.into(),
+                    object: Box::new(self.lower_expr(&member.object)?),
+                    property: MemberProperty::Computed(Box::new(
+                        self.lower_expr(&member.expression)?,
+                    )),
+                    optional: member.optional,
+                })
+            }
+            SimpleAssignmentTarget::StaticMemberExpression(member) => Some(AssignTarget::Member {
+                span: member.span.into(),
+                object: Box::new(self.lower_expr(&member.object)?),
+                property: MemberProperty::Static(PropertyName::Identifier(
+                    member.property.name.as_str().to_string(),
+                )),
+                optional: member.optional,
+            }),
+            SimpleAssignmentTarget::PrivateFieldExpression(expression) => {
                 self.unsupported(
-                    "destructuring assignment is not supported in v1",
-                    Some(target.span.into()),
+                    "private fields are not supported in v1",
+                    Some(expression.span.into()),
                 );
                 None
             }
@@ -595,5 +625,97 @@ impl<'a> Lowerer<'a> {
                 None
             }
         }
+    }
+
+    fn lower_assignment_target_maybe_default(
+        &mut self,
+        target: &AssignmentTargetMaybeDefault<'a>,
+    ) -> Option<AssignTarget> {
+        match target {
+            AssignmentTargetMaybeDefault::AssignmentTargetWithDefault(target) => {
+                Some(AssignTarget::Default {
+                    span: target.span.into(),
+                    target: Box::new(self.lower_assignment_target(&target.binding)?),
+                    default_value: Box::new(self.lower_expr(&target.init)?),
+                })
+            }
+            _ => self.lower_assignment_target(target.to_assignment_target()),
+        }
+    }
+
+    fn lower_array_assignment_target(
+        &mut self,
+        target: &ArrayAssignmentTarget<'a>,
+    ) -> Option<AssignTarget> {
+        Some(AssignTarget::Array {
+            span: target.span.into(),
+            elements: target
+                .elements
+                .iter()
+                .map(|element| {
+                    element
+                        .as_ref()
+                        .and_then(|element| self.lower_assignment_target_maybe_default(element))
+                })
+                .collect(),
+            rest: target
+                .rest
+                .as_ref()
+                .and_then(|rest| self.lower_assignment_target(&rest.target))
+                .map(Box::new),
+        })
+    }
+
+    fn lower_object_assignment_target(
+        &mut self,
+        target: &ObjectAssignmentTarget<'a>,
+    ) -> Option<AssignTarget> {
+        Some(AssignTarget::Object {
+            span: target.span.into(),
+            properties: target
+                .properties
+                .iter()
+                .filter_map(|property| {
+                    Some(match property {
+                        AssignmentTargetProperty::AssignmentTargetPropertyIdentifier(property) => {
+                            crate::ir::AssignTargetProperty {
+                                span: property.span.into(),
+                                key: PropertyName::Identifier(
+                                    property.binding.name.as_str().to_string(),
+                                ),
+                                value: if let Some(init) = &property.init {
+                                    AssignTarget::Default {
+                                        span: property.span.into(),
+                                        target: Box::new(AssignTarget::Identifier {
+                                            span: property.span.into(),
+                                            name: property.binding.name.as_str().to_string(),
+                                        }),
+                                        default_value: Box::new(self.lower_expr(init)?),
+                                    }
+                                } else {
+                                    AssignTarget::Identifier {
+                                        span: property.span.into(),
+                                        name: property.binding.name.as_str().to_string(),
+                                    }
+                                },
+                            }
+                        }
+                        AssignmentTargetProperty::AssignmentTargetPropertyProperty(property) => {
+                            crate::ir::AssignTargetProperty {
+                                span: property.span.into(),
+                                key: self.lower_property_name(&property.name)?,
+                                value: self
+                                    .lower_assignment_target_maybe_default(&property.binding)?,
+                            }
+                        }
+                    })
+                })
+                .collect(),
+            rest: target
+                .rest
+                .as_ref()
+                .and_then(|rest| self.lower_assignment_target(&rest.target))
+                .map(Box::new),
+        })
     }
 }

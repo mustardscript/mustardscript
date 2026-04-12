@@ -253,6 +253,38 @@ impl Runtime {
                 let result = self.apply_binary(operator, left, right)?;
                 self.frames[frame_index].stack.push(result);
             }
+            Instruction::Update(operator) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let result = self.apply_update(operator, value)?;
+                self.frames[frame_index].stack.push(result);
+            }
+            Instruction::PatternArrayIndex(index) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let result = self.pattern_array_index(value, index)?;
+                self.frames[frame_index].stack.push(result);
+            }
+            Instruction::PatternArrayRest(start) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let result = self.pattern_array_rest(value, start)?;
+                self.frames[frame_index].stack.push(result);
+            }
+            Instruction::PatternObjectRest(excluded) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let result = self.pattern_object_rest(value, &excluded)?;
+                self.frames[frame_index].stack.push(result);
+            }
             Instruction::Pop => {
                 self.frames[frame_index].stack.pop();
             }
@@ -814,5 +846,41 @@ impl Runtime {
                 },
             )
         })
+    }
+
+    fn pattern_array_index(&self, value: Value, index: usize) -> JsliteResult<Value> {
+        let items = self.to_array_items(value)?;
+        Ok(items.get(index).cloned().unwrap_or(Value::Undefined))
+    }
+
+    fn pattern_array_rest(&mut self, value: Value, start: usize) -> JsliteResult<Value> {
+        let items = self.to_array_items(value)?;
+        let array = self.insert_array(items.into_iter().skip(start).collect(), IndexMap::new())?;
+        Ok(Value::Array(array))
+    }
+
+    fn pattern_object_rest(&mut self, value: Value, excluded: &[String]) -> JsliteResult<Value> {
+        let excluded: std::collections::HashSet<_> = excluded.iter().cloned().collect();
+        let mut rest_object = IndexMap::new();
+        match value {
+            Value::Object(object) => {
+                if let Some(object) = self.objects.get(object) {
+                    for (key, value) in &object.properties {
+                        if !excluded.contains(key) {
+                            rest_object.insert(key.clone(), value.clone());
+                        }
+                    }
+                }
+            }
+            Value::Null | Value::Undefined => {
+                return Err(JsliteError::runtime(
+                    "cannot destructure object pattern from nullish value",
+                ));
+            }
+            _ => {}
+        }
+        Ok(Value::Object(
+            self.insert_object(rest_object, ObjectKind::Plain)?,
+        ))
     }
 }

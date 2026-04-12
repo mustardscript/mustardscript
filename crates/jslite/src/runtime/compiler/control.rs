@@ -89,9 +89,7 @@ impl Compiler {
             }
             context.code.push(Instruction::BeginCatch);
             if let Some(parameter) = &catch_clause.parameter {
-                context
-                    .code
-                    .push(Instruction::InitializePattern(parameter.clone()));
+                self.compile_pattern_binding(context, parameter)?;
             } else {
                 context.code.push(Instruction::Pop);
             }

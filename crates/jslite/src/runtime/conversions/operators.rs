@@ -1,6 +1,25 @@
 use super::*;
+use crate::ir::UpdateOp;
 
 impl Runtime {
+    pub(in crate::runtime) fn apply_update(
+        &mut self,
+        operator: UpdateOp,
+        value: Value,
+    ) -> JsliteResult<Value> {
+        let delta = match operator {
+            UpdateOp::Increment => 1.0,
+            UpdateOp::Decrement => -1.0,
+        };
+        match value {
+            Value::BigInt(value) => Ok(Value::BigInt(match operator {
+                UpdateOp::Increment => value + BigInt::from(1u8),
+                UpdateOp::Decrement => value - BigInt::from(1u8),
+            })),
+            other => Ok(Value::Number(self.to_number(other)? + delta)),
+        }
+    }
+
     pub(in crate::runtime) fn apply_unary(
         &mut self,
         operator: UnaryOp,
@@ -87,6 +106,9 @@ impl Runtime {
             BinaryOp::In => Ok(Value::Bool(
                 self.has_property_in_supported_surface(right, left)?,
             )),
+            BinaryOp::Instanceof => {
+                Ok(Value::Bool(self.instanceof_supported_surface(left, right)?))
+            }
             BinaryOp::Eq | BinaryOp::StrictEq => Ok(Value::Bool(strict_equal(&left, &right))),
             BinaryOp::NotEq | BinaryOp::StrictNotEq => {
                 Ok(Value::Bool(!strict_equal(&left, &right)))
@@ -117,6 +139,75 @@ impl Runtime {
                 Ok(Value::Bool(self.to_number(left)? >= self.to_number(right)?))
             }
         }
+    }
+}
+
+impl Runtime {
+    fn instanceof_supported_surface(&self, left: Value, right: Value) -> JsliteResult<bool> {
+        match right {
+            Value::BuiltinFunction(function) => match function {
+                BuiltinFunction::ArrayCtor => Ok(matches!(left, Value::Array(_))),
+                BuiltinFunction::ObjectCtor => Ok(matches!(
+                    left,
+                    Value::Object(_)
+                        | Value::Array(_)
+                        | Value::Map(_)
+                        | Value::Set(_)
+                        | Value::Iterator(_)
+                        | Value::Promise(_)
+                )),
+                BuiltinFunction::MapCtor => Ok(matches!(left, Value::Map(_))),
+                BuiltinFunction::SetCtor => Ok(matches!(left, Value::Set(_))),
+                BuiltinFunction::PromiseCtor => Ok(matches!(left, Value::Promise(_))),
+                BuiltinFunction::DateCtor => Ok(matches!(
+                    left,
+                    Value::Object(object)
+                        if self
+                            .objects
+                            .get(object)
+                            .is_some_and(|object| matches!(object.kind, ObjectKind::Date(_)))
+                )),
+                BuiltinFunction::RegExpCtor => Ok(matches!(
+                    left,
+                    Value::Object(object)
+                        if self
+                            .objects
+                            .get(object)
+                            .is_some_and(|object| matches!(object.kind, ObjectKind::RegExp(_)))
+                )),
+                BuiltinFunction::ErrorCtor => Ok(matches!(
+                    left,
+                    Value::Object(object)
+                        if self
+                            .objects
+                            .get(object)
+                            .is_some_and(|object| matches!(object.kind, ObjectKind::Error(_)))
+                )),
+                BuiltinFunction::TypeErrorCtor => Ok(self.error_kind_matches(left, "TypeError")),
+                BuiltinFunction::ReferenceErrorCtor => {
+                    Ok(self.error_kind_matches(left, "ReferenceError"))
+                }
+                BuiltinFunction::RangeErrorCtor => Ok(self.error_kind_matches(left, "RangeError")),
+                _ => Err(JsliteError::runtime(
+                    "TypeError: right-hand side of instanceof must be a supported constructor",
+                )),
+            },
+            Value::Closure(_) => Ok(false),
+            _ => Err(JsliteError::runtime(
+                "TypeError: right-hand side of instanceof must be a supported constructor",
+            )),
+        }
+    }
+
+    fn error_kind_matches(&self, value: Value, expected: &str) -> bool {
+        matches!(
+            value,
+            Value::Object(object)
+                if self
+                    .objects
+                    .get(object)
+                    .is_some_and(|object| matches!(&object.kind, ObjectKind::Error(name) if name == expected))
+        )
     }
 }
 

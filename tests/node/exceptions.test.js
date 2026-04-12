@@ -151,23 +151,7 @@ test('constructor converts native validation failures into typed errors', () => 
   );
 });
 
-test('constructor rejects unsupported default params, destructuring defaults, and free arguments', () => {
-  assert.throws(
-    () => runtime('function wrap(value = 1) { return value; }'),
-    isJsliteError({
-      kind: 'Validation',
-      message: /default parameters are not supported/,
-    }),
-  );
-
-  assert.throws(
-    () => runtime('const { value = 1 } = {};'),
-    isJsliteError({
-      kind: 'Validation',
-      message: /default destructuring is not supported/,
-    }),
-  );
-
+test('constructor rejects free arguments while allowing supported parameter defaults', () => {
   assert.throws(
     () => runtime('function wrap() { return arguments[0]; }'),
     isJsliteError({

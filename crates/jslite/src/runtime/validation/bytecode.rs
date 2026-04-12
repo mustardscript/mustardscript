@@ -284,6 +284,13 @@ fn apply_validation_effect(
                 ..state
             }
         }
+        Instruction::PatternArrayIndex(_)
+        | Instruction::PatternArrayRest(_)
+        | Instruction::PatternObjectRest(_)
+        | Instruction::Update(_) => {
+            require_stack(1)?;
+            state
+        }
         Instruction::SetPropStatic { .. } => {
             require_stack(2)?;
             ValidationState {

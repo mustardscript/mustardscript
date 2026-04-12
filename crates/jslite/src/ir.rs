@@ -184,6 +184,7 @@ pub struct FunctionExpr {
     pub name: Option<String>,
     pub params: Vec<Pattern>,
     pub rest: Option<Pattern>,
+    pub param_init: Vec<Stmt>,
     pub body: Vec<Stmt>,
     pub is_async: bool,
     pub is_arrow: bool,
@@ -263,9 +264,15 @@ pub enum Expr {
     },
     Assignment {
         span: SourceSpan,
-        target: AssignTarget,
+        target: Box<AssignTarget>,
         operator: AssignOp,
         value: Box<Expr>,
+    },
+    Update {
+        span: SourceSpan,
+        target: Box<AssignTarget>,
+        operator: UpdateOp,
+        prefix: bool,
     },
     Member {
         span: SourceSpan,
@@ -345,6 +352,34 @@ pub enum AssignTarget {
         property: MemberProperty,
         optional: bool,
     },
+    Array {
+        span: SourceSpan,
+        elements: Vec<Option<AssignTarget>>,
+        rest: Option<Box<AssignTarget>>,
+    },
+    Object {
+        span: SourceSpan,
+        properties: Vec<AssignTargetProperty>,
+        rest: Option<Box<AssignTarget>>,
+    },
+    Default {
+        span: SourceSpan,
+        target: Box<AssignTarget>,
+        default_value: Box<Expr>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssignTargetProperty {
+    pub span: SourceSpan,
+    pub key: PropertyName,
+    pub value: AssignTarget,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpdateOp {
+    Increment,
+    Decrement,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -365,6 +400,7 @@ pub enum BinaryOp {
     Rem,
     Pow,
     In,
+    Instanceof,
     Eq,
     NotEq,
     StrictEq,

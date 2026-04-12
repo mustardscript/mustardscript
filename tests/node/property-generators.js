@@ -664,14 +664,6 @@ const contractValidationCaseArbitraries = VALIDATION_REJECT_CASES.map(({ source,
 );
 
 const unsupportedValidationCaseArbitraries = [
-  identifierArbitrary.map((name) => ({
-    source: `function ${name}(value = 1) { return value; }`,
-    messageIncludes: 'default parameters are not supported in v1',
-  })),
-  identifierArbitrary.map((name) => ({
-    source: `const { ${name} = 1 } = {};`,
-    messageIncludes: 'default destructuring is not supported in v1',
-  })),
   fc.constant(validationCase('function wrap() { return arguments[0]; }', 'forbidden ambient global `arguments`')),
   fc.constant(validationCase('eval("1");', 'forbidden ambient global `eval`')),
   fc.constant(validationCase('Function("return 1");', 'forbidden ambient global `Function`')),
