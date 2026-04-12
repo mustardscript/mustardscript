@@ -3,7 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../../index.js');
+const { InMemoryJsliteExecutorStore, Jslite, JsliteError, JsliteExecutor, Progress } =
+  require('../../../index.js');
 
 function runtime(code, options) {
   return new Jslite(code, options);
@@ -44,9 +45,11 @@ function isJsliteError({ kind, name = kind && `Jslite${kind}Error`, message, gue
 module.exports = {
   assert,
   assertGuestSafeMessage,
+  InMemoryJsliteExecutorStore,
   isJsliteError,
   Jslite,
   JsliteError,
+  JsliteExecutor,
   Progress,
   runtime,
   test,
