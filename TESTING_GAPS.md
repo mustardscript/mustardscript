@@ -97,29 +97,29 @@ to grow one broad generator.
 
 Checklist:
 
-- [ ] Split supported parity generation into independent feature families with
+- [x] Split supported parity generation into independent feature families with
       isolated shrinking and failure reporting.
-- [ ] Add a control-flow family covering loops, `break`, `continue`, and abrupt
+- [x] Add a control-flow family covering loops, `break`, `continue`, and abrupt
       completion interactions.
-- [ ] Add an exceptions family covering `throw`, `try`, `catch`, `finally`,
+- [x] Add an exceptions family covering `throw`, `try`, `catch`, `finally`,
       nested `finally`, and rethrow behavior.
-- [ ] Add an objects/arrays family covering property order, holes, enumeration,
+- [x] Add an objects/arrays family covering property order, holes, enumeration,
       `Object.keys` / `values` / `entries`, and `JSON.stringify`.
-- [ ] Add a keyed-collections family covering `Map` / `Set`, SameValueZero,
+- [x] Add a keyed-collections family covering `Map` / `Set`, SameValueZero,
       insertion order, and mutation during iteration.
-- [ ] Add an async/promise family covering documented promise chains,
+- [x] Add an async/promise family covering documented promise chains,
       combinators, and guest microtask behavior.
-- [ ] Add a capability-trace family covering deterministic console and host
+- [x] Add a capability-trace family covering deterministic console and host
       capability traces plus suspend/resume behavior.
-- [ ] Make every generated failure print the seed, minimized program, and
+- [x] Make every generated failure print the seed, minimized program, and
       canonical diff.
-- [ ] Promote minimized parity failures into stable regressions.
+- [x] Promote minimized parity failures into stable regressions.
 
 Done when:
 
-- [ ] Every family runs independently.
-- [ ] Every failure is reproducible from one seed.
-- [ ] Every failure renders a canonical outcome or trace diff instead of a raw
+- [x] Every family runs independently.
+- [x] Every failure is reproducible from one seed.
+- [x] Every failure renders a canonical outcome or trace diff instead of a raw
       object mismatch.
 
 ### 2. Fail-Closed Rejection Matrix

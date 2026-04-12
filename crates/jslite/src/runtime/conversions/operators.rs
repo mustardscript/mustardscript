@@ -106,6 +106,23 @@ impl Runtime {
                     _ => unreachable!(),
                 }))
             }
+            BinaryOp::LessThan
+            | BinaryOp::LessThanEq
+            | BinaryOp::GreaterThan
+            | BinaryOp::GreaterThanEq
+                if matches!((&left, &right), (Value::String(_), Value::String(_))) =>
+            {
+                let (Value::String(left), Value::String(right)) = (left, right) else {
+                    unreachable!()
+                };
+                Ok(Value::Bool(match operator {
+                    BinaryOp::LessThan => left < right,
+                    BinaryOp::LessThanEq => left <= right,
+                    BinaryOp::GreaterThan => left > right,
+                    BinaryOp::GreaterThanEq => left >= right,
+                    _ => unreachable!(),
+                }))
+            }
             BinaryOp::LessThan => Ok(Value::Bool(self.to_number(left)? < self.to_number(right)?)),
             BinaryOp::LessThanEq => {
                 Ok(Value::Bool(self.to_number(left)? <= self.to_number(right)?))

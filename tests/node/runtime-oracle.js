@@ -3,11 +3,15 @@
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
-const { Jslite, JsliteError } = require('../../index.js');
+const { Jslite, JsliteError, Progress } = require('../../index.js');
 
 async function runJslite(source) {
   const runtime = new Jslite(source);
   return runtime.run();
+}
+
+function trimSource(source) {
+  return String(source).trim();
 }
 
 function normalizeNumber(value) {
@@ -225,6 +229,7 @@ function createTraceHarness(options = {}) {
 
   const consoleImpls = options.console ?? {};
   const console = {};
+  const progressHandlers = {};
   for (const method of ['log', 'warn', 'error']) {
     console[method] = wrapTraceCallable(
       events,
@@ -233,6 +238,7 @@ function createTraceHarness(options = {}) {
       consoleImpls[method] ?? (() => undefined),
       { returnsUndefined: true },
     );
+    progressHandlers[`console.${method}`] = console[method];
   }
 
   const capabilities = Object.fromEntries(
@@ -241,9 +247,11 @@ function createTraceHarness(options = {}) {
       wrapTraceCallable(events, 'capability', name, impl),
     ]),
   );
+  Object.assign(progressHandlers, capabilities);
 
   return {
     events,
+    progressHandlers,
     jsliteOptions: {
       capabilities,
       console,
@@ -278,12 +286,65 @@ async function runNodeWithTrace(source, options = {}) {
   );
 }
 
+async function executeProgressLoop(runtime, harness) {
+  let step = runtime.start(harness.jsliteOptions);
+  while (step instanceof Progress) {
+    const handler = harness.progressHandlers[step.capability];
+    if (typeof handler !== 'function') {
+      throw new Error(`Missing capability: ${step.capability}`);
+    }
+    try {
+      const value = await handler(...step.args);
+      step = step.resume(value);
+    } catch (error) {
+      step = step.resumeError(error);
+    }
+  }
+  return step;
+}
+
+async function runJsliteWithProgressTrace(source, options = {}) {
+  const runtime = new Jslite(source);
+  const harness = createTraceHarness(options);
+  return captureTraceOutcome(() => executeProgressLoop(runtime, harness), harness.events);
+}
+
+function renderCanonical(value) {
+  return JSON.stringify(value, null, 2);
+}
+
+function formatCanonicalDiff(kind, source, actual, expected) {
+  return [
+    `${kind} mismatch`,
+    'Minimized program:',
+    trimSource(source),
+    'Canonical diff:',
+    'expected:',
+    renderCanonical(expected),
+    'actual:',
+    renderCanonical(actual),
+  ].join('\n');
+}
+
+function assertCanonicalRecordsEqual(kind, source, actual, expected) {
+  try {
+    assert.deepEqual(actual, expected);
+  } catch {
+    throw new assert.AssertionError({
+      message: formatCanonicalDiff(kind, source, actual, expected),
+      actual,
+      expected,
+      operator: 'canonicalDifferential',
+    });
+  }
+}
+
 async function assertDifferential(source) {
   const [actual, expected] = await Promise.all([
     captureOutcome(() => runJslite(source)),
     captureOutcome(() => Promise.resolve(runNode(source))),
   ]);
-  assert.deepEqual(actual, expected);
+  assertCanonicalRecordsEqual('Outcome', source, actual, expected);
 }
 
 async function assertTraceDifferential(source, options) {
@@ -291,7 +352,15 @@ async function assertTraceDifferential(source, options) {
     runJsliteWithTrace(source, options),
     runNodeWithTrace(source, options),
   ]);
-  assert.deepEqual(actual, expected);
+  assertCanonicalRecordsEqual('Trace', source, actual, expected);
+}
+
+async function assertProgressTraceDifferential(source, options) {
+  const [actual, expected] = await Promise.all([
+    runJsliteWithProgressTrace(source, options),
+    runNodeWithTrace(source, options),
+  ]);
+  assertCanonicalRecordsEqual('Progress trace', source, actual, expected);
 }
 
 function isValidationError(error, messageIncludes) {
@@ -344,6 +413,7 @@ module.exports = {
   assertDifferential,
   assertMetamorphicDifferential,
   assertMatchesNodeOrValidation,
+  assertProgressTraceDifferential,
   assertTraceDifferential,
   assertJsliteFailure,
   captureOutcome,
@@ -351,6 +421,7 @@ module.exports = {
   isValidationError,
   normalizeValue,
   runJslite,
+  runJsliteWithProgressTrace,
   runJsliteWithTrace,
   runNode,
   runNodeWithTrace,

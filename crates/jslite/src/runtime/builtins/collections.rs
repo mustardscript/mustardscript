@@ -130,9 +130,63 @@ impl Runtime {
         self.refresh_map_accounting(map)
     }
 
+    fn adjust_map_iterators_after_delete(&mut self, map: MapKey, removed_index: usize) {
+        let iterator_keys: Vec<_> = self
+            .iterators
+            .iter()
+            .filter_map(|(key, iterator)| match &iterator.state {
+                IteratorState::MapEntries(state)
+                | IteratorState::MapKeys(state)
+                | IteratorState::MapValues(state)
+                    if state.map == map && removed_index < state.next_index =>
+                {
+                    Some(key)
+                }
+                _ => None,
+            })
+            .collect();
+        for key in iterator_keys {
+            if let Some(iterator) = self.iterators.get_mut(key) {
+                match &mut iterator.state {
+                    IteratorState::MapEntries(state)
+                    | IteratorState::MapKeys(state)
+                    | IteratorState::MapValues(state) => state.next_index -= 1,
+                    _ => unreachable!("filtered iterator kind changed unexpectedly"),
+                }
+            }
+        }
+    }
+
+    fn reset_map_iterators_after_clear(&mut self, map: MapKey) {
+        let iterator_keys: Vec<_> = self
+            .iterators
+            .iter()
+            .filter_map(|(key, iterator)| match &iterator.state {
+                IteratorState::MapEntries(state)
+                | IteratorState::MapKeys(state)
+                | IteratorState::MapValues(state)
+                    if state.map == map =>
+                {
+                    Some(key)
+                }
+                _ => None,
+            })
+            .collect();
+        for key in iterator_keys {
+            if let Some(iterator) = self.iterators.get_mut(key) {
+                match &mut iterator.state {
+                    IteratorState::MapEntries(state)
+                    | IteratorState::MapKeys(state)
+                    | IteratorState::MapValues(state) => state.next_index = 0,
+                    _ => unreachable!("filtered iterator kind changed unexpectedly"),
+                }
+            }
+        }
+    }
+
     fn map_delete(&mut self, map: MapKey, key: &Value) -> JsliteResult<bool> {
         let normalized = canonicalize_collection_key(key.clone());
-        let removed = {
+        let removed_index = {
             let entries = &mut self
                 .maps
                 .get_mut(map)
@@ -143,15 +197,17 @@ impl Runtime {
                 .position(|entry| same_value_zero(&entry.key, &normalized))
             {
                 entries.remove(index);
-                true
+                Some(index)
             } else {
-                false
+                None
             }
         };
-        if removed {
+        if let Some(index) = removed_index {
+            self.adjust_map_iterators_after_delete(map, index);
             self.refresh_map_accounting(map)?;
+            return Ok(true);
         }
-        Ok(removed)
+        Ok(false)
     }
 
     fn map_clear(&mut self, map: MapKey) -> JsliteResult<()> {
@@ -160,6 +216,7 @@ impl Runtime {
             .ok_or_else(|| JsliteError::runtime("map missing"))?
             .entries
             .clear();
+        self.reset_map_iterators_after_clear(map);
         self.refresh_map_accounting(map)
     }
 
@@ -178,6 +235,56 @@ impl Runtime {
         self.refresh_set_accounting(set)
     }
 
+    fn adjust_set_iterators_after_delete(&mut self, set: SetKey, removed_index: usize) {
+        let iterator_keys: Vec<_> = self
+            .iterators
+            .iter()
+            .filter_map(|(key, iterator)| match &iterator.state {
+                IteratorState::SetEntries(state) | IteratorState::SetValues(state)
+                    if state.set == set && removed_index < state.next_index =>
+                {
+                    Some(key)
+                }
+                _ => None,
+            })
+            .collect();
+        for key in iterator_keys {
+            if let Some(iterator) = self.iterators.get_mut(key) {
+                match &mut iterator.state {
+                    IteratorState::SetEntries(state) | IteratorState::SetValues(state) => {
+                        state.next_index -= 1
+                    }
+                    _ => unreachable!("filtered iterator kind changed unexpectedly"),
+                }
+            }
+        }
+    }
+
+    fn reset_set_iterators_after_clear(&mut self, set: SetKey) {
+        let iterator_keys: Vec<_> = self
+            .iterators
+            .iter()
+            .filter_map(|(key, iterator)| match &iterator.state {
+                IteratorState::SetEntries(state) | IteratorState::SetValues(state)
+                    if state.set == set =>
+                {
+                    Some(key)
+                }
+                _ => None,
+            })
+            .collect();
+        for key in iterator_keys {
+            if let Some(iterator) = self.iterators.get_mut(key) {
+                match &mut iterator.state {
+                    IteratorState::SetEntries(state) | IteratorState::SetValues(state) => {
+                        state.next_index = 0
+                    }
+                    _ => unreachable!("filtered iterator kind changed unexpectedly"),
+                }
+            }
+        }
+    }
+
     fn set_contains(&self, set: SetKey, value: &Value) -> JsliteResult<bool> {
         let normalized = canonicalize_collection_key(value.clone());
         Ok(self
@@ -191,7 +298,7 @@ impl Runtime {
 
     fn set_delete(&mut self, set: SetKey, value: &Value) -> JsliteResult<bool> {
         let normalized = canonicalize_collection_key(value.clone());
-        let removed = {
+        let removed_index = {
             let entries = &mut self
                 .sets
                 .get_mut(set)
@@ -202,15 +309,17 @@ impl Runtime {
                 .position(|entry| same_value_zero(entry, &normalized))
             {
                 entries.remove(index);
-                true
+                Some(index)
             } else {
-                false
+                None
             }
         };
-        if removed {
+        if let Some(index) = removed_index {
+            self.adjust_set_iterators_after_delete(set, index);
             self.refresh_set_accounting(set)?;
+            return Ok(true);
         }
-        Ok(removed)
+        Ok(false)
     }
 
     fn set_clear(&mut self, set: SetKey) -> JsliteResult<()> {
@@ -219,6 +328,7 @@ impl Runtime {
             .ok_or_else(|| JsliteError::runtime("set missing"))?
             .entries
             .clear();
+        self.reset_set_iterators_after_clear(set);
         self.refresh_set_accounting(set)
     }
 

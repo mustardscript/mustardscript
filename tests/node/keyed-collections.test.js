@@ -184,6 +184,94 @@ test('collection constructors and iteration helpers support the documented itera
   assert.deepEqual(result, [2, 3, 2, 'alpha', 3, false, 'alpha', 3, 'a', 'a', 'ab', ['alpha:3', 'beta:2']]);
 });
 
+test('Map and Set iterators visit entries appended during active iteration', async () => {
+  const runtime = new Jslite(`
+    const map = new Map([
+      ['alpha', 1],
+      ['omega', 2],
+    ]);
+    const seen = [];
+    for (const [key, value] of map) {
+      seen[seen.length] = [key, value];
+      if (key === 'alpha') {
+        map.set('tail', 3);
+      }
+      if (key === 'omega') {
+        map.delete('alpha');
+      }
+    }
+
+    const set = new Set(['alpha', 'omega']);
+    const setSeen = [];
+    for (const value of set) {
+      setSeen[setSeen.length] = value;
+      if (value === 'alpha') {
+        set.add('tail');
+      }
+      if (value === 'omega') {
+        set.delete('alpha');
+      }
+    }
+
+    ({ seen, finalMap: Array.from(map.entries()), setSeen, finalSet: Array.from(set.values()) });
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, {
+    seen: [
+      ['alpha', 1],
+      ['omega', 2],
+      ['tail', 3],
+    ],
+    finalMap: [
+      ['omega', 2],
+      ['tail', 3],
+    ],
+    setSeen: ['alpha', 'omega', 'tail'],
+    finalSet: ['omega', 'tail'],
+  });
+});
+
+test('Map and Set iterators can continue after clear followed by new entries', async () => {
+  const runtime = new Jslite(`
+    const map = new Map([
+      ['alpha', 1],
+      ['omega', 2],
+    ]);
+    const seen = [];
+    for (const [key, value] of map) {
+      seen[seen.length] = [key, value];
+      if (key === 'alpha') {
+        map.clear();
+        map.set('tail', 3);
+      }
+    }
+
+    const set = new Set(['alpha', 'omega']);
+    const setSeen = [];
+    for (const value of set) {
+      setSeen[setSeen.length] = value;
+      if (value === 'alpha') {
+        set.clear();
+        set.add('tail');
+      }
+    }
+
+    ({ seen, finalMap: Array.from(map.entries()), setSeen, finalSet: Array.from(set.values()) });
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, {
+    seen: [
+      ['alpha', 1],
+      ['tail', 3],
+    ],
+    finalMap: [['tail', 3]],
+    setSeen: ['alpha', 'tail'],
+    finalSet: ['tail'],
+  });
+});
+
 test('guest keyed collections cannot cross the structured host boundary', async () => {
   await assert.rejects(
     () =>

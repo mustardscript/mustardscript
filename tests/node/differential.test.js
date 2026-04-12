@@ -243,6 +243,19 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'string relational comparisons',
+    source: `
+      const left = "az";
+      const right = "ba";
+      [
+        left < right,
+        left <= left,
+        right > left,
+        right >= right,
+      ];
+    `,
+  },
+  {
     name: 'RegExp helpers and callback replacements',
     source: `
       const exec = /(?<letters>[a-z]+)(\\d+)/g;

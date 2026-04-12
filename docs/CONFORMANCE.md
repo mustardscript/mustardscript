@@ -22,8 +22,13 @@ The machine-readable source of truth for these outcomes lives in
 
 The property-based conformance generator is split intentionally:
 
-- `supportedProgramArbitrary` only emits programs from the current Node-parity
-  subset. Those programs must compile and differentially match Node.
+- `SUPPORTED_PARITY_FAMILIES` splits Node-parity generation into independent
+  semantic families such as control flow, exceptions, objects/arrays,
+  keyed collections, async promises, and capability traces. Each family runs
+  as its own property test with isolated shrinking.
+- `supportedProgramArbitrary` remains the mixed Node-parity source used by the
+  broader mixed conformance property. Those programs must compile and
+  differentially match Node.
 - `unsupportedValidationCaseArbitrary` only emits programs that should fail
   during constructor-time validation with explicit diagnostics.
 - `conformanceCaseArbitrary` mixes both domains and asserts that each generated
@@ -32,6 +37,10 @@ The property-based conformance generator is split intentionally:
 - `ast-conformance.js` adds a second generated layer that works on a small
   typed AST, supports bounded exhaustive enumeration, renders trace-sensitive
   programs, and feeds metamorphic rewrites from the same source AST.
+
+When a family property fails, the test output prints the fast-check seed and
+shrink path plus the minimized guest program and a canonical outcome or trace
+diff instead of a raw object mismatch.
 
 This is more useful than a naive source fuzzer because the generated programs
 stay inside deliberate semantic buckets and produce canonicalizable outputs.

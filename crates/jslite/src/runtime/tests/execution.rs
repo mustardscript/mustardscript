@@ -14,6 +14,26 @@ fn runs_arithmetic_and_locals() {
 }
 
 #[test]
+fn runs_string_relational_comparisons_with_lexicographic_ordering() {
+    let value = run(
+        r#"
+            const left = "az";
+            const right = "ba";
+            [left < right, left <= left, right > left, right >= right];
+            "#,
+    );
+    assert_eq!(
+        value,
+        StructuredValue::Array(vec![
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+        ])
+    );
+}
+
+#[test]
 fn runs_logical_assignment_with_short_circuit_semantics() {
     let value = run(
         r#"

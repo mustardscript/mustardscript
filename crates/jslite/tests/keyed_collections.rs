@@ -231,6 +231,111 @@ fn keyed_collections_support_iterable_inputs_and_iteration_helpers() {
 }
 
 #[test]
+fn keyed_collection_iterators_visit_entries_appended_during_active_iteration() {
+    let program = compile(
+        r#"
+        const map = new Map([
+          ['alpha', 1],
+          ['omega', 2],
+        ]);
+        const seen = [];
+        for (const [key, value] of map) {
+          seen[seen.length] = [key, value];
+          if (key === 'alpha') {
+            map.set('tail', 3);
+          }
+          if (key === 'omega') {
+            map.delete('alpha');
+          }
+        }
+
+        const set = new Set(['alpha', 'omega']);
+        const setSeen = [];
+        for (const value of set) {
+          setSeen[setSeen.length] = value;
+          if (value === 'alpha') {
+            set.add('tail');
+          }
+          if (value === 'omega') {
+            set.delete('alpha');
+          }
+        }
+
+        [seen, Array.from(map.entries()), setSeen, Array.from(set.values())];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![
+                StructuredValue::Array(vec![string("alpha"), number(1.0)]),
+                StructuredValue::Array(vec![string("omega"), number(2.0)]),
+                StructuredValue::Array(vec![string("tail"), number(3.0)]),
+            ]),
+            StructuredValue::Array(vec![
+                StructuredValue::Array(vec![string("omega"), number(2.0)]),
+                StructuredValue::Array(vec![string("tail"), number(3.0)]),
+            ]),
+            StructuredValue::Array(vec![string("alpha"), string("omega"), string("tail")]),
+            StructuredValue::Array(vec![string("omega"), string("tail")]),
+        ])
+    );
+}
+
+#[test]
+fn keyed_collection_iterators_continue_after_clear_followed_by_new_entries() {
+    let program = compile(
+        r#"
+        const map = new Map([
+          ['alpha', 1],
+          ['omega', 2],
+        ]);
+        const seen = [];
+        for (const [key, value] of map) {
+          seen[seen.length] = [key, value];
+          if (key === 'alpha') {
+            map.clear();
+            map.set('tail', 3);
+          }
+        }
+
+        const set = new Set(['alpha', 'omega']);
+        const setSeen = [];
+        for (const value of set) {
+          setSeen[setSeen.length] = value;
+          if (value === 'alpha') {
+            set.clear();
+            set.add('tail');
+          }
+        }
+
+        [seen, Array.from(map.entries()), setSeen, Array.from(set.values())];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![
+                StructuredValue::Array(vec![string("alpha"), number(1.0)]),
+                StructuredValue::Array(vec![string("tail"), number(3.0)]),
+            ]),
+            StructuredValue::Array(vec![StructuredValue::Array(vec![
+                string("tail"),
+                number(3.0),
+            ])]),
+            StructuredValue::Array(vec![string("alpha"), string("tail")]),
+            StructuredValue::Array(vec![string("tail")]),
+        ])
+    );
+}
+
+#[test]
 fn maps_and_sets_reject_structured_host_boundary_crossing() {
     let output = compile(
         r#"
