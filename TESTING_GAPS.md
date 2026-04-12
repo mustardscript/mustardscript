@@ -1,4 +1,6 @@
 # Testing Gaps and Execution Plan
+[PLAN HAS BEEN COMPLETED]
+[PLAN DONE AT COMMIT 123f148]
 
 ## Purpose
 
@@ -253,33 +255,33 @@ The next step is deterministic interleaving exploration, not more timing tests.
 
 Checklist:
 
-- [ ] Build a deterministic deferred-promise harness for Node-layer async tests.
-- [ ] Enumerate bounded resolve/reject orderings instead of using wall-clock
+- [x] Build a deterministic deferred-promise harness for Node-layer async tests.
+- [x] Enumerate bounded resolve/reject orderings instead of using wall-clock
       sleeps as the primary technique.
-- [ ] Record canonical event traces for capability call, resolve/reject,
+- [x] Record canonical event traces for capability call, resolve/reject,
       microtask checkpoint, guest continuation, and completion/failure.
-- [ ] Compare `jslite` against Node only where parity is promised.
-- [ ] Compare against the documented contract where `jslite` intentionally fails
+- [x] Compare `jslite` against Node only where parity is promised.
+- [x] Compare against the documented contract where `jslite` intentionally fails
       closed.
 
 Priority scenarios:
 
-- [ ] Nested `await`
-- [ ] `Promise.all`
-- [ ] `Promise.allSettled`
-- [ ] `Promise.race`
-- [ ] `Promise.any`
-- [ ] `then`, `catch`, and `finally`
-- [ ] Rejection flowing through `finally`
-- [ ] Host resolve vs host reject ordering
-- [ ] Cancellation racing with host completion
-- [ ] Suspend and resume while promise work is still pending
+- [x] Nested `await`
+- [x] `Promise.all`
+- [x] `Promise.allSettled`
+- [x] `Promise.race`
+- [x] `Promise.any`
+- [x] `then`, `catch`, and `finally`
+- [x] Rejection flowing through `finally`
+- [x] Host resolve vs host reject ordering
+- [x] Cancellation racing with host completion
+- [x] Suspend and resume while promise work is still pending
 
 Done when:
 
-- [ ] Small schedules are exhaustively explored up to a fixed bound.
-- [ ] Every failure is reproducible and prints a human-readable trace diff.
-- [ ] The suite no longer depends on flaky timing races for confidence here.
+- [x] Small schedules are exhaustively explored up to a fixed bound.
+- [x] Every failure is reproducible and prints a human-readable trace diff.
+- [x] The suite no longer depends on flaky timing races for confidence here.
 
 ### 6. Executed Fuzzing In CI
 
@@ -288,22 +290,22 @@ them meaningfully, not adding many more targets.
 
 Checklist:
 
-- [ ] Replace the compile-only fuzz check in `scripts/run-hardening.sh` with
+- [x] Replace the compile-only fuzz check in `scripts/run-hardening.sh` with
       short executed fuzz smoke for selected targets.
-- [ ] Run short PR-lane fuzz smoke for `parser`, `snapshot_load`, and
+- [x] Run short PR-lane fuzz smoke for `parser`, `snapshot_load`, and
       `sidecar_protocol`.
-- [ ] Add scheduled sanitizer-backed fuzzing with persisted corpora and crash
+- [x] Add scheduled sanitizer-backed fuzzing with persisted corpora and crash
       artifacts.
-- [ ] Seed fuzz corpora from minimized regressions, curated supported programs,
+- [x] Seed fuzz corpora from minimized regressions, curated supported programs,
       curated unsupported programs, serialized snapshots, and sidecar protocol
       fixtures.
-- [ ] Promote fuzz-found failures into stable regression coverage.
+- [x] Promote fuzz-found failures into stable regression coverage.
 
 Done when:
 
-- [ ] CI executes real fuzz work instead of only proving the targets compile.
-- [ ] Nightly or scheduled jobs grow corpora over time.
-- [ ] Every fuzz-found bug has a path into the permanent regression corpus.
+- [x] CI executes real fuzz work instead of only proving the targets compile.
+- [x] Nightly or scheduled jobs grow corpora over time.
+- [x] Every fuzz-found bug has a path into the permanent regression corpus.
 
 ## Tier 2: Strong Follow-Up
 
@@ -314,19 +316,19 @@ share semantics.
 
 Checklist:
 
-- [ ] Build a shared representative corpus of supported guest programs.
-- [ ] Assert equivalence across Rust `execute` vs `start`-to-completion.
-- [ ] Assert equivalence across fresh compile vs compile/load-program round trip.
-- [ ] Assert equivalence across direct execution vs dump/load/resume paths where
+- [x] Build a shared representative corpus of supported guest programs.
+- [x] Assert equivalence across Rust `execute` vs `start`-to-completion.
+- [x] Assert equivalence across fresh compile vs compile/load-program round trip.
+- [x] Assert equivalence across direct execution vs dump/load/resume paths where
       suspension is involved.
-- [ ] Assert equivalence across addon mode and sidecar mode.
-- [ ] Add an allowlist for any documented mode-specific differences instead of
+- [x] Assert equivalence across addon mode and sidecar mode.
+- [x] Add an allowlist for any documented mode-specific differences instead of
       accepting silent drift.
 
 Done when:
 
-- [ ] Every corpus program has one canonical expected outcome.
-- [ ] Any mode-specific difference is documented and intentionally allowlisted.
+- [x] Every corpus program has one canonical expected outcome.
+- [x] Any mode-specific difference is documented and intentionally allowlisted.
 
 ### 8. Sidecar Protocol State Coverage
 
@@ -336,23 +338,23 @@ actually exists today.
 
 Checklist:
 
-- [ ] Add protocol-sequence tests for valid and invalid ordering across
+- [x] Add protocol-sequence tests for valid and invalid ordering across
       `compile`, `start`, and `resume`.
-- [ ] Add duplicate-ID coverage if IDs are meant to be host-chosen but still
+- [x] Add duplicate-ID coverage if IDs are meant to be host-chosen but still
       protocol-safe.
-- [ ] Add resume-after-completion misuse coverage.
-- [ ] Add mismatched capability/policy-set resume coverage.
-- [ ] Add concurrent suspended-execution coverage where the current protocol and
+- [x] Add resume-after-completion misuse coverage.
+- [x] Add mismatched capability/policy-set resume coverage.
+- [x] Add concurrent suspended-execution coverage where the current protocol and
       sidecar implementation support it.
-- [ ] Add addon-vs-sidecar equivalence coverage for a small shared corpus.
-- [ ] Keep hard-stop testing at the process boundary; do not invent an in-band
+- [x] Add addon-vs-sidecar equivalence coverage for a small shared corpus.
+- [x] Keep hard-stop testing at the process boundary; do not invent an in-band
       sidecar `cancel` method before the protocol changes.
 
 Done when:
 
-- [ ] Valid-but-adversarial protocol sequences are covered in addition to
+- [x] Valid-but-adversarial protocol sequences are covered in addition to
       malformed line handling.
-- [ ] Protocol misuse fails closed and does not leave ambiguous live state.
+- [x] Protocol misuse fails closed and does not leave ambiguous live state.
 
 ### 9. Contract Audits Instead Of Coverage Percentages
 
@@ -361,17 +363,17 @@ audits more directly to product obligations.
 
 Checklist:
 
-- [ ] Add audits that fail when a documented built-in lacks parity or rejection
+- [x] Add audits that fail when a documented built-in lacks parity or rejection
       coverage as appropriate.
-- [ ] Add audits that fail when a public API method lacks misuse-path coverage.
-- [ ] Add audits that fail when sidecar protocol methods lack valid-flow or
+- [x] Add audits that fail when a public API method lacks misuse-path coverage.
+- [x] Add audits that fail when sidecar protocol methods lack valid-flow or
       hostile-input coverage.
-- [ ] Add audits that fail when new conformance-contract entries are added
+- [x] Add audits that fail when new conformance-contract entries are added
       without the expected test bucket.
 
 Done when:
 
-- [ ] Docs, conformance contract, and coverage obligations cannot drift
+- [x] Docs, conformance contract, and coverage obligations cannot drift
       silently.
 
 ## Tier 3: Quality Multipliers
@@ -383,32 +385,32 @@ here is to expand it, not to invent a separate new framework.
 
 Checklist:
 
-- [ ] Add more semantics-preserving rewrites inside the existing AST/conformance
+- [x] Add more semantics-preserving rewrites inside the existing AST/conformance
       infrastructure.
-- [ ] Add snapshot round-trip insertion where it is semantics-preserving and
+- [x] Add snapshot round-trip insertion where it is semantics-preserving and
       contractually meaningful.
-- [ ] Add rewrite families that specifically stress lowering and bytecode
+- [x] Add rewrite families that specifically stress lowering and bytecode
       generation paths not yet covered by the current transforms.
 
 ### 11. Targeted Mutation Checks For Critical Guards
 
 Checklist:
 
-- [ ] Add narrow mutation-style checks for validator rejection conditions.
-- [ ] Add narrow mutation-style checks for snapshot authorization and replay
+- [x] Add narrow mutation-style checks for validator rejection conditions.
+- [x] Add narrow mutation-style checks for snapshot authorization and replay
       guards.
-- [ ] Add narrow mutation-style checks for limit comparisons.
-- [ ] Add narrow mutation-style checks for structured boundary rejection paths.
-- [ ] Keep mutation runs out of the fast PR path.
+- [x] Add narrow mutation-style checks for limit comparisons.
+- [x] Add narrow mutation-style checks for structured boundary rejection paths.
+- [x] Keep mutation runs out of the fast PR path.
 
 ### 12. Stable Performance Micro-Contracts
 
 Checklist:
 
-- [ ] Add narrow performance contract checks for cold start, host-call overhead,
+- [x] Add narrow performance contract checks for cold start, host-call overhead,
       snapshot dump/load cost, and bounded memory growth.
-- [ ] Use relative thresholds where possible.
-- [ ] Keep noisy performance checks outside correctness-critical presubmit jobs.
+- [x] Use relative thresholds where possible.
+- [x] Keep noisy performance checks outside correctness-critical presubmit jobs.
 
 ## Not The Right First Move
 
@@ -432,13 +434,13 @@ Checklist:
       expected phase and category.
 - [x] Snapshot and progress bugs are found by lifecycle/stateful tests, not by
       ad hoc regressions alone.
-- [ ] Async ordering regressions show up as deterministic trace diffs, not flaky
+- [x] Async ordering regressions show up as deterministic trace diffs, not flaky
       timing failures.
 - [x] Boundary and limit behavior are covered as explicit public contracts.
-- [ ] Addon mode and sidecar mode agree on canonical outcomes where they are
+- [x] Addon mode and sidecar mode agree on canonical outcomes where they are
       supposed to agree.
-- [ ] Selected fuzzers run continuously and feed the regression corpus.
-- [ ] Docs, conformance data, and coverage obligations cannot silently drift.
+- [x] Selected fuzzers run continuously and feed the regression corpus.
+- [x] Docs, conformance data, and coverage obligations cannot silently drift.
 
 That is the path to a materially stronger `jslite` test suite: sharper
 contracts, better generators, stronger stateful checks, and tighter alignment
@@ -449,3 +451,4 @@ between docs, runtime promises, and executed verification.
 | Iteration | UTC Timestamp | Summary | Commit | Errors / Blockers |
 | --- | --- | --- | --- | --- |
 | 1 | 2026-04-12T08:47:24Z | Closed Tier 1 sections 1 through 4: split supported and rejection properties into contract-backed families, added curated rejection regressions, added stateful progress lifecycle properties with minimized action histories, and expanded negative host-boundary coverage across inputs, capability results, and resume payloads. | f9f1063, 2537dc0, 85e34b7, 890cca2 | A first deferred async-schedule harness was discarded instead of committed after auditing the wrapper behavior: the Node layer currently exposes one host suspension at a time, so the simple concurrently pending host-promise model was the wrong fit for section 5. |
+| 2 | 2026-04-12T09:42:07Z | Closed sections 5 through 12: added deterministic async schedule exploration, upgraded hardening to executed fuzz smoke plus scheduled corpus growth, added shared Rust/addon/sidecar equivalence coverage and sidecar state sequencing tests, tightened contract audits, expanded AST metamorphic and snapshot round-trip checks, added off-fast-lane mutation guards, and replaced the benchmark smoke with stable performance micro-contracts. | 5e4e880, f7d34fb, 8d5360c, 123f148 | `npm run lint` initially failed on rustfmt drift in the new Rust tests; `cargo fmt --all` fixed it and the rerun passed. |
