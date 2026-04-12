@@ -14,8 +14,14 @@ scripts/run-hardening.sh
 That runs:
 
 - `cargo test -p jslite --test security_hostile_inputs`
+- `cargo test -p jslite --test property_generated_execution`
+- `cargo test -p jslite --test property_roundtrip`
+- `cargo test -p jslite --test property_snapshot_roundtrip`
 - `cargo test -p jslite-sidecar --test hostile_protocol`
-- `cargo check --manifest-path fuzz/Cargo.toml --bins`
+- `npm run build`
+- `node scripts/seed-fuzz-corpus.js`
+- short executed `cargo-fuzz` smoke for `parser`, `snapshot_load`, and
+  `sidecar_protocol`
 
 ## Fuzz Targets
 
@@ -35,6 +41,35 @@ Example usage after installing `cargo-fuzz`:
 cargo fuzz run parser --manifest-path fuzz/Cargo.toml
 cargo fuzz run sidecar_protocol --manifest-path fuzz/Cargo.toml
 ```
+
+The maintained corpus seeds are generated into `fuzz/corpus/` by
+`scripts/seed-fuzz-corpus.js`. That script starts from:
+
+- curated supported guest programs
+- curated unsupported/fail-closed programs
+- real compiled-program bytes from the public Node wrapper
+- real suspended snapshot bytes from resumable public API flows
+- valid and hostile sidecar protocol request lines
+
+The repository ignores the generated corpus directory so local and CI fuzzing
+can grow it over time without polluting commits.
+
+## CI And Scheduled Jobs
+
+- `.github/workflows/ci.yml` now runs `scripts/run-hardening.sh` in the PR lane
+  on Ubuntu, which executes the hostile-input suites plus short fuzz smoke for
+  `parser`, `snapshot_load`, and `sidecar_protocol`.
+- `.github/workflows/fuzz.yml` runs nightly and on manual dispatch. It restores
+  the cached `fuzz/corpus/` directory, refreshes baseline seeds, runs longer
+  sanitizer-backed fuzzing across all current targets, and uploads both the
+  grown corpus and any crash artifacts from `fuzz/artifacts/`.
+
+For local tuning, `scripts/run-hardening.sh` accepts:
+
+- `JSLITE_FUZZ_TARGETS` to override the fuzz target list
+- `JSLITE_FUZZ_SECONDS` to change per-target runtime
+- `JSLITE_FUZZ_TOOLCHAIN` to pick a non-default toolchain
+- `JSLITE_FUZZ_ARTIFACT_ROOT` to redirect crash artifacts
 
 ## Denial-of-Service Audit
 

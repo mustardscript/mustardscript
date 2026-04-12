@@ -1,0 +1,62 @@
+name: Scheduled Fuzzing
+
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: corpus-key
+        name: Compute corpus cache key
+        run: echo "value=$(date -u +%Y-%m-%d)-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@v4
+        id: restore-corpus
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ runner.os }}-${{ steps.corpus-key.outputs.value }}
+          restore-keys: |
+            fuzz-corpus-${{ runner.os }}-
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Scheduled sanitizer-backed fuzzing
+        env:
+          JSLITE_FUZZ_SECONDS: 60
+          JSLITE_FUZZ_TARGETS: parser ir_lowering bytecode_validation bytecode_execution snapshot_load sidecar_protocol
+        run: scripts/run-hardening.sh
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: fuzz/corpus
+          key: fuzz-corpus-${{ runner.os }}-${{ steps.corpus-key.outputs.value }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fuzz-corpus-${{ github.run_id }}
+          path: fuzz/corpus
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fuzz-artifacts-${{ github.run_id }}
+          path: fuzz/artifacts
+          if-no-files-found: ignore

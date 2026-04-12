@@ -50,6 +50,8 @@
     "test:test262": "node --test tests/test262/**/*.test.js",
     "test:types": "tsc --noEmit -p tsconfig.typecheck.json",
     "test:rust": "cargo test --workspace",
+    "test:hardening": "scripts/run-hardening.sh",
+    "seed:fuzz-corpus": "node scripts/seed-fuzz-corpus.js",
     "bench:smoke": "npm run build && node --expose-gc benchmarks/smoke.js",
     "prebuilt:dirs": "napi create-npm-dirs",
     "prebuilt:artifacts": "napi artifacts --output-dir artifacts",
