@@ -234,7 +234,9 @@ fn lowers_spread_optional_call_arguments_into_ir() {
         panic!("unexpected stmt: {:?}", program.script.body[0]);
     };
     let Expr::Call {
-        arguments, optional, ..
+        arguments,
+        optional,
+        ..
     } = expression
     else {
         panic!("unexpected expr: {expression:?}");
