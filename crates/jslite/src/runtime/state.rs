@@ -89,6 +89,8 @@ pub(super) enum BuiltinFunction {
     PromiseCtor,
     PromiseResolve,
     PromiseReject,
+    PromiseResolveFunction(PromiseKey),
+    PromiseRejectFunction(PromiseKey),
     PromiseThen,
     PromiseCatch,
     PromiseFinally,
@@ -340,6 +342,9 @@ pub(super) enum PromiseCombinatorKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) enum PromiseDriver {
+    Thenable {
+        value: Value,
+    },
     All {
         remaining: usize,
         values: Vec<Option<Value>>,

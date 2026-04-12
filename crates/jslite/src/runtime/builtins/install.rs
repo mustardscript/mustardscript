@@ -70,17 +70,11 @@ impl Runtime {
             BuiltinFunction::SetValues => self.call_set_values(this_value),
             BuiltinFunction::IteratorNext => self.call_iterator_next(this_value),
             BuiltinFunction::PromiseCtor => Err(JsliteError::runtime(
-                "Promise construction is not supported in v1; use async functions or Promise.resolve/reject",
+                "TypeError: Promise constructor must be called with new",
             )),
             BuiltinFunction::PromiseResolve => {
                 let value = args.first().cloned().unwrap_or(Value::Undefined);
-                if let Value::Promise(_) = value {
-                    Ok(value)
-                } else {
-                    Ok(Value::Promise(
-                        self.insert_promise(PromiseState::Fulfilled(value))?,
-                    ))
-                }
+                Ok(Value::Promise(self.coerce_to_promise(value)?))
             }
             BuiltinFunction::PromiseReject => {
                 let value = args.first().cloned().unwrap_or(Value::Undefined);
@@ -88,9 +82,26 @@ impl Runtime {
                     PromiseState::Rejected(PromiseRejection {
                         value,
                         span: None,
-                        traceback: Vec::new(),
+                        traceback: self.traceback_snapshots(),
                     }),
                 )?))
+            }
+            BuiltinFunction::PromiseResolveFunction(target) => {
+                let value = args.first().cloned().unwrap_or(Value::Undefined);
+                self.resolve_promise(target, value)?;
+                Ok(Value::Undefined)
+            }
+            BuiltinFunction::PromiseRejectFunction(target) => {
+                let value = args.first().cloned().unwrap_or(Value::Undefined);
+                self.reject_promise(
+                    target,
+                    PromiseRejection {
+                        value,
+                        span: None,
+                        traceback: self.traceback_snapshots(),
+                    },
+                )?;
+                Ok(Value::Undefined)
             }
             BuiltinFunction::PromiseThen => self.call_promise_then(this_value, args),
             BuiltinFunction::PromiseCatch => self.call_promise_catch(this_value, args),

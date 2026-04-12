@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::builtins::PromiseSetupPolicy;
 
 impl Runtime {
     pub(super) fn current_async_boundary_index(&self) -> Option<usize> {
@@ -25,7 +26,11 @@ impl Runtime {
     pub(super) fn coerce_to_promise(&mut self, value: Value) -> JsliteResult<PromiseKey> {
         match value {
             Value::Promise(promise) => Ok(promise),
-            other => self.insert_promise(PromiseState::Fulfilled(other)),
+            other => {
+                let promise = self.insert_promise(PromiseState::Pending)?;
+                self.resolve_promise(promise, other)?;
+                Ok(promise)
+            }
         }
     }
 
@@ -139,6 +144,9 @@ impl Runtime {
         promise: PromiseKey,
         value: Value,
     ) -> JsliteResult<()> {
+        if self.promise_outcome(promise)?.is_some() {
+            return Ok(());
+        }
         if let Value::Promise(source) = value {
             if source == promise {
                 let error_value =
@@ -156,6 +164,51 @@ impl Runtime {
                 Some(outcome) => self.resolve_promise_with_outcome(promise, outcome),
                 None => self.attach_dependent(source, promise),
             }
+        } else if let Some(then) = self.promise_thenable_handler(&value)? {
+            let tracked_thenable = self
+                .promises
+                .get(promise)
+                .ok_or_else(|| JsliteError::runtime("promise missing"))?
+                .driver
+                .as_ref()
+                .and_then(|driver| match driver {
+                    PromiseDriver::Thenable { value } => Some(value),
+                    _ => None,
+                });
+            if tracked_thenable.is_some_and(|tracked| strict_equal(tracked, &value)) {
+                let error_value = self
+                    .value_from_runtime_message("TypeError: thenable cannot resolve to itself")?;
+                return self.reject_promise(
+                    promise,
+                    PromiseRejection {
+                        value: error_value,
+                        span: None,
+                        traceback: self.traceback_snapshots(),
+                    },
+                );
+            }
+            self.promises
+                .get_mut(promise)
+                .ok_or_else(|| JsliteError::runtime("promise missing"))?
+                .driver = Some(PromiseDriver::Thenable {
+                value: value.clone(),
+            });
+            self.refresh_promise_accounting(promise)?;
+            let resolve = self.promise_settler(promise, false);
+            let reject = self.promise_settler(promise, true);
+            self.call_promise_setup_callback(
+                promise,
+                then,
+                value,
+                &[resolve, reject],
+                PromiseSetupPolicy {
+                    non_callable_message: "TypeError: adopted thenable `.then` must be callable",
+                    host_suspension_message:
+                        "TypeError: adopted thenables do not support synchronous host suspensions",
+                    async_message:
+                        "TypeError: adopted thenables must use synchronous `.then` handlers",
+                },
+            )
         } else {
             self.settle_promise_with_outcome(promise, PromiseOutcome::Fulfilled(value))
         }

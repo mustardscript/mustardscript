@@ -195,7 +195,7 @@ impl Runtime {
                     let promise = self.insert_promise(PromiseState::Pending)?;
                     let base_depth = self.frames.len();
                     self.push_frame(function_id, env, args, this_arg, Some(promise))?;
-                    self.run_until_frame_depth(base_depth)?;
+                    self.run_until_frame_depth(base_depth, options.host_suspension_message)?;
                     match self.promise_outcome(promise)? {
                         Some(PromiseOutcome::Fulfilled(value)) => Ok(value),
                         Some(PromiseOutcome::Rejected(rejection)) => {

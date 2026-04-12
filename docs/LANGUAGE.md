@@ -62,14 +62,24 @@ extensions are called out explicitly instead of being implied.
   queue
 - host capability calls inside async guest code return guest promises and still
   suspend through the existing `start()` / `resume()` boundary
+- `new Promise(executor)` is available when `executor` is callable and
+  completes synchronously from the runtime's perspective
 - `Promise.resolve(...)`, `Promise.reject(...)`, `Promise.all(...)`,
   `Promise.race(...)`, `Promise.any(...)`, and `Promise.allSettled(...)` are
   available
 - promise instance methods `then(...)`, `catch(...)`, and `finally(...)` are
   available
+- promise resolution and `await` adopt guest promises plus guest object or
+  array thenables with callable `.then` properties
+- Promise executor and thenable resolve/reject functions keep first-settlement
+  semantics; later resolve/reject calls and post-settlement throws do not
+  override the settled result
 - `Promise.any(...)` rejects with a guest-visible `AggregateError` object whose
   `errors` property preserves rejection reasons in iteration order
-- `new Promise(...)` still fails closed at runtime
+- async Promise executors and async adopted `.then` handlers reject with an
+  explicit `TypeError`
+- synchronous host suspensions from Promise executors and adopted thenables
+  still fail closed
 
 ## Supported Iteration Surface
 
@@ -141,7 +151,8 @@ extensions are called out explicitly instead of being implied.
 
 ## Explicit Deferrals
 
-- full Promise constructor semantics and general thenable adoption
+- fully general Promise constructor and thenable-adoption edge cases,
+  including hostile thenable cycles
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
 - default parameter evaluation

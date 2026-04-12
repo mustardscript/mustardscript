@@ -303,6 +303,161 @@ fn promise_callbacks_can_suspend_through_host_capabilities() {
 }
 
 #[test]
+fn promise_constructors_bridge_async_host_calls_and_thenable_adoption() {
+    let program = compile(
+        r#"
+        function wrapDouble(value) {
+          return new Promise((resolve, reject) => {
+            Promise.resolve(value)
+              .then((resolved) => resolve(resolved * 2))
+              .catch(reject);
+          });
+        }
+        async function waitForApproval(ticketId) {
+          return await new Promise((resolve, reject) => {
+            fetch_decision(ticketId)
+              .then((decision) => {
+                if (decision.approved) {
+                  resolve(decision.ticketId);
+                } else {
+                  reject(decision.reason);
+                }
+              })
+              .catch(reject);
+          });
+        }
+        async function main() {
+          const thenable = {};
+          thenable.then = function(resolve) {
+            resolve(wrapDouble(5));
+          };
+          return [await Promise.resolve(thenable), await waitForApproval("A-9")];
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let suspended = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_decision".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+
+    assert_eq!(suspended.capability, "fetch_decision");
+    assert_eq!(suspended.args, vec!["A-9".into()]);
+
+    let resumed = resume(
+        suspended.snapshot,
+        ResumePayload::Value(StructuredValue::Object(IndexMap::from([
+            ("approved".to_string(), true.into()),
+            ("ticketId".to_string(), "A-9:approved".into()),
+        ]))),
+    )
+    .expect("resume should succeed");
+    match resumed {
+        ExecutionStep::Completed(value) => assert_eq!(
+            value,
+            StructuredValue::Array(vec![number(10.0), "A-9:approved".into(),])
+        ),
+        ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
+    }
+}
+
+#[test]
+fn promise_constructors_preserve_rejection_propagation_and_cleanup() {
+    let program = compile(
+        r#"
+        async function main() {
+          let events = [];
+          const denied = await new Promise((resolve, reject) => {
+            events[events.length] = "executor:start";
+            reject("manual-review");
+            resolve("ignored");
+            events[events.length] = "executor:cleanup";
+            throw new Error("ignored");
+          }).catch((reason) => {
+            events[events.length] = "catch:" + reason;
+            return reason;
+          });
+          const thenable = {};
+          thenable.then = function(resolve, reject) {
+            events[events.length] = "thenable:start";
+            reject("thenable:no");
+            resolve("ignored");
+            events[events.length] = "thenable:cleanup";
+            throw new Error("ignored");
+          };
+
+          const adopted = await Promise.resolve(thenable).catch((reason) => {
+            events[events.length] = "adopted:" + reason;
+            return reason;
+          });
+
+          return [denied, adopted, events];
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            "manual-review".into(),
+            "thenable:no".into(),
+            StructuredValue::Array(vec![
+                "executor:start".into(),
+                "executor:cleanup".into(),
+                "catch:manual-review".into(),
+                "thenable:start".into(),
+                "thenable:cleanup".into(),
+                "adopted:thenable:no".into(),
+            ]),
+        ])
+    );
+}
+
+#[test]
+fn promise_constructors_preserve_thrown_values_before_settlement() {
+    let program = compile(
+        r#"
+        async function main() {
+          const thrown = await new Promise((resolve, reject) => {
+            throw "boom";
+          }).catch((reason) => reason);
+
+          const thenable = {};
+          thenable.then = function(resolve, reject) {
+            throw "thenable:explode";
+          };
+          const adopted = await Promise.resolve(thenable).catch((reason) => reason);
+
+          return [thrown, adopted];
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec!["boom".into(), "thenable:explode".into(),])
+    );
+}
+
+#[test]
 fn array_map_callbacks_can_feed_promise_all_from_async_guest_flows() {
     let program = compile(
         r#"

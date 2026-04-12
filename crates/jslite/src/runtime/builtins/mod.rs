@@ -14,6 +14,8 @@ mod promises;
 mod regexp;
 mod strings;
 
+pub(crate) use promises::PromiseSetupPolicy;
+
 #[derive(Debug, Clone, Copy)]
 struct RegExpFlagsState {
     global: bool,

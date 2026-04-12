@@ -856,6 +856,9 @@ pub(super) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()
         }
         if let Some(driver) = &promise.driver {
             match driver {
+                PromiseDriver::Thenable { value } => {
+                    validate_runtime_value(runtime, value)?;
+                }
                 PromiseDriver::All { values, .. } => {
                     for value in values.iter().flatten() {
                         validate_runtime_value(runtime, value)?;
@@ -945,6 +948,9 @@ pub(super) fn validate_snapshot_policy(
         }
         if let Some(driver) = &promise.driver {
             match driver {
+                PromiseDriver::Thenable { value } => {
+                    validate_runtime_host_capability(value, &allowed)?;
+                }
                 PromiseDriver::All { values, .. } => {
                     for value in values.iter().flatten() {
                         validate_runtime_host_capability(value, &allowed)?;
