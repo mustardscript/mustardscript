@@ -60,7 +60,10 @@ That command runs the prebuilt smoke coverage in
 target metadata, stages a host-matching release binary into a generated npm
 package directory, installs the root tarball plus the matching optional package
 with lifecycle scripts disabled, and then proves `install.js` skips the source
-build when the matching prebuilt package is already present.
+build when the matching prebuilt package is already present. The loader now
+accepts only validated `.node` artifacts from the expected optional package
+layout; JavaScript `main` fallbacks and arbitrary override module resolution are
+rejected.
 
 ### 3. Verify the npm package shape
 
