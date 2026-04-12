@@ -145,3 +145,48 @@ test('direct JSON.stringify returns respect the heap limit before crossing the h
     }),
   );
 });
+
+test('resume payloads charge instruction budget during structured boundary conversion', () => {
+  const progress = runtime('fetch_data(); 0;').start({
+    capabilities: {
+      fetch_data() {},
+    },
+    limits: {
+      instructionBudget: 5,
+      heapLimitBytes: 1_000_000_000,
+      allocationBudget: 2_000_000,
+    },
+  });
+  const largeValues = Array.from({ length: 20_000 }, (_, index) => index);
+
+  assert.throws(
+    () => progress.resume(largeValues),
+    isJsliteError({
+      kind: 'Limit',
+      message: /instruction budget exhausted/,
+    }),
+  );
+});
+
+test('capability results charge instruction budget during structured boundary conversion', async () => {
+  const largeValues = Array.from({ length: 20_000 }, (_, index) => index);
+
+  await assert.rejects(
+    runtime('fetch_data();').run({
+      capabilities: {
+        fetch_data() {
+          return largeValues;
+        },
+      },
+      limits: {
+        instructionBudget: 5,
+        heapLimitBytes: 1_000_000_000,
+        allocationBudget: 2_000_000,
+      },
+    }),
+    isJsliteError({
+      kind: 'Limit',
+      message: /instruction budget exhausted/,
+    }),
+  );
+});

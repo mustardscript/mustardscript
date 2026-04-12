@@ -22,6 +22,7 @@ impl Runtime {
         depth: usize,
     ) -> JsliteResult<Value> {
         ensure_nested_depth(depth, structured_boundary_depth_error)?;
+        self.charge_native_helper_work(1)?;
         Ok(match value {
             StructuredValue::Undefined => Value::Undefined,
             StructuredValue::Null => Value::Null,
@@ -56,7 +57,7 @@ impl Runtime {
     }
 
     pub(in crate::runtime) fn value_to_structured(
-        &self,
+        &mut self,
         value: Value,
     ) -> JsliteResult<StructuredValue> {
         let mut traversal = StructuredTraversalState::default();
@@ -64,12 +65,13 @@ impl Runtime {
     }
 
     fn value_to_structured_inner(
-        &self,
+        &mut self,
         value: Value,
         traversal: &mut StructuredTraversalState,
         depth: usize,
     ) -> JsliteResult<StructuredValue> {
         ensure_nested_depth(depth, structured_boundary_depth_error)?;
+        self.charge_native_helper_work(1)?;
         Ok(match value {
             Value::Undefined => StructuredValue::Undefined,
             Value::Null => StructuredValue::Null,
@@ -85,12 +87,15 @@ impl Runtime {
                 if !traversal.arrays.insert(array) {
                     return Err(structured_boundary_cycle_error());
                 }
+                let elements = self
+                    .arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .clone();
                 let result = (|| {
                     Ok(StructuredValue::Array(
-                        self.arrays
-                            .get(array)
-                            .ok_or_else(|| JsliteError::runtime("array missing"))?
-                            .elements
+                        elements
                             .iter()
                             .map(|value| match value {
                                 Some(value) => self.value_to_structured_inner(
@@ -119,10 +124,10 @@ impl Runtime {
                 if !traversal.objects.insert(object) {
                     return Err(structured_boundary_cycle_error());
                 }
+                let properties = object_ref.properties.clone();
                 let result = (|| {
                     Ok(StructuredValue::Object(
-                        object_ref
-                            .properties
+                        properties
                             .iter()
                             .map(|(key, value)| {
                                 Ok((

@@ -131,9 +131,8 @@ test('property: Progress wrappers remain single-use after any completion path', 
       );
 
       const dumped = progress.dump();
-      const restored = Progress.load(dumped);
       assert.throws(
-        () => performProgressAction(restored, secondAction),
+        () => Progress.load(dumped),
         isSingleUseRuntimeError,
       );
     }),

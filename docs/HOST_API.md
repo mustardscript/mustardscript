@@ -50,6 +50,11 @@ typed error instead of recursing until the JS or Rust stack overflows.
   converted arguments, and a resumable snapshot.
 - Snapshots loaded from bytes must be rebound to explicit host policy before
   their capability metadata is trusted or resume is allowed to continue.
+- Raw native `inspectSnapshot(...)` / `resumeProgram(...)` flows also require a
+  `snapshot_key_base64` plus matching `snapshot_token` inside the snapshot
+  policy JSON. The token is the HMAC-SHA256 of the raw snapshot bytes under the
+  caller-chosen snapshot key, so unauthenticated snapshot bytes fail closed
+  before inspection or resume.
 - `resume()` accepts either a structured success value or a sanitized host
   error payload.
 - `Progress.cancel()` injects an explicit cooperative cancellation failure into
@@ -79,6 +84,10 @@ Resumed host failures re-enter guest execution as guest-visible error objects
 using those fields. Guest `try` / `catch` can inspect `name`, `message`,
 optional `code`, and optional `details`, and uncaught failures render with the
 same guest-safe summary.
+The Node wrapper only trusts own data properties for those fields. Inherited
+getters, proxy traps, coercion hooks, and accessor-backed `details` fail closed
+instead of executing during host-error sanitization. If `name` or `message` are
+missing, the sanitized fallback is `Error` plus an empty message.
 The Node wrapper rethrows core failures as typed JavaScript errors:
 `JsliteParseError`, `JsliteValidationError`, `JsliteRuntimeError`,
 `JsliteLimitError`, and `JsliteSerializationError`. The original native error is
@@ -103,6 +112,10 @@ guest-only traceback with guest function names and source spans.
 - Execution is single-threaded and non-reentrant.
 - The Node `Progress` wrapper is single-use and rejects repeated
   `resume()`/`resumeError()` calls for the same suspended snapshot.
+- `Progress.load(...)` also rejects already-consumed same-process dumps before
+  exposing authoritative `progress.capability` / `progress.args`, so stale
+  blobs cannot be replayed into duplicated side effects after the real resume
+  already happened.
 - Consumed progress tokens stay burned for the lifetime of the current process,
   so unrelated same-process progress churn cannot make an old dumped snapshot
   replayable again.

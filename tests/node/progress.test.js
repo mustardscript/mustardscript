@@ -108,9 +108,8 @@ test('progress.load rejects reused snapshots in the same process', () => {
   const dumped = progress.dump();
   assert.equal(progress.resume(4), 8);
 
-  const restored = Progress.load(dumped);
   assert.throws(
-    () => restored.resume(4),
+    () => Progress.load(dumped),
     isJsliteError({
       kind: 'Runtime',
       message: /single-use/,

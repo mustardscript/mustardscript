@@ -36,7 +36,8 @@ pub(in crate::runtime) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> Jsl
     if let Some(request) = &runtime.suspended_host_call {
         validate_pending_host_call_snapshot(runtime, request)?;
     }
-    for promise in runtime.promises.values() {
+    for (promise_key, promise) in &runtime.promises {
+        validate_promise_snapshot(runtime, promise_key, promise)?;
         walk::walk_promise_values(promise, &mut |value| validate_runtime_value(runtime, value))?;
     }
 
@@ -246,6 +247,83 @@ fn validate_pending_host_call_snapshot(
         return Err(snapshot_error(
             "pending host call references a missing promise",
         ));
+    }
+    Ok(())
+}
+
+fn validate_promise_snapshot(
+    runtime: &Runtime,
+    promise_key: PromiseKey,
+    promise: &PromiseObject,
+) -> JsliteResult<()> {
+    for dependent in &promise.dependents {
+        if runtime.promises.get(*dependent).is_none() {
+            return Err(snapshot_error(format!(
+                "promise {:?} references missing dependent {:?}",
+                promise_key, dependent
+            )));
+        }
+    }
+    for reaction in &promise.reactions {
+        match reaction {
+            PromiseReaction::Then { target, .. }
+            | PromiseReaction::Finally { target, .. }
+            | PromiseReaction::FinallyPassThrough { target, .. }
+            | PromiseReaction::Combinator { target, .. } => {
+                if runtime.promises.get(*target).is_none() {
+                    return Err(snapshot_error(format!(
+                        "promise {:?} reaction references missing target {:?}",
+                        promise_key, target
+                    )));
+                }
+            }
+        }
+
+        if let PromiseReaction::Combinator {
+            target,
+            index,
+            kind,
+        } = reaction
+        {
+            let target_promise = runtime.promises.get(*target).ok_or_else(|| {
+                snapshot_error(format!(
+                    "promise {:?} combinator reaction references missing target {:?}",
+                    promise_key, target
+                ))
+            })?;
+            let Some(driver) = target_promise.driver.as_ref() else {
+                return Err(snapshot_error(format!(
+                    "promise {:?} combinator target {:?} is missing driver state",
+                    promise_key, target
+                )));
+            };
+            let len = match (kind, driver) {
+                (PromiseCombinatorKind::Race, _) => None,
+                (PromiseCombinatorKind::All, PromiseDriver::All { values, .. }) => {
+                    Some(values.len())
+                }
+                (PromiseCombinatorKind::AllSettled, PromiseDriver::AllSettled { results, .. }) => {
+                    Some(results.len())
+                }
+                (PromiseCombinatorKind::Any, PromiseDriver::Any { reasons, .. }) => {
+                    Some(reasons.len())
+                }
+                _ => {
+                    return Err(snapshot_error(format!(
+                        "promise {:?} combinator reaction kind does not match target {:?} driver",
+                        promise_key, target
+                    )));
+                }
+            };
+            if let Some(len) = len
+                && *index >= len
+            {
+                return Err(snapshot_error(format!(
+                    "promise {:?} combinator index {} is out of range for target {:?}",
+                    promise_key, index, target
+                )));
+            }
+        }
     }
     Ok(())
 }

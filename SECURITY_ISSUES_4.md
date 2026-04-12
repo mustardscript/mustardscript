@@ -27,6 +27,8 @@ security-relevant review targets:
 
 ## Critical: forged raw snapshots can rewrite suspended capability metadata in low-level inspect/resume flows
 
+**Status:** fixed on `codex/security-issues-4`
+
 **Affected files**
 
 - [`crates/jslite/src/runtime/serialization.rs`](crates/jslite/src/runtime/serialization.rs)
@@ -76,6 +78,8 @@ console.log(JSON.parse(native.inspectSnapshot(forged, policy)).capability); // d
 
 ## Critical: forged promise-combinator snapshot state can panic and abort the process on resume
 
+**Status:** fixed on `codex/security-issues-4`
+
 **Affected files**
 
 - [`crates/jslite/src/runtime/serialization.rs`](crates/jslite/src/runtime/serialization.rs)
@@ -124,6 +128,8 @@ native.resumeProgram(
 
 ## High: same-process `Progress.load()` exposes authoritative replay metadata before the single-use guard fires
 
+**Status:** fixed on `codex/security-issues-4`
+
 **Affected files**
 
 - [`lib/progress.js`](lib/progress.js)
@@ -168,6 +174,8 @@ console.log({ capability: replay.capability, args: replay.args, sideEffects });
 ```
 
 ## High: host error sanitization executes prototype and coercion hooks before fail-closed rejection
+
+**Status:** fixed on `codex/security-issues-4`
 
 **Affected files**
 
@@ -215,6 +223,8 @@ console.log({ ran, polluted: Object.prototype.__jslite_pwned === true });
 ```
 
 ## High: structured boundary conversions bypass instruction-budget and mid-conversion cancellation checks
+
+**Status:** fixed on `codex/security-issues-4`
 
 **Affected files**
 

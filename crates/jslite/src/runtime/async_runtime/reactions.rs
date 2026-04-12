@@ -1,6 +1,27 @@
 use super::*;
 
 impl Runtime {
+    fn promise_combinator_slot_len(
+        promise: &PromiseObject,
+        kind: PromiseCombinatorKind,
+    ) -> JsliteResult<Option<usize>> {
+        match (kind, promise.driver.as_ref()) {
+            (PromiseCombinatorKind::Race, _) => Ok(None),
+            (PromiseCombinatorKind::All, Some(PromiseDriver::All { values, .. })) => {
+                Ok(Some(values.len()))
+            }
+            (
+                PromiseCombinatorKind::AllSettled,
+                Some(PromiseDriver::AllSettled { results, .. }),
+            ) => Ok(Some(results.len())),
+            (PromiseCombinatorKind::Any, Some(PromiseDriver::Any { reasons, .. })) => {
+                Ok(Some(reasons.len()))
+            }
+            (_, Some(_)) => Err(JsliteError::runtime("promise combinator kind mismatch")),
+            (_, None) => Err(JsliteError::runtime("promise combinator state missing")),
+        }
+    }
+
     pub(in crate::runtime) fn promise_reaction_target(
         &self,
         reaction: &PromiseReaction,
@@ -115,6 +136,17 @@ impl Runtime {
     ) -> JsliteResult<()> {
         if self.promise_outcome(target)?.is_some() {
             return Ok(());
+        }
+        let promise = self
+            .promises
+            .get(target)
+            .ok_or_else(|| JsliteError::runtime("promise missing"))?;
+        if let Some(len) = Self::promise_combinator_slot_len(promise, kind)?
+            && index >= len
+        {
+            return Err(serialization_error(
+                "snapshot validation failed: promise combinator index out of range",
+            ));
         }
         match kind {
             PromiseCombinatorKind::Race => self.resolve_promise_with_outcome(target, outcome),

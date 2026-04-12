@@ -77,6 +77,7 @@ impl Runtime {
             .objects
             .get(object)
             .ok_or_else(|| JsliteError::runtime("object missing"))?;
+        let details = object.properties.get("details").cloned();
         let name = object.properties.get("name").and_then(|value| match value {
             Value::String(value) => Some(value.as_str()),
             _ => None,
@@ -104,13 +105,8 @@ impl Runtime {
         if let Some(Value::String(code)) = object.properties.get("code") {
             summary.push_str(&format!(" [code={code}]"));
         }
-        if let Some(details) = object.properties.get("details") {
-            match self.value_to_structured(details.clone()) {
-                Ok(details) => summary.push_str(&format!(" [details={details:?}]")),
-                Err(_) => {
-                    summary.push_str(&format!(" [details={}]", self.to_string(details.clone())?))
-                }
-            }
+        if let Some(details) = details {
+            summary.push_str(&format!(" [details={}]", self.to_string(details)?));
         }
 
         Ok(Some(summary))

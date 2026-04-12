@@ -45,6 +45,10 @@ pub struct SnapshotPolicyDto {
     pub capabilities: Vec<String>,
     #[serde(default)]
     pub limits: RuntimeLimitsDto,
+    #[serde(default)]
+    pub snapshot_key_base64: Option<String>,
+    #[serde(default)]
+    pub snapshot_token: Option<String>,
 }
 
 impl SnapshotPolicyDto {
