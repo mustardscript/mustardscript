@@ -69,6 +69,7 @@ The current implementation already supports:
 - [Host API](docs/HOST_API.md)
 - [Serialization](docs/SERIALIZATION.md)
 - [Limits](docs/LIMITS.md)
+- [Conformance Strategy](docs/CONFORMANCE.md)
 - [Bytecode VM Model](docs/BYTECODE.md)
 - [Runtime Value Model](docs/RUNTIME_MODEL.md)
 - [Sidecar Protocol](docs/SIDECAR_PROTOCOL.md)

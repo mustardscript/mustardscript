@@ -113,6 +113,14 @@ async function assertDifferential(source) {
   assert.deepEqual(actual, expected);
 }
 
+function isValidationError(error, messageIncludes) {
+  return (
+    error instanceof JsliteError &&
+    error.kind === 'Validation' &&
+    (messageIncludes === undefined || error.message.includes(messageIncludes))
+  );
+}
+
 function assertJsliteFailure(source, { kind, messageIncludes }) {
   assert.throws(
     () => new Jslite(source),
@@ -123,10 +131,23 @@ function assertJsliteFailure(source, { kind, messageIncludes }) {
   );
 }
 
+async function assertMatchesNodeOrValidation(source, { messageIncludes } = {}) {
+  try {
+    new Jslite(source);
+  } catch (error) {
+    assert.ok(isValidationError(error, messageIncludes));
+    return;
+  }
+
+  await assertDifferential(source);
+}
+
 module.exports = {
   assertDifferential,
+  assertMatchesNodeOrValidation,
   assertJsliteFailure,
   captureOutcome,
+  isValidationError,
   normalizeValue,
   runJslite,
   runNode,

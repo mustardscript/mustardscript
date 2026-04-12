@@ -6,11 +6,16 @@ const assert = require('node:assert/strict');
 const { Jslite, JsliteError } = require('../../index.js');
 const {
   PROPERTY_RUNS,
+  conformanceCaseArbitrary,
   fc,
   supportedProgramArbitrary,
   unsupportedValidationCaseArbitrary,
 } = require('./property-generators.js');
-const { assertDifferential } = require('./runtime-oracle.js');
+const {
+  assertDifferential,
+  assertMatchesNodeOrValidation,
+  isValidationError,
+} = require('./runtime-oracle.js');
 
 test('property: bounded supported generated programs match Node canonically', async () => {
   await fc.assert(
@@ -29,14 +34,23 @@ test('property: documented unsupported generated forms fail with constructor-tim
     fc.property(unsupportedValidationCaseArbitrary, ({ source, messageIncludes }) => {
       assert.throws(
         () => new Jslite(source),
-        (error) =>
-          error instanceof JsliteError &&
-          error.kind === 'Validation' &&
-          error.message.toLowerCase().includes(messageIncludes.toLowerCase()),
+        (error) => isValidationError(error, messageIncludes),
       );
     }),
     {
       numRuns: PROPERTY_RUNS,
+    },
+  );
+});
+
+test('property: generated conformance cases either match Node or fail in validation', async () => {
+  await fc.assert(
+    fc.asyncProperty(conformanceCaseArbitrary, async ({ source, messageIncludes }) => {
+      await assertMatchesNodeOrValidation(source, { messageIncludes });
+    }),
+    {
+      numRuns: Math.max(25, Math.floor(PROPERTY_RUNS / 2)),
+      interruptAfterTimeLimit: 20_000,
     },
   );
 });
