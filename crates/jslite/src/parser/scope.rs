@@ -55,8 +55,9 @@ impl<'a> Lowerer<'a> {
 
     pub(super) fn collect_pattern_bindings(&mut self, pattern: &BindingPattern<'a>) {
         match pattern {
-            BindingPattern::BindingIdentifier(identifier) => self
-                .declare_name_in_current_scope(identifier.name.as_str(), identifier.span.into()),
+            BindingPattern::BindingIdentifier(identifier) => {
+                self.declare_name_in_current_scope(identifier.name.as_str(), identifier.span.into())
+            }
             BindingPattern::ObjectPattern(pattern) => {
                 for property in &pattern.properties {
                     self.collect_pattern_bindings(&property.value);

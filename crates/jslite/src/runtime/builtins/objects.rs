@@ -389,11 +389,13 @@ impl Runtime {
             }
             Value::Closure(closure) => self.closure_has_own_property(closure, &key)?,
             Value::BuiltinFunction(function) => {
-                self.builtin_function_custom_property(function, &key)?.is_some()
+                self.builtin_function_custom_property(function, &key)?
+                    .is_some()
                     || self.builtin_function_own_property(function, &key).is_some()
             }
             Value::HostFunction(capability) => {
-                self.host_function_custom_property(&capability, &key)?.is_some()
+                self.host_function_custom_property(&capability, &key)?
+                    .is_some()
                     || matches!(key.as_str(), "name" | "length")
             }
             _ => return Err(Self::object_helper_type_error()),

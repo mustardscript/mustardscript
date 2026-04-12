@@ -65,10 +65,10 @@ impl Runtime {
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::LoadGlobalObject => {
-                let value =
-                    Value::Object(self.global_object_key().ok_or_else(|| {
-                        JsliteError::runtime("missing global object")
-                    })?);
+                let value = Value::Object(
+                    self.global_object_key()
+                        .ok_or_else(|| JsliteError::runtime("missing global object"))?,
+                );
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::StoreName(name) => {
@@ -882,11 +882,9 @@ impl Runtime {
                 | BuiltinFunction::IntlDateTimeFormatCtor
                 | BuiltinFunction::IntlNumberFormatCtor,
             ) => match callee {
-                Value::BuiltinFunction(BuiltinFunction::FunctionCtor) => Err(
-                    JsliteError::runtime(
-                        "TypeError: Function constructor is unavailable in the supported surface",
-                    ),
-                ),
+                Value::BuiltinFunction(BuiltinFunction::FunctionCtor) => Err(JsliteError::runtime(
+                    "TypeError: Function constructor is unavailable in the supported surface",
+                )),
                 Value::BuiltinFunction(BuiltinFunction::MapCtor) => self.construct_map(args),
                 Value::BuiltinFunction(BuiltinFunction::SetCtor) => self.construct_set(args),
                 Value::BuiltinFunction(BuiltinFunction::DateCtor) => self.construct_date(args),

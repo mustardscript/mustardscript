@@ -406,9 +406,9 @@ impl Runtime {
     }
 
     pub(crate) fn call_number_to_string(&self, this_value: Value) -> JsliteResult<Value> {
-        Ok(Value::String(
-            self.to_string(Value::Number(self.number_receiver(this_value, "toString")?))?,
-        ))
+        Ok(Value::String(self.to_string(Value::Number(
+            self.number_receiver(this_value, "toString")?,
+        ))?))
     }
 
     pub(crate) fn call_number_value_of(&self, this_value: Value) -> JsliteResult<Value> {
@@ -416,9 +416,9 @@ impl Runtime {
     }
 
     pub(crate) fn call_boolean_to_string(&self, this_value: Value) -> JsliteResult<Value> {
-        Ok(Value::String(
-            self.to_string(Value::Bool(self.boolean_receiver(this_value, "toString")?))?,
-        ))
+        Ok(Value::String(self.to_string(Value::Bool(
+            self.boolean_receiver(this_value, "toString")?,
+        ))?))
     }
 
     pub(crate) fn call_boolean_value_of(&self, this_value: Value) -> JsliteResult<Value> {

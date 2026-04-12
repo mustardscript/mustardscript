@@ -392,9 +392,15 @@ fn callable_metadata_and_primitive_wrappers_cover_supported_surface() {
                     ("boundLength".to_string(), number(0.0)),
                     ("boundOwnName".to_string(), StructuredValue::Bool(true)),
                     ("boundOwnLength".to_string(), StructuredValue::Bool(true)),
-                    ("boundOwnPrototype".to_string(), StructuredValue::Bool(false)),
+                    (
+                        "boundOwnPrototype".to_string(),
+                        StructuredValue::Bool(false)
+                    ),
                     ("boundOwnCall".to_string(), StructuredValue::Bool(false)),
-                    ("arrayOwnConstructor".to_string(), StructuredValue::Bool(false)),
+                    (
+                        "arrayOwnConstructor".to_string(),
+                        StructuredValue::Bool(false)
+                    ),
                     ("arrayConstructor".to_string(), "Function".into()),
                     (
                         "arrayKeys".to_string(),
@@ -423,7 +429,10 @@ fn callable_metadata_and_primitive_wrappers_cover_supported_surface() {
                     ("stringIndex".to_string(), "a".into()),
                     ("stringConstructor".to_string(), StructuredValue::Bool(true)),
                     ("numberConstructor".to_string(), StructuredValue::Bool(true)),
-                    ("booleanConstructor".to_string(), StructuredValue::Bool(true)),
+                    (
+                        "booleanConstructor".to_string(),
+                        StructuredValue::Bool(true)
+                    ),
                     ("objectStringPadStart".to_string(), "007".into()),
                     ("newStringPadStart".to_string(), "007".into()),
                     ("newNumberToString".to_string(), "1".into()),

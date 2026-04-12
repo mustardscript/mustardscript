@@ -1,5 +1,7 @@
 use super::*;
 
+type LoweredFunctionParams = (Vec<Pattern>, Option<Pattern>, Vec<Stmt>, usize);
+
 impl<'a> Lowerer<'a> {
     pub(super) fn lower_pattern(&mut self, pattern: &BindingPattern<'a>) -> Option<Pattern> {
         match pattern {
@@ -54,7 +56,7 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_function_params(
         &mut self,
         params: &FormalParameters<'a>,
-    ) -> Option<(Vec<Pattern>, Option<Pattern>, Vec<Stmt>, usize)> {
+    ) -> Option<LoweredFunctionParams> {
         let mut lowered = Vec::with_capacity(params.items.len());
         let mut param_init = Vec::new();
         let mut function_length = 0usize;

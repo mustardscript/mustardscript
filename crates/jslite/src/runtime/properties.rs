@@ -143,7 +143,8 @@ impl Runtime {
             return Ok(Vec::new());
         };
         Ok(ordered_own_property_keys(
-            &self.objects
+            &self
+                .objects
                 .get(object)
                 .ok_or_else(|| JsliteError::runtime("object missing"))?
                 .properties,
@@ -155,7 +156,8 @@ impl Runtime {
             return Ok(Vec::new());
         };
         Ok(ordered_own_property_keys(
-            &self.objects
+            &self
+                .objects
                 .get(object)
                 .ok_or_else(|| JsliteError::runtime("object missing"))?
                 .properties,
@@ -853,22 +855,20 @@ impl Runtime {
                     "constructor" | "then" | "catch" | "finally"
                 ))
             }
-            Value::BuiltinFunction(function) => {
-                Ok(self.builtin_function_custom_property(function, &key)?.is_some()
-                    || self.builtin_function_own_property(function, &key).is_some()
-                    || key == "constructor"
-                    || Self::function_helper_method(&key).is_some())
-            }
-            Value::Closure(closure) => Ok(
-                self.closure_has_own_property(closure, &key)?
-                    || key == "constructor"
-                    || Self::function_helper_method(&key).is_some(),
-            ),
-            Value::HostFunction(capability) => Ok(
-                self.host_function_custom_property(&capability, &key)?.is_some()
-                    || matches!(key.as_str(), "name" | "length" | "constructor")
-                    || Self::function_helper_method(&key).is_some(),
-            ),
+            Value::BuiltinFunction(function) => Ok(self
+                .builtin_function_custom_property(function, &key)?
+                .is_some()
+                || self.builtin_function_own_property(function, &key).is_some()
+                || key == "constructor"
+                || Self::function_helper_method(&key).is_some()),
+            Value::Closure(closure) => Ok(self.closure_has_own_property(closure, &key)?
+                || key == "constructor"
+                || Self::function_helper_method(&key).is_some()),
+            Value::HostFunction(capability) => Ok(self
+                .host_function_custom_property(&capability, &key)?
+                .is_some()
+                || matches!(key.as_str(), "name" | "length" | "constructor")
+                || Self::function_helper_method(&key).is_some()),
             Value::Undefined
             | Value::Null
             | Value::Bool(_)
@@ -1538,7 +1538,11 @@ impl Runtime {
                 {
                     let index = array_index_from_property_key(&key).expect("index already checked");
                     Ok(Value::String(
-                        value.chars().nth(index).expect("index already checked").to_string(),
+                        value
+                            .chars()
+                            .nth(index)
+                            .expect("index already checked")
+                            .to_string(),
                     ))
                 }
                 _ => Ok(Value::Undefined),
@@ -1576,7 +1580,9 @@ impl Runtime {
                 .ok_or_else(|| JsliteError::runtime("object missing"))?
                 .kind
             {
-                ObjectKind::BoundFunction(bound) => format!("bound {}", self.callable_name(&bound.target)?),
+                ObjectKind::BoundFunction(bound) => {
+                    format!("bound {}", self.callable_name(&bound.target)?)
+                }
                 _ => String::new(),
             },
             _ => String::new(),
@@ -1659,7 +1665,9 @@ impl Runtime {
                 "TypeError: custom properties on Set values are not supported",
             )),
             Value::Closure(closure) => self.set_closure_property(closure, key, value),
-            Value::BuiltinFunction(function) => self.set_builtin_function_property(function, key, value),
+            Value::BuiltinFunction(function) => {
+                self.set_builtin_function_property(function, key, value)
+            }
             Value::HostFunction(capability) => {
                 self.set_host_function_property(capability, key, value)
             }

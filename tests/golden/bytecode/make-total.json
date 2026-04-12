@@ -2,6 +2,8 @@
   "functions": [
     {
       "name": null,
+      "length": 2,
+      "display_source": "(left, right/**/) => {\n  const pair = [left, right];\n  return { total: pair[0] + pair[1] };\n}",
       "params": [
         {
           "Identifier": {
@@ -142,6 +144,8 @@
     },
     {
       "name": null,
+      "length": 0,
+      "display_source": "",
       "params": [],
       "rest": null,
       "code": [

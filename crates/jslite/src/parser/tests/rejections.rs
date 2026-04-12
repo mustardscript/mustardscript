@@ -70,10 +70,7 @@ fn rejects_var_declarations() {
 
 #[test]
 fn rejects_duplicate_lexical_declarations() {
-    assert_validation_reject(
-        "let value = 1; let value = 2;",
-        "already been declared",
-    );
+    assert_validation_reject("let value = 1; let value = 2;", "already been declared");
 }
 
 #[test]
