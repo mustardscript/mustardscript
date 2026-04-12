@@ -341,6 +341,7 @@ extensions are called out explicitly instead of being implied.
 - `Math.trunc`
 - `Math.sign`
 - `Math.log`
+- `Math.random`
 - `JSON.stringify`
 - `JSON.parse`
 - `console.log` when the host provides a `console.log` callback
@@ -418,6 +419,10 @@ extensions are called out explicitly instead of being implied.
 - `Date.now()` reads the host wall clock, `new Date(value)` currently supports
   zero arguments or exactly one numeric, string, or existing `Date` value, and
   `Date.prototype.getTime()` returns the stored epoch milliseconds
+- `Math.random()` draws host entropy and returns a finite `number` in the
+  half-open range `[0, 1)`; values are intentionally nondeterministic, are not
+  seedable or reproducible across runs or resumes, and are not a
+  cryptographically strong API contract
 - direct `Date()` calls, multi-argument `new Date(...)`, and returning `Date`
   values across the structured host boundary all fail closed
 - real `RegExp` instances support `source`, `flags`, `global`, `ignoreCase`,

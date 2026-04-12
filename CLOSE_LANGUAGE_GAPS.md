@@ -68,7 +68,7 @@ Audit sources:
 - [ ] `for await...of` is rejected during validation.
 - [ ] Array holes in literals are rejected during validation.
 - [ ] `instanceof` is rejected as an unsupported binary operator.
-- [ ] Math helper gaps remaining: `Math.random`.
+- [x] Math helper gaps remaining: `Math.random`.
 
 ### Missing but not in the original requested list
 
@@ -93,7 +93,7 @@ Audit sources:
 
 - [x] Add `Array.of`, `Array.prototype.concat`, `Array.prototype.at`, and
   `Math.log`.
-- [ ] Add `Math.random` with an explicit documented nondeterminism policy.
+- [x] Add `Math.random` with an explicit documented nondeterminism policy.
 - [x] Add `Object.assign` without widening the host boundary or prototype
   surface.
 - [x] Decide whether unsupported static `Object` helpers should fail with an

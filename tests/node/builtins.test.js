@@ -112,10 +112,11 @@ test('run supports callback-heavy array helpers and thisArg for supported callba
   assert.deepEqual(result, [[5, 7, 9], [1, 3], 3, 2, true, true, 11, 36]);
 });
 
-test('run supports Array.of, Array.prototype.concat, Array.prototype.at, and Math.log', async () => {
+test('run supports Array.of, Array.prototype.concat, Array.prototype.at, Math.log, and Math.random', async () => {
   const result = await runtime(`
     const single = Array.of(7);
     const merged = Array.of(1, 2, 3).concat([4, 5], 6);
+    const random = Math.random();
     ({
       singleLength: single.length,
       singleValue: single[0],
@@ -125,6 +126,9 @@ test('run supports Array.of, Array.prototype.concat, Array.prototype.at, and Mat
       atMissing: merged.at(99),
       logOne: Math.log(1),
       logBase2: Math.round(Math.log(8) / Math.log(2)),
+      randomIsNumber: typeof random === "number",
+      randomInRange: random >= 0 && random < 1,
+      randomIsFinite: random === random && random !== (1 / 0) && random !== (-1 / 0),
     });
   `).run();
 
@@ -137,6 +141,9 @@ test('run supports Array.of, Array.prototype.concat, Array.prototype.at, and Mat
     atMissing: undefined,
     logOne: 0,
     logBase2: 3,
+    randomIsNumber: true,
+    randomInRange: true,
+    randomIsFinite: true,
   });
 });
 

@@ -157,6 +157,7 @@ impl Runtime {
             BuiltinFunction::MathTrunc => self.call_math_trunc(args),
             BuiltinFunction::MathSign => self.call_math_sign(args),
             BuiltinFunction::MathLog => self.call_math_log(args),
+            BuiltinFunction::MathRandom => Ok(self.call_math_random()),
             BuiltinFunction::JsonStringify => self.call_json_stringify(args),
             BuiltinFunction::JsonParse => self.call_json_parse(args),
         }
@@ -285,6 +286,10 @@ impl Runtime {
                 (
                     "log".to_string(),
                     Value::BuiltinFunction(BuiltinFunction::MathLog),
+                ),
+                (
+                    "random".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathRandom),
                 ),
             ]),
             ObjectKind::Math,

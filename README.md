@@ -442,8 +442,7 @@ Current built-in helper support is intentionally conservative:
   closed, and only `g`, `i`, `m`, `s`, `u`, and `y` flags are supported
 - full `RegExp` parity and symbol-based match/replace protocol hooks remain
   unsupported
-- descriptor/prototype helpers and nondeterministic helpers such as
-  `Math.random` remain unsupported
+- descriptor/prototype helpers remain unsupported
 - proxy-backed host values, accessor-backed handler registries, and cyclic host
   values fail closed at the JavaScript wrapper boundary before guest execution
 
@@ -469,9 +468,12 @@ Current keyed-collection support is intentionally narrow:
 - `for...of` supports arrays, strings, `Map`, `Set`, and iterator objects
   produced by the supported helper surface
 
-No default clock, random source, filesystem, network, timers, or environment
-access should exist in the guest runtime. If the host wants those capabilities,
-it must provide them explicitly.
+The guest runtime intentionally remains narrow at the host boundary: it does
+not expose filesystem, network, timers, or environment access by default. The
+documented built-ins `Date.now()` and `Math.random()` are the current
+exceptions, both intentionally nondeterministic and not reproducible across
+runs or resumes. If the host wants broader capabilities, it must provide them
+explicitly.
 
 ## Structured Host Boundary
 

@@ -451,11 +451,12 @@ fn math_helpers_cover_numeric_transforms() {
 }
 
 #[test]
-fn array_of_concat_at_and_log_cover_supported_surface() {
+fn array_of_concat_at_log_and_random_cover_supported_surface() {
     let program = compile(
         r#"
         const single = Array.of(7);
         const merged = Array.of(1, 2, 3).concat([4, 5], 6);
+        const random = Math.random();
         [
           single.length,
           single[0],
@@ -465,6 +466,9 @@ fn array_of_concat_at_and_log_cover_supported_surface() {
           merged.at(99),
           Math.log(1),
           Math.round(Math.log(8) / Math.log(2)),
+          typeof random === "number",
+          random >= 0 && random < 1,
+          random === random,
         ];
         "#,
     )
@@ -489,6 +493,9 @@ fn array_of_concat_at_and_log_cover_supported_surface() {
             StructuredValue::Undefined,
             number(0.0),
             number(3.0),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
         ])
     );
 }

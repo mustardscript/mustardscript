@@ -146,8 +146,10 @@ missing:
 - Custom string properties on `Map` and `Set` are still unsupported.
 - `Math` is broader than older audits claimed. `abs`, `max`, `min`, `floor`,
   `ceil`, `round`, `pow`, `sqrt`, `trunc`, and `sign` exist.
-- `Math.random` and most of the wider `Math` surface are still
-  unsupported.
+- `Math.random` now exists but is intentionally narrow: it returns a finite
+  host-generated `number` in `[0, 1)`, makes no reproducibility guarantees,
+  and is not a cryptographic API contract.
+- Most of the wider `Math` surface is still unsupported.
 - `Date` is partial rather than absent. `Date.now()` plus
   `new Date(value).getTime()` work, but broader constructor overloads and full
   instance method parity are deferred.

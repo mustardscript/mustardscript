@@ -148,6 +148,7 @@ pub(super) enum BuiltinFunction {
     MathTrunc,
     MathSign,
     MathLog,
+    MathRandom,
     JsonStringify,
     JsonParse,
 }

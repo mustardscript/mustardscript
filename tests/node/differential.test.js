@@ -118,6 +118,7 @@ const DIFFERENTIAL_CASES = [
     name: 'additional Array and Math helpers',
     source: `
       const merged = Array.of(1, 2, 3).concat([4, 5], 6);
+      const random = Math.random();
       ({
         merged,
         atFront: merged.at(0),
@@ -125,6 +126,9 @@ const DIFFERENTIAL_CASES = [
         atMissing: merged.at(99),
         logOne: Math.log(1),
         logZero: Math.log(0),
+        randomIsNumber: typeof random === "number",
+        randomInRange: random >= 0 && random < 1,
+        randomIsFinite: random === random && random !== (1 / 0) && random !== (-1 / 0),
       });
     `,
   },

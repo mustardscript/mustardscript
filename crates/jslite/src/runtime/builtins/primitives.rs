@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use rand::random;
+
 use crate::runtime::conversions::structured_to_json;
 
 use super::*;
@@ -161,6 +163,10 @@ impl Runtime {
             self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
                 .ln(),
         ))
+    }
+
+    pub(crate) fn call_math_random(&self) -> Value {
+        Value::Number(random::<f64>())
     }
 
     pub(crate) fn call_json_stringify(&self, args: &[Value]) -> JsliteResult<Value> {

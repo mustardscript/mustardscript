@@ -23,6 +23,7 @@ serde_json.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true
 regex.workspace = true
+rand.workspace = true
 time.workspace = true
 
 [dev-dependencies]
