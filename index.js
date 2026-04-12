@@ -93,6 +93,58 @@ function isPlainStructuredObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
+function hasOwnProperty(value, key) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function defineEnumerableProperty(target, key, value) {
+  Object.defineProperty(target, key, {
+    value,
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+}
+
+function isAccessorDescriptor(descriptor) {
+  return hasOwnProperty(descriptor, 'get') || hasOwnProperty(descriptor, 'set');
+}
+
+function enumerateDataProperties(value) {
+  return Object.entries(Object.getOwnPropertyDescriptors(value)).filter(([, descriptor]) => {
+    if (!descriptor.enumerable) {
+      return false;
+    }
+    if (isAccessorDescriptor(descriptor)) {
+      throw new TypeError('host objects with accessors cannot cross the host boundary');
+    }
+    return true;
+  });
+}
+
+function encodeStructuredArray(value) {
+  const entries = new Array(value.length);
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (descriptor === undefined) {
+      throw new TypeError('host arrays with holes cannot cross the host boundary');
+    }
+    if (isAccessorDescriptor(descriptor)) {
+      throw new TypeError('host objects with accessors cannot cross the host boundary');
+    }
+    entries[index] = encodeStructured(descriptor.value);
+  }
+  return { Array: entries };
+}
+
+function encodeStructuredObject(value) {
+  const object = {};
+  for (const [key, descriptor] of enumerateDataProperties(value)) {
+    defineEnumerableProperty(object, key, encodeStructured(descriptor.value));
+  }
+  return { Object: object };
+}
+
 function encodeStructured(value) {
   if (value === undefined) {
     return 'Undefined';
@@ -110,7 +162,7 @@ function encodeStructured(value) {
     return { String: value };
   }
   if (Array.isArray(value)) {
-    return { Array: value.map(encodeStructured) };
+    return encodeStructuredArray(value);
   }
   if (typeof value === 'object') {
     if (!isPlainStructuredObject(value)) {
@@ -118,11 +170,7 @@ function encodeStructured(value) {
         'Unsupported host value: only plain objects and arrays can cross the host boundary',
       );
     }
-    const object = {};
-    for (const [key, entry] of Object.entries(value)) {
-      object[key] = encodeStructured(entry);
-    }
-    return { Object: object };
+    return encodeStructuredObject(value);
   }
   throw new TypeError('Unsupported host value');
 }
@@ -134,13 +182,13 @@ function decodeStructured(value) {
   if (value === 'Null') {
     return null;
   }
-  if ('Bool' in value) {
+  if (value !== null && typeof value === 'object' && hasOwnProperty(value, 'Bool')) {
     return value.Bool;
   }
-  if ('String' in value) {
+  if (value !== null && typeof value === 'object' && hasOwnProperty(value, 'String')) {
     return value.String;
   }
-  if ('Number' in value) {
+  if (value !== null && typeof value === 'object' && hasOwnProperty(value, 'Number')) {
     const encoded = value.Number;
     if (encoded === 'NaN') {
       return NaN;
@@ -156,13 +204,13 @@ function decodeStructured(value) {
     }
     return encoded.Finite;
   }
-  if ('Array' in value) {
+  if (value !== null && typeof value === 'object' && hasOwnProperty(value, 'Array')) {
     return value.Array.map(decodeStructured);
   }
-  if ('Object' in value) {
+  if (value !== null && typeof value === 'object' && hasOwnProperty(value, 'Object')) {
     const object = {};
     for (const [key, entry] of Object.entries(value.Object)) {
-      object[key] = decodeStructured(entry);
+      defineEnumerableProperty(object, key, decodeStructured(entry));
     }
     return object;
   }
@@ -171,8 +219,8 @@ function decodeStructured(value) {
 
 function encodeStartOptions({ inputs = {}, limits = {}, signal, ...handlers } = {}) {
   const encodedInputs = {};
-  for (const [key, value] of Object.entries(inputs)) {
-    encodedInputs[key] = encodeStructured(value);
+  for (const [key, descriptor] of enumerateDataProperties(inputs)) {
+    defineEnumerableProperty(encodedInputs, key, encodeStructured(descriptor.value));
   }
   const hostHandlers = collectHostHandlers(handlers);
   const encodedLimits = {};
