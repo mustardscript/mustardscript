@@ -199,6 +199,36 @@ fn hostile_but_well_formed_requests_fail_closed() {
 fn resume_rejects_tampered_or_unauthenticated_snapshots() {
     let snapshot = encoded_snapshot();
 
+    let missing_limits = handle_request_line(
+        &serde_json::json!({
+            "method": "resume",
+            "id": 9,
+            "snapshot_base64": snapshot,
+            "policy": {
+                "capabilities": ["fetch_data"],
+                "snapshot_id": snapshot_id(&snapshot),
+                "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+                "snapshot_key_digest": snapshot_key_digest(),
+                "snapshot_token": snapshot_token(&snapshot),
+            },
+            "payload": {
+                "type": "value",
+                "value": { "Number": { "Finite": 1.0 } }
+            }
+        })
+        .to_string(),
+    )
+    .expect("request should yield a response")
+    .expect("response should exist");
+    let missing_limits = decode_response(&missing_limits);
+    assert!(!missing_limits["ok"].as_bool().unwrap_or(true));
+    assert!(
+        missing_limits["error"]
+            .as_str()
+            .expect("error should exist")
+            .contains("raw snapshot restore requires explicit limits")
+    );
+
     let unauthenticated = handle_request_line(
         &serde_json::json!({
             "method": "resume",

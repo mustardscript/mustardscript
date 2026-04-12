@@ -518,6 +518,37 @@ test('progress load works across processes when explicit policy and snapshotKey 
   assert.equal(child.stdout, '8');
 });
 
+test('progress load rejects explicit undefined limits during restore', () => {
+  const progress = new Jslite(`
+    const ready = fetch_data(1);
+    let total = 0;
+    for (let i = 0; i < 10000; i = i + 1) {
+      total = total + 1;
+    }
+    total;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
+    limits: {
+      instructionBudget: 5_000_000,
+    },
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  assert.throws(
+    () =>
+      Progress.load(progress.dump(), {
+        snapshotKey: SNAPSHOT_KEY,
+        capabilities: {
+          fetch_data() {},
+        },
+        limits: undefined,
+      }),
+    /Progress\.load\(\) options\.limits must be a plain object/,
+  );
+});
+
 test('progress load rejects tampered snapshots that switch capability bytes', () => {
   const progress = new Jslite(`
     const first = fetch_data(1);
@@ -633,6 +664,35 @@ test('progress load reapplies explicit host limits before resume', () => {
       error instanceof JsliteError &&
       error.kind === 'Limit' &&
       error.message.includes('instruction budget exhausted'),
+  );
+});
+
+test('raw native snapshot inspect and resume require explicit limits in restore policy', () => {
+  const native = loadNative();
+  const progress = new Jslite('const value = fetch_data(7); value * 2;').start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  const dumped = progress.dump();
+  const payload = JSON.stringify({ type: 'value', value: { Number: { Finite: 7 } } });
+  const missingLimitsPolicy = JSON.stringify({
+    capabilities: ['fetch_data'],
+    snapshot_id: dumped.snapshot_id,
+    snapshot_key_base64: SNAPSHOT_KEY.toString('base64'),
+    snapshot_key_digest: dumped.snapshot_key_digest,
+    snapshot_token: snapshotToken(dumped.snapshot, SNAPSHOT_KEY, dumped.snapshot_id),
+  });
+
+  assert.throws(
+    () => native.inspectSnapshot(dumped.snapshot, missingLimitsPolicy),
+    /raw snapshot restore requires explicit limits/,
+  );
+  assert.throws(
+    () => native.resumeProgram(dumped.snapshot, payload, missingLimitsPolicy),
+    /raw snapshot restore requires explicit limits/,
   );
 });
 

@@ -158,6 +158,11 @@ void consoleCallbacks;
 // @ts-expect-error symbols are not structured values
 runtime.run({ inputs: { bad: Symbol('nope') } });
 
+// @ts-expect-error ProgressLoadOptions must reassert explicit limits
+const invalidProgressLoadOptions: ProgressLoadOptions = {
+  snapshotKey: Buffer.from('snapshot-key'),
+};
+
 // @ts-expect-error executor input must be a structured input object
 executor.enqueue(Symbol('nope'));
 
@@ -165,3 +170,4 @@ executor.enqueue(Symbol('nope'));
 const invalidCapability: Capability = () => Symbol('nope');
 
 void invalidCapability;
+void invalidProgressLoadOptions;

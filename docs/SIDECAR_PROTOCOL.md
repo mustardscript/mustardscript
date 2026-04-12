@@ -70,16 +70,18 @@ Successful responses return either:
 }
 ```
 
-`payload.type` is either `value` or `error`.
+`payload.type` is `value`, `error`, or `cancelled`.
 `policy` is required. The host must reassert the allowed capability names and
 authoritative runtime limits before the sidecar will inspect or resume a loaded
-snapshot. `snapshot_id`, `snapshot_key_base64`, `snapshot_key_digest`, and
-`snapshot_token` are also required for loaded snapshots. The token is the
-lowercase hex HMAC-SHA256 of the detached `snapshot_id` under the
-caller-chosen snapshot key, and the sidecar recomputes `snapshot_id` from the
-raw `snapshot_base64` bytes before trusting the snapshot contents. Those fields
-bind resume to trusted detached dump metadata, but hosts still need ordinary
-integrity controls when snapshots are stored or transported.
+snapshot. The `limits` field must be present even when the host intentionally
+wants default limits and therefore sends `{}`. `snapshot_id`,
+`snapshot_key_base64`, `snapshot_key_digest`, and `snapshot_token` are also
+required for loaded snapshots. The token is the lowercase hex HMAC-SHA256 of
+the detached `snapshot_id` under the caller-chosen snapshot key, and the
+sidecar recomputes `snapshot_id` from the raw `snapshot_base64` bytes before
+trusting the snapshot contents. Those fields bind resume to trusted detached
+dump metadata, but hosts still need ordinary integrity controls when snapshots
+are stored or transported.
 
 ## Response Shape
 

@@ -770,7 +770,9 @@ with a particular host policy, input set, capability map, or runtime limit.
 dumped progress object stays inside the same Node process. If a progress blob is
 restored in a fresh process, the host must pass explicit `capabilities`,
 `limits`, and the original `snapshotKey` so the dumped token authenticates the
-snapshot bytes before any loaded capability metadata is trusted.
+snapshot bytes before any loaded capability metadata is trusted. `limits` must
+be present as an object, even when the host intentionally wants the default
+runtime limits and therefore passes `{}`.
 
 The common path should be easy. The advanced path should remain explicit.
 

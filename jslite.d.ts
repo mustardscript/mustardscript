@@ -44,7 +44,7 @@ export interface ResumeOptions {
 export interface ProgressLoadOptions {
   capabilities?: Record<string, Capability>;
   console?: ConsoleCallbacks;
-  limits?: RuntimeLimits;
+  limits: RuntimeLimits;
   snapshotKey?: SnapshotKey;
 }
 

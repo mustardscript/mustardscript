@@ -117,7 +117,8 @@ pub fn inspect_snapshot_bytes(
 ) -> Result<SnapshotInspection> {
     assert_authenticated_snapshot(snapshot_bytes, &policy)?;
     let mut snapshot = load_snapshot(snapshot_bytes)?;
-    inspect_loaded_snapshot(&mut snapshot, policy.into_snapshot_policy()).map_err(Into::into)
+    let snapshot_policy = policy.into_snapshot_policy()?;
+    inspect_loaded_snapshot(&mut snapshot, snapshot_policy).map_err(Into::into)
 }
 
 pub fn resume_program(
@@ -128,12 +129,13 @@ pub fn resume_program(
 ) -> Result<StepDto> {
     assert_authenticated_snapshot(snapshot_bytes, &policy)?;
     let snapshot = load_snapshot(snapshot_bytes)?;
+    let snapshot_policy = policy.into_snapshot_policy()?;
     let step = resume_with_options(
         snapshot,
         payload.into_resume_payload(),
         ResumeOptions {
             cancellation_token,
-            snapshot_policy: Some(policy.into_snapshot_policy()),
+            snapshot_policy: Some(snapshot_policy),
         },
     )?;
     encode_step(step)

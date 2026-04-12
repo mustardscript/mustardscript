@@ -55,15 +55,17 @@ objects instead of alias-expanding them during export.
 - Snapshots loaded from bytes must be rebound to explicit host policy before
   their capability metadata is trusted or resume is allowed to continue.
 - Raw native `inspectSnapshot(...)` / `resumeProgram(...)` flows also require a
-  `snapshot_id`, `snapshot_key_base64`, `snapshot_key_digest`, and matching
-  `snapshot_token` inside the snapshot policy JSON. The token is the
-  HMAC-SHA256 of the detached `snapshot_id` under the caller-chosen snapshot
-  key, and restore recomputes `snapshot_id` from the raw snapshot bytes before
-  inspection or resume. Those fields bind raw restore to trusted detached dump
-  metadata, but hosts still need ordinary integrity controls when storing or
-  transporting snapshots.
+  `limits` field plus `snapshot_id`, `snapshot_key_base64`,
+  `snapshot_key_digest`, and matching `snapshot_token` inside the snapshot
+  policy JSON. The token is the HMAC-SHA256 of the detached `snapshot_id`
+  under the caller-chosen snapshot key, and restore recomputes `snapshot_id`
+  from the raw snapshot bytes before inspection or resume. Those fields bind
+  raw restore to trusted detached dump metadata, but hosts still need ordinary
+  integrity controls when storing or transporting snapshots. Passing `{}` is
+  the explicit way to request default runtime limits during raw restore.
 - `resume()` accepts either a structured success value or a sanitized host
-  error payload.
+  error payload. Raw native and sidecar resume transport also accepts an
+  explicit `cancelled` payload shape for host-driven cancellation.
 - `Progress.cancel()` injects an explicit cooperative cancellation failure into
   a suspended execution instead of resuming it with a host value.
 - The Node wrapper accepts sync JavaScript capability functions and real
@@ -138,7 +140,9 @@ guest-only traceback with guest function names and source spans.
   cache. Fresh-process restores, or same-process restores after cache eviction,
   must pass explicit `capabilities`, `limits`, and `snapshotKey` so the host
   reasserts both authority and resource policy before dispatching on
-  `progress.capability` / `progress.args`.
+  `progress.capability` / `progress.args`. `limits` must be present as a plain
+  object even when the caller intentionally wants default limits and therefore
+  passes `{}`.
 - Hosts must not attempt to run nested guest execution on the same runtime
   state while another `run()`, `start()`, or `resume()` is active.
 

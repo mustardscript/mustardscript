@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use anyhow::{Result, anyhow};
 use jslite::{HostError, ResumePayload, RuntimeLimits, SnapshotPolicy, StructuredValue};
 use serde::{Deserialize, Serialize};
 
@@ -43,8 +44,7 @@ impl RuntimeLimitsDto {
 pub struct SnapshotPolicyDto {
     #[serde(default)]
     pub capabilities: Vec<String>,
-    #[serde(default)]
-    pub limits: RuntimeLimitsDto,
+    pub limits: Option<RuntimeLimitsDto>,
     #[serde(default)]
     pub snapshot_key_base64: Option<String>,
     #[serde(default)]
@@ -56,11 +56,14 @@ pub struct SnapshotPolicyDto {
 }
 
 impl SnapshotPolicyDto {
-    pub fn into_snapshot_policy(self) -> SnapshotPolicy {
-        SnapshotPolicy {
+    pub fn into_snapshot_policy(self) -> Result<SnapshotPolicy> {
+        let limits = self
+            .limits
+            .ok_or_else(|| anyhow!("raw snapshot restore requires explicit limits"))?;
+        Ok(SnapshotPolicy {
             capabilities: self.capabilities,
-            limits: self.limits.into_runtime_limits(),
-        }
+            limits: limits.into_runtime_limits(),
+        })
     }
 }
 
