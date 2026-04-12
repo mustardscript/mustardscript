@@ -1,4 +1,12 @@
+use std::collections::HashSet;
+
 use super::*;
+
+#[derive(Default)]
+struct StructuredTraversalState {
+    arrays: HashSet<ArrayKey>,
+    objects: HashSet<ObjectKey>,
+}
 
 impl Runtime {
     pub(super) fn apply_unary(&mut self, operator: UnaryOp, value: Value) -> JsliteResult<Value> {
@@ -329,22 +337,40 @@ impl Runtime {
     }
 
     pub(super) fn value_to_structured(&self, value: Value) -> JsliteResult<StructuredValue> {
+        let mut traversal = StructuredTraversalState::default();
+        self.value_to_structured_inner(value, &mut traversal)
+    }
+
+    fn value_to_structured_inner(
+        &self,
+        value: Value,
+        traversal: &mut StructuredTraversalState,
+    ) -> JsliteResult<StructuredValue> {
         Ok(match value {
             Value::Undefined => StructuredValue::Undefined,
             Value::Null => StructuredValue::Null,
             Value::Bool(value) => StructuredValue::Bool(value),
             Value::Number(value) => StructuredValue::Number(StructuredNumber::from_f64(value)),
             Value::String(value) => StructuredValue::String(value),
-            Value::Array(array) => StructuredValue::Array(
-                self.arrays
-                    .get(array)
-                    .ok_or_else(|| JsliteError::runtime("array missing"))?
-                    .elements
-                    .iter()
-                    .cloned()
-                    .map(|value| self.value_to_structured(value))
-                    .collect::<JsliteResult<Vec<_>>>()?,
-            ),
+            Value::Array(array) => {
+                if !traversal.arrays.insert(array) {
+                    return Err(structured_boundary_cycle_error());
+                }
+                let result = (|| {
+                    Ok(StructuredValue::Array(
+                        self.arrays
+                            .get(array)
+                            .ok_or_else(|| JsliteError::runtime("array missing"))?
+                            .elements
+                            .iter()
+                            .cloned()
+                            .map(|value| self.value_to_structured_inner(value, traversal))
+                            .collect::<JsliteResult<Vec<_>>>()?,
+                    ))
+                })();
+                traversal.arrays.remove(&array);
+                result?
+            }
             Value::Object(object) => {
                 let object_ref = self
                     .objects
@@ -355,15 +381,25 @@ impl Runtime {
                         "Date values cannot cross the structured host boundary",
                     ));
                 }
-                StructuredValue::Object(
-                    object_ref
-                        .properties
-                        .iter()
-                        .map(|(key, value)| {
-                            Ok((key.clone(), self.value_to_structured(value.clone())?))
-                        })
-                        .collect::<JsliteResult<IndexMap<_, _>>>()?,
-                )
+                if !traversal.objects.insert(object) {
+                    return Err(structured_boundary_cycle_error());
+                }
+                let result = (|| {
+                    Ok(StructuredValue::Object(
+                        object_ref
+                            .properties
+                            .iter()
+                            .map(|(key, value)| {
+                                Ok((
+                                    key.clone(),
+                                    self.value_to_structured_inner(value.clone(), traversal)?,
+                                ))
+                            })
+                            .collect::<JsliteResult<IndexMap<_, _>>>()?,
+                    ))
+                })();
+                traversal.objects.remove(&object);
+                result?
             }
             Value::Map(_) | Value::Set(_) => {
                 return Err(JsliteError::runtime(
@@ -436,4 +472,8 @@ pub(super) fn structured_to_json(value: StructuredValue) -> JsliteResult<serde_j
                 .collect::<JsliteResult<serde_json::Map<_, _>>>()?,
         ),
     })
+}
+
+fn structured_boundary_cycle_error() -> JsliteError {
+    JsliteError::runtime("cyclic values cannot cross the structured host boundary")
 }
