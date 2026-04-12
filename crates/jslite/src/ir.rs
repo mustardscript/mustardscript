@@ -182,6 +182,8 @@ pub enum PropertyName {
 pub struct FunctionExpr {
     pub span: SourceSpan,
     pub name: Option<String>,
+    pub length: usize,
+    pub display_source: String,
     pub params: Vec<Pattern>,
     pub rest: Option<Pattern>,
     pub param_init: Vec<Stmt>,

@@ -14,6 +14,8 @@ pub struct BytecodeProgram {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionPrototype {
     pub name: Option<String>,
+    pub length: usize,
+    pub display_source: String,
     pub params: Vec<Pattern>,
     pub rest: Option<Pattern>,
     pub code: Vec<Instruction>,

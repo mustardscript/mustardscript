@@ -863,7 +863,8 @@ impl Runtime {
     pub(super) fn construct(&mut self, callee: Value, args: &[Value]) -> JsliteResult<Value> {
         match callee {
             Value::BuiltinFunction(
-                BuiltinFunction::ArrayCtor
+                BuiltinFunction::FunctionCtor
+                | BuiltinFunction::ArrayCtor
                 | BuiltinFunction::DateCtor
                 | BuiltinFunction::ObjectCtor
                 | BuiltinFunction::MapCtor
@@ -881,6 +882,11 @@ impl Runtime {
                 | BuiltinFunction::IntlDateTimeFormatCtor
                 | BuiltinFunction::IntlNumberFormatCtor,
             ) => match callee {
+                Value::BuiltinFunction(BuiltinFunction::FunctionCtor) => Err(
+                    JsliteError::runtime(
+                        "TypeError: Function constructor is unavailable in the supported surface",
+                    ),
+                ),
                 Value::BuiltinFunction(BuiltinFunction::MapCtor) => self.construct_map(args),
                 Value::BuiltinFunction(BuiltinFunction::SetCtor) => self.construct_set(args),
                 Value::BuiltinFunction(BuiltinFunction::DateCtor) => self.construct_date(args),

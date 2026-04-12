@@ -12,6 +12,8 @@ mod serialization;
 fn test_function(code: Vec<Instruction>) -> FunctionPrototype {
     FunctionPrototype {
         name: None,
+        length: 0,
+        display_source: String::new(),
         params: Vec::new(),
         rest: None,
         code,

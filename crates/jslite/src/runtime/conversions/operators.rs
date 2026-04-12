@@ -171,6 +171,14 @@ impl Runtime {
     fn instanceof_supported_surface(&self, left: Value, right: Value) -> JsliteResult<bool> {
         match right {
             Value::BuiltinFunction(function) => match function {
+                BuiltinFunction::FunctionCtor => Ok(match left {
+                    Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => true,
+                    Value::Object(object) => self
+                        .objects
+                        .get(object)
+                        .is_some_and(|object| matches!(object.kind, ObjectKind::BoundFunction(_))),
+                    _ => false,
+                }),
                 BuiltinFunction::ArrayCtor => Ok(matches!(left, Value::Array(_))),
                 BuiltinFunction::ObjectCtor => Ok(matches!(
                     left,

@@ -83,6 +83,8 @@ impl Runtime {
             pending_host_calls: VecDeque::new(),
             suspended_host_call: None,
             builtin_prototypes: IndexMap::new(),
+            builtin_function_objects: IndexMap::new(),
+            host_function_objects: IndexMap::new(),
             snapshot_nonce: next_snapshot_nonce(),
             instruction_counter: 0,
             heap_bytes_used: 0,

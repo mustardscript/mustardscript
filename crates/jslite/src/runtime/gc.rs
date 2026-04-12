@@ -46,6 +46,12 @@ impl Runtime {
         for prototype in self.builtin_prototypes.values() {
             self.mark_value(&Value::Object(*prototype), &mut marks, &mut worklist);
         }
+        for object in self.builtin_function_objects.values() {
+            self.mark_value(&Value::Object(*object), &mut marks, &mut worklist);
+        }
+        for object in self.host_function_objects.values() {
+            self.mark_value(&Value::Object(*object), &mut marks, &mut worklist);
+        }
         if let Some(root_result) = &self.root_result {
             self.mark_value(root_result, &mut marks, &mut worklist);
         }

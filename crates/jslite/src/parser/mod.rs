@@ -106,4 +106,13 @@ impl<'a> Lowerer<'a> {
         self.internal_name_counter += 1;
         name
     }
+
+    fn source_snippet(&self, span: SourceSpan) -> String {
+        let start = span.start as usize;
+        let end = span.end as usize;
+        self._source
+            .get(start..end)
+            .unwrap_or_default()
+            .to_string()
+    }
 }

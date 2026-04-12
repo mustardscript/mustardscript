@@ -44,6 +44,7 @@ pub(super) enum Value {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub(super) enum BuiltinFunction {
+    FunctionCtor,
     FunctionCall,
     FunctionApply,
     FunctionBind,
@@ -180,7 +181,13 @@ pub(super) enum BuiltinFunction {
     StringSearch,
     StringMatch,
     StringMatchAll,
+    StringToString,
+    StringValueOf,
     BooleanCtor,
+    BooleanToString,
+    BooleanValueOf,
+    NumberToString,
+    NumberValueOf,
     MathAbs,
     MathMax,
     MathMin,
@@ -571,6 +578,10 @@ pub(super) struct Runtime {
     pub(super) suspended_host_call: Option<PendingHostCall>,
     #[serde(default)]
     pub(super) builtin_prototypes: IndexMap<BuiltinFunction, ObjectKey>,
+    #[serde(default)]
+    pub(super) builtin_function_objects: IndexMap<BuiltinFunction, ObjectKey>,
+    #[serde(default)]
+    pub(super) host_function_objects: IndexMap<String, ObjectKey>,
     pub(super) snapshot_nonce: u64,
     pub(super) instruction_counter: usize,
     #[serde(skip, default)]

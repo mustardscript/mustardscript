@@ -762,6 +762,97 @@ test('run exposes callable helper methods and boxed string wrapper methods on th
   });
 });
 
+test('run matches callable own-property ordering, stringification, inferred names, and primitive wrapper helpers', async () => {
+  const result = await runtime(`
+    function declared(alpha, beta = 1, gamma) {}
+    declared.beta = 1;
+    declared[10] = 2;
+    declared.alpha = 3;
+    declared[2] = 4;
+    const arrow = (value) => value;
+    const method = [].map;
+    const bound = declared.bind(null, 1);
+    const label = "two words";
+    const inferred = {
+      task: function () {},
+      arrowTask: () => {},
+      [label]: function () {},
+    };
+    Array.extra = 1;
+    ({
+      callable: {
+        declaredConstructor: declared.constructor.name,
+        declaredLength: declared.length,
+        declaredKeys: Object.keys(declared),
+        arrowConstructor: arrow.constructor.name,
+        methodConstructor: method.constructor.name,
+        boundConstructor: bound.constructor.name,
+        boundName: bound.name,
+        boundLength: bound.length,
+        boundOwnName: Object.hasOwn(bound, "name"),
+        boundOwnLength: Object.hasOwn(bound, "length"),
+        boundOwnPrototype: Object.hasOwn(bound, "prototype"),
+        boundOwnCall: Object.hasOwn(bound, "call"),
+        arrayOwnConstructor: Object.hasOwn(Array, "constructor"),
+        arrayConstructor: Array.constructor.name,
+        arrayKeys: Object.keys(Array),
+        inferredTask: inferred.task.name,
+        inferredArrow: inferred.arrowTask.name,
+        inferredComputed: inferred["two words"].name,
+        declaredString: String(declared),
+        arrayString: String(Array),
+        boundString: String(bound),
+      },
+      primitives: {
+        stringIndex: "ab"[0],
+        stringConstructor: "ab".constructor === String,
+        numberConstructor: (1).constructor === Number,
+        booleanConstructor: false.constructor === Boolean,
+        objectStringPadStart: Object("7").padStart(3, "0"),
+        newStringPadStart: new String("7").padStart(3, "0"),
+        newNumberToString: new Number(1).toString(),
+        newBooleanToString: new Boolean(false).toString(),
+      },
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    callable: {
+      declaredConstructor: 'Function',
+      declaredLength: 1,
+      declaredKeys: ['2', '10', 'beta', 'alpha'],
+      arrowConstructor: 'Function',
+      methodConstructor: 'Function',
+      boundConstructor: 'Function',
+      boundName: 'bound declared',
+      boundLength: 0,
+      boundOwnName: true,
+      boundOwnLength: true,
+      boundOwnPrototype: false,
+      boundOwnCall: false,
+      arrayOwnConstructor: false,
+      arrayConstructor: 'Function',
+      arrayKeys: ['extra'],
+      inferredTask: 'task',
+      inferredArrow: 'arrowTask',
+      inferredComputed: 'two words',
+      declaredString: 'function declared(alpha, beta = 1, gamma) {}',
+      arrayString: 'function Array() { [native code] }',
+      boundString: 'function () { [native code] }',
+    },
+    primitives: {
+      stringIndex: 'a',
+      stringConstructor: true,
+      numberConstructor: true,
+      booleanConstructor: true,
+      objectStringPadStart: '007',
+      newStringPadStart: '007',
+      newNumberToString: '1',
+      newBooleanToString: 'false',
+    },
+  });
+});
+
 test('run matches supported Array, Object, and primitive-wrapper constructor semantics', async () => {
   const result = await runtime(`
     const array = Array(3);

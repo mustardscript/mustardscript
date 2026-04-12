@@ -1,6 +1,26 @@
 use super::*;
 
 impl Runtime {
+    fn string_value_receiver(&self, value: Value, method: &str) -> JsliteResult<String> {
+        match value {
+            Value::String(value) => Ok(value),
+            Value::Object(object) => match &self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::StringObject(value) => Ok(value.clone()),
+                _ => Err(JsliteError::runtime(format!(
+                    "TypeError: String.prototype.{method} called on incompatible receiver",
+                ))),
+            },
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: String.prototype.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
     fn string_receiver(&self, value: Value, method: &str) -> JsliteResult<String> {
         match value {
             Value::String(value) => Ok(value),
@@ -116,6 +136,18 @@ impl Runtime {
     pub(crate) fn call_string_trim_end(&self, this_value: Value) -> JsliteResult<Value> {
         let value = self.string_receiver(this_value, "trimEnd")?;
         Ok(Value::String(value.trim_end().to_string()))
+    }
+
+    pub(crate) fn call_string_to_string(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::String(
+            self.string_value_receiver(this_value, "toString")?,
+        ))
+    }
+
+    pub(crate) fn call_string_value_of(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::String(
+            self.string_value_receiver(this_value, "valueOf")?,
+        ))
     }
 
     pub(crate) fn call_string_includes(

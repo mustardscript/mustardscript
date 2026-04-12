@@ -107,6 +107,46 @@ impl Write for JsonOutputWriter<'_, '_> {
 }
 
 impl Runtime {
+    fn number_receiver(&self, value: Value, method: &str) -> JsliteResult<f64> {
+        match value {
+            Value::Number(value) => Ok(value),
+            Value::Object(object) => match &self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::NumberObject(value) => Ok(*value),
+                _ => Err(JsliteError::runtime(format!(
+                    "TypeError: Number.prototype.{method} called on incompatible receiver",
+                ))),
+            },
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: Number.prototype.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
+    fn boolean_receiver(&self, value: Value, method: &str) -> JsliteResult<bool> {
+        match value {
+            Value::Bool(value) => Ok(value),
+            Value::Object(object) => match &self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::BooleanObject(value) => Ok(*value),
+                _ => Err(JsliteError::runtime(format!(
+                    "TypeError: Boolean.prototype.{method} called on incompatible receiver",
+                ))),
+            },
+            _ => Err(JsliteError::runtime(format!(
+                "TypeError: Boolean.prototype.{method} called on incompatible receiver",
+            ))),
+        }
+    }
+
     pub(crate) fn construct_date(&mut self, args: &[Value]) -> JsliteResult<Value> {
         if args.len() > 1 {
             return Err(JsliteError::runtime(
@@ -363,6 +403,26 @@ impl Runtime {
         Ok(Value::Bool(is_truthy(
             args.first().unwrap_or(&Value::Undefined),
         )))
+    }
+
+    pub(crate) fn call_number_to_string(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::String(
+            self.to_string(Value::Number(self.number_receiver(this_value, "toString")?))?,
+        ))
+    }
+
+    pub(crate) fn call_number_value_of(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::Number(self.number_receiver(this_value, "valueOf")?))
+    }
+
+    pub(crate) fn call_boolean_to_string(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::String(
+            self.to_string(Value::Bool(self.boolean_receiver(this_value, "toString")?))?,
+        ))
+    }
+
+    pub(crate) fn call_boolean_value_of(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::Bool(self.boolean_receiver(this_value, "valueOf")?))
     }
 
     pub(crate) fn construct_number(&mut self, args: &[Value]) -> JsliteResult<Value> {

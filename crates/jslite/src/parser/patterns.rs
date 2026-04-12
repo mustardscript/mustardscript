@@ -54,10 +54,21 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_function_params(
         &mut self,
         params: &FormalParameters<'a>,
-    ) -> Option<(Vec<Pattern>, Option<Pattern>, Vec<Stmt>)> {
+    ) -> Option<(Vec<Pattern>, Option<Pattern>, Vec<Stmt>, usize)> {
         let mut lowered = Vec::with_capacity(params.items.len());
         let mut param_init = Vec::new();
+        let mut function_length = 0usize;
+        let mut counted_default = false;
         for param in &params.items {
+            if !counted_default {
+                let has_default = param.initializer.is_some()
+                    || matches!(param.pattern, BindingPattern::AssignmentPattern(_));
+                if has_default {
+                    counted_default = true;
+                } else {
+                    function_length += 1;
+                }
+            }
             let temp_name = self.fresh_internal_name("param");
             lowered.push(Pattern::Identifier {
                 span: param.span.into(),
@@ -105,6 +116,6 @@ impl<'a> Lowerer<'a> {
         } else {
             None
         };
-        Some((lowered, rest, param_init))
+        Some((lowered, rest, param_init, function_length))
     }
 }

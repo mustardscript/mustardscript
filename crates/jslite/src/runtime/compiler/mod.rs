@@ -62,6 +62,8 @@ impl Compiler {
         let id = self.functions.len();
         self.functions.push(FunctionPrototype {
             name: None,
+            length: 0,
+            display_source: String::new(),
             params: Vec::new(),
             rest: None,
             code: context.code,
@@ -105,6 +107,8 @@ impl Compiler {
         let id = self.functions.len();
         self.functions.push(FunctionPrototype {
             name: function.name.clone(),
+            length: function.length,
+            display_source: function.display_source.clone(),
             params: function.params.clone(),
             rest: function.rest.clone(),
             code: context.code,

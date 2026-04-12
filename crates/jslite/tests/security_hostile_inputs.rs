@@ -28,6 +28,8 @@ fn assert_host_safe_message(message: &str) {
 fn simple_function(code: Vec<Instruction>) -> FunctionPrototype {
     FunctionPrototype {
         name: None,
+        length: 0,
+        display_source: String::new(),
         params: Vec::new(),
         rest: None,
         code,

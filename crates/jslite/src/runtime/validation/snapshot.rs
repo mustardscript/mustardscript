@@ -21,6 +21,7 @@ pub(in crate::runtime) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> Jsl
 
     validate_envs(runtime)?;
     validate_closures(runtime)?;
+    validate_builtin_function_objects(runtime)?;
     for frame in &runtime.frames {
         validate_frame(runtime, frame)?;
         walk::walk_frame_values(frame, &mut |value| validate_runtime_value(runtime, value))?;
@@ -87,6 +88,34 @@ fn validate_closures(runtime: &Runtime) -> JsliteResult<()> {
             return Err(snapshot_error(format!(
                 "closure {:?} references missing environment {:?}",
                 closure_key, closure.env
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_builtin_function_objects(runtime: &Runtime) -> JsliteResult<()> {
+    for (function, object) in &runtime.builtin_prototypes {
+        if runtime.objects.get(*object).is_none() {
+            return Err(snapshot_error(format!(
+                "builtin prototype {:?} references missing object {:?}",
+                function, object
+            )));
+        }
+    }
+    for (function, object) in &runtime.builtin_function_objects {
+        if runtime.objects.get(*object).is_none() {
+            return Err(snapshot_error(format!(
+                "builtin function object {:?} references missing object {:?}",
+                function, object
+            )));
+        }
+    }
+    for (capability, object) in &runtime.host_function_objects {
+        if runtime.objects.get(*object).is_none() {
+            return Err(snapshot_error(format!(
+                "host function object `{capability}` references missing object {:?}",
+                object
             )));
         }
     }

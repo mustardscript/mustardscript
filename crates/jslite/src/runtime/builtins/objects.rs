@@ -40,6 +40,7 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("closure missing"))?;
                 Ok(())
             }
+            Value::BuiltinFunction(_) | Value::HostFunction(_) => Ok(()),
             _ => Err(Self::object_helper_type_error()),
         }
     }
@@ -113,18 +114,26 @@ impl Runtime {
                 Ok(keys)
             }
             Value::Closure(closure) => {
-                let keys = self
-                    .closures
-                    .get(closure)
-                    .ok_or_else(|| JsliteError::runtime("closure missing"))?
-                    .properties
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<_>>();
+                let keys = ordered_own_property_keys(
+                    &self
+                        .closures
+                        .get(closure)
+                        .ok_or_else(|| JsliteError::runtime("closure missing"))?
+                        .properties,
+                );
                 self.charge_native_helper_work(keys.len())?;
                 Ok(keys)
             }
-            Value::BuiltinFunction(_) => Ok(Vec::new()),
+            Value::BuiltinFunction(function) => {
+                let keys = self.builtin_function_custom_keys(function)?;
+                self.charge_native_helper_work(keys.len())?;
+                Ok(keys)
+            }
+            Value::HostFunction(capability) => {
+                let keys = self.host_function_custom_keys(&capability)?;
+                self.charge_native_helper_work(keys.len())?;
+                Ok(keys)
+            }
             _ => Err(Self::object_helper_type_error()),
         }
     }
@@ -174,6 +183,12 @@ impl Runtime {
                 .and_then(|closure| closure.properties.get(key))
                 .cloned()
                 .ok_or_else(|| JsliteError::runtime("closure property missing")),
+            Value::BuiltinFunction(function) => self
+                .builtin_function_custom_property(function, key)?
+                .ok_or_else(|| JsliteError::runtime("builtin function property missing")),
+            Value::HostFunction(capability) => self
+                .host_function_custom_property(&capability, key)?
+                .ok_or_else(|| JsliteError::runtime("host function property missing")),
             _ => Err(Self::object_helper_type_error()),
         }
     }
@@ -360,6 +375,7 @@ impl Runtime {
                     || matches!(&object.kind, ObjectKind::StringObject(value)
                         if array_index_from_property_key(&key)
                             .is_some_and(|index| value.chars().nth(index).is_some()))
+                    || matches!(&object.kind, ObjectKind::BoundFunction(_) if matches!(key.as_str(), "name" | "length"))
             }
             Value::Array(array) => {
                 let array = self
@@ -373,7 +389,12 @@ impl Runtime {
             }
             Value::Closure(closure) => self.closure_has_own_property(closure, &key)?,
             Value::BuiltinFunction(function) => {
-                self.builtin_function_own_property(function, &key).is_some()
+                self.builtin_function_custom_property(function, &key)?.is_some()
+                    || self.builtin_function_own_property(function, &key).is_some()
+            }
+            Value::HostFunction(capability) => {
+                self.host_function_custom_property(&capability, &key)?.is_some()
+                    || matches!(key.as_str(), "name" | "length")
             }
             _ => return Err(Self::object_helper_type_error()),
         };

@@ -124,15 +124,15 @@ impl Runtime {
                 }
                 ObjectKind::StringObject(value) => value.clone(),
                 ObjectKind::BooleanObject(value) => value.to_string(),
-                ObjectKind::BoundFunction(_) => "[Function]".to_string(),
+                ObjectKind::BoundFunction(_) => self.callable_display_string(&Value::Object(object))?,
                 _ => self
                     .error_summary(object)?
                     .unwrap_or_else(|| "[object Object]".to_string()),
             },
             Value::Iterator(_) => "[object Iterator]".to_string(),
             Value::Promise(_) => "[object Promise]".to_string(),
-            Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
-                "[Function]".to_string()
+            callable @ (Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_)) => {
+                self.callable_display_string(&callable)?
             }
         })
     }
@@ -167,5 +167,49 @@ impl Runtime {
                 "value is not destructurable as an array",
             )),
         }
+    }
+
+    fn callable_display_string(&self, value: &Value) -> JsliteResult<String> {
+        Ok(match value {
+            Value::Closure(closure) => {
+                let closure = self
+                    .closures
+                    .get(*closure)
+                    .ok_or_else(|| JsliteError::runtime("closure missing"))?;
+                let function = self
+                    .program
+                    .functions
+                    .get(closure.function_id)
+                    .ok_or_else(|| JsliteError::runtime("function not found"))?;
+                if function.display_source.is_empty() {
+                    let name = self.callable_name(value)?;
+                    if name.is_empty() {
+                        "function () { [jslite code] }".to_string()
+                    } else {
+                        format!("function {name}() {{ [jslite code] }}")
+                    }
+                } else {
+                    function.display_source.clone()
+                }
+            }
+            Value::BuiltinFunction(function) => {
+                format!(
+                    "function {}() {{ [native code] }}",
+                    self.callable_name(&Value::BuiltinFunction(*function))?
+                )
+            }
+            Value::HostFunction(_) => "function () { [host code] }".to_string(),
+            Value::Object(object) => {
+                let object = self
+                    .objects
+                    .get(*object)
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?;
+                match object.kind {
+                    ObjectKind::BoundFunction(_) => "function () { [native code] }".to_string(),
+                    _ => "[object Object]".to_string(),
+                }
+            }
+            _ => self.to_string(value.clone())?,
+        })
     }
 }

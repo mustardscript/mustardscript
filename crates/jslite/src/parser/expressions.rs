@@ -20,7 +20,7 @@ impl<'a> Lowerer<'a> {
             );
             return None;
         };
-        let (params, rest, param_init) = self.lower_function_params(&function.params)?;
+        let (params, rest, param_init, length) = self.lower_function_params(&function.params)?;
         self.push_scope();
         for statement in &param_init {
             if let Stmt::VariableDecl { declarators, .. } = statement {
@@ -39,6 +39,8 @@ impl<'a> Lowerer<'a> {
         Some(FunctionExpr {
             span: function.span.into(),
             name: function.id.as_ref().map(|id| id.name.as_str().to_string()),
+            length,
+            display_source: self.source_snippet(function.span.into()),
             params,
             rest,
             param_init,
@@ -52,7 +54,7 @@ impl<'a> Lowerer<'a> {
         &mut self,
         function: &ArrowFunctionExpression<'a>,
     ) -> Option<FunctionExpr> {
-        let (params, rest, param_init) = self.lower_function_params(&function.params)?;
+        let (params, rest, param_init, length) = self.lower_function_params(&function.params)?;
         self.push_scope();
         for statement in &param_init {
             if let Stmt::VariableDecl { declarators, .. } = statement {
@@ -91,6 +93,8 @@ impl<'a> Lowerer<'a> {
         Some(FunctionExpr {
             span: function.span.into(),
             name: None,
+            length,
+            display_source: self.source_snippet(function.span.into()),
             params,
             rest,
             param_init,
@@ -150,9 +154,7 @@ impl<'a> Lowerer<'a> {
 
         let key = self.lower_object_property_key(&property.key, property.computed)?;
         let mut value = self.lower_expr(&property.value)?;
-        if property.method
-            && let (Some(name), Expr::Function(function)) =
-                (Self::object_method_name(&key), &mut value)
+        if let (Some(name), Expr::Function(function)) = (Self::object_method_name(&key), &mut value)
             && function.name.is_none()
         {
             function.name = Some(name);

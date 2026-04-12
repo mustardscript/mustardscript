@@ -36,7 +36,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn infer_closure_name_from_binding(&mut self, value: &Value, name: &str) -> JsliteResult<()> {
+    pub(super) fn infer_closure_name(&mut self, value: &Value, name: &str) -> JsliteResult<()> {
         let Value::Closure(closure) = value else {
             return Ok(());
         };
@@ -140,7 +140,7 @@ impl Runtime {
         name: &str,
         value: Value,
     ) -> JsliteResult<()> {
-        self.infer_closure_name_from_binding(&value, name)?;
+        self.infer_closure_name(&value, name)?;
         let Some(cell_key) = self.find_cell(env, name) else {
             if self.global_property_value(name).is_some() {
                 return self.set_global_property_value(name.to_string(), value);
@@ -190,7 +190,7 @@ impl Runtime {
         name: &str,
         value: Value,
     ) -> JsliteResult<()> {
-        self.infer_closure_name_from_binding(&value, name)?;
+        self.infer_closure_name(&value, name)?;
         let cell_key = self
             .envs
             .get(env)
@@ -262,6 +262,8 @@ impl Runtime {
                     let bytecode = BytecodeProgram {
                         functions: vec![FunctionPrototype {
                             name: None,
+                            length: 0,
+                            display_source: String::new(),
                             params: Vec::new(),
                             rest: None,
                             code: Vec::new(),

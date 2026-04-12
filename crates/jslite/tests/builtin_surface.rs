@@ -310,6 +310,131 @@ fn string_helpers_cover_trimming_queries_and_case_changes() {
 }
 
 #[test]
+fn callable_metadata_and_primitive_wrappers_cover_supported_surface() {
+    let program = compile(
+        r#"
+        function declared(alpha, beta = 1, gamma) {}
+        declared.beta = 1;
+        declared[10] = 2;
+        declared.alpha = 3;
+        declared[2] = 4;
+        const arrow = (value) => value;
+        const method = [].map;
+        const bound = declared.bind(null, 1);
+        const label = "two words";
+        const inferred = {
+          task: function () {},
+          arrowTask: () => {},
+          [label]: function () {},
+        };
+        Array.extra = 1;
+        ({
+          callable: {
+            declaredConstructor: declared.constructor.name,
+            declaredLength: declared.length,
+            declaredKeys: Object.keys(declared),
+            arrowConstructor: arrow.constructor.name,
+            methodConstructor: method.constructor.name,
+            boundConstructor: bound.constructor.name,
+            boundName: bound.name,
+            boundLength: bound.length,
+            boundOwnName: Object.hasOwn(bound, "name"),
+            boundOwnLength: Object.hasOwn(bound, "length"),
+            boundOwnPrototype: Object.hasOwn(bound, "prototype"),
+            boundOwnCall: Object.hasOwn(bound, "call"),
+            arrayOwnConstructor: Object.hasOwn(Array, "constructor"),
+            arrayConstructor: Array.constructor.name,
+            arrayKeys: Object.keys(Array),
+            inferredTask: inferred.task.name,
+            inferredArrow: inferred.arrowTask.name,
+            inferredComputed: inferred["two words"].name,
+            declaredString: String(declared),
+            arrayString: String(Array),
+            boundString: String(bound),
+          },
+          primitives: {
+            stringIndex: "ab"[0],
+            stringConstructor: "ab".constructor === String,
+            numberConstructor: (1).constructor === Number,
+            booleanConstructor: false.constructor === Boolean,
+            objectStringPadStart: Object("7").padStart(3, "0"),
+            newStringPadStart: new String("7").padStart(3, "0"),
+            newNumberToString: new Number(1).toString(),
+            newBooleanToString: new Boolean(false).toString(),
+          },
+        });
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Object(IndexMap::from([
+            (
+                "callable".to_string(),
+                StructuredValue::Object(IndexMap::from([
+                    ("declaredConstructor".to_string(), "Function".into()),
+                    ("declaredLength".to_string(), number(1.0)),
+                    (
+                        "declaredKeys".to_string(),
+                        StructuredValue::Array(vec![
+                            "2".into(),
+                            "10".into(),
+                            "beta".into(),
+                            "alpha".into(),
+                        ]),
+                    ),
+                    ("arrowConstructor".to_string(), "Function".into()),
+                    ("methodConstructor".to_string(), "Function".into()),
+                    ("boundConstructor".to_string(), "Function".into()),
+                    ("boundName".to_string(), "bound declared".into()),
+                    ("boundLength".to_string(), number(0.0)),
+                    ("boundOwnName".to_string(), StructuredValue::Bool(true)),
+                    ("boundOwnLength".to_string(), StructuredValue::Bool(true)),
+                    ("boundOwnPrototype".to_string(), StructuredValue::Bool(false)),
+                    ("boundOwnCall".to_string(), StructuredValue::Bool(false)),
+                    ("arrayOwnConstructor".to_string(), StructuredValue::Bool(false)),
+                    ("arrayConstructor".to_string(), "Function".into()),
+                    (
+                        "arrayKeys".to_string(),
+                        StructuredValue::Array(vec!["extra".into()]),
+                    ),
+                    ("inferredTask".to_string(), "task".into()),
+                    ("inferredArrow".to_string(), "arrowTask".into()),
+                    ("inferredComputed".to_string(), "two words".into()),
+                    (
+                        "declaredString".to_string(),
+                        "function declared(alpha, beta = 1, gamma) {}".into(),
+                    ),
+                    (
+                        "arrayString".to_string(),
+                        "function Array() { [native code] }".into(),
+                    ),
+                    (
+                        "boundString".to_string(),
+                        "function () { [native code] }".into(),
+                    ),
+                ])),
+            ),
+            (
+                "primitives".to_string(),
+                StructuredValue::Object(IndexMap::from([
+                    ("stringIndex".to_string(), "a".into()),
+                    ("stringConstructor".to_string(), StructuredValue::Bool(true)),
+                    ("numberConstructor".to_string(), StructuredValue::Bool(true)),
+                    ("booleanConstructor".to_string(), StructuredValue::Bool(true)),
+                    ("objectStringPadStart".to_string(), "007".into()),
+                    ("newStringPadStart".to_string(), "007".into()),
+                    ("newNumberToString".to_string(), "1".into()),
+                    ("newBooleanToString".to_string(), "false".into()),
+                ])),
+            ),
+        ]))
+    );
+}
+
+#[test]
 fn regex_helpers_cover_patterns_callbacks_and_state() {
     let program = compile(
         r#"

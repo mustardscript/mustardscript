@@ -492,10 +492,15 @@ extensions are called out explicitly instead of being implied.
   documented helper enumeration order, and skips `null` / `undefined` sources
 - `Object(value)` preserves existing supported object-like guest values and
   boxes primitive strings, numbers, and booleans into conservative wrapper
-  objects
-- supported guest functions and built-in callables expose `name`, `length`,
-  `constructor`, and the usual constructible-function `.prototype` property;
-  guest functions also support custom enumerable string-keyed properties
+  objects; boxed strings expose the documented string helper surface, while
+  boxed numbers and booleans expose `toString()` / `valueOf()`
+- supported guest functions, bound functions, and built-in callables expose
+  own `name` / `length`, inherit `constructor` plus `call` / `apply` / `bind`
+  from the shared callable surface, and expose the usual
+  constructible-function `.prototype` property where applicable; guest
+  functions and supported constructor values also support custom enumerable
+  string-keyed properties, and anonymous guest functions infer names from
+  supported binding and property-key writes
 - object literal spread uses the same plain-object and array source surface as
   `Object.assign`, always targets a fresh plain object, skips `null` /
   `undefined` sources, and throws a runtime `TypeError` for other source
@@ -523,8 +528,12 @@ extensions are called out explicitly instead of being implied.
   fail closed for synchronous host suspensions
 - `String.prototype.split`, `replace`, `replaceAll`, `search`, and `match`
   accept string-coercible patterns and real `RegExp` instances
+- primitive strings expose `length`, numeric index reads, `constructor`,
+  `toString()`, and `valueOf()` in the conservative helper surface; primitive
+  numbers and booleans expose `constructor`, `toString()`, and `valueOf()`
 - `String.prototype.trimStart`, `trimEnd`, `padStart`, and `padEnd` are
-  supported on primitive strings in the conservative helper surface
+  supported on primitive strings and boxed `String` wrappers in the
+  conservative helper surface
 - `String.prototype.indexOf`, `lastIndexOf`, `charAt`, `at`, `repeat`, and
   `concat` are available on primitive strings in the conservative helper surface
 - `String.prototype.matchAll` returns a guest iterator over match-result arrays;

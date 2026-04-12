@@ -8,6 +8,9 @@ impl Runtime {
         args: &[Value],
     ) -> JsliteResult<Value> {
         match function {
+            BuiltinFunction::FunctionCtor => Err(JsliteError::runtime(
+                "TypeError: Function constructor is unavailable in the supported surface",
+            )),
             BuiltinFunction::FunctionCall
             | BuiltinFunction::FunctionApply
             | BuiltinFunction::FunctionBind => Err(JsliteError::runtime(
@@ -193,7 +196,13 @@ impl Runtime {
             BuiltinFunction::StringSearch => self.call_string_search(this_value, args),
             BuiltinFunction::StringMatch => self.call_string_match(this_value, args),
             BuiltinFunction::StringMatchAll => self.call_string_match_all(this_value, args),
+            BuiltinFunction::StringToString => self.call_string_to_string(this_value),
+            BuiltinFunction::StringValueOf => self.call_string_value_of(this_value),
             BuiltinFunction::BooleanCtor => self.call_boolean_ctor(args),
+            BuiltinFunction::BooleanToString => self.call_boolean_to_string(this_value),
+            BuiltinFunction::BooleanValueOf => self.call_boolean_value_of(this_value),
+            BuiltinFunction::NumberToString => self.call_number_to_string(this_value),
+            BuiltinFunction::NumberValueOf => self.call_number_value_of(this_value),
             BuiltinFunction::MathAbs => self.call_math_abs(args),
             BuiltinFunction::MathMax => self.call_math_max(args),
             BuiltinFunction::MathMin => self.call_math_min(args),
@@ -222,6 +231,7 @@ impl Runtime {
     pub(crate) fn install_builtins(&mut self) -> JsliteResult<()> {
         let global_object = self.insert_object(IndexMap::new(), ObjectKind::Global)?;
         for function in [
+            BuiltinFunction::FunctionCtor,
             BuiltinFunction::ObjectCtor,
             BuiltinFunction::MapCtor,
             BuiltinFunction::SetCtor,
