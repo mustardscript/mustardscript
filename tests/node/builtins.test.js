@@ -874,6 +874,91 @@ test('run keeps Array.prototype.reduce callback this undefined when an initial a
   });
 });
 
+test('run updates array length writes and callback traversal semantics', async () => {
+  const result = await runtime(`
+    const someValues = [0, 1, 2];
+    const someVisits = [];
+    someValues.some((value, index, array) => {
+      someVisits.push([index, value, index in array]);
+      if (index === 0) {
+        array.length = 1;
+      }
+      return false;
+    });
+
+    const reduced = [1, 2, 3];
+    const reduceVisits = [];
+    const reduceResult = reduced.reduce((acc, value, index, array) => {
+      reduceVisits.push(index);
+      if (index === 0) {
+        array.length = 1;
+      }
+      return acc + value;
+    }, 0);
+
+    const reducedRight = [1, 2, 3];
+    const reduceRightVisits = [];
+    const reduceRightResult = reducedRight.reduceRight((acc, value, index, array) => {
+      reduceRightVisits.push(index);
+      if (index === 2) {
+        array.length = 0;
+      }
+      return acc + value;
+    }, 0);
+
+    const sparse = [0, , 2];
+    const findLastVisits = [];
+    const findLastIndex = sparse.findLastIndex((value, index, array) => {
+      findLastVisits.push([index, value, index in array]);
+      return index === 1;
+    });
+
+    const invalidLength = (() => {
+      try {
+        const values = [1];
+        values.length = 1.5;
+        return 'unreachable';
+      } catch (error) {
+        return [error.name, error.message];
+      }
+    })();
+
+    ({
+      someVisits,
+      someKeys: Object.keys(someValues),
+      someLength: someValues.length,
+      reduceResult,
+      reduceVisits,
+      reduceKeys: Object.keys(reduced),
+      reduceLength: reduced.length,
+      reduceRightResult,
+      reduceRightVisits,
+      reduceRightKeys: Object.keys(reducedRight),
+      reduceRightLength: reducedRight.length,
+      findLastIndex,
+      findLastVisits,
+      invalidLength,
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    someVisits: [[0, 0, true]],
+    someKeys: ['0'],
+    someLength: 1,
+    reduceResult: 1,
+    reduceVisits: [0],
+    reduceKeys: ['0'],
+    reduceLength: 1,
+    reduceRightResult: 3,
+    reduceRightVisits: [2],
+    reduceRightKeys: [],
+    reduceRightLength: 0,
+    findLastIndex: 1,
+    findLastVisits: [[2, 2, true], [1, undefined, false]],
+    invalidLength: ['RangeError', 'Invalid array length'],
+  });
+});
+
 test('run truncates Date timestamps to integer milliseconds', async () => {
   const expectedParsed = Date.parse('2026-04-10T14:00:00.123456789Z');
   const result = await runtime(`

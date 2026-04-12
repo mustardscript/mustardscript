@@ -136,6 +136,112 @@ fn array_find_helpers_visit_sparse_holes_as_undefined() {
 }
 
 #[test]
+fn array_length_updates_change_helper_traversal_and_find_last_visits_holes() {
+    let program = compile(
+        r#"
+        const someValues = [0, 1, 2];
+        const someVisits = [];
+        someValues.some((value, index, array) => {
+          someVisits[someVisits.length] = [index, value, index in array];
+          if (index === 0) {
+            array.length = 1;
+          }
+          return false;
+        });
+
+        const reduced = [1, 2, 3];
+        const reduceVisits = [];
+        const reduceResult = reduced.reduce((acc, value, index, array) => {
+          reduceVisits[reduceVisits.length] = index;
+          if (index === 0) {
+            array.length = 1;
+          }
+          return acc + value;
+        }, 0);
+
+        const reducedRight = [1, 2, 3];
+        const reduceRightVisits = [];
+        const reduceRightResult = reducedRight.reduceRight((acc, value, index, array) => {
+          reduceRightVisits[reduceRightVisits.length] = index;
+          if (index === 2) {
+            array.length = 0;
+          }
+          return acc + value;
+        }, 0);
+
+        const sparse = [0, , 2];
+        const findLastVisits = [];
+        const findLastIndex = sparse.findLastIndex((value, index, array) => {
+          findLastVisits[findLastVisits.length] = [index, value, index in array];
+          return index === 1;
+        });
+
+        const invalidLength = (() => {
+          try {
+            const values = [1];
+            values.length = 1.5;
+            return "unreachable";
+          } catch (error) {
+            return [error.name, error.message];
+          }
+        })();
+
+        [
+          someVisits,
+          Object.keys(someValues),
+          someValues.length,
+          reduceResult,
+          reduceVisits,
+          Object.keys(reduced),
+          reduced.length,
+          reduceRightResult,
+          reduceRightVisits,
+          Object.keys(reducedRight),
+          reducedRight.length,
+          findLastIndex,
+          findLastVisits,
+          invalidLength,
+        ];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![StructuredValue::Array(vec![
+                number(0.0),
+                number(0.0),
+                StructuredValue::Bool(true),
+            ])]),
+            StructuredValue::Array(vec!["0".into()]),
+            number(1.0),
+            number(1.0),
+            StructuredValue::Array(vec![number(0.0)]),
+            StructuredValue::Array(vec!["0".into()]),
+            number(1.0),
+            number(3.0),
+            StructuredValue::Array(vec![number(2.0)]),
+            StructuredValue::Array(vec![]),
+            number(0.0),
+            number(1.0),
+            StructuredValue::Array(vec![
+                StructuredValue::Array(
+                    vec![number(2.0), number(2.0), StructuredValue::Bool(true),]
+                ),
+                StructuredValue::Array(vec![
+                    number(1.0),
+                    StructuredValue::Undefined,
+                    StructuredValue::Bool(false),
+                ]),
+            ]),
+            StructuredValue::Array(vec!["RangeError".into(), "Invalid array length".into()]),
+        ])
+    );
+}
+
+#[test]
 fn array_callback_helpers_fail_closed_for_invalid_callbacks_and_empty_reduce() {
     let map_error = compile("([1]).map(1);").expect("source should compile");
     let error =

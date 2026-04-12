@@ -1414,6 +1414,10 @@ impl Runtime {
                 Ok(())
             }
             Value::Array(array) => {
+                if key == "length" {
+                    self.set_array_length(array, value)?;
+                    return Ok(());
+                }
                 {
                     let array_ref = self
                         .arrays

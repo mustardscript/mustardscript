@@ -40,6 +40,32 @@ impl Runtime {
         }
     }
 
+    pub(crate) fn set_array_length(&mut self, array: ArrayKey, value: Value) -> JsliteResult<()> {
+        let requested = self.to_number(value)?;
+        if !requested.is_finite()
+            || requested < 0.0
+            || (requested.fract() != 0.0 && requested != 0.0)
+            || requested > u32::MAX as f64
+        {
+            return Err(JsliteError::runtime("RangeError: Invalid array length"));
+        }
+
+        let new_length = if requested == 0.0 {
+            0
+        } else {
+            requested as usize
+        };
+
+        let array_ref = self
+            .arrays
+            .get_mut(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?;
+        array_ref.elements.resize(new_length, None);
+        array_ref.properties.shift_remove("length");
+        self.refresh_array_accounting(array)?;
+        Ok(())
+    }
+
     pub(crate) fn call_array_of(&mut self, args: &[Value]) -> JsliteResult<Value> {
         Ok(Value::Array(
             self.insert_array(args.to_vec(), IndexMap::new())?,
@@ -1122,9 +1148,6 @@ impl Runtime {
             .len();
         for index in (0..length).rev() {
             self.charge_native_helper_work(1)?;
-            if !self.array_has_index(array, index)? {
-                continue;
-            }
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -1162,9 +1185,6 @@ impl Runtime {
             .len();
         for index in (0..length).rev() {
             self.charge_native_helper_work(1)?;
-            if !self.array_has_index(array, index)? {
-                continue;
-            }
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],

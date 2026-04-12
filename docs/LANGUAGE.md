@@ -446,7 +446,8 @@ extensions are called out explicitly instead of being implied.
   supported iterator objects); array holes iterate as `undefined`, and other
   inputs fail closed with `TypeError: value is not iterable in the supported surface`
 - array callback helpers snapshot the starting array length, read element values
-  live by index, and pass `(value, index, array)` plus an optional `thisArg`
+  live by index, honor live `array.length` truncation for later visits, and
+  pass `(value, index, array)` plus an optional `thisArg`
 - array callback helpers currently support guest callbacks, built-in callbacks,
   and promise-valued callback results reached from an async guest boundary
 - synchronous host suspensions from array callback helpers fail closed with a
@@ -477,8 +478,8 @@ extensions are called out explicitly instead of being implied.
 - `Array.prototype.reduceRight` follows the same callback and empty-array
   failure rules as `reduce`, but traverses present elements from right to left
 - `Array.prototype.findLast` and `findLastIndex` follow the same callback
-  rules as `find` / `findIndex`, but traverse present elements from right to
-  left
+  rules as `find` / `findIndex`, including hole visits as `undefined`, but
+  traverse from right to left
 - `Array.prototype.flat` defaults to depth `1` when the argument is omitted or
   `undefined`, truncates other depth values to integers, and flattens only
   actual guest arrays
