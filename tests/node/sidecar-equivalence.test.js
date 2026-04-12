@@ -14,7 +14,7 @@ const {
   encodeResumePayloadError,
   encodeResumePayloadValue,
 } = require('../../lib/structured.js');
-const { snapshotToken } = require('../../lib/policy.js');
+const { snapshotIdentity, snapshotKeyDigest, snapshotToken } = require('../../lib/policy.js');
 const { normalizeValue } = require('./runtime-oracle.js');
 
 const REPO_ROOT = path.join(__dirname, '../..');
@@ -241,7 +241,9 @@ async function runSidecar(entry) {
         policy: {
           capabilities: entry.capabilities,
           limits: {},
+          snapshot_id: snapshotIdentity(Buffer.from(step.snapshotBase64, 'base64')),
           snapshot_key_base64: EXPLICIT_SNAPSHOT_KEY_BASE64,
+          snapshot_key_digest: snapshotKeyDigest(Buffer.from(EXPLICIT_SNAPSHOT_KEY, 'utf8')),
           snapshot_token: snapshotToken(
             Buffer.from(step.snapshotBase64, 'base64'),
             EXPLICIT_SNAPSHOT_KEY,

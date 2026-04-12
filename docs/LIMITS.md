@@ -70,6 +70,10 @@ Cooperative cancellation is controlled separately through:
   cancellation during large helper runs, and fail direct top-level string
   returns against the configured heap limit before those results cross the host
   boundary.
+- Bare string values now receive the same heap-headroom check when they cross
+  the structured boundary directly as capability results or direct
+  `Progress.resume(...)` payloads, so hosts cannot bypass `heapLimitBytes` by
+  returning or resuming with an unboxed large string.
 - Cancellation fails as a limit error with the guest-safe message
   `execution cancelled`.
 - In addon mode, same-thread `AbortSignal` delivery cannot interrupt a native

@@ -58,7 +58,9 @@ Successful responses return either:
   "policy": {
     "capabilities": ["fetch_data"],
     "limits": {},
+    "snapshot_id": "...",
     "snapshot_key_base64": "...",
+    "snapshot_key_digest": "...",
     "snapshot_token": "..."
   },
   "payload": {
@@ -71,11 +73,13 @@ Successful responses return either:
 `payload.type` is either `value` or `error`.
 `policy` is required. The host must reassert the allowed capability names and
 authoritative runtime limits before the sidecar will inspect or resume a loaded
-snapshot. `snapshot_key_base64` plus `snapshot_token` are also required for
-loaded snapshots: the token is the lowercase hex HMAC-SHA256 of the raw
-`snapshot_base64` bytes under the caller-chosen snapshot key. Missing or
-mismatched authentication fails closed before the runtime trusts the snapshot
-contents.
+snapshot. `snapshot_id`, `snapshot_key_base64`, `snapshot_key_digest`, and
+`snapshot_token` are also required for loaded snapshots. The token is the
+lowercase hex HMAC-SHA256 of the detached `snapshot_id` under the
+caller-chosen snapshot key, and the sidecar recomputes `snapshot_id` from the
+raw `snapshot_base64` bytes before trusting the snapshot contents. Those fields
+bind resume to trusted detached dump metadata, but hosts still need ordinary
+integrity controls when snapshots are stored or transported.
 
 ## Response Shape
 
@@ -112,7 +116,8 @@ shipping host callbacks or JavaScript functions into the sidecar process.
 - `program_base64` and `snapshot_base64` are host-managed opaque blobs. The host
   may reuse the same compiled program bytes for multiple `start` requests and
   may replay the same snapshot bytes in multiple `resume` requests as long as
-  it also recomputes the matching `snapshot_token` for the supplied
+  it preserves or recomputes the matching detached `snapshot_id`,
+  `snapshot_key_digest`, and `snapshot_token` for the supplied
   `snapshot_key_base64`.
 - Replaying a snapshot re-executes from that suspension point deterministically
   under the supplied `policy`; there is no in-sidecar single-use tracking.

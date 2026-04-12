@@ -6,18 +6,39 @@ use std::time::Duration;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use hmac::{Hmac, Mac};
 use serde_json::{Value, json};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 
 const SNAPSHOT_KEY: &[u8] = b"sidecar-protocol-test-key";
 
 type HmacSha256 = Hmac<Sha256>;
 
-fn snapshot_token(snapshot_base64: &str) -> String {
+fn snapshot_id(snapshot_base64: &str) -> String {
     let snapshot = STANDARD
         .decode(snapshot_base64)
         .expect("snapshot base64 should decode");
+    let digest = Sha256::digest(snapshot);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut encoded, "{byte:02x}");
+    }
+    encoded
+}
+
+fn snapshot_key_digest() -> String {
+    let digest = Sha256::digest(SNAPSHOT_KEY);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut encoded, "{byte:02x}");
+    }
+    encoded
+}
+
+fn snapshot_token(snapshot_base64: &str) -> String {
+    let snapshot_id = snapshot_id(snapshot_base64);
     let mut mac = HmacSha256::new_from_slice(SNAPSHOT_KEY).expect("snapshot key should be valid");
-    mac.update(&snapshot);
+    mac.update(snapshot_id.as_bytes());
     let digest = mac.finalize().into_bytes();
     let mut token = String::with_capacity(digest.len() * 2);
     for byte in digest {
@@ -31,7 +52,9 @@ fn authenticated_policy(snapshot_base64: &str, capabilities: &[&str]) -> Value {
     json!({
         "capabilities": capabilities,
         "limits": {},
+        "snapshot_id": snapshot_id(snapshot_base64),
         "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+        "snapshot_key_digest": snapshot_key_digest(),
         "snapshot_token": snapshot_token(snapshot_base64),
     })
 }

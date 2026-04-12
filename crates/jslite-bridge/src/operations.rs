@@ -6,7 +6,7 @@ use jslite::{
     compile, dump_program, inspect_snapshot as inspect_loaded_snapshot, load_snapshot,
     lower_to_bytecode, resume_with_options, start_bytecode,
 };
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 
 use crate::{
     codec::encode_step,
@@ -15,10 +15,30 @@ use crate::{
 
 type HmacSha256 = Hmac<Sha256>;
 
-fn encode_snapshot_token(snapshot: &[u8], snapshot_key: &[u8]) -> Result<String> {
+fn snapshot_identity_hex(snapshot: &[u8]) -> String {
+    let digest = Sha256::digest(snapshot);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut encoded, "{byte:02x}");
+    }
+    encoded
+}
+
+fn snapshot_key_digest_hex(snapshot_key: &[u8]) -> String {
+    let digest = Sha256::digest(snapshot_key);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut encoded, "{byte:02x}");
+    }
+    encoded
+}
+
+fn encode_snapshot_token(snapshot_id: &str, snapshot_key: &[u8]) -> Result<String> {
     let mut mac =
         HmacSha256::new_from_slice(snapshot_key).map_err(|_| anyhow!("invalid snapshot key"))?;
-    mac.update(snapshot);
+    mac.update(snapshot_id.as_bytes());
     let digest = mac.finalize().into_bytes();
     let mut token = String::with_capacity(digest.len() * 2);
     for byte in digest {
@@ -29,6 +49,10 @@ fn encode_snapshot_token(snapshot: &[u8], snapshot_key: &[u8]) -> Result<String>
 }
 
 fn assert_authenticated_snapshot(snapshot_bytes: &[u8], policy: &SnapshotPolicyDto) -> Result<()> {
+    let snapshot_id = policy
+        .snapshot_id
+        .as_deref()
+        .ok_or_else(|| anyhow!("raw snapshot restore requires snapshot_id"))?;
     let snapshot_key_base64 = policy
         .snapshot_key_base64
         .as_deref()
@@ -37,10 +61,25 @@ fn assert_authenticated_snapshot(snapshot_bytes: &[u8], policy: &SnapshotPolicyD
         .snapshot_token
         .as_deref()
         .ok_or_else(|| anyhow!("raw snapshot restore requires snapshot_token"))?;
+    let snapshot_key_digest = policy
+        .snapshot_key_digest
+        .as_deref()
+        .ok_or_else(|| anyhow!("raw snapshot restore requires snapshot_key_digest"))?;
     let snapshot_key = STANDARD
         .decode(snapshot_key_base64)
         .map_err(|_| anyhow!("snapshot_key_base64 must be valid base64"))?;
-    let expected = encode_snapshot_token(snapshot_bytes, &snapshot_key)?;
+    let expected_snapshot_id = snapshot_identity_hex(snapshot_bytes);
+    if expected_snapshot_id != snapshot_id {
+        return Err(anyhow!(
+            "raw snapshot restore rejected a tampered or unauthenticated snapshot"
+        ));
+    }
+    if snapshot_key_digest_hex(&snapshot_key) != snapshot_key_digest {
+        return Err(anyhow!(
+            "raw snapshot restore rejected a mismatched snapshot key digest"
+        ));
+    }
+    let expected = encode_snapshot_token(snapshot_id, &snapshot_key)?;
     if expected != snapshot_token {
         return Err(anyhow!(
             "raw snapshot restore rejected a tampered or unauthenticated snapshot"

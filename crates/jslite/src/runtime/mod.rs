@@ -23,7 +23,9 @@ pub use api::{
 pub use bytecode::{BytecodeProgram, FunctionPrototype, Instruction};
 pub use compiler::lower_to_bytecode;
 use compiler::pattern_bindings;
-pub use serialization::{dump_program, dump_snapshot, load_program, load_snapshot};
+pub use serialization::{
+    canonical_snapshot_auth_bytes, dump_program, dump_snapshot, load_program, load_snapshot,
+};
 
 use indexmap::IndexMap;
 use slotmap::SlotMap;

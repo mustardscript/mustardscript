@@ -55,10 +55,13 @@ objects instead of alias-expanding them during export.
 - Snapshots loaded from bytes must be rebound to explicit host policy before
   their capability metadata is trusted or resume is allowed to continue.
 - Raw native `inspectSnapshot(...)` / `resumeProgram(...)` flows also require a
-  `snapshot_key_base64` plus matching `snapshot_token` inside the snapshot
-  policy JSON. The token is the HMAC-SHA256 of the raw snapshot bytes under the
-  caller-chosen snapshot key, so unauthenticated snapshot bytes fail closed
-  before inspection or resume.
+  `snapshot_id`, `snapshot_key_base64`, `snapshot_key_digest`, and matching
+  `snapshot_token` inside the snapshot policy JSON. The token is the
+  HMAC-SHA256 of the detached `snapshot_id` under the caller-chosen snapshot
+  key, and restore recomputes `snapshot_id` from the raw snapshot bytes before
+  inspection or resume. Those fields bind raw restore to trusted detached dump
+  metadata, but hosts still need ordinary integrity controls when storing or
+  transporting snapshots.
 - `resume()` accepts either a structured success value or a sanitized host
   error payload.
 - `Progress.cancel()` injects an explicit cooperative cancellation failure into
@@ -125,9 +128,10 @@ guest-only traceback with guest function names and source spans.
 - Consumed progress tokens stay burned for the lifetime of the current process,
   including across `worker_threads`, so unrelated same-process progress churn
   cannot make an old dumped snapshot replayable again.
-- `Progress.dump()` includes a detached token authenticated by the configured
-  `snapshotKey`, and `Progress.load()` verifies that token before trusting the
-  dumped snapshot bytes.
+- `Progress.dump()` includes detached `snapshot_id`, `snapshot_key_digest`, and
+  `token` metadata authenticated by the configured `snapshotKey`, and
+  `Progress.load()` verifies that bundle before trusting the dumped snapshot
+  bytes.
 - In the Node wrapper, `Progress.load(...)` only reuses cached policy
   automatically when the dumped token is still present in the same-process
   cache. Fresh-process restores, or same-process restores after cache eviction,

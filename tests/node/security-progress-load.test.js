@@ -112,6 +112,43 @@ test('progress load rejects already-consumed snapshots before exposing capabilit
   assert.throws(() => Progress.load(dumped), isSingleUseRuntimeError);
 });
 
+test('progress load rejects replay attempts that re-key an already-consumed dump', () => {
+  const originalKey = Buffer.from('progress-security-key-a');
+  const replayKey = Buffer.from('progress-security-key-b');
+  const progress = new Jslite(`
+    const response = fetch_data(4);
+    response * 2;
+  `).start({
+    snapshotKey: originalKey,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  const dumped = progress.dump();
+  assert.equal(progress.resume(4), 8);
+
+  assert.throws(
+    () =>
+      Progress.load(
+        {
+          ...dumped,
+          token: snapshotToken(dumped.snapshot, replayKey, dumped.snapshot_id),
+        },
+        {
+          snapshotKey: replayKey,
+          capabilities: {
+            fetch_data(value) {
+              return value;
+            },
+          },
+          limits: {},
+        },
+      ),
+    isSingleUseRuntimeError,
+  );
+});
+
 test('progress snapshots remain single-use after unrelated same-process churn', () => {
   const runtime = new Jslite(`
     const response = fetch_data(seed);
@@ -182,6 +219,8 @@ test('progress load rejects already-consumed snapshots across same-process worke
       try {
         Progress.load({
           snapshot: Buffer.from(workerData.snapshotBase64, 'base64'),
+          snapshot_id: workerData.snapshotId,
+          snapshot_key_digest: workerData.snapshotKeyDigest,
           token: workerData.token,
         });
       } catch (error) {
@@ -192,6 +231,8 @@ test('progress load rejects already-consumed snapshots across same-process worke
       try {
         const restored = Progress.load({
           snapshot: Buffer.from(workerData.snapshotBase64, 'base64'),
+          snapshot_id: workerData.snapshotId,
+          snapshot_key_digest: workerData.snapshotKeyDigest,
           token: workerData.token,
         }, {
           snapshotKey,
@@ -221,6 +262,8 @@ test('progress load rejects already-consumed snapshots across same-process worke
     {
       indexPath: require.resolve('../../index.js'),
       snapshotBase64: dumped.snapshot.toString('base64'),
+      snapshotId: dumped.snapshot_id,
+      snapshotKeyDigest: dumped.snapshot_key_digest,
       token: dumped.token,
       snapshotKeyBase64: SNAPSHOT_KEY.toString('base64'),
     },
@@ -277,17 +320,19 @@ test('raw native snapshot inspect and resume require snapshot authentication', (
   const authenticatedPolicy = JSON.stringify({
     capabilities: ['fetch_data'],
     limits: {},
+    snapshot_id: dumped.snapshot_id,
     snapshot_key_base64: SNAPSHOT_KEY.toString('base64'),
-    snapshot_token: snapshotToken(dumped.snapshot, SNAPSHOT_KEY),
+    snapshot_key_digest: dumped.snapshot_key_digest,
+    snapshot_token: snapshotToken(dumped.snapshot, SNAPSHOT_KEY, dumped.snapshot_id),
   });
 
   assert.throws(
     () => native.inspectSnapshot(dumped.snapshot, JSON.stringify({ capabilities: ['fetch_data'], limits: {} })),
-    /raw snapshot restore requires snapshot_key_base64/,
+    /raw snapshot restore requires snapshot_id/,
   );
   assert.throws(
     () => native.resumeProgram(dumped.snapshot, payload, JSON.stringify({ capabilities: ['fetch_data'], limits: {} })),
-    /raw snapshot restore requires snapshot_key_base64/,
+    /raw snapshot restore requires snapshot_id/,
   );
 
   const inspection = JSON.parse(native.inspectSnapshot(dumped.snapshot, authenticatedPolicy));
@@ -314,6 +359,8 @@ test('progress load requires explicit policy and snapshotKey outside the current
         try {
           Progress.load({
             snapshot: Buffer.from(process.env.SNAPSHOT_BASE64, 'base64'),
+            snapshot_id: process.env.SNAPSHOT_ID,
+            snapshot_key_digest: process.env.SNAPSHOT_KEY_DIGEST,
             token: process.env.SNAPSHOT_TOKEN,
           });
           process.stdout.write('loaded');
@@ -327,6 +374,8 @@ test('progress load requires explicit policy and snapshotKey outside the current
       env: {
         ...process.env,
         SNAPSHOT_BASE64: dumped.snapshot.toString('base64'),
+        SNAPSHOT_ID: dumped.snapshot_id,
+        SNAPSHOT_KEY_DIGEST: dumped.snapshot_key_digest,
         SNAPSHOT_TOKEN: dumped.token,
       },
       encoding: 'utf8',
@@ -362,6 +411,8 @@ test('progress load works across processes when explicit policy and snapshotKey 
         const restored = Progress.load(
           {
             snapshot: Buffer.from(process.env.SNAPSHOT_BASE64, 'base64'),
+            snapshot_id: process.env.SNAPSHOT_ID,
+            snapshot_key_digest: process.env.SNAPSHOT_KEY_DIGEST,
             token: process.env.SNAPSHOT_TOKEN,
           },
           {
@@ -382,6 +433,8 @@ test('progress load works across processes when explicit policy and snapshotKey 
       env: {
         ...process.env,
         SNAPSHOT_BASE64: dumped.snapshot.toString('base64'),
+        SNAPSHOT_ID: dumped.snapshot_id,
+        SNAPSHOT_KEY_DIGEST: dumped.snapshot_key_digest,
         SNAPSHOT_TOKEN: dumped.token,
         SNAPSHOT_KEY_BASE64: SNAPSHOT_KEY.toString('base64'),
       },

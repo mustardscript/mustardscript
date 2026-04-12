@@ -80,6 +80,40 @@ pub fn load_snapshot(bytes: &[u8]) -> JsliteResult<ExecutionSnapshot> {
     ExecutionSnapshot::restore_loaded_runtime(decoded.runtime)
 }
 
+pub fn canonical_snapshot_auth_bytes(bytes: &[u8]) -> JsliteResult<Vec<u8>> {
+    let decoded: SerializedSnapshot =
+        bincode::deserialize(bytes).map_err(|error| JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: error.to_string(),
+            span: None,
+            traceback: Vec::new(),
+        })?;
+    if decoded.version != SERIAL_FORMAT_VERSION {
+        return Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: format!(
+                "serialized snapshot version mismatch: expected {}, got {}",
+                SERIAL_FORMAT_VERSION, decoded.version
+            ),
+            span: None,
+            traceback: Vec::new(),
+        });
+    }
+
+    let mut snapshot = ExecutionSnapshot::restore_loaded_runtime(decoded.runtime)?;
+    snapshot.runtime.snapshot_nonce = 0;
+    bincode::serialize(&SerializedSnapshot {
+        version: SERIAL_FORMAT_VERSION,
+        runtime: snapshot.runtime,
+    })
+    .map_err(|error| JsliteError::Message {
+        kind: DiagnosticKind::Serialization,
+        message: error.to_string(),
+        span: None,
+        traceback: Vec::new(),
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SerializedProgram {
     version: u32,
