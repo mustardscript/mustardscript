@@ -194,6 +194,11 @@ module.exports = {
       expected: [true, 2, false, 0],
     },
     {
+      id: 'language/expressions/array/spread/basic.js',
+      file: 'cases/unsupported/language/expressions/array/spread/basic.js',
+      expected: [1, 2, 3],
+    },
+    {
       id: 'language/statements/function/recursion-factorial.js',
       file: 'cases/pass/language/statements/function/recursion-factorial.js',
       expected: 120,
@@ -280,13 +285,6 @@ module.exports = {
       reason: 'Debugger hooks are excluded from the guest surface.',
     },
     {
-      id: 'language/expressions/array/spread/basic.js',
-      file: 'cases/unsupported/language/expressions/array/spread/basic.js',
-      errorKind: 'Validation',
-      messageIncludes: 'array spread is not supported in v1',
-      reason: 'Array spread remains outside the supported subset.',
-    },
-    {
       id: 'language/expressions/assignment/exponentiation/basic.js',
       file: 'cases/unsupported/language/expressions/assignment/exponentiation/basic.js',
       errorKind: 'Validation',
@@ -313,13 +311,6 @@ module.exports = {
       errorKind: 'Validation',
       messageIncludes: 'unsupported binary operator in v1',
       reason: 'instanceof remains deferred until participating values have explicit prototype links and constructor .prototype identities.',
-    },
-    {
-      id: 'language/expressions/call/spread-args.js',
-      file: 'cases/unsupported/language/expressions/call/spread-args.js',
-      errorKind: 'Validation',
-      messageIncludes: 'spread arguments are not supported in v1',
-      reason: 'Spread arguments remain outside the supported call surface.',
     },
     {
       id: 'language/expressions/object/accessor-basic.js',
