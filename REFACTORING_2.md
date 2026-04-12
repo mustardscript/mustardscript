@@ -211,14 +211,14 @@ Purpose: keep the wrapper thin in practice, not just in principle.
 
 Checklist:
 
-- [ ] Keep root `index.js` as the package entry and public facade
-- [ ] Extract native error normalization into `lib/errors.js`
-- [ ] Extract structured-value encode/decode logic into `lib/structured.js`
-- [ ] Extract policy and snapshot-policy helpers into `lib/policy.js`
-- [ ] Extract abort/cancellation bridging into `lib/cancellation.js`
-- [ ] Extract `Progress` state and lifecycle logic into `lib/progress.js`
-- [ ] Extract `Jslite` run/start orchestration into `lib/runtime.js`
-- [ ] Preserve CommonJS entry behavior and existing TypeScript declarations
+- [x] Keep root `index.js` as the package entry and public facade
+- [x] Extract native error normalization into `lib/errors.js`
+- [x] Extract structured-value encode/decode logic into `lib/structured.js`
+- [x] Extract policy and snapshot-policy helpers into `lib/policy.js`
+- [x] Extract abort/cancellation bridging into `lib/cancellation.js`
+- [x] Extract `Progress` state and lifecycle logic into `lib/progress.js`
+- [x] Extract `Jslite` run/start orchestration into `lib/runtime.js`
+- [x] Preserve CommonJS entry behavior and existing TypeScript declarations
 
 Exit criteria:
 
@@ -232,16 +232,16 @@ Purpose: make behavior reviews and failures easier to localize.
 
 Checklist:
 
-- [ ] Break `tests/node/basic.test.js` into concern-focused files
-- [ ] Add `tests/node/support/helpers.js` for repeated runtime and assertion
+- [x] Break `tests/node/basic.test.js` into concern-focused files
+- [x] Add `tests/node/support/helpers.js` for repeated runtime and assertion
   patterns
-- [ ] Keep current behavior assertions first; improve ergonomics only after the
+- [x] Keep current behavior assertions first; improve ergonomics only after the
   split is stable
 - [ ] Move parser tests out of production modules if Milestone 2 has not
   already done so
 - [ ] Extract reusable IR traversal helpers from
   `crates/jslite/tests/coverage_audit.rs` if multiple tests need them
-- [ ] Preserve or improve the same coverage surface after the split
+- [x] Preserve or improve the same coverage surface after the split
 
 Exit criteria:
 
