@@ -60,14 +60,42 @@ test('property: supported structured host values round-trip across inputs, capab
   );
 });
 
-test('property: unsupported host values fail closed before crossing the boundary', async () => {
+test('property: unsupported host values fail closed across boundary inputs and resume surfaces', async () => {
   await fc.assert(
     fc.asyncProperty(unsupportedHostValueCaseArbitrary, async ({ value, messageIncludes }) => {
-      const runtime = new Jslite('value;');
+      const isBoundaryTypeError = (error) =>
+        error instanceof TypeError && error.message.includes(messageIncludes);
+
+      await assert.rejects(new Jslite('value;').run({ inputs: { value } }), isBoundaryTypeError);
+
       await assert.rejects(
-        runtime.run({ inputs: { value } }),
-        (error) => error instanceof TypeError && error.message.includes(messageIncludes),
+        new Jslite('fetch_data();').run({
+          capabilities: {
+            fetch_data() {
+              return value;
+            },
+          },
+        }),
+        isBoundaryTypeError,
       );
+
+      const resumed = new Jslite('fetch_data(1);').start({
+        capabilities: {
+          fetch_data() {},
+        },
+      });
+      assert.ok(resumed instanceof Progress);
+      assert.throws(() => resumed.resume(value), isBoundaryTypeError);
+
+      const resumedError = new Jslite('fetch_data(1);').start({
+        capabilities: {
+          fetch_data() {},
+        },
+      });
+      assert.ok(resumedError instanceof Progress);
+      const hostError = new Error('boom');
+      hostError.details = value;
+      assert.throws(() => resumedError.resumeError(hostError), isBoundaryTypeError);
     }),
     {
       numRuns: PROPERTY_RUNS,

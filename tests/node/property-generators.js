@@ -1291,6 +1291,14 @@ const unsupportedHostValueCaseArbitrary = fc.constantFrom(
     messageIncludes: 'only plain objects and arrays can cross the host boundary',
   },
   {
+    value: /edge/,
+    messageIncludes: 'only plain objects and arrays can cross the host boundary',
+  },
+  {
+    value: new Uint8Array([1, 2]),
+    messageIncludes: 'only plain objects and arrays can cross the host boundary',
+  },
+  {
     value: Object.create({ inherited: true }),
     messageIncludes: 'only plain objects and arrays can cross the host boundary',
   },

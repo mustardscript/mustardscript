@@ -214,37 +214,37 @@ They are part of the public API contract.
 
 Checklist:
 
-- [ ] Expand generated structured-value round-trip coverage for allowed values.
-- [ ] Cover numeric edge cases explicitly: `NaN`, `Infinity`, `-Infinity`,
+- [x] Expand generated structured-value round-trip coverage for allowed values.
+- [x] Cover numeric edge cases explicitly: `NaN`, `Infinity`, `-Infinity`,
       `-0`, and `undefined`.
-- [ ] Add rejected-boundary coverage for functions, symbols, `BigInt`, `Date`,
+- [x] Add rejected-boundary coverage for functions, symbols, `BigInt`, `Date`,
       `RegExp`, `Map`, `Set`, typed arrays, custom prototypes, accessors, class
       instances, and cycles.
-- [ ] Add lifecycle misuse families around `run`, `start`, `resume`,
+- [x] Add lifecycle misuse families around `run`, `start`, `resume`,
       `resumeError`, and `cancel`.
-- [ ] Add cross-process `Progress.load(...)` boundary coverage for policy and
+- [x] Add cross-process `Progress.load(...)` boundary coverage for policy and
       `snapshotKey` mismatch cases.
-- [ ] Add one tiny reproducer for each resource limit type.
-- [ ] Assert precise error kind or category and guest-safe messages.
-- [ ] Assert that limit failures do not leak host paths or internal details.
-- [ ] Assert suspend/load/resume behavior for limits and cancellation where the
+- [x] Add one tiny reproducer for each resource limit type.
+- [x] Assert precise error kind or category and guest-safe messages.
+- [x] Assert that limit failures do not leak host paths or internal details.
+- [x] Assert suspend/load/resume behavior for limits and cancellation where the
       docs promise specific behavior.
 
 Limit families:
 
-- [ ] Instruction budget
-- [ ] Heap byte limit
-- [ ] Allocation budget
-- [ ] Call-depth limit
-- [ ] Outstanding host-call limit
-- [ ] Cancellation
+- [x] Instruction budget
+- [x] Heap byte limit
+- [x] Allocation budget
+- [x] Call-depth limit
+- [x] Outstanding host-call limit
+- [x] Cancellation
 
 Done when:
 
-- [ ] Every allowed boundary value round-trips exactly through the public API.
-- [ ] Every rejected boundary value fails in the correct layer.
-- [ ] Every limit can be triggered independently with a tiny reproducer.
-- [ ] Limit and cancellation failures are deterministic and guest-safe.
+- [x] Every allowed boundary value round-trips exactly through the public API.
+- [x] Every rejected boundary value fails in the correct layer.
+- [x] Every limit can be triggered independently with a tiny reproducer.
+- [x] Limit and cancellation failures are deterministic and guest-safe.
 
 ### 5. Deterministic Async Schedule Exploration
 
@@ -434,7 +434,7 @@ Checklist:
       ad hoc regressions alone.
 - [ ] Async ordering regressions show up as deterministic trace diffs, not flaky
       timing failures.
-- [ ] Boundary and limit behavior are covered as explicit public contracts.
+- [x] Boundary and limit behavior are covered as explicit public contracts.
 - [ ] Addon mode and sidecar mode agree on canonical outcomes where they are
       supposed to agree.
 - [ ] Selected fuzzers run continuously and feed the regression corpus.
