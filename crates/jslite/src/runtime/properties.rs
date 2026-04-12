@@ -1098,7 +1098,6 @@ impl Runtime {
                         | ObjectKind::Math
                         | ObjectKind::Json
                         | ObjectKind::Intl
-                        | ObjectKind::Intl
                         | ObjectKind::BoundFunction(_) => {
                             return Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCtor));
                         }
