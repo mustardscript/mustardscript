@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use indexmap::IndexMap;
-use regress::Regex;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 mod arrays;

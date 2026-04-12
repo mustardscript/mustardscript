@@ -6,8 +6,15 @@ use jslite::{
     start_bytecode,
 };
 use proptest::prelude::*;
+use std::{
+    process::{Command, Stdio},
+    thread,
+    time::{Duration, Instant},
+};
 
 const SAFE_MESSAGE_PATH_FRAGMENTS: &[&str] = &["/Users/", "\\Users\\", "C:\\", "/home/"];
+const HOSTILE_REGEX_HELPER_ENV: &str = "JSLITE_HOSTILE_REGEX_HELPER";
+const HOSTILE_REGEX_TEST_NAME: &str = "hostile_regex_patterns_do_not_pin_runtime";
 
 fn assert_host_safe_message(message: &str) {
     for fragment in SAFE_MESSAGE_PATH_FRAGMENTS {
@@ -193,6 +200,61 @@ fn hostile_sources_fail_closed_without_host_leaks() {
         .expect("hostile source thread should spawn")
         .join()
         .expect("hostile source thread should finish");
+}
+
+#[test]
+fn hostile_regex_patterns_do_not_pin_runtime() {
+    if std::env::var_os(HOSTILE_REGEX_HELPER_ENV).is_some() {
+        let source = compile("text.search(/^(a+)+$/);").expect("source should compile");
+        let result = jslite::runtime::execute(
+            &source,
+            ExecutionOptions {
+                inputs: IndexMap::from([(
+                    "text".to_string(),
+                    StructuredValue::String(format!("{}!", "a".repeat(256))),
+                )]),
+                capabilities: Vec::new(),
+                limits: RuntimeLimits {
+                    instruction_budget: 20,
+                    ..RuntimeLimits::default()
+                },
+                cancellation_token: None,
+            },
+        )
+        .expect("hostile regex input should finish");
+        assert_eq!(result, StructuredValue::from(-1.0));
+        return;
+    }
+
+    let current_exe = std::env::current_exe().expect("test binary path should resolve");
+    let mut child = Command::new(current_exe)
+        .args(["--exact", HOSTILE_REGEX_TEST_NAME, "--nocapture"])
+        .env(HOSTILE_REGEX_HELPER_ENV, "1")
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .expect("hostile regex helper should spawn");
+    let deadline = Instant::now() + Duration::from_secs(3);
+
+    loop {
+        match child
+            .try_wait()
+            .expect("hostile regex helper should be pollable")
+        {
+            Some(status) => {
+                assert!(status.success(), "hostile regex helper should succeed");
+                break;
+            }
+            None if Instant::now() < deadline => thread::sleep(Duration::from_millis(25)),
+            None => {
+                child
+                    .kill()
+                    .expect("timed out hostile regex helper should be killable");
+                let _ = child.wait();
+                panic!("hostile regex helper timed out");
+            }
+        }
+    }
 }
 
 #[test]

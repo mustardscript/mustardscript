@@ -1,4 +1,10 @@
 use super::*;
+use regex::{Captures, Regex, RegexBuilder};
+
+struct CompiledRegExp {
+    flags: RegExpFlagsState,
+    regex: Regex,
+}
 
 impl Runtime {
     pub(crate) fn construct_regexp(&mut self, args: &[Value]) -> JsliteResult<Value> {
@@ -153,24 +159,17 @@ impl Runtime {
         Ok(state)
     }
 
-    fn compile_regexp(&self, pattern: &str, flags: &str) -> JsliteResult<Regex> {
+    fn compile_regexp(&self, pattern: &str, flags: &str) -> JsliteResult<CompiledRegExp> {
         let flags = self.validate_regexp_flags(flags)?;
-        let mut engine_flags = String::new();
-        if flags.ignore_case {
-            engine_flags.push('i');
-        }
-        if flags.multiline {
-            engine_flags.push('m');
-        }
-        if flags.dot_all {
-            engine_flags.push('s');
-        }
-        if flags.unicode {
-            engine_flags.push('u');
-        }
-        Regex::with_flags(pattern, engine_flags.as_str()).map_err(|error| {
+        let mut builder = RegexBuilder::new(pattern);
+        builder.case_insensitive(flags.ignore_case);
+        builder.multi_line(flags.multiline);
+        builder.dot_matches_new_line(flags.dot_all);
+        builder.unicode(flags.unicode);
+        let regex = builder.build().map_err(|error| {
             JsliteError::runtime(format!("SyntaxError: invalid regular expression: {error}"))
-        })
+        })?;
+        Ok(CompiledRegExp { flags, regex })
     }
 
     pub(crate) fn is_regexp_object(&self, key: ObjectKey) -> bool {
@@ -221,47 +220,76 @@ impl Runtime {
         }
     }
 
+    fn regexp_match_data_from_captures(
+        &self,
+        compiled: &CompiledRegExp,
+        text: &str,
+        captures: &Captures<'_>,
+    ) -> JsliteResult<RegExpMatchData> {
+        let matched = captures
+            .get(0)
+            .ok_or_else(|| JsliteError::runtime("regex match missing full capture"))?;
+        let named_groups = compiled
+            .regex
+            .capture_names()
+            .enumerate()
+            .skip(1)
+            .filter_map(|(index, name)| {
+                name.map(|name| {
+                    (
+                        name.to_string(),
+                        captures
+                            .get(index)
+                            .map(|capture| capture.as_str().to_string()),
+                    )
+                })
+            })
+            .collect::<IndexMap<_, _>>();
+        Ok(RegExpMatchData {
+            start_byte: matched.start(),
+            end_byte: matched.end(),
+            start_index: byte_index_to_char_index(text, matched.start()),
+            end_index: byte_index_to_char_index(text, matched.end()),
+            captures: (1..captures.len())
+                .map(|index| {
+                    captures
+                        .get(index)
+                        .map(|capture| capture.as_str().to_string())
+                })
+                .collect(),
+            named_groups,
+        })
+    }
+
+    fn first_regexp_match_with_compiled(
+        &self,
+        compiled: &CompiledRegExp,
+        text: &str,
+        start_index: usize,
+    ) -> JsliteResult<Option<RegExpMatchData>> {
+        self.check_cancellation()?;
+        let start_byte = char_index_to_byte_index(text, start_index);
+        let Some(captures) = compiled.regex.captures_at(text, start_byte) else {
+            return Ok(None);
+        };
+        let matched = captures
+            .get(0)
+            .ok_or_else(|| JsliteError::runtime("regex match missing full capture"))?;
+        if compiled.flags.sticky && matched.start() != start_byte {
+            return Ok(None);
+        }
+        self.regexp_match_data_from_captures(compiled, text, &captures)
+            .map(Some)
+    }
+
     pub(crate) fn first_regexp_match_from_state(
         &self,
         regex: &RegExpObject,
         text: &str,
         start_index: usize,
     ) -> JsliteResult<Option<RegExpMatchData>> {
-        let flags = self.validate_regexp_flags(&regex.flags)?;
         let compiled = self.compile_regexp(&regex.pattern, &regex.flags)?;
-        let start_byte = char_index_to_byte_index(text, start_index);
-        let matched = compiled.find_from(text, start_byte).next();
-        let Some(matched) = matched else {
-            return Ok(None);
-        };
-        if flags.sticky && matched.start() != start_byte {
-            return Ok(None);
-        }
-        let named_groups = matched
-            .named_groups()
-            .map(|(name, range)| {
-                (
-                    name.to_string(),
-                    range.map(|range| text[range.start..range.end].to_string()),
-                )
-            })
-            .collect::<IndexMap<_, _>>();
-        Ok(Some(RegExpMatchData {
-            start_byte: matched.start(),
-            end_byte: matched.end(),
-            start_index: byte_index_to_char_index(text, matched.start()),
-            end_index: byte_index_to_char_index(text, matched.end()),
-            captures: matched
-                .captures
-                .iter()
-                .map(|range| {
-                    range
-                        .clone()
-                        .map(|range| text[range.start..range.end].to_string())
-                })
-                .collect(),
-            named_groups,
-        }))
+        self.first_regexp_match_with_compiled(&compiled, text, start_index)
     }
 
     fn first_regexp_match(
@@ -297,10 +325,12 @@ impl Runtime {
         text: &str,
         all: bool,
     ) -> JsliteResult<Vec<RegExpMatchData>> {
+        let compiled = self.compile_regexp(&regex.pattern, &regex.flags)?;
         let mut matches = Vec::new();
         let mut start_index = 0usize;
         loop {
-            let Some(matched) = self.first_regexp_match_from_state(regex, text, start_index)?
+            let Some(matched) =
+                self.first_regexp_match_with_compiled(&compiled, text, start_index)?
             else {
                 break;
             };
