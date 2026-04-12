@@ -835,6 +835,153 @@ test('run truncates Date timestamps to integer milliseconds', async () => {
   });
 });
 
+test('run supports broader Date, Number, string-formatting, and reverse array helper surface', async () => {
+  const result = await runtime(`
+    const date = new Date("2026-04-10T14:05:06.789Z");
+    ({
+      iso: date.toISOString(),
+      json: JSON.stringify({ date }),
+      utc: [
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+        date.getUTCHours(),
+        date.getUTCMinutes(),
+        date.getUTCSeconds(),
+      ],
+      parsedInt: Number.parseInt("  -0x10"),
+      parsedFloat: Number.parseFloat("  -10.25ms"),
+      isNaN: Number.isNaN(0 / 0),
+      isNaNString: Number.isNaN("NaN"),
+      isFinite: Number.isFinite(12.5),
+      isFiniteInfinite: Number.isFinite(1 / 0),
+      trimStart: "  padded  ".trimStart(),
+      trimEnd: "  padded  ".trimEnd(),
+      padStart: "7".padStart(3, "0"),
+      padEnd: "7".padEnd(3, "0"),
+      reduceRight: [1, 2, 3].reduceRight((acc, value) => acc + ":" + value, "tail"),
+      findLast: [1, 2, 3, 4].findLast((value) => value % 2 === 0),
+      findLastIndex: [1, 2, 3, 4].findLastIndex((value) => value % 2 === 0),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    iso: '2026-04-10T14:05:06.789Z',
+    json: '{"date":"2026-04-10T14:05:06.789Z"}',
+    utc: [2026, 3, 10, 14, 5, 6],
+    parsedInt: -16,
+    parsedFloat: -10.25,
+    isNaN: true,
+    isNaNString: false,
+    isFinite: true,
+    isFiniteInfinite: false,
+    trimStart: 'padded  ',
+    trimEnd: '  padded',
+    padStart: '007',
+    padEnd: '700',
+    reduceRight: 'tail:3:2:1',
+    findLast: 4,
+    findLastIndex: 3,
+  });
+});
+
+test('run supports a narrow Intl DateTimeFormat and NumberFormat subset', async () => {
+  const result = await runtime(`
+    const date = new Date("2026-04-10T14:05:06.789Z");
+    const dateFormatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const numberFormatter = Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    ({
+      date: dateFormatter.format(date),
+      dateOptions: dateFormatter.resolvedOptions(),
+      currency: numberFormatter.format(1234.5),
+      currencyOptions: numberFormatter.resolvedOptions(),
+      decimal: Intl.NumberFormat("en-US", {
+        useGrouping: false,
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }).format(12),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    date: '04/10/2026',
+    dateOptions: {
+      locale: 'en-US',
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    },
+    currency: '$1,234.50',
+    currencyOptions: {
+      locale: 'en-US',
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+      useGrouping: true,
+    },
+    decimal: '12.0',
+  });
+});
+
+test('Intl and new helper additions fail closed for unsupported options and invalid callbacks', async () => {
+  await assert.rejects(
+    () => runtime('Intl.DateTimeFormat("fr-FR");').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Intl currently supports only the `en-US` locale',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles" });').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Intl.DateTimeFormat currently supports only the `UTC` timeZone',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" });').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Intl.NumberFormat currency style currently supports only `USD`',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('([].reduceRight((acc, value) => acc + value));').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Array.prototype.reduceRight requires an initial value for empty arrays',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('([1]).findLast(1);').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Array.prototype.findLast expects a callable callback',
+      guestSafe: true,
+    }),
+  );
+});
+
 test('run binds rest parameters for functions and arrows', async () => {
   const result = await runtime(`
     function collect(head, ...tail) {

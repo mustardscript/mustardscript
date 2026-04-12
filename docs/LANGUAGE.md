@@ -24,6 +24,7 @@ extensions are called out explicitly instead of being implied.
 - `Map`
 - `Set`
 - conservative `Date` objects
+- conservative `Intl.DateTimeFormat` and `Intl.NumberFormat` formatter objects
 - guest functions
 
 ## Supported End-to-End Syntax
@@ -196,7 +197,7 @@ extensions are called out explicitly instead of being implied.
 - symbols
 - typed arrays
 - full `Date` parity beyond the documented conservative subset
-- `Intl`
+- full `Intl` parity beyond the documented conservative subset
 - `Proxy`
 
 ## Deliberate V1 Decisions
@@ -288,6 +289,7 @@ extensions are called out explicitly instead of being implied.
 - `RangeError`
 - `Number`
 - `Boolean`
+- `Intl`
 - `Math`
 - `JSON`
 - `console` with deterministic `log`, `warn`, and `error` methods when the host
@@ -316,11 +318,14 @@ extensions are called out explicitly instead of being implied.
 - `Array.prototype.filter`
 - `Array.prototype.find`
 - `Array.prototype.findIndex`
+- `Array.prototype.findLast`
+- `Array.prototype.findLastIndex`
 - `Array.prototype.some`
 - `Array.prototype.every`
 - `Array.prototype.flat`
 - `Array.prototype.flatMap`
 - `Array.prototype.reduce`
+- `Array.prototype.reduceRight`
 - `Object.keys`
 - `Object.values`
 - `Object.entries`
@@ -357,7 +362,21 @@ extensions are called out explicitly instead of being implied.
 - `RegExp.prototype.test`
 - `Date.now`
 - `Date.prototype.getTime`
+- `Date.prototype.toISOString`
+- `Date.prototype.toJSON`
+- `Date.prototype.getUTCFullYear`
+- `Date.prototype.getUTCMonth`
+- `Date.prototype.getUTCDate`
+- `Date.prototype.getUTCHours`
+- `Date.prototype.getUTCMinutes`
+- `Date.prototype.getUTCSeconds`
+- `Number.parseInt`
+- `Number.parseFloat`
+- `Number.isNaN`
+- `Number.isFinite`
 - `String.prototype.trim`
+- `String.prototype.trimStart`
+- `String.prototype.trimEnd`
 - `String.prototype.includes`
 - `String.prototype.startsWith`
 - `String.prototype.endsWith`
@@ -365,12 +384,16 @@ extensions are called out explicitly instead of being implied.
 - `String.prototype.substring`
 - `String.prototype.toLowerCase`
 - `String.prototype.toUpperCase`
+- `String.prototype.padStart`
+- `String.prototype.padEnd`
 - `String.prototype.split`
 - `String.prototype.replace`
 - `String.prototype.replaceAll`
 - `String.prototype.search`
 - `String.prototype.match`
 - `String.prototype.matchAll`
+- `Intl.DateTimeFormat`
+- `Intl.NumberFormat`
 - `Math.abs`
 - `Math.max`
 - `Math.min`
@@ -418,6 +441,11 @@ extensions are called out explicitly instead of being implied.
   the mutated receiver
 - `Array.prototype.reduce` throws a runtime `TypeError` when called on an empty
   array without an explicit initial value
+- `Array.prototype.reduceRight` follows the same callback and empty-array
+  failure rules as `reduce`, but traverses present elements from right to left
+- `Array.prototype.findLast` and `findLastIndex` follow the same callback
+  rules as `find` / `findIndex`, but traverse present elements from right to
+  left
 - `Array.prototype.flat` defaults to depth `1` when the argument is omitted or
   `undefined`, truncates other depth values to integers, and flattens only
   actual guest arrays
@@ -458,6 +486,8 @@ extensions are called out explicitly instead of being implied.
   `TypeError`s because property descriptor semantics remain deferred
 - `String.prototype.split`, `replace`, `replaceAll`, `search`, and `match`
   accept string-coercible patterns and real `RegExp` instances
+- `String.prototype.trimStart`, `trimEnd`, `padStart`, and `padEnd` are
+  supported on primitive strings in the conservative helper surface
 - `String.prototype.matchAll` returns a guest iterator over match-result arrays;
   `RegExp` inputs must be global
 - callback replacements for `replace` / `replaceAll` are supported for guest
@@ -476,16 +506,27 @@ extensions are called out explicitly instead of being implied.
   `groups` properties on that result array
 - `Date.now()` reads the host wall clock as integral epoch milliseconds,
   `new Date(value)` currently supports zero arguments or exactly one numeric,
-  string, or existing `Date` value, and `Date.prototype.getTime()` returns the
-  stored integral epoch milliseconds
+  string, or existing `Date` value, `Date.prototype.getTime()` returns the
+  stored integral epoch milliseconds, `toISOString()` and `toJSON()` render
+  UTC RFC3339 timestamps, and the documented `getUTC*` accessors expose UTC
+  year/month/day/hour/minute/second fields
+- `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`, and
+  `Number.isFinite` are available as conservative static helpers on `Number`
+- `Intl.DateTimeFormat` and `Intl.NumberFormat` are available in a narrow
+  deterministic subset: locale support is currently limited to `en-US`,
+  `DateTimeFormat` currently accepts only `UTC` time-zone formatting plus the
+  documented numeric / two-digit date-time fields, and `NumberFormat`
+  currently supports only `decimal`, `percent`, and `currency` formatting with
+  `USD` as the only supported currency code
 - `Math.random()` draws host entropy and returns a finite `number` in the
   half-open range `[0, 1)`; values are intentionally nondeterministic, are not
   seedable or reproducible across runs or resumes, and are not a
   cryptographically strong API contract
 - structured host arrays may be sparse; hole positions are preserved across the
   boundary in both directions
-- direct `Date()` calls, multi-argument `new Date(...)`, and returning `Date`
-  values across the structured host boundary all fail closed
+- direct `Date()` calls, multi-argument `new Date(...)`, unsupported `Intl`
+  locales or options, and returning `Date` values across the structured host
+  boundary all fail closed
 - real `RegExp` instances support `source`, `flags`, `global`, `ignoreCase`,
   `multiline`, `dotAll`, `unicode`, `sticky`, `lastIndex`, `exec`, and `test`
 - symbol-based match/replace protocol hooks and full ECMAScript `RegExp`

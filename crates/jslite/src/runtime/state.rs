@@ -71,6 +71,9 @@ pub(super) enum BuiltinFunction {
     ArrayFlat,
     ArrayFlatMap,
     ArrayReduce,
+    ArrayReduceRight,
+    ArrayFindLast,
+    ArrayFindLastIndex,
     ObjectCtor,
     ObjectAssign,
     ObjectCreate,
@@ -119,11 +122,31 @@ pub(super) enum BuiltinFunction {
     ReferenceErrorCtor,
     RangeErrorCtor,
     NumberCtor,
+    NumberParseInt,
+    NumberParseFloat,
+    NumberIsNaN,
+    NumberIsFinite,
     DateCtor,
     DateNow,
     DateGetTime,
+    DateToISOString,
+    DateToJSON,
+    DateGetUTCFullYear,
+    DateGetUTCMonth,
+    DateGetUTCDate,
+    DateGetUTCHours,
+    DateGetUTCMinutes,
+    DateGetUTCSeconds,
+    IntlDateTimeFormatCtor,
+    IntlNumberFormatCtor,
+    IntlDateTimeFormatFormat,
+    IntlDateTimeFormatResolvedOptions,
+    IntlNumberFormatFormat,
+    IntlNumberFormatResolvedOptions,
     StringCtor,
     StringTrim,
+    StringTrimStart,
+    StringTrimEnd,
     StringIncludes,
     StringStartsWith,
     StringEndsWith,
@@ -131,6 +154,8 @@ pub(super) enum BuiltinFunction {
     StringSubstring,
     StringToLowerCase,
     StringToUpperCase,
+    StringPadStart,
+    StringPadEnd,
     StringSplit,
     StringReplace,
     StringReplaceAll,
@@ -186,6 +211,7 @@ pub(super) enum ObjectKind {
     Math,
     Json,
     Console,
+    Intl,
     FunctionPrototype(Value),
     Error(String),
     Date(DateObject),
@@ -193,11 +219,48 @@ pub(super) enum ObjectKind {
     NumberObject(f64),
     StringObject(String),
     BooleanObject(bool),
+    IntlDateTimeFormat(IntlDateTimeFormatObject),
+    IntlNumberFormat(IntlNumberFormatObject),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct DateObject {
     pub(super) timestamp_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct IntlDateTimeFormatObject {
+    pub(super) locale: String,
+    pub(super) time_zone: String,
+    pub(super) year: Option<IntlFieldStyle>,
+    pub(super) month: Option<IntlFieldStyle>,
+    pub(super) day: Option<IntlFieldStyle>,
+    pub(super) hour: Option<IntlFieldStyle>,
+    pub(super) minute: Option<IntlFieldStyle>,
+    pub(super) second: Option<IntlFieldStyle>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct IntlNumberFormatObject {
+    pub(super) locale: String,
+    pub(super) style: IntlNumberStyle,
+    pub(super) currency: Option<String>,
+    pub(super) minimum_fraction_digits: usize,
+    pub(super) maximum_fraction_digits: usize,
+    pub(super) use_grouping: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) enum IntlFieldStyle {
+    Numeric,
+    TwoDigit,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) enum IntlNumberStyle {
+    Decimal,
+    Percent,
+    Currency,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

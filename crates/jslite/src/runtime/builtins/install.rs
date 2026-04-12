@@ -37,6 +37,11 @@ impl Runtime {
             BuiltinFunction::ArrayFlat => self.call_array_flat(this_value, args),
             BuiltinFunction::ArrayFlatMap => self.call_array_flat_map(this_value, args),
             BuiltinFunction::ArrayReduce => self.call_array_reduce(this_value, args),
+            BuiltinFunction::ArrayReduceRight => self.call_array_reduce_right(this_value, args),
+            BuiltinFunction::ArrayFindLast => self.call_array_find_last(this_value, args),
+            BuiltinFunction::ArrayFindLastIndex => {
+                self.call_array_find_last_index(this_value, args)
+            }
             BuiltinFunction::ObjectCtor => self.call_object_ctor(args),
             BuiltinFunction::ObjectAssign => self.call_object_assign(args),
             BuiltinFunction::ObjectCreate => self.reject_object_create(),
@@ -118,13 +123,41 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => self.call_error_ctor(args, "ReferenceError"),
             BuiltinFunction::RangeErrorCtor => self.call_error_ctor(args, "RangeError"),
             BuiltinFunction::NumberCtor => self.call_number_ctor(args),
+            BuiltinFunction::NumberParseInt => self.call_number_parse_int(args),
+            BuiltinFunction::NumberParseFloat => self.call_number_parse_float(args),
+            BuiltinFunction::NumberIsNaN => Ok(self.call_number_is_nan(args)),
+            BuiltinFunction::NumberIsFinite => Ok(self.call_number_is_finite(args)),
             BuiltinFunction::DateCtor => Err(JsliteError::runtime(
                 "TypeError: Date constructor must be called with new",
             )),
             BuiltinFunction::DateNow => Ok(Value::Number(current_time_millis())),
             BuiltinFunction::DateGetTime => self.call_date_get_time(this_value),
+            BuiltinFunction::DateToISOString => self.call_date_to_iso_string(this_value),
+            BuiltinFunction::DateToJSON => self.call_date_to_json(this_value),
+            BuiltinFunction::DateGetUTCFullYear => self.call_date_get_utc_full_year(this_value),
+            BuiltinFunction::DateGetUTCMonth => self.call_date_get_utc_month(this_value),
+            BuiltinFunction::DateGetUTCDate => self.call_date_get_utc_date(this_value),
+            BuiltinFunction::DateGetUTCHours => self.call_date_get_utc_hours(this_value),
+            BuiltinFunction::DateGetUTCMinutes => self.call_date_get_utc_minutes(this_value),
+            BuiltinFunction::DateGetUTCSeconds => self.call_date_get_utc_seconds(this_value),
+            BuiltinFunction::IntlDateTimeFormatCtor => self.construct_intl_date_time_format(args),
+            BuiltinFunction::IntlNumberFormatCtor => self.construct_intl_number_format(args),
+            BuiltinFunction::IntlDateTimeFormatFormat => {
+                self.call_intl_date_time_format_format(this_value, args)
+            }
+            BuiltinFunction::IntlDateTimeFormatResolvedOptions => {
+                self.call_intl_date_time_format_resolved_options(this_value)
+            }
+            BuiltinFunction::IntlNumberFormatFormat => {
+                self.call_intl_number_format_format(this_value, args)
+            }
+            BuiltinFunction::IntlNumberFormatResolvedOptions => {
+                self.call_intl_number_format_resolved_options(this_value)
+            }
             BuiltinFunction::StringCtor => self.call_string_ctor(args),
             BuiltinFunction::StringTrim => self.call_string_trim(this_value),
+            BuiltinFunction::StringTrimStart => self.call_string_trim_start(this_value),
+            BuiltinFunction::StringTrimEnd => self.call_string_trim_end(this_value),
             BuiltinFunction::StringIncludes => self.call_string_includes(this_value, args),
             BuiltinFunction::StringStartsWith => self.call_string_starts_with(this_value, args),
             BuiltinFunction::StringEndsWith => self.call_string_ends_with(this_value, args),
@@ -132,6 +165,8 @@ impl Runtime {
             BuiltinFunction::StringSubstring => self.call_string_substring(this_value, args),
             BuiltinFunction::StringToLowerCase => self.call_string_to_lower_case(this_value),
             BuiltinFunction::StringToUpperCase => self.call_string_to_upper_case(this_value),
+            BuiltinFunction::StringPadStart => self.call_string_pad_start(this_value, args),
+            BuiltinFunction::StringPadEnd => self.call_string_pad_end(this_value, args),
             BuiltinFunction::StringSplit => self.call_string_split(this_value, args),
             BuiltinFunction::StringReplace => self.call_string_replace(this_value, args),
             BuiltinFunction::StringReplaceAll => self.call_string_replace_all(this_value, args),
@@ -173,6 +208,8 @@ impl Runtime {
             BuiltinFunction::RangeErrorCtor,
             BuiltinFunction::NumberCtor,
             BuiltinFunction::BooleanCtor,
+            BuiltinFunction::IntlDateTimeFormatCtor,
+            BuiltinFunction::IntlNumberFormatCtor,
         ] {
             self.register_builtin_prototype(function)?;
         }
@@ -251,6 +288,20 @@ impl Runtime {
             Value::BuiltinFunction(BuiltinFunction::BooleanCtor),
             false,
         )?;
+        let intl = self.insert_object(
+            IndexMap::from([
+                (
+                    "DateTimeFormat".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::IntlDateTimeFormatCtor),
+                ),
+                (
+                    "NumberFormat".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::IntlNumberFormatCtor),
+                ),
+            ]),
+            ObjectKind::Intl,
+        )?;
+        self.define_global("Intl".to_string(), Value::Object(intl), false)?;
 
         let math = self.insert_object(
             IndexMap::from([

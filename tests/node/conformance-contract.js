@@ -486,14 +486,6 @@ const FEATURE_CONTRACT = Object.freeze([
     messageIncludes: 'ReferenceError: `Uint8Array` is not defined',
   },
   {
-    id: 'runtime.intl',
-    title: 'Intl remains unavailable in the supported guest surface',
-    outcome: OUTCOME.RUNTIME_REJECT,
-    coverage: [COVERAGE.PROPERTY_NEGATIVE],
-    source: 'Intl.DateTimeFormat();',
-    messageIncludes: 'ReferenceError: `Intl` is not defined',
-  },
-  {
     id: 'runtime.proxy',
     title: 'Proxy remains unavailable in the supported guest surface',
     outcome: OUTCOME.RUNTIME_REJECT,
@@ -653,10 +645,6 @@ const REJECT_EXPECTATIONS = Object.freeze({
     category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN,
   },
   'runtime.typed-arrays': {
-    phase: REJECT_PHASE.RUNTIME,
-    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN,
-  },
-  'runtime.intl': {
     phase: REJECT_PHASE.RUNTIME,
     category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN,
   },

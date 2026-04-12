@@ -128,6 +128,9 @@ impl Runtime {
             BuiltinFunction::ArrayFlat => "flat",
             BuiltinFunction::ArrayFlatMap => "flatMap",
             BuiltinFunction::ArrayReduce => "reduce",
+            BuiltinFunction::ArrayReduceRight => "reduceRight",
+            BuiltinFunction::ArrayFindLast => "findLast",
+            BuiltinFunction::ArrayFindLastIndex => "findLastIndex",
             BuiltinFunction::ObjectCtor => "Object",
             BuiltinFunction::ObjectAssign => "assign",
             BuiltinFunction::ObjectCreate => "create",
@@ -176,11 +179,31 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => "ReferenceError",
             BuiltinFunction::RangeErrorCtor => "RangeError",
             BuiltinFunction::NumberCtor => "Number",
+            BuiltinFunction::NumberParseInt => "parseInt",
+            BuiltinFunction::NumberParseFloat => "parseFloat",
+            BuiltinFunction::NumberIsNaN => "isNaN",
+            BuiltinFunction::NumberIsFinite => "isFinite",
             BuiltinFunction::DateCtor => "Date",
             BuiltinFunction::DateNow => "now",
             BuiltinFunction::DateGetTime => "getTime",
+            BuiltinFunction::DateToISOString => "toISOString",
+            BuiltinFunction::DateToJSON => "toJSON",
+            BuiltinFunction::DateGetUTCFullYear => "getUTCFullYear",
+            BuiltinFunction::DateGetUTCMonth => "getUTCMonth",
+            BuiltinFunction::DateGetUTCDate => "getUTCDate",
+            BuiltinFunction::DateGetUTCHours => "getUTCHours",
+            BuiltinFunction::DateGetUTCMinutes => "getUTCMinutes",
+            BuiltinFunction::DateGetUTCSeconds => "getUTCSeconds",
+            BuiltinFunction::IntlDateTimeFormatCtor => "DateTimeFormat",
+            BuiltinFunction::IntlNumberFormatCtor => "NumberFormat",
+            BuiltinFunction::IntlDateTimeFormatFormat => "format",
+            BuiltinFunction::IntlDateTimeFormatResolvedOptions => "resolvedOptions",
+            BuiltinFunction::IntlNumberFormatFormat => "format",
+            BuiltinFunction::IntlNumberFormatResolvedOptions => "resolvedOptions",
             BuiltinFunction::StringCtor => "String",
             BuiltinFunction::StringTrim => "trim",
+            BuiltinFunction::StringTrimStart => "trimStart",
+            BuiltinFunction::StringTrimEnd => "trimEnd",
             BuiltinFunction::StringIncludes => "includes",
             BuiltinFunction::StringStartsWith => "startsWith",
             BuiltinFunction::StringEndsWith => "endsWith",
@@ -188,6 +211,8 @@ impl Runtime {
             BuiltinFunction::StringSubstring => "substring",
             BuiltinFunction::StringToLowerCase => "toLowerCase",
             BuiltinFunction::StringToUpperCase => "toUpperCase",
+            BuiltinFunction::StringPadStart => "padStart",
+            BuiltinFunction::StringPadEnd => "padEnd",
             BuiltinFunction::StringSplit => "split",
             BuiltinFunction::StringReplace => "replace",
             BuiltinFunction::StringReplaceAll => "replaceAll",
@@ -241,6 +266,9 @@ impl Runtime {
             BuiltinFunction::ArrayFlat => 0,
             BuiltinFunction::ArrayFlatMap => 1,
             BuiltinFunction::ArrayReduce => 1,
+            BuiltinFunction::ArrayReduceRight => 1,
+            BuiltinFunction::ArrayFindLast => 1,
+            BuiltinFunction::ArrayFindLastIndex => 1,
             BuiltinFunction::ObjectCtor => 1,
             BuiltinFunction::ObjectAssign => 2,
             BuiltinFunction::ObjectCreate => 2,
@@ -289,11 +317,31 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => 1,
             BuiltinFunction::RangeErrorCtor => 1,
             BuiltinFunction::NumberCtor => 1,
+            BuiltinFunction::NumberParseInt => 2,
+            BuiltinFunction::NumberParseFloat => 1,
+            BuiltinFunction::NumberIsNaN => 1,
+            BuiltinFunction::NumberIsFinite => 1,
             BuiltinFunction::DateCtor => 7,
             BuiltinFunction::DateNow => 0,
             BuiltinFunction::DateGetTime => 0,
+            BuiltinFunction::DateToISOString => 0,
+            BuiltinFunction::DateToJSON => 0,
+            BuiltinFunction::DateGetUTCFullYear => 0,
+            BuiltinFunction::DateGetUTCMonth => 0,
+            BuiltinFunction::DateGetUTCDate => 0,
+            BuiltinFunction::DateGetUTCHours => 0,
+            BuiltinFunction::DateGetUTCMinutes => 0,
+            BuiltinFunction::DateGetUTCSeconds => 0,
+            BuiltinFunction::IntlDateTimeFormatCtor => 0,
+            BuiltinFunction::IntlNumberFormatCtor => 0,
+            BuiltinFunction::IntlDateTimeFormatFormat => 1,
+            BuiltinFunction::IntlDateTimeFormatResolvedOptions => 0,
+            BuiltinFunction::IntlNumberFormatFormat => 1,
+            BuiltinFunction::IntlNumberFormatResolvedOptions => 0,
             BuiltinFunction::StringCtor => 1,
             BuiltinFunction::StringTrim => 0,
+            BuiltinFunction::StringTrimStart => 0,
+            BuiltinFunction::StringTrimEnd => 0,
             BuiltinFunction::StringIncludes => 1,
             BuiltinFunction::StringStartsWith => 1,
             BuiltinFunction::StringEndsWith => 1,
@@ -301,6 +349,8 @@ impl Runtime {
             BuiltinFunction::StringSubstring => 2,
             BuiltinFunction::StringToLowerCase => 0,
             BuiltinFunction::StringToUpperCase => 0,
+            BuiltinFunction::StringPadStart => 1,
+            BuiltinFunction::StringPadEnd => 1,
             BuiltinFunction::StringSplit => 2,
             BuiltinFunction::StringReplace => 2,
             BuiltinFunction::StringReplaceAll => 2,
@@ -364,6 +414,13 @@ impl Runtime {
                 BuiltinFunction::DateCtor if key == "now" => {
                     Some(Value::BuiltinFunction(BuiltinFunction::DateNow))
                 }
+                BuiltinFunction::NumberCtor => match key {
+                    "parseInt" => Some(Value::BuiltinFunction(BuiltinFunction::NumberParseInt)),
+                    "parseFloat" => Some(Value::BuiltinFunction(BuiltinFunction::NumberParseFloat)),
+                    "isNaN" => Some(Value::BuiltinFunction(BuiltinFunction::NumberIsNaN)),
+                    "isFinite" => Some(Value::BuiltinFunction(BuiltinFunction::NumberIsFinite)),
+                    _ => None,
+                },
                 BuiltinFunction::PromiseCtor => match key {
                     "resolve" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseResolve)),
                     "reject" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseReject)),
@@ -375,6 +432,8 @@ impl Runtime {
                     }
                     _ => None,
                 },
+                BuiltinFunction::IntlDateTimeFormatCtor if key == "supportedLocalesOf" => None,
+                BuiltinFunction::IntlNumberFormatCtor if key == "supportedLocalesOf" => None,
                 _ => None,
             },
         }
@@ -397,7 +456,19 @@ impl Runtime {
                 }
                 Ok(match &object.kind {
                     ObjectKind::FunctionPrototype(_) => key == "constructor",
-                    ObjectKind::Date(_) => matches!(key.as_str(), "getTime" | "valueOf"),
+                    ObjectKind::Date(_) => matches!(
+                        key.as_str(),
+                        "getTime"
+                            | "valueOf"
+                            | "toISOString"
+                            | "toJSON"
+                            | "getUTCFullYear"
+                            | "getUTCMonth"
+                            | "getUTCDate"
+                            | "getUTCHours"
+                            | "getUTCMinutes"
+                            | "getUTCSeconds"
+                    ),
                     ObjectKind::RegExp(_) => matches!(
                         key.as_str(),
                         "source"
@@ -412,6 +483,13 @@ impl Runtime {
                             | "exec"
                             | "test"
                     ),
+                    ObjectKind::Intl => matches!(key.as_str(), "DateTimeFormat" | "NumberFormat"),
+                    ObjectKind::IntlDateTimeFormat(_) => {
+                        matches!(key.as_str(), "constructor" | "format" | "resolvedOptions")
+                    }
+                    ObjectKind::IntlNumberFormat(_) => {
+                        matches!(key.as_str(), "constructor" | "format" | "resolvedOptions")
+                    }
                     ObjectKind::StringObject(value) => {
                         key == "constructor"
                             || key == "length"
@@ -465,6 +543,9 @@ impl Runtime {
                             | "flat"
                             | "flatMap"
                             | "reduce"
+                            | "reduceRight"
+                            | "findLast"
+                            | "findLastIndex"
                     ))
             }
             Value::Map(map) => {
@@ -713,6 +794,28 @@ impl Runtime {
                     let built_in = match key.as_str() {
                         "getTime" => Some(Value::BuiltinFunction(BuiltinFunction::DateGetTime)),
                         "valueOf" => Some(Value::Number(date.timestamp_ms)),
+                        "toISOString" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::DateToISOString))
+                        }
+                        "toJSON" => Some(Value::BuiltinFunction(BuiltinFunction::DateToJSON)),
+                        "getUTCFullYear" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCFullYear))
+                        }
+                        "getUTCMonth" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCMonth))
+                        }
+                        "getUTCDate" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCDate))
+                        }
+                        "getUTCHours" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCHours))
+                        }
+                        "getUTCMinutes" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCMinutes))
+                        }
+                        "getUTCSeconds" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCSeconds))
+                        }
                         "constructor" => Some(Value::BuiltinFunction(BuiltinFunction::DateCtor)),
                         _ => None,
                     };
@@ -750,6 +853,55 @@ impl Runtime {
                         return Ok(Value::String(ch.to_string()));
                     }
                 }
+                if matches!(object.kind, ObjectKind::Intl) {
+                    let built_in = match key.as_str() {
+                        "DateTimeFormat" => Some(Value::BuiltinFunction(
+                            BuiltinFunction::IntlDateTimeFormatCtor,
+                        )),
+                        "NumberFormat" => Some(Value::BuiltinFunction(
+                            BuiltinFunction::IntlNumberFormatCtor,
+                        )),
+                        "constructor" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectCtor)),
+                        _ => None,
+                    };
+                    if let Some(value) = built_in {
+                        return Ok(value);
+                    }
+                }
+                if matches!(object.kind, ObjectKind::IntlDateTimeFormat(_)) {
+                    let built_in = match key.as_str() {
+                        "constructor" => Some(Value::BuiltinFunction(
+                            BuiltinFunction::IntlDateTimeFormatCtor,
+                        )),
+                        "format" => Some(Value::BuiltinFunction(
+                            BuiltinFunction::IntlDateTimeFormatFormat,
+                        )),
+                        "resolvedOptions" => Some(Value::BuiltinFunction(
+                            BuiltinFunction::IntlDateTimeFormatResolvedOptions,
+                        )),
+                        _ => None,
+                    };
+                    if let Some(value) = built_in {
+                        return Ok(value);
+                    }
+                }
+                if matches!(object.kind, ObjectKind::IntlNumberFormat(_)) {
+                    let built_in = match key.as_str() {
+                        "constructor" => Some(Value::BuiltinFunction(
+                            BuiltinFunction::IntlNumberFormatCtor,
+                        )),
+                        "format" => Some(Value::BuiltinFunction(
+                            BuiltinFunction::IntlNumberFormatFormat,
+                        )),
+                        "resolvedOptions" => Some(Value::BuiltinFunction(
+                            BuiltinFunction::IntlNumberFormatResolvedOptions,
+                        )),
+                        _ => None,
+                    };
+                    if let Some(value) = built_in {
+                        return Ok(value);
+                    }
+                }
                 if let Some(value) = object.properties.get(&key) {
                     return Ok(value.clone());
                 }
@@ -784,6 +936,7 @@ impl Runtime {
                         | ObjectKind::Global
                         | ObjectKind::Math
                         | ObjectKind::Json
+                        | ObjectKind::Intl
                         | ObjectKind::Error(_)
                 ) && key == "constructor"
                 {
@@ -834,6 +987,13 @@ impl Runtime {
                         "flat" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFlat)),
                         "flatMap" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFlatMap)),
                         "reduce" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayReduce)),
+                        "reduceRight" => {
+                            Ok(Value::BuiltinFunction(BuiltinFunction::ArrayReduceRight))
+                        }
+                        "findLast" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFindLast)),
+                        "findLastIndex" => {
+                            Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFindLastIndex))
+                        }
                         _ => Ok(Value::Undefined),
                     }
                 }
@@ -898,6 +1058,8 @@ impl Runtime {
             Value::String(value) => match key.as_str() {
                 "length" => Ok(Value::Number(value.chars().count() as f64)),
                 "trim" => Ok(Value::BuiltinFunction(BuiltinFunction::StringTrim)),
+                "trimStart" => Ok(Value::BuiltinFunction(BuiltinFunction::StringTrimStart)),
+                "trimEnd" => Ok(Value::BuiltinFunction(BuiltinFunction::StringTrimEnd)),
                 "includes" => Ok(Value::BuiltinFunction(BuiltinFunction::StringIncludes)),
                 "startsWith" => Ok(Value::BuiltinFunction(BuiltinFunction::StringStartsWith)),
                 "endsWith" => Ok(Value::BuiltinFunction(BuiltinFunction::StringEndsWith)),
@@ -905,6 +1067,8 @@ impl Runtime {
                 "substring" => Ok(Value::BuiltinFunction(BuiltinFunction::StringSubstring)),
                 "toLowerCase" => Ok(Value::BuiltinFunction(BuiltinFunction::StringToLowerCase)),
                 "toUpperCase" => Ok(Value::BuiltinFunction(BuiltinFunction::StringToUpperCase)),
+                "padStart" => Ok(Value::BuiltinFunction(BuiltinFunction::StringPadStart)),
+                "padEnd" => Ok(Value::BuiltinFunction(BuiltinFunction::StringPadEnd)),
                 "split" => Ok(Value::BuiltinFunction(BuiltinFunction::StringSplit)),
                 "replace" => Ok(Value::BuiltinFunction(BuiltinFunction::StringReplace)),
                 "replaceAll" => Ok(Value::BuiltinFunction(BuiltinFunction::StringReplaceAll)),

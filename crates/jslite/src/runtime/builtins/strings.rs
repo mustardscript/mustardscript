@@ -95,6 +95,16 @@ impl Runtime {
         Ok(Value::String(value.trim().to_string()))
     }
 
+    pub(crate) fn call_string_trim_start(&self, this_value: Value) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "trimStart")?;
+        Ok(Value::String(value.trim_start().to_string()))
+    }
+
+    pub(crate) fn call_string_trim_end(&self, this_value: Value) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "trimEnd")?;
+        Ok(Value::String(value.trim_end().to_string()))
+    }
+
     pub(crate) fn call_string_includes(
         &self,
         this_value: Value,
@@ -205,6 +215,55 @@ impl Runtime {
     pub(crate) fn call_string_to_upper_case(&self, this_value: Value) -> JsliteResult<Value> {
         let value = self.string_receiver(this_value, "toUpperCase")?;
         Ok(Value::String(value.to_uppercase()))
+    }
+
+    pub(crate) fn call_string_pad_start(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        self.call_string_pad(this_value, args, true)
+    }
+
+    pub(crate) fn call_string_pad_end(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        self.call_string_pad(this_value, args, false)
+    }
+
+    fn call_string_pad(
+        &self,
+        this_value: Value,
+        args: &[Value],
+        at_start: bool,
+    ) -> JsliteResult<Value> {
+        let method = if at_start { "padStart" } else { "padEnd" };
+        let value = self.string_receiver(this_value, method)?;
+        let target_len = self.to_integer(args.first().cloned().unwrap_or(Value::Undefined))?;
+        let target_len = usize::try_from(target_len.max(0)).unwrap_or(usize::MAX);
+        let value_len = value.chars().count();
+        if target_len <= value_len {
+            return Ok(Value::String(value));
+        }
+        let fill = self.to_string(args.get(1).cloned().unwrap_or(Value::String(" ".into())))?;
+        if fill.is_empty() {
+            return Ok(Value::String(value));
+        }
+        let fill_chars = fill.chars().collect::<Vec<_>>();
+        let pad_len = target_len - value_len;
+        let padding = fill_chars
+            .iter()
+            .copied()
+            .cycle()
+            .take(pad_len)
+            .collect::<String>();
+        Ok(Value::String(if at_start {
+            format!("{padding}{value}")
+        } else {
+            format!("{value}{padding}")
+        }))
     }
 
     pub(crate) fn call_string_split(

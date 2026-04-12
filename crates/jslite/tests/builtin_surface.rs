@@ -674,6 +674,141 @@ fn array_splice_flat_and_flat_map_cover_supported_surface() {
 }
 
 #[test]
+fn date_number_string_and_reverse_array_helpers_cover_supported_surface() {
+    let program = compile(
+        r#"
+        const date = new Date("2026-04-10T14:05:06.789Z");
+        ({
+          iso: date.toISOString(),
+          json: JSON.stringify({ date }),
+          utc: [
+            date.getUTCFullYear(),
+            date.getUTCMonth(),
+            date.getUTCDate(),
+            date.getUTCHours(),
+            date.getUTCMinutes(),
+            date.getUTCSeconds(),
+          ],
+          parsedInt: Number.parseInt("  -0x10"),
+          parsedFloat: Number.parseFloat("  -10.25ms"),
+          isNaN: Number.isNaN(0 / 0),
+          isNaNString: Number.isNaN("NaN"),
+          isFinite: Number.isFinite(12.5),
+          isFiniteInfinite: Number.isFinite(1 / 0),
+          trimStart: "  padded  ".trimStart(),
+          trimEnd: "  padded  ".trimEnd(),
+          padStart: "7".padStart(3, "0"),
+          padEnd: "7".padEnd(3, "0"),
+          reduceRight: [1, 2, 3].reduceRight((acc, value) => acc + ":" + value, "tail"),
+          findLast: [1, 2, 3, 4].findLast((value) => value % 2 === 0),
+          findLastIndex: [1, 2, 3, 4].findLastIndex((value) => value % 2 === 0),
+        });
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Object(IndexMap::from([
+            ("iso".to_string(), "2026-04-10T14:05:06.789Z".into()),
+            (
+                "json".to_string(),
+                r#"{"date":"2026-04-10T14:05:06.789Z"}"#.into(),
+            ),
+            (
+                "utc".to_string(),
+                StructuredValue::Array(vec![
+                    number(2026.0),
+                    number(3.0),
+                    number(10.0),
+                    number(14.0),
+                    number(5.0),
+                    number(6.0),
+                ]),
+            ),
+            ("parsedInt".to_string(), number(-16.0)),
+            ("parsedFloat".to_string(), number(-10.25)),
+            ("isNaN".to_string(), StructuredValue::Bool(true)),
+            ("isNaNString".to_string(), StructuredValue::Bool(false)),
+            ("isFinite".to_string(), StructuredValue::Bool(true)),
+            ("isFiniteInfinite".to_string(), StructuredValue::Bool(false)),
+            ("trimStart".to_string(), "padded  ".into()),
+            ("trimEnd".to_string(), "  padded".into()),
+            ("padStart".to_string(), "007".into()),
+            ("padEnd".to_string(), "700".into()),
+            ("reduceRight".to_string(), "tail:3:2:1".into()),
+            ("findLast".to_string(), number(4.0)),
+            ("findLastIndex".to_string(), number(3.0)),
+        ]))
+    );
+}
+
+#[test]
+fn intl_subset_covers_supported_surface() {
+    let program = compile(
+        r#"
+        const date = new Date("2026-04-10T14:05:06.789Z");
+        const dateFormatter = new Intl.DateTimeFormat("en-US", {
+          timeZone: "UTC",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        });
+        const numberFormatter = Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+        ({
+          date: dateFormatter.format(date),
+          dateOptions: dateFormatter.resolvedOptions(),
+          currency: numberFormatter.format(1234.5),
+          currencyOptions: numberFormatter.resolvedOptions(),
+          decimal: Intl.NumberFormat("en-US", {
+            useGrouping: false,
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          }).format(12),
+        });
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Object(IndexMap::from([
+            ("date".to_string(), "04/10/2026".into()),
+            (
+                "dateOptions".to_string(),
+                StructuredValue::Object(IndexMap::from([
+                    ("locale".to_string(), "en-US".into()),
+                    ("timeZone".to_string(), "UTC".into()),
+                    ("year".to_string(), "numeric".into()),
+                    ("month".to_string(), "2-digit".into()),
+                    ("day".to_string(), "2-digit".into()),
+                ])),
+            ),
+            ("currency".to_string(), "$1,234.50".into()),
+            (
+                "currencyOptions".to_string(),
+                StructuredValue::Object(IndexMap::from([
+                    ("locale".to_string(), "en-US".into()),
+                    ("style".to_string(), "currency".into()),
+                    ("currency".to_string(), "USD".into()),
+                    ("minimumFractionDigits".to_string(), number(2.0)),
+                    ("maximumFractionDigits".to_string(), number(2.0)),
+                    ("useGrouping".to_string(), StructuredValue::Bool(true)),
+                ])),
+            ),
+            ("decimal".to_string(), "12.0".into()),
+        ]))
+    );
+}
+
+#[test]
 fn iterable_conversion_helpers_cover_supported_iterables() {
     let program = compile(
         r#"

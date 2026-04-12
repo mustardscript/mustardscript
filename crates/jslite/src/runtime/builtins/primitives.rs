@@ -140,7 +140,71 @@ impl Runtime {
         Ok(Value::Number(self.date_object(date)?.timestamp_ms))
     }
 
-    fn date_timestamp_ms_from_value(&self, value: Value) -> JsliteResult<f64> {
+    pub(crate) fn call_date_to_iso_string(&self, this_value: Value) -> JsliteResult<Value> {
+        let date = self.date_receiver(this_value, "toISOString")?;
+        let timestamp_ms = self.date_object(date)?.timestamp_ms;
+        let Some(rendered) = format_iso_datetime(timestamp_ms) else {
+            return Err(JsliteError::runtime("RangeError: Invalid time value"));
+        };
+        Ok(Value::String(rendered))
+    }
+
+    pub(crate) fn call_date_to_json(&self, this_value: Value) -> JsliteResult<Value> {
+        let date = self.date_receiver(this_value, "toJSON")?;
+        let timestamp_ms = self.date_object(date)?.timestamp_ms;
+        Ok(match format_iso_datetime(timestamp_ms) {
+            Some(rendered) => Value::String(rendered),
+            None => Value::Null,
+        })
+    }
+
+    fn date_utc_component(&self, this_value: Value, method: &str) -> JsliteResult<OffsetDateTime> {
+        let date = self.date_receiver(this_value, method)?;
+        let timestamp_ms = self.date_object(date)?.timestamp_ms;
+        date_time_from_timestamp_ms(timestamp_ms)
+            .ok_or_else(|| JsliteError::runtime("RangeError: Invalid time value"))
+    }
+
+    pub(crate) fn call_date_get_utc_full_year(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.date_utc_component(this_value, "getUTCFullYear")?
+                .year() as f64,
+        ))
+    }
+
+    pub(crate) fn call_date_get_utc_month(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            (self.date_utc_component(this_value, "getUTCMonth")?.month() as u8 - 1) as f64,
+        ))
+    }
+
+    pub(crate) fn call_date_get_utc_date(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.date_utc_component(this_value, "getUTCDate")?.day() as f64,
+        ))
+    }
+
+    pub(crate) fn call_date_get_utc_hours(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.date_utc_component(this_value, "getUTCHours")?.hour() as f64,
+        ))
+    }
+
+    pub(crate) fn call_date_get_utc_minutes(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.date_utc_component(this_value, "getUTCMinutes")?
+                .minute() as f64,
+        ))
+    }
+
+    pub(crate) fn call_date_get_utc_seconds(&self, this_value: Value) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.date_utc_component(this_value, "getUTCSeconds")?
+                .second() as f64,
+        ))
+    }
+
+    pub(crate) fn date_timestamp_ms_from_value(&self, value: Value) -> JsliteResult<f64> {
         match value {
             Value::Number(value) => Ok(value.trunc()),
             Value::String(value) => Ok(parse_date_timestamp_ms(&value).trunc()),
@@ -162,6 +226,100 @@ impl Runtime {
         Ok(Value::Number(self.to_number(
             args.first().cloned().unwrap_or(Value::Undefined),
         )?))
+    }
+
+    pub(crate) fn call_number_parse_int(&self, args: &[Value]) -> JsliteResult<Value> {
+        let input = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        let trimmed = input.trim_start();
+        let radix_value = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let radix = if matches!(radix_value, Value::Undefined) {
+            None
+        } else {
+            let parsed = self.to_integer(radix_value)?;
+            if !(2..=36).contains(&parsed) {
+                return Ok(Value::Number(f64::NAN));
+            }
+            Some(parsed as u32)
+        };
+
+        let mut chars = trimmed.chars().peekable();
+        let sign = match chars.peek().copied() {
+            Some('+') => {
+                chars.next();
+                1.0
+            }
+            Some('-') => {
+                chars.next();
+                -1.0
+            }
+            _ => 1.0,
+        };
+        let remainder = chars.collect::<String>();
+        let (radix, digits) =
+            if radix.is_none() && (remainder.starts_with("0x") || remainder.starts_with("0X")) {
+                (16u32, &remainder[2..])
+            } else {
+                (radix.unwrap_or(10), remainder.as_str())
+            };
+        let accepted = digits
+            .chars()
+            .take_while(|ch| ch.is_digit(radix))
+            .collect::<String>();
+        if accepted.is_empty() {
+            return Ok(Value::Number(f64::NAN));
+        }
+        let parsed = i128::from_str_radix(&accepted, radix).unwrap_or(0) as f64 * sign;
+        Ok(Value::Number(parsed))
+    }
+
+    pub(crate) fn call_number_parse_float(&self, args: &[Value]) -> JsliteResult<Value> {
+        let input = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        let trimmed = input.trim_start();
+        if trimmed.starts_with("Infinity") || trimmed.starts_with("+Infinity") {
+            return Ok(Value::Number(f64::INFINITY));
+        }
+        if trimmed.starts_with("-Infinity") {
+            return Ok(Value::Number(f64::NEG_INFINITY));
+        }
+        let mut end = 0usize;
+        let mut seen_digit = false;
+        let mut seen_dot = false;
+        let mut seen_exp = false;
+        let mut allow_sign = true;
+        for (index, ch) in trimmed.char_indices() {
+            let accepted = if allow_sign && matches!(ch, '+' | '-') {
+                allow_sign = false;
+                true
+            } else if ch.is_ascii_digit() {
+                seen_digit = true;
+                allow_sign = false;
+                true
+            } else if ch == '.' && !seen_dot && !seen_exp {
+                seen_dot = true;
+                allow_sign = false;
+                true
+            } else if matches!(ch, 'e' | 'E') && seen_digit && !seen_exp {
+                seen_exp = true;
+                allow_sign = true;
+                true
+            } else {
+                false
+            };
+            if !accepted {
+                break;
+            }
+            end = index + ch.len_utf8();
+        }
+        let parsed = trimmed[..end].parse::<f64>().unwrap_or(f64::NAN);
+        Ok(Value::Number(parsed))
+    }
+
+    pub(crate) fn call_number_is_nan(&self, args: &[Value]) -> Value {
+        Value::Bool(matches!(args.first(), Some(Value::Number(value)) if value.is_nan()))
+    }
+
+    pub(crate) fn call_number_is_finite(&self, args: &[Value]) -> Value {
+        Value::Bool(matches!(args.first(), Some(Value::Number(value)) if value.is_finite()))
     }
 
     pub(crate) fn call_string_ctor(&self, args: &[Value]) -> JsliteResult<Value> {
@@ -468,21 +626,9 @@ impl Runtime {
             return Ok("null".to_string());
         }
 
-        let Ok(datetime) =
-            OffsetDateTime::from_unix_timestamp_nanos(timestamp_nanos.trunc() as i128)
-        else {
+        let Some(rendered) = format_iso_datetime(timestamp_ms) else {
             return Ok("null".to_string());
         };
-        let rendered = format!(
-            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
-            datetime.year(),
-            datetime.month() as u8,
-            datetime.day(),
-            datetime.hour(),
-            datetime.minute(),
-            datetime.second(),
-            datetime.millisecond(),
-        );
         serde_json::to_string(&rendered).map_err(|error| JsliteError::runtime(error.to_string()))
     }
 
