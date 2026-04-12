@@ -66,19 +66,26 @@ Cooperative cancellation is controlled separately through:
 - Native helper loops such as `Array.prototype.sort()` and `Object.keys()` now
   charge instruction budget explicitly instead of bypassing the guest budget
   inside opaque Rust work.
-- `JSON.parse()` and `JSON.stringify()` also meter native helper work, observe
-  cancellation during large helper runs, and fail direct top-level string
-  returns against the configured heap limit before those results cross the host
-  boundary.
+- `JSON.parse()`, `JSON.stringify()`, `Number.parseInt()`, and
+  `Number.parseFloat()` also meter native helper work instead of bypassing the
+  guest instruction budget inside long native scans.
+- `JSON.parse()` and `JSON.stringify()` observe cancellation during large helper
+  runs, and direct top-level string returns fail against the configured heap
+  limit before those results cross the host boundary.
 - Bare string values now receive the same heap-headroom check when they cross
   the structured boundary directly as capability results or direct
   `Progress.resume(...)` payloads, so hosts cannot bypass `heapLimitBytes` by
   returning or resuming with an unboxed large string.
+- Structured host-boundary arrays now fail closed above 1,000,000 elements, so
+  sparse-array length bombs cannot force unbounded synchronous traversal before
+  runtime limits begin.
 - Cancellation fails as a limit error with the guest-safe message
   `execution cancelled`.
 - In addon mode, same-thread `AbortSignal` delivery cannot interrupt a native
   compute segment until control returns to Node. Explicit `Progress.cancel()`
   still aborts already suspended executions immediately.
+- Already-aborted `AbortSignal`s short-circuit before Node begins structured
+  boundary encoding for `run()` and `start()`.
 
 ## Default Policy
 

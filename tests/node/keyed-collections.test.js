@@ -5,6 +5,15 @@ const assert = require('node:assert/strict');
 
 const { Jslite, JsliteError, Progress } = require('../../index.js');
 
+const SNAPSHOT_KEY = Buffer.from('keyed-collections-snapshot-key');
+const PROGRESS_LOAD_OPTIONS = Object.freeze({
+  snapshotKey: SNAPSHOT_KEY,
+  capabilities: {
+    fetch_data() {},
+  },
+  limits: {},
+});
+
 test('run supports Map mutation, lookup, and SameValueZero semantics', async () => {
   const runtime = new Jslite(`
     const shared = {};
@@ -126,6 +135,7 @@ test('progress snapshots preserve live keyed collections and cycles across resum
   `);
 
   const first = runtime.start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data(value) {
         return value;
@@ -137,7 +147,7 @@ test('progress snapshots preserve live keyed collections and cycles across resum
   assert.equal(first.capability, 'fetch_data');
   assert.deepEqual(first.args, [41]);
 
-  const restored = Progress.load(first.dump());
+  const restored = Progress.load(first.dump(), PROGRESS_LOAD_OPTIONS);
   const result = restored.resume(41);
   assert.deepEqual(result, {
     count: 41,

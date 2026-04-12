@@ -125,6 +125,36 @@ test('JSON.parse and JSON.stringify charge instruction budget inside native help
       message: /instruction budget exhausted/,
     }),
   );
+
+  await assert.rejects(
+    runtime('Number.parseInt(text, 10);').run({
+      inputs: {
+        text: '9'.repeat(20_000),
+      },
+      limits: {
+        instructionBudget: 8,
+      },
+    }),
+    isJsliteError({
+      kind: 'Limit',
+      message: /instruction budget exhausted/,
+    }),
+  );
+
+  await assert.rejects(
+    runtime('Number.parseFloat(text);').run({
+      inputs: {
+        text: `${'9'.repeat(20_000)}.5`,
+      },
+      limits: {
+        instructionBudget: 8,
+      },
+    }),
+    isJsliteError({
+      kind: 'Limit',
+      message: /instruction budget exhausted/,
+    }),
+  );
 });
 
 test('direct JSON.stringify returns respect the heap limit before crossing the host boundary', async () => {
@@ -134,6 +164,23 @@ test('direct JSON.stringify returns respect the heap limit before crossing the h
     runtime('JSON.stringify(text);').run({
       inputs: {
         text,
+      },
+      limits: {
+        heapLimitBytes: 15_000,
+      },
+    }),
+    isJsliteError({
+      kind: 'Limit',
+      message: /heap limit exceeded/,
+    }),
+  );
+});
+
+test('JSON.parse bare string results respect the heap limit before crossing the host boundary', async () => {
+  await assert.rejects(
+    runtime('JSON.parse(text);').run({
+      inputs: {
+        text: JSON.stringify('x'.repeat(10_000)),
       },
       limits: {
         heapLimitBytes: 15_000,
@@ -211,6 +258,18 @@ test('resume payloads charge instruction budget during structured boundary conve
       kind: 'Limit',
       message: /instruction budget exhausted/,
     }),
+  );
+});
+
+test('host boundary rejects oversized sparse arrays before synchronous traversal', () => {
+  assert.throws(
+    () =>
+      runtime('value.length;').start({
+        inputs: {
+          value: new Array(1_000_001),
+        },
+      }),
+    /arrays longer than 1000000 elements cannot cross the host boundary/,
   );
 });
 

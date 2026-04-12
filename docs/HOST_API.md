@@ -13,7 +13,7 @@ Allowed values:
 - strings
 - numbers, including `NaN`, `Infinity`, and `-0`
 - arrays of allowed values, including sparse arrays with preserved hole
-  positions
+  positions up to 1,000,000 elements
 - plain objects with string keys and allowed values
 
 Rejected values:
@@ -76,9 +76,9 @@ objects instead of alias-expanding them during export.
   resumed compute segment.
 - `limits.maxOutstandingHostCalls` bounds the combined number of queued and
   currently suspended host requests for async guest execution.
-- If hosts want dumped progress blobs to survive a fresh process boundary, they
-  must provide the same `snapshotKey` on `start()`/`run()` and on
-  `Progress.load(...)`.
+- Hosts restoring dumped progress must provide explicit `capabilities` or
+  `console`, explicit `limits`, and the same `snapshotKey` on
+  `Progress.load(...)`, even in the same process.
 
 ## Error Sanitization
 
@@ -135,14 +135,10 @@ guest-only traceback with guest function names and source spans.
   `token` metadata authenticated by the configured `snapshotKey`, and
   `Progress.load()` verifies that bundle before trusting the dumped snapshot
   bytes.
-- In the Node wrapper, `Progress.load(...)` only reuses cached policy
-  automatically when the dumped token is still present in the same-process
-  cache. Fresh-process restores, or same-process restores after cache eviction,
-  must pass explicit `capabilities`, `limits`, and `snapshotKey` so the host
-  reasserts both authority and resource policy before dispatching on
-  `progress.capability` / `progress.args`. `limits` must be present as a plain
-  object even when the caller intentionally wants default limits and therefore
-  passes `{}`.
+- In the Node wrapper, `Progress.load(...)` always requires the host to
+  reassert explicit `capabilities` or `console`, explicit `limits`, and the
+  original `snapshotKey` before it exposes authoritative
+  `progress.capability` / `progress.args`.
 - Hosts must not attempt to run nested guest execution on the same runtime
   state while another `run()`, `start()`, or `resume()` is active.
 
@@ -157,6 +153,9 @@ guest-only traceback with guest function names and source spans.
   `try` / `catch` does not intercept it.
 - In the Node wrapper, hosts use `AbortSignal` to cancel active compute segments
   and `Progress.cancel()` to abort a currently suspended execution.
+- Already-aborted `AbortSignal`s fail closed before Node starts structured host
+  boundary traversal, so cancellation does not depend on first scanning large
+  host payloads.
 - Cancelling a suspended async host wait stops guest execution immediately, but
   it does not force-stop the host promise or capability handler that was already
   started.
@@ -167,3 +166,5 @@ guest-only traceback with guest function names and source spans.
 - Cancellation handles are runtime-only state. Serialized snapshots do not
   preserve them, so hosts resuming a loaded snapshot must provide a fresh
   cancellation signal or token if they want later compute to remain cancellable.
+- The native addon keeps cancellation token ids process-local and unguessable;
+  guessed ids fail closed instead of cancelling unrelated executions.

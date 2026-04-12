@@ -532,7 +532,7 @@ The host boundary should be narrowly defined and documented as its own contract.
 - strings
 - numbers, including non-finite values and `-0`
 - arrays of structured host values, including sparse arrays with preserved hole
-  positions
+  positions up to 1,000,000 elements
 - plain objects with string keys and structured host values
 
 ### Rejected at the Host Boundary
@@ -766,13 +766,10 @@ inside the supported language subset, and lowers to an executable compiled
 program. It does not prove that a later `run()` or `start()` call will succeed
 with a particular host policy, input set, capability map, or runtime limit.
 
-`Progress.load(...)` reuses the original host policy automatically only when the
-dumped progress object stays inside the same Node process. If a progress blob is
-restored in a fresh process, the host must pass explicit `capabilities`,
-`limits`, and the original `snapshotKey` so the dumped token authenticates the
-snapshot bytes before any loaded capability metadata is trusted. `limits` must
-be present as an object, even when the host intentionally wants the default
-runtime limits and therefore passes `{}`.
+`Progress.load(...)` always requires explicit restore authority: the host must
+pass `capabilities` or `console`, explicit `limits`, and the original
+`snapshotKey`. The dumped token authenticates the snapshot bytes before any
+loaded capability metadata is trusted, and same-process dumps stay single-use.
 
 The common path should be easy. The advanced path should remain explicit.
 

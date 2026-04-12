@@ -325,7 +325,7 @@ const PUBLIC_API_MISUSE_COVERAGE = Object.freeze({
   'Progress.load(...)': [
     {
       file: 'tests/node/security-progress-load.test.js',
-      pattern: 'progress load requires explicit policy and snapshotKey outside the current process',
+      pattern: 'progress load requires explicit restore policy even in the same process',
     },
     {
       file: 'tests/node/serialization.test.js',

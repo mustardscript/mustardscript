@@ -58,13 +58,10 @@ the safety rules they are expected to follow.
   `snapshot_key_digest`, and `token` metadata authenticated by the configured
   `snapshotKey`. `Progress.load(...)` verifies that bundle before it inspects
   or resumes a dumped snapshot.
-- Same-process `Progress.load(...)` can reuse cached policy for a dumped
-  snapshot while that authenticated token remains in the local cache, but
-  fresh-process restores must pass explicit `capabilities`, `limits`, and
-  `snapshotKey` before inspection or resume. `limits` must be present as an
-  explicit object, even when the caller wants default limits and therefore
-  passes `{}`. Consumed same-process dumps stay single-use across
-  `worker_threads` and duplicate package copies in the same PID.
+- `Progress.load(...)` always requires explicit `capabilities` or `console`,
+  explicit `limits`, and the original `snapshotKey` before inspection or
+  resume. Consumed same-process dumps stay single-use across `worker_threads`
+  and duplicate package copies in the same PID.
 
 ## Value Encoding
 
