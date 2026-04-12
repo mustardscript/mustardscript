@@ -1,616 +1,445 @@
-# Testing Gaps and 10x Improvement Plan
-
-## Goal
-
-Make `jslite` testing materially stronger by increasing signal per test-minute, not
-by adding a long tail of isolated examples.
-
-The target is:
-
-- faster detection of semantic regressions
-- stronger evidence that unsupported features fail closed
-- better confidence in snapshot, boundary, and sidecar safety
-- better regression localization when failures happen
-
-This plan is based on the current repository state audited on April 12, 2026.
-
-## Current Baseline
-
-The repo already has a stronger baseline than most early runtimes:
-
-- Rust unit and integration tests across parser, runtime, serialization, limits,
-  security, GC, and sidecar protocol
-- Node end-to-end tests across the public API
-- generated Node differential tests via `fast-check`
-- curated `test262` pass and unsupported manifests
-- hostile-input/property tests in Rust
-- libFuzzer targets for parser, IR lowering, bytecode validation and execution,
-  snapshot loading, and sidecar protocol
-- package/release smoke coverage
-- coverage audit tests that assert presence of important regression tests
-
-That means the next 10x gain does not come from "add more unit tests." It comes
-from widening the testing model in a few targeted places where one investment
-covers many behaviors at once.
-
-## Testing Principles
-
-The next testing work should favor:
-
-- generated or model-based suites over hand-authored one-off examples
-- outcome comparison over implementation-detail assertions
-- state-machine testing for resumable execution and protocol flows
-- negative-space testing for unsupported features and fail-closed behavior
-- deterministic replay of complex async/suspension traces
-- automatic corpus growth from discovered failures
-
-The next testing work should avoid:
-
-- chasing line coverage percentages as a primary goal
-- adding many redundant example tests for already-covered semantics
-- expensive integration tests that duplicate faster lower-level checks
-- performance benchmarks presented as correctness tests without stable budgets
-
-## Highest-Leverage Gaps
-
-## 1. Semantic differential coverage is still too narrow
-
-### Why this matters
-
-The project's core claim is semantic correctness for a documented subset. The
-highest-signal test is still: "for supported programs, `jslite` and Node expose
-the same outcome."
-
-The repo already has this, but the generator surface is still relatively small
-compared with the language/runtime surface now implemented.
-
-### Current evidence
-
-- `tests/node/property-differential.test.js`
-- `tests/node/property-generators.js`
-- `tests/node/runtime-oracle.js`
-- curated differentials in `tests/node/differential.test.js`
-
-### Gap
-
-The current generators exercise useful slices, but not enough combinations of:
-
-- exceptions plus control flow
-- object/array/property-order interactions
-- collection semantics after mutation
-- async/promise scheduling behavior
-- trace-sensitive host capability flows
-- snapshot-preserved behavior across resume
-
-### 10x upgrade
-
-Build a feature-family generator matrix instead of a single growing generator.
-
-Recommended families:
-
-- control flow plus abrupt completion
-- objects/arrays plus enumeration and key ordering
-- keyed collections plus mutation during iteration
-- exceptions plus `try`/`catch`/`finally`
-- async/promise chains plus guest microtasks
-- host capability traces plus deterministic suspension/resume
-
-Each family should generate programs inside a bounded supported subset and
-compare canonical outcomes against Node.
-
-### Why this is high-signal
-
-One generator family can replace dozens of brittle examples and catches
-combinatorial regressions that hand-written tests miss.
-
-## 2. There is not yet enough metamorphic testing
-
-### Why this matters
-
-Differential tests are strong, but they are not enough on their own. Some
-equivalent program rewrites should preserve behavior regardless of the oracle.
-
-Metamorphic testing is fast and good at finding compiler, lowering, and runtime
-mismatches without needing new fixtures.
-
-### Gap
-
-The repo has some generated AST and trace work, but not a broad metamorphic
-suite that encodes semantics-preserving rewrites as reusable properties.
-
-### 10x upgrade
-
-Add metamorphic properties for transformations such as:
-
-- wrapping an expression in an identity `const temp = expr; temp`
-- block insertion where scope is unchanged
-- `if (true) a else b` normalization
-- alpha-renaming of local bindings
-- equivalent literal construction order where semantics should not change
-- desugaring-safe rewrites already known to be within the supported subset
-- snapshot round-trip insertion at every suspension point
-
-For each generated program:
-
-1. run original
-2. apply one rewrite
-3. run rewritten form
-4. assert canonical equivalence
-
-### Why this is high-signal
-
-This catches bugs in parsing, lowering, bytecode generation, and resumption
-without requiring a full second implementation.
-
-## 3. Snapshot/resume needs full state-machine testing
-
-### Why this matters
-
-`jslite` is not just an evaluator; resumable execution is a primary product
-claim. Snapshot bugs are high impact because they can break correctness,
-replay protection, accounting, or policy enforcement.
-
-### Current evidence
-
-- snapshot round-trip tests exist
-- progress and security tests exist
-- serialization and policy checks exist
-
-### Gap
-
-Most current coverage is scenario-based. The missing layer is stateful model
-testing of the full snapshot lifecycle.
-
-### 10x upgrade
-
-Introduce model-based/state-machine tests for:
-
-- `run -> suspend -> dump -> load -> inspect -> resume`
-- repeated load attempts
-- invalid payload type transitions
-- policy changes across load and resume
-- cancellation before suspend, while suspended, and after resume
-- mixed success/error resume payloads
-- snapshot reuse, replay, and stale-token handling
-- accounting invariants before and after load
-
-The model should track:
-
-- whether a snapshot is live, consumed, rejected, or completed
-- which capabilities are authorized
-- whether limits became stricter or looser
-- whether the runtime should complete, suspend again, or fail closed
-
-### Why this is high-signal
-
-This compresses a large correctness and security surface into a bounded set of
-state transitions and is far stronger than adding more one-off progress tests.
-
-## 4. Async testing needs schedule exploration, not just examples
-
-### Why this matters
-
-The hardest regressions in runtimes often come from interleavings:
-
-- promise adoption timing
-- microtask ordering
-- host promise resolution order
-- suspension while promises are live
-- cancellation racing with resolution
-
-### Gap
-
-The current async tests cover representative behavior, but not systematic
-schedule exploration.
-
-### 10x upgrade
-
-Build a deterministic schedule harness that:
-
-- uses explicit deferred host promises
-- enumerates small resolution/rejection orderings
-- records canonical event traces
-- compares `jslite` traces to Node traces where parity is expected
-
-Focus on small exhaustive interleavings rather than broad random timing.
-
-Priority trace classes:
-
-- two or three concurrent promise chains
-- `Promise.all`, `allSettled`, `race`, `any`
-- nested `await`
-- `finally` after rejection and after host failure
-- suspend/resume in the presence of pending promise work
-- cancellation racing with host completion
-
-### Why this is high-signal
-
-Small state-space schedule exploration finds async bugs faster than large,
-slow, timing-dependent integration tests.
-
-## 5. The Node/public-boundary contract needs broader generated testing
-
-### Why this matters
-
-Users consume the Node wrapper, not just the Rust core. Boundary bugs can break
-correctness even if the runtime is internally correct.
-
-### Current evidence
-
-- `tests/node/property-boundary.test.js`
-- host-boundary and security tests
-- type tests and package smoke tests
-
-### Gap
-
-The current boundary properties are useful, but still narrower than the public
-surface:
-
-- structured value edge cases
-- host error mapping permutations
-- lifecycle misuse sequences
-- cancellation token misuse
-- cross-process `Progress.load()` restoration flows
-
-### 10x upgrade
-
-Expand generated public-API tests into contract families:
-
-- structured inputs/outputs with numeric edge cases and nested shapes
-- host-thrown error shapes with missing/extra fields
-- progress lifecycle misuse sequences
-- snapshotKey and policy mismatch matrices
-- cancellation sequences across `run`, `start`, `resume`, and `resumeError`
-- mixed sync/async capability behavior under identical guest programs
-- type-level contract tests that derive runtime examples from `.d.ts`
-
-### Why this is high-signal
-
-This protects the public API and catches wrapper/addon regressions that Rust
-tests cannot see.
-
-## 6. Sidecar testing needs protocol state coverage, not just hostile lines
-
-### Why this matters
-
-The sidecar is the stronger-isolation path. Protocol mistakes can cause
-fail-open behavior, replay issues, or host/guest desynchronization.
-
-### Current evidence
-
-- `crates/jslite-sidecar/tests/protocol.rs`
-- `crates/jslite-sidecar/tests/hostile_protocol.rs`
-- sidecar fuzz target
-
-### Gap
-
-Hostile malformed inputs are covered better than valid-but-adversarial protocol
-sequences.
-
-### 10x upgrade
-
-Add sidecar protocol state-machine tests for:
-
-- valid request ordering and illegal ordering
-- duplicate IDs
-- resume after completion
-- resume against mismatched capability/policy sets
-- cancellation of unknown or already-completed execution
-- partial write/read framing and recovery behavior
-- multiple concurrent suspended executions
-- protocol equivalence between addon mode and sidecar mode for the same guest
-  scenarios
-
-### Why this is high-signal
-
-This tests the real deployment boundary and catches bugs that unit-level codec
-tests and malformed-input fuzzing do not reach.
-
-## 7. Unsupported-feature testing should be generated from the language contract
-
-### Why this matters
-
-A fail-closed runtime lives or dies on negative-space coverage. Unsupported
-syntax and semantics should be systematically rejected, not only sampled.
-
-### Current evidence
-
-- parser rejection tests
-- unsupported `test262` manifest
-- unsupported program generators
-
-### Gap
-
-The language contract and rejection coverage are connected informally, not as a
-single generated source of truth.
-
-### 10x upgrade
-
-Create a contract-driven rejection matrix derived from `docs/LANGUAGE.md` and
-the machine-readable conformance contract. Every documented unsupported class
-should have:
-
-- at least one curated regression case
-- at least one generated family
-- an expected diagnostic category
-- explicit confirmation of constructor-time rejection vs runtime rejection
-
-Add a meta-test that fails if a documented unsupported feature class lacks
-coverage mapping.
-
-### Why this is high-signal
-
-This prevents silent drift between docs, validator behavior, and tests.
-
-## 8. Cross-layer equivalence testing is missing
-
-### Why this matters
-
-This repo has several layers:
-
-- parser/IR
-- bytecode lowering
-- direct runtime execution
-- Node addon/wrapper
-- sidecar transport
-
-The same program should agree across those layers when the surface promises it.
-
-### Gap
-
-Most tests stay within one layer at a time. There is not enough systematic
-cross-layer equivalence coverage.
-
-### 10x upgrade
-
-For generated supported programs, assert equivalence across:
-
-- `execute` vs `start`-to-completion
-- raw Rust execution vs Node wrapper execution
-- addon mode vs sidecar mode
-- original snapshot vs dump/load/resume snapshot
-- compile/load-program round trip vs fresh compile
-
-Use canonical outcomes and canonical traces rather than raw object identity.
-
-### Why this is high-signal
-
-This exposes wiring and serialization bugs that are invisible when each layer is
-only tested in isolation.
-
-## 9. Fuzzing exists, but continuous fuzzing is still underpowered
-
-### Why this matters
-
-The repo already has the right fuzz targets. The bigger gap is execution model,
-not target count.
-
-### Current evidence
-
-- `fuzz/fuzz_targets/*`
-- `scripts/run-hardening.sh` only checks target buildability
-
-### Gap
-
-CI proves the targets compile, but it does not prove they are being exercised
-continuously or with sanitizers.
-
-### 10x upgrade
-
-Add a two-tier fuzzing strategy:
-
-- short budgeted fuzz smoke in CI for selected targets
-- long-running sanitizer-backed fuzzing outside normal PR CI on a schedule
-
-Recommended policy:
-
-- PR CI: 30-90 second smoke runs on parser, snapshot, and sidecar protocol
-- scheduled jobs: ASan/UBSan fuzzing with persisted corpora and crash artifact
-  upload
-- seed corpora from `test262`, curated regressions, serialized snapshots, and
-  protocol fixtures
-
-### Why this is high-signal
-
-The repo already invested in fuzz targets. Running them meaningfully turns that
-investment into real coverage.
-
-## 10. Mutation testing is missing on the most security-sensitive logic
-
-### Why this matters
-
-Passing tests do not always mean the tests would catch the bug that matters.
-Mutation testing answers a stronger question: "would the suite fail if the
-guard were wrong?"
-
-### Gap
-
-There is no mutation-style check focused on validation, snapshot policy, limits,
-or boundary sanitization logic.
-
-### 10x upgrade
-
-Add targeted mutation testing for hot paths such as:
-
-- validator rejection conditions
-- snapshot policy authorization checks
-- accounting/limit comparisons
-- structured boundary reject paths
-- sidecar request validation
-- progress single-use and authentication checks
-
-Use small targeted mutation runs, not whole-repo brute force mutation testing.
-
-### Why this is high-signal
-
-It validates the quality of the tests around the exact guardrails this project
-cares about most.
-
-## 11. Coverage auditing should become contract auditing
-
-### Why this matters
-
-The repo already has coverage-audit tests. That idea should be pushed further.
-
-### Gap
-
-Current audits assert presence of certain regression coverage, but not full
-alignment between:
-
-- docs
-- supported surface
-- unsupported surface
-- built-in surface
-- tests
-
-### 10x upgrade
-
-Add generated audits that fail when:
-
-- a documented built-in lacks either parity tests or rejection tests
-- a public API method lacks misuse-path coverage
-- a sidecar protocol method lacks hostile-input and valid-flow coverage
-- a new conformance-contract entry is added without the right test bucket
-
-This is less about percentage coverage and more about coverage obligations.
-
-### Why this is high-signal
-
-It turns repository promises into enforceable checks and reduces forgotten test
-work when features expand.
-
-## 12. Performance-regression testing should use tight, stable contract checks
-
-### Why this matters
-
-For a runtime, some regressions are not semantic. A change can preserve
-correctness while making startup, memory, or suspension cost much worse.
-
-### Gap
-
-The repo has benchmarks and smoke scripts, but not stable regression gates with
-careful budgets.
-
-### 10x upgrade
-
-Add narrow performance contract tests for:
-
-- cold start overhead
-- host call overhead
-- snapshot dump/load cost
-- memory growth under bounded object/array workloads
-
-These should be:
-
-- relative, not absolute, when possible
-- based on fixed micro-workloads
-- quarantined from normal correctness tests if too noisy
-
-### Why this is high-signal
-
-This guards the runtime's product shape without turning the suite into a noisy
-benchmark lab.
-
-## Prioritized Roadmap
+# Testing Gaps and Execution Plan
+
+## Purpose
+
+Make `jslite` testing materially stronger by increasing signal per test-minute,
+not by adding a long tail of isolated examples.
+
+This document is an execution plan for the current repository state audited on
+April 12, 2026. It is intended to be used as a living checklist.
+
+## Verified Foundations Already In Place
+
+- [x] Rust unit and integration coverage across parser, runtime, serialization,
+      limits, security, GC, and sidecar protocol
+- [x] Node end-to-end coverage across the public API
+- [x] Generated Node differential tests via `fast-check`
+- [x] Curated `test262` pass and unsupported manifests
+- [x] Rust hostile-input and property suites
+- [x] Fuzz targets for parser, IR lowering, bytecode validation and execution,
+      snapshot loading, and sidecar protocol
+- [x] Package and release smoke coverage
+- [x] Coverage-audit tests that assert presence of important regression tests
+- [x] A machine-readable conformance contract already exists in
+      `tests/node/conformance-contract.js`
+- [x] Canonical outcome normalization already exists in
+      `tests/node/runtime-oracle.js`
+- [x] A first metamorphic/generated AST layer already exists in
+      `tests/node/ast-conformance.js`
+- [x] Property snapshot round-trip coverage already exists in
+      `crates/jslite/tests/property_snapshot_roundtrip.rs`
+- [x] Sidecar happy-path and hostile protocol coverage already exists in
+      `crates/jslite-sidecar/tests/protocol.rs` and
+      `crates/jslite-sidecar/tests/hostile_protocol.rs`
+
+## Product Claims The Test Suite Must Prove
+
+Every major testing investment should strengthen one or more of these claims:
+
+1. Supported guest programs produce the same observable outcome as Node
+   wherever `jslite` promises parity.
+2. Unsupported syntax and semantics fail closed at the correct phase with the
+   correct error category.
+3. The structured host boundary preserves allowed values exactly and rejects
+   forbidden values consistently.
+4. Limits, cancellation, and guest-safe errors are deterministic and do not
+   leak host internals.
+5. Snapshot and progress flows are correct, single-use, authenticated, and safe
+   across suspend, dump, load, and resume.
+6. Addon mode and sidecar mode agree on semantics for the same guest program
+   unless a difference is explicitly documented.
+
+Anything that does not materially strengthen one of those claims is lower
+priority.
+
+## Repo-Aligned Constraints
+
+- Extend the existing conformance contract in
+  `tests/node/conformance-contract.js`; do not create a competing second source
+  of truth unless the current file becomes structurally insufficient.
+- Extend the existing canonical outcome and trace normalization in
+  `tests/node/runtime-oracle.js`; do not introduce a parallel canonicalization
+  layer without a specific need.
+- Keep the Node test layer aligned with the current repository style. The
+  existing Node test surface is CommonJS JavaScript, not a new TypeScript-first
+  testing framework.
+- Keep generators split by purpose. Do not build one mega-generator.
+- Respect the current sidecar protocol contract in `docs/SIDECAR_PROTOCOL.md`.
+  Today that contract covers `compile`, `start`, and `resume`. Hard-stop
+  behavior is process termination, not an in-band `cancel` protocol method.
+- Prefer contract audits over line-coverage goals.
+- Prefer deterministic schedule exploration over wall-clock timing tests.
+- Prefer generated, stateful, and cross-layer checks over many new one-off
+  examples.
+
+## Priority Order
+
+1. Tighten contract-driven parity coverage.
+2. Promote fail-closed rejection coverage to a first-class contract.
+3. Add state-machine coverage for snapshot and progress lifecycle rules.
+4. Expand boundary and limits coverage as explicit public contracts.
+5. Add deterministic async schedule exploration.
+6. Upgrade fuzzing from compile-check-only to executed smoke plus scheduled
+   sanitizer runs.
+7. Add shared cross-layer and addon-vs-sidecar equivalence coverage.
+8. Expand sidecar protocol state coverage within the documented protocol.
+9. Harden contract audits so docs and tests cannot drift silently.
+10. Only then spend time on metamorphic expansion, mutation checks, and
+    performance micro-contracts.
 
 ## Tier 1: Highest ROI
 
-1. Expand semantic differential generators by feature family.
-2. Add snapshot/progress state-machine tests.
-3. Add deterministic async schedule exploration.
-4. Expand generated Node boundary contract tests.
-5. Upgrade fuzzing from compile-check-only to executed smoke plus scheduled fuzz.
+### 1. Contract-Driven Parity Expansion
 
-These five items would produce the biggest real jump in confidence.
+Use the existing conformance contract and runtime oracle. The next gain is to
+split supported differential coverage by semantic family instead of continuing
+to grow one broad generator.
 
-## Tier 2: Strong follow-up
+Checklist:
 
-1. Add metamorphic property suites.
-2. Add sidecar protocol state-machine coverage.
-3. Add cross-layer equivalence checks.
-4. Add contract-driven unsupported-feature coverage audits.
+- [ ] Split supported parity generation into independent feature families with
+      isolated shrinking and failure reporting.
+- [ ] Add a control-flow family covering loops, `break`, `continue`, and abrupt
+      completion interactions.
+- [ ] Add an exceptions family covering `throw`, `try`, `catch`, `finally`,
+      nested `finally`, and rethrow behavior.
+- [ ] Add an objects/arrays family covering property order, holes, enumeration,
+      `Object.keys` / `values` / `entries`, and `JSON.stringify`.
+- [ ] Add a keyed-collections family covering `Map` / `Set`, SameValueZero,
+      insertion order, and mutation during iteration.
+- [ ] Add an async/promise family covering documented promise chains,
+      combinators, and guest microtask behavior.
+- [ ] Add a capability-trace family covering deterministic console and host
+      capability traces plus suspend/resume behavior.
+- [ ] Make every generated failure print the seed, minimized program, and
+      canonical diff.
+- [ ] Promote minimized parity failures into stable regressions.
 
-These make the suite harder to drift and better at finding deep regressions.
+Done when:
 
-## Tier 3: Quality multipliers
+- [ ] Every family runs independently.
+- [ ] Every failure is reproducible from one seed.
+- [ ] Every failure renders a canonical outcome or trace diff instead of a raw
+      object mismatch.
 
-1. Add targeted mutation testing for critical guards.
-2. Add stable performance-regression contracts.
-3. Auto-promote minimized failing generated cases into regression corpus.
+### 2. Fail-Closed Rejection Matrix
 
-These improve long-term trust in the suite, especially as the feature surface
-grows.
+The repository is explicitly fail-closed. Unsupported-feature coverage belongs
+in Tier 1, not as a late follow-up.
 
-## Concrete Implementation Suggestions
+Checklist:
 
-### A. Add a dedicated test architecture document
+- [ ] Extend `tests/node/conformance-contract.js` so unsupported entries record
+      expected phase and expected diagnostic category.
+- [ ] Audit `docs/LANGUAGE.md` against the conformance contract and add missing
+      unsupported classes to the machine-readable contract.
+- [ ] Add generated rejection families for unsupported syntax and validator-only
+      exclusions that are currently only sampled.
+- [ ] Add curated regressions where exact failure class or phase is especially
+      important.
+- [ ] Add contract-audit coverage that fails when a documented unsupported class
+      has no mapped test coverage.
+- [ ] Assert phase and category rather than brittle full-message equality,
+      except where the exact wording is itself part of the contract.
 
-Create a small `docs/TESTING_STRATEGY.md` that defines:
+Priority unsupported buckets:
 
-- test layers
-- what belongs in Rust vs Node vs sidecar tests
-- when to use example, property, metamorphic, state-machine, fuzz, or mutation
-  testing
-- which classes must stay fast in PR CI
+- [ ] Modules and dynamic import
+- [ ] `eval` and `Function`
+- [ ] Classes
+- [ ] Generators and `yield`
+- [ ] `var`
+- [ ] Default parameters and default destructuring
+- [ ] Free `arguments`
+- [ ] `delete`
+- [ ] `instanceof`
+- [ ] Ambient host globals such as `process`, `require`, `module`, timers, and
+      `fetch`
+- [ ] Symbols and symbol-based protocols
+- [ ] Typed arrays and related binary surfaces
+- [ ] `Intl`
+- [ ] `Proxy`
+- [ ] Accessors and descriptor-dependent behavior
 
-This would prevent testing work from becoming ad hoc.
+Done when:
 
-### B. Keep generators split by purpose
+- [ ] Every documented unsupported class has a contract entry.
+- [ ] Every contract entry maps to generated or curated coverage, and to a phase
+      and category expectation.
+- [ ] The audit suite fails when docs and rejection coverage drift apart.
 
-Do not build one mega-generator. Maintain separate generators for:
+### 3. Snapshot and Progress Lifecycle Model
 
-- supported parity
-- unsupported validation
-- async/interleaving traces
-- snapshot lifecycle transitions
-- public-boundary values
-- sidecar protocol actions
+Snapshot safety is not an edge feature. It is part of the public product
+contract and already has meaningful security semantics in the docs and tests.
 
-That keeps failures local and shrinking useful.
+Checklist:
 
-### C. Standardize canonical outcomes
+- [ ] Add model-based tests for `run`, `start`, `dump`, `load`, `resume`,
+      `resumeError`, and cancellation sequences.
+- [ ] Encode same-process `Progress.load(...)` behavior separately from
+      fresh-process restore behavior.
+- [ ] Assert single-use behavior across direct resume, resumeError, cancel, and
+      replay attempts.
+- [ ] Assert `snapshotKey` authentication and tamper rejection.
+- [ ] Assert policy reassertion across load and resume.
+- [ ] Assert post-load limit/accounting checks instead of trusting serialized
+      runtime state.
+- [ ] Assert stale-token and replay rejection behavior.
+- [ ] Print minimized action histories on failures.
+- [ ] Add a thin Node-layer mirror for the public wrapper behavior where the
+      Rust core model alone is not sufficient.
 
-Use one shared canonical shape across layers for:
+Key invariants:
 
-- fulfilled values
-- thrown guest values
-- guest-safe errors
-- trace events
-- suspension metadata
+- [ ] Dump only succeeds at valid suspension points.
+- [ ] Completed progress cannot resume.
+- [ ] Consumed progress cannot be reused.
+- [ ] Replayed or stale snapshots fail closed.
+- [ ] Fresh-process restore requires explicit capabilities, limits, and
+      `snapshotKey`.
+- [ ] Same-process restore and fresh-process restore remain distinct and tested
+      as distinct contracts.
 
-This removes a lot of assertion noise and makes cross-layer testing easier.
+Done when:
 
-### D. Promote interesting failures into a permanent corpus
+- [ ] Short stateful sequences run in presubmit.
+- [ ] Longer sequences run outside the critical PR lane.
+- [ ] Every failing case prints the action history and minimized sequence.
 
-Whenever a property/fuzz test finds a bug:
+### 4. Boundary and Limits As First-Class Contracts
 
-- minimize the case
-- add it to a stable regression corpus
-- classify it by semantic family
+Boundary behavior and resource enforcement are not just implementation details.
+They are part of the public API contract.
 
-This compounds testing value over time.
+Checklist:
 
-## What Not To Do
+- [ ] Expand generated structured-value round-trip coverage for allowed values.
+- [ ] Cover numeric edge cases explicitly: `NaN`, `Infinity`, `-Infinity`,
+      `-0`, and `undefined`.
+- [ ] Add rejected-boundary coverage for functions, symbols, `BigInt`, `Date`,
+      `RegExp`, `Map`, `Set`, typed arrays, custom prototypes, accessors, class
+      instances, and cycles.
+- [ ] Add lifecycle misuse families around `run`, `start`, `resume`,
+      `resumeError`, and `cancel`.
+- [ ] Add cross-process `Progress.load(...)` boundary coverage for policy and
+      `snapshotKey` mismatch cases.
+- [ ] Add one tiny reproducer for each resource limit type.
+- [ ] Assert precise error kind or category and guest-safe messages.
+- [ ] Assert that limit failures do not leak host paths or internal details.
+- [ ] Assert suspend/load/resume behavior for limits and cancellation where the
+      docs promise specific behavior.
 
-- Do not respond by adding many random unit tests for isolated expressions.
-- Do not add broad flaky timing tests that depend on wall-clock races.
-- Do not chase statement coverage as a substitute for semantic confidence.
-- Do not put slow fuzzing or broad mutation runs on the critical PR path.
-- Do not duplicate the same scenario in Rust, Node, and sidecar unless the
-  purpose is explicit cross-layer equivalence.
+Limit families:
 
-## Definition Of A Better Test Suite
+- [ ] Instruction budget
+- [ ] Heap byte limit
+- [ ] Allocation budget
+- [ ] Call-depth limit
+- [ ] Outstanding host-call limit
+- [ ] Cancellation
 
-Testing is 10x better when the repo can make stronger claims such as:
+Done when:
 
-- generated supported programs match Node across broad feature families
-- generated unsupported programs fail closed with the documented diagnostic
-  class
-- snapshot/progress behavior holds across full lifecycle state transitions
-- small async interleavings are explored deterministically
-- addon mode and sidecar mode agree on canonical outcomes where they should
-- hostile byte streams and hostile protocol messages are continuously fuzzed
-- critical guards are proven meaningful by mutation-style checks
-- docs, conformance contracts, and coverage obligations cannot silently drift
+- [ ] Every allowed boundary value round-trips exactly through the public API.
+- [ ] Every rejected boundary value fails in the correct layer.
+- [ ] Every limit can be triggered independently with a tiny reproducer.
+- [ ] Limit and cancellation failures are deterministic and guest-safe.
 
-That is the path to materially better confidence, not a larger pile of tests.
+### 5. Deterministic Async Schedule Exploration
+
+Current async coverage is meaningful, but it is still mostly representative.
+The next step is deterministic interleaving exploration, not more timing tests.
+
+Checklist:
+
+- [ ] Build a deterministic deferred-promise harness for Node-layer async tests.
+- [ ] Enumerate bounded resolve/reject orderings instead of using wall-clock
+      sleeps as the primary technique.
+- [ ] Record canonical event traces for capability call, resolve/reject,
+      microtask checkpoint, guest continuation, and completion/failure.
+- [ ] Compare `jslite` against Node only where parity is promised.
+- [ ] Compare against the documented contract where `jslite` intentionally fails
+      closed.
+
+Priority scenarios:
+
+- [ ] Nested `await`
+- [ ] `Promise.all`
+- [ ] `Promise.allSettled`
+- [ ] `Promise.race`
+- [ ] `Promise.any`
+- [ ] `then`, `catch`, and `finally`
+- [ ] Rejection flowing through `finally`
+- [ ] Host resolve vs host reject ordering
+- [ ] Cancellation racing with host completion
+- [ ] Suspend and resume while promise work is still pending
+
+Done when:
+
+- [ ] Small schedules are exhaustively explored up to a fixed bound.
+- [ ] Every failure is reproducible and prints a human-readable trace diff.
+- [ ] The suite no longer depends on flaky timing races for confidence here.
+
+### 6. Executed Fuzzing In CI
+
+The repository already has the right fuzz targets. The missing piece is running
+them meaningfully, not adding many more targets.
+
+Checklist:
+
+- [ ] Replace the compile-only fuzz check in `scripts/run-hardening.sh` with
+      short executed fuzz smoke for selected targets.
+- [ ] Run short PR-lane fuzz smoke for `parser`, `snapshot_load`, and
+      `sidecar_protocol`.
+- [ ] Add scheduled sanitizer-backed fuzzing with persisted corpora and crash
+      artifacts.
+- [ ] Seed fuzz corpora from minimized regressions, curated supported programs,
+      curated unsupported programs, serialized snapshots, and sidecar protocol
+      fixtures.
+- [ ] Promote fuzz-found failures into stable regression coverage.
+
+Done when:
+
+- [ ] CI executes real fuzz work instead of only proving the targets compile.
+- [ ] Nightly or scheduled jobs grow corpora over time.
+- [ ] Every fuzz-found bug has a path into the permanent regression corpus.
+
+## Tier 2: Strong Follow-Up
+
+### 7. Cross-Layer Equivalence Corpus
+
+The same supported guest program should agree across the layers that claim to
+share semantics.
+
+Checklist:
+
+- [ ] Build a shared representative corpus of supported guest programs.
+- [ ] Assert equivalence across Rust `execute` vs `start`-to-completion.
+- [ ] Assert equivalence across fresh compile vs compile/load-program round trip.
+- [ ] Assert equivalence across direct execution vs dump/load/resume paths where
+      suspension is involved.
+- [ ] Assert equivalence across addon mode and sidecar mode.
+- [ ] Add an allowlist for any documented mode-specific differences instead of
+      accepting silent drift.
+
+Done when:
+
+- [ ] Every corpus program has one canonical expected outcome.
+- [ ] Any mode-specific difference is documented and intentionally allowlisted.
+
+### 8. Sidecar Protocol State Coverage
+
+The sidecar already has happy-path and hostile malformed-input coverage. The
+next gap is valid-but-adversarial protocol sequencing within the protocol that
+actually exists today.
+
+Checklist:
+
+- [ ] Add protocol-sequence tests for valid and invalid ordering across
+      `compile`, `start`, and `resume`.
+- [ ] Add duplicate-ID coverage if IDs are meant to be host-chosen but still
+      protocol-safe.
+- [ ] Add resume-after-completion misuse coverage.
+- [ ] Add mismatched capability/policy-set resume coverage.
+- [ ] Add concurrent suspended-execution coverage where the current protocol and
+      sidecar implementation support it.
+- [ ] Add addon-vs-sidecar equivalence coverage for a small shared corpus.
+- [ ] Keep hard-stop testing at the process boundary; do not invent an in-band
+      sidecar `cancel` method before the protocol changes.
+
+Done when:
+
+- [ ] Valid-but-adversarial protocol sequences are covered in addition to
+      malformed line handling.
+- [ ] Protocol misuse fails closed and does not leave ambiguous live state.
+
+### 9. Contract Audits Instead Of Coverage Percentages
+
+The repository already has coverage-audit tests. The next step is to tie those
+audits more directly to product obligations.
+
+Checklist:
+
+- [ ] Add audits that fail when a documented built-in lacks parity or rejection
+      coverage as appropriate.
+- [ ] Add audits that fail when a public API method lacks misuse-path coverage.
+- [ ] Add audits that fail when sidecar protocol methods lack valid-flow or
+      hostile-input coverage.
+- [ ] Add audits that fail when new conformance-contract entries are added
+      without the expected test bucket.
+
+Done when:
+
+- [ ] Docs, conformance contract, and coverage obligations cannot drift
+      silently.
+
+## Tier 3: Quality Multipliers
+
+### 10. Expand The Existing Metamorphic Layer
+
+Metamorphic testing is already present in the AST conformance layer. The work
+here is to expand it, not to invent a separate new framework.
+
+Checklist:
+
+- [ ] Add more semantics-preserving rewrites inside the existing AST/conformance
+      infrastructure.
+- [ ] Add snapshot round-trip insertion where it is semantics-preserving and
+      contractually meaningful.
+- [ ] Add rewrite families that specifically stress lowering and bytecode
+      generation paths not yet covered by the current transforms.
+
+### 11. Targeted Mutation Checks For Critical Guards
+
+Checklist:
+
+- [ ] Add narrow mutation-style checks for validator rejection conditions.
+- [ ] Add narrow mutation-style checks for snapshot authorization and replay
+      guards.
+- [ ] Add narrow mutation-style checks for limit comparisons.
+- [ ] Add narrow mutation-style checks for structured boundary rejection paths.
+- [ ] Keep mutation runs out of the fast PR path.
+
+### 12. Stable Performance Micro-Contracts
+
+Checklist:
+
+- [ ] Add narrow performance contract checks for cold start, host-call overhead,
+      snapshot dump/load cost, and bounded memory growth.
+- [ ] Use relative thresholds where possible.
+- [ ] Keep noisy performance checks outside correctness-critical presubmit jobs.
+
+## Not The Right First Move
+
+- Do not create a second conformance manifest and a second canonicalization
+  system before the existing ones are exhausted.
+- Do not convert the Node test layer into a new TypeScript-first framework just
+  to support this plan.
+- Do not front-load a separate testing-strategy document before this execution
+  plan is tightened and used.
+- Do not add broad flaky timing tests as a substitute for schedule exploration.
+- Do not chase statement or line coverage as a proxy for semantic confidence.
+- Do not add many redundant example tests for behavior already covered by faster
+  generated or stateful suites.
+- Do not invent sidecar protocol methods that the repository does not yet
+  document or implement.
+
+## Success Criteria
+
+- [ ] Every supported semantic family has generated parity coverage.
+- [ ] Every documented unsupported class has mapped rejection coverage with
+      expected phase and category.
+- [ ] Snapshot and progress bugs are found by lifecycle/stateful tests, not by
+      ad hoc regressions alone.
+- [ ] Async ordering regressions show up as deterministic trace diffs, not flaky
+      timing failures.
+- [ ] Boundary and limit behavior are covered as explicit public contracts.
+- [ ] Addon mode and sidecar mode agree on canonical outcomes where they are
+      supposed to agree.
+- [ ] Selected fuzzers run continuously and feed the regression corpus.
+- [ ] Docs, conformance data, and coverage obligations cannot silently drift.
+
+That is the path to a materially stronger `jslite` test suite: sharper
+contracts, better generators, stronger stateful checks, and tighter alignment
+between docs, runtime promises, and executed verification.
