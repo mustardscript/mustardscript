@@ -105,6 +105,13 @@ Release verification and publish guidance live in
 Maintainers can run `npm run verify:release` to execute the current release
 verification flow end to end.
 
+## Maintainer Helpers
+
+Maintainers can run `npm run ralph-loop -- <plan.md>` to repeatedly invoke
+`codex exec` with `gpt-5.4` and `model_reasoning_effort="xhigh"` until the plan
+marks itself with `[PLAN HAS BEEN COMPLETED]` or `[BLOCKED]`. Use
+`--max-iterations <n>` to cap the loop when needed.
+
 ## Agent-Style Example
 
 See [examples/agent-style.js](examples/agent-style.js) for a minimal host loop

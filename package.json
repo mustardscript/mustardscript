@@ -40,6 +40,7 @@
   "scripts": {
     "install": "node install.js",
     "build": "napi build --platform --manifest-path crates/jslite-node/Cargo.toml --js-package-name @keppoai/jslite --output-dir . --no-js",
+    "ralph-loop": "node scripts/ralph-loop.js",
     "test": "npm run build && node --test tests/node/**/*.test.js && npm run test:types && npm run test:package-smoke",
     "test:conformance": "npm run test:differential && npm run test:test262",
     "test:differential": "node --test tests/node/differential.test.js tests/node/ast-conformance.test.js tests/node/property-differential.test.js tests/node/coverage-audit.test.js",
