@@ -70,22 +70,24 @@ the documented surface.
 
 ## Gap Taxonomy
 
-### A. Confirmed Runtime and Correctness Gaps
+### A. Previously Confirmed Runtime Clusters Now Covered Or Narrowed
 
-These clusters recur across many domain sweeps and overlap directly with the
-already failing gallery in [USE_CASE_GAPS.md](USE_CASE_GAPS.md).
+These clusters were real during the earlier analysis pass and explain much of
+the retained example residue, but current `main` now covers most of them or
+narrows them to explicit bounded behavior. They remain useful regression
+targets, not primary open gaps.
 
-| Gap family | Retained examples | Why it matters |
-| --- | ---: | --- |
-| Comparator-based `Array.prototype.sort` | `14` | Ranking, prioritization, and tie-breaking are core to realistic decision workloads. |
-| `Array.from` on supported iterables | `9` | Realistic code constantly converts `Set`s, iterator helpers, and `Map` keys into arrays for downstream reduction. |
-| `Object.fromEntries` | `9` | Tool-driven code routinely pivots `[key, value]` tuples into plain objects. |
-| `String.prototype.matchAll` | `9` | Multi-match extraction is common for logs, ticket refs, tracking numbers, clauses, and citation scans. |
-| `Date` and wall-clock math | `13` | SLA math, freshness checks, cutoff windows, aging buckets, and escalation timing are everywhere. |
-| Iterable-surface correctness | `10` | Realistic loops still pressure `Map`, `Set`, iterator helpers, and custom-iterable rejection behavior. |
-| Async host calls inside callback helpers | `12` | `Promise.all(items.map(async ...))`, async `reduce`, and async predicates are natural tool-calling shapes. |
-| Start/resume correctness and idempotence | `12` | Resumable workflows are a primary target use case, so state replay or skipped work is high impact. |
-| Validator/compiler instability | `8` | Internal validation inconsistencies are unacceptable user-facing failure modes for realistic programs. |
+| Cluster | Current state | Why it mattered |
+| --- | --- | --- |
+| Comparator-based `Array.prototype.sort` | Covered on current `main` | Ranking, prioritization, and tie-breaking are core to realistic decision workloads. |
+| `Array.from` on supported iterables | Covered on current `main` | Realistic code constantly converts `Set`s, iterator helpers, and `Map` keys into arrays for downstream reduction. |
+| `Object.fromEntries` | Covered on current `main` | Tool-driven code routinely pivots `[key, value]` tuples into plain objects. |
+| `String.prototype.matchAll` | Covered on current `main` | Multi-match extraction is common for logs, ticket refs, tracking numbers, clauses, and citation scans. |
+| `Date` and wall-clock math | Conservative subset covered; wider parity still bounded | SLA math, freshness checks, cutoff windows, aging buckets, and escalation timing are everywhere. |
+| Iterable-surface correctness | Covered for the documented iterable surface | Realistic loops still pressure `Map`, `Set`, iterator helpers, and custom-iterable rejection behavior. |
+| Async host calls inside callback helpers | Covered for async guest flows; synchronous host suspensions still fail closed | `Promise.all(items.map(async ...))`, async `reduce`, and async predicates are natural tool-calling shapes. |
+| Start/resume correctness and idempotence | Covered by current snapshot policy, single-use identity, and resume tests | Resumable workflows are a primary target use case, so state replay or skipped work is high impact. |
+| Validator/compiler instability | No current reproducible user-facing failure; keep as a direct-verification watchlist | Internal validation inconsistencies are unacceptable user-facing failure modes for realistic programs. |
 
 Representative retained ideas:
 
@@ -187,6 +189,9 @@ Resolved since this analysis pass:
   Promise executors or adopted thenables.
 
 ## Highest-Signal Retained Examples By Cluster
+
+The clusters below are still worth keeping as realistic regression examples,
+even when the corresponding surface is now covered on current `main`.
 
 ### Comparator Sort
 
