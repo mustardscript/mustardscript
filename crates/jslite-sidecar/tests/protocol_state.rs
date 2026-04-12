@@ -1,5 +1,12 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use hmac::{Hmac, Mac};
 use jslite_sidecar::handle_request_line;
 use serde_json::{Value, json};
+use sha2::Sha256;
+
+const SNAPSHOT_KEY: &[u8] = b"sidecar-protocol-state-key";
+
+type HmacSha256 = Hmac<Sha256>;
 
 fn request(payload: Value) -> Value {
     let encoded = payload.to_string();
@@ -23,6 +30,21 @@ fn compile_program(source: &str, id: u64) -> String {
         .to_string()
 }
 
+fn snapshot_token(snapshot_base64: &str) -> String {
+    let snapshot = STANDARD
+        .decode(snapshot_base64)
+        .expect("snapshot base64 should decode");
+    let mut mac = HmacSha256::new_from_slice(SNAPSHOT_KEY).expect("snapshot key should be valid");
+    mac.update(&snapshot);
+    let digest = mac.finalize().into_bytes();
+    let mut token = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut token, "{byte:02x}");
+    }
+    token
+}
+
 fn start_program(program_base64: &str, capabilities: &[&str], id: u64) -> Value {
     request(json!({
         "method": "start",
@@ -44,6 +66,8 @@ fn resume_snapshot(snapshot_base64: &str, capabilities: &[&str], payload: Value,
         "policy": {
             "capabilities": capabilities,
             "limits": {},
+            "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+            "snapshot_token": snapshot_token(snapshot_base64),
         },
         "payload": payload,
     }))

@@ -321,6 +321,64 @@ test('resumeError does not execute inherited host error getters before fail-clos
   assert.equal(getterRuns, 0);
 });
 
+test('capability error sanitization drops non-string code values without executing hooks', async () => {
+  let hookRuns = 0;
+
+  const result = await new Jslite(`
+    let outcome = 'missing';
+    try {
+      fetch_data();
+    } catch (error) {
+      outcome = [error.code === undefined, error.message];
+    }
+    outcome;
+  `).run({
+    capabilities: {
+      fetch_data() {
+        const error = new Error('boom');
+        error.code = {
+          toJSON() {
+            hookRuns += 1;
+            return 'E_PWN';
+          },
+        };
+        throw error;
+      },
+    },
+  });
+
+  assert.deepEqual(result, [true, 'boom']);
+  assert.equal(hookRuns, 0);
+});
+
+test('resumeError drops non-string code values without executing hooks', () => {
+  const progress = new Jslite(`
+    let outcome = 'missing';
+    try {
+      fetch_data(1);
+    } catch (error) {
+      outcome = [error.code === undefined, error.message];
+    }
+    outcome;
+  `).start({
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  let hookRuns = 0;
+  const error = new Error('boom');
+  error.code = {
+    toJSON() {
+      hookRuns += 1;
+      return 'E_PWN';
+    },
+  };
+
+  assert.deepEqual(progress.resumeError(error), [true, 'boom']);
+  assert.equal(hookRuns, 0);
+});
+
 test('host-to-guest encoding rejects cyclic inputs with a typed boundary error', async () => {
   const value = {};
   value.self = value;
@@ -368,6 +426,35 @@ test('resumeError rejects cyclic details with a typed boundary error', () => {
     (entry) =>
       entry instanceof TypeError &&
       entry.message.includes('cyclic values cannot cross the host boundary'),
+  );
+});
+
+test('guest root results fail closed on shared references instead of alias expansion', async () => {
+  await assert.rejects(
+    new Jslite(`
+      const shared = [1, 2, 3];
+      [shared, shared];
+    `).run(),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes('shared references cannot cross the structured host boundary'),
+  );
+});
+
+test('guest capability arguments fail closed on shared references instead of alias expansion', () => {
+  assert.throws(
+    () =>
+      new Jslite(`
+        const shared = { value: 1 };
+        send([shared, shared]);
+      `).start({
+        capabilities: {
+          send() {},
+        },
+      }),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes('shared references cannot cross the structured host boundary'),
   );
 });
 

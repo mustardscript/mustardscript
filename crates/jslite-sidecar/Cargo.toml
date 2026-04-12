@@ -16,4 +16,6 @@ tokio.workspace = true
 
 [dev-dependencies]
 base64 = "0.22.1"
+hmac.workspace = true
 jslite = { path = "../jslite" }
+sha2.workspace = true

@@ -1,6 +1,7 @@
 use jslite::{ExecutionOptions, StructuredValue, compile, execute, start};
 
 const CYCLE_BOUNDARY_MESSAGE: &str = "cyclic values cannot cross the structured host boundary";
+const SHARED_BOUNDARY_MESSAGE: &str = "shared references cannot cross the structured host boundary";
 const DEPTH_BOUNDARY_MESSAGE: &str = "structured host boundary nesting limit exceeded";
 const JSON_STRINGIFY_CYCLE_MESSAGE: &str = "Converting circular structure to JSON";
 const SAFE_MESSAGE_PATH_FRAGMENTS: &[&str] = &["/Users/", "\\Users\\", "C:\\", "/home/"];
@@ -24,6 +25,20 @@ fn assert_depth_boundary_error(error: impl std::fmt::Display) {
     assert!(
         message.contains(DEPTH_BOUNDARY_MESSAGE),
         "expected depth boundary error, got: {message}"
+    );
+    for fragment in SAFE_MESSAGE_PATH_FRAGMENTS {
+        assert!(
+            !message.contains(fragment),
+            "message leaked host path fragment `{fragment}`: {message}"
+        );
+    }
+}
+
+fn assert_shared_boundary_error(error: impl std::fmt::Display) {
+    let message = error.to_string();
+    assert!(
+        message.contains(SHARED_BOUNDARY_MESSAGE),
+        "expected shared-reference boundary error, got: {message}"
     );
     for fragment in SAFE_MESSAGE_PATH_FRAGMENTS {
         assert!(
@@ -77,6 +92,42 @@ fn cyclic_host_capability_arguments_fail_closed_before_suspension() {
     )
     .expect_err("cyclic host-call arguments should fail closed");
     assert_cycle_boundary_error(error);
+}
+
+#[test]
+fn shared_root_results_fail_closed_instead_of_expanding_aliases() {
+    let program = compile(
+        r#"
+        const shared = [1, 2, 3];
+        [shared, shared];
+        "#,
+    )
+    .expect("source should compile");
+
+    let error = execute(&program, ExecutionOptions::default())
+        .expect_err("shared root results should fail closed");
+    assert_shared_boundary_error(error);
+}
+
+#[test]
+fn shared_host_capability_arguments_fail_closed_before_suspension() {
+    let program = compile(
+        r#"
+        const shared = { value: 1 };
+        send([shared, shared]);
+        "#,
+    )
+    .expect("source should compile");
+
+    let error = start(
+        &program,
+        ExecutionOptions {
+            capabilities: vec!["send".to_string()],
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("shared host-call arguments should fail closed");
+    assert_shared_boundary_error(error);
 }
 
 #[test]

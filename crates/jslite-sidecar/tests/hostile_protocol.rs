@@ -1,4 +1,5 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use hmac::{Hmac, Mac};
 use jslite::structured::StructuredNumber;
 use jslite::{
     ExecutionOptions, RuntimeLimits, StructuredValue, compile, dump_program, dump_snapshot,
@@ -6,8 +7,12 @@ use jslite::{
 };
 use jslite_sidecar::handle_request_line;
 use serde_json::Value;
+use sha2::Sha256;
 
 const SAFE_MESSAGE_PATH_FRAGMENTS: &[&str] = &["/Users/", "\\Users\\", "C:\\", "/home/"];
+const SNAPSHOT_KEY: &[u8] = b"sidecar-hostile-protocol-key";
+
+type HmacSha256 = Hmac<Sha256>;
 
 fn assert_host_safe_message(message: &str) {
     for fragment in SAFE_MESSAGE_PATH_FRAGMENTS {
@@ -40,6 +45,21 @@ fn encoded_snapshot() -> String {
         jslite::ExecutionStep::Suspended(suspension) => suspension.snapshot,
     };
     STANDARD.encode(dump_snapshot(&snapshot).expect("snapshot should serialize"))
+}
+
+fn snapshot_token(snapshot_base64: &str) -> String {
+    let snapshot = STANDARD
+        .decode(snapshot_base64)
+        .expect("snapshot base64 should decode");
+    let mut mac = HmacSha256::new_from_slice(SNAPSHOT_KEY).expect("snapshot key should be valid");
+    mac.update(&snapshot);
+    let digest = mac.finalize().into_bytes();
+    let mut token = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut token, "{byte:02x}");
+    }
+    token
 }
 
 fn decode_response(line: &str) -> Value {
@@ -77,6 +97,7 @@ fn blank_lines_are_ignored() {
 
 #[test]
 fn hostile_but_well_formed_requests_fail_closed() {
+    let snapshot = encoded_snapshot();
     let requests = vec![
         serde_json::json!({
             "method": "start",
@@ -122,7 +143,7 @@ fn hostile_but_well_formed_requests_fail_closed() {
         serde_json::json!({
             "method": "resume",
             "id": 4,
-            "snapshot_base64": encoded_snapshot(),
+            "snapshot_base64": snapshot,
             "policy": {
                 "capabilities": ["fetch_data"],
                 "limits": RuntimeLimits::default(),
@@ -154,7 +175,69 @@ fn hostile_but_well_formed_requests_fail_closed() {
 }
 
 #[test]
+fn resume_rejects_tampered_or_unauthenticated_snapshots() {
+    let snapshot = encoded_snapshot();
+
+    let unauthenticated = handle_request_line(
+        &serde_json::json!({
+            "method": "resume",
+            "id": 10,
+            "snapshot_base64": snapshot,
+            "policy": {
+                "capabilities": ["fetch_data"],
+                "limits": RuntimeLimits::default(),
+            },
+            "payload": {
+                "type": "value",
+                "value": { "Number": { "Finite": 1.0 } }
+            }
+        })
+        .to_string(),
+    )
+    .expect("request should yield a response")
+    .expect("response should exist");
+    let unauthenticated = decode_response(&unauthenticated);
+    assert!(!unauthenticated["ok"].as_bool().unwrap_or(true));
+    assert!(
+        unauthenticated["error"]
+            .as_str()
+            .expect("error should exist")
+            .contains("raw snapshot restore requires snapshot_key_base64")
+    );
+
+    let forged = handle_request_line(
+        &serde_json::json!({
+            "method": "resume",
+            "id": 11,
+            "snapshot_base64": snapshot,
+            "policy": {
+                "capabilities": ["fetch_data"],
+                "limits": RuntimeLimits::default(),
+                "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+                "snapshot_token": "forged-token",
+            },
+            "payload": {
+                "type": "value",
+                "value": { "Number": { "Finite": 1.0 } }
+            }
+        })
+        .to_string(),
+    )
+    .expect("request should yield a response")
+    .expect("response should exist");
+    let forged = decode_response(&forged);
+    assert!(!forged["ok"].as_bool().unwrap_or(true));
+    assert!(
+        forged["error"]
+            .as_str()
+            .expect("error should exist")
+            .contains("tampered or unauthenticated snapshot")
+    );
+}
+
+#[test]
 fn mutated_request_lines_never_panic() {
+    let snapshot = encoded_snapshot();
     let seeds = vec![
         serde_json::json!({
             "method": "compile",
@@ -176,10 +259,12 @@ fn mutated_request_lines_never_panic() {
         serde_json::json!({
             "method": "resume",
             "id": 3,
-            "snapshot_base64": encoded_snapshot(),
+            "snapshot_base64": snapshot,
             "policy": {
                 "capabilities": ["fetch_data"],
                 "limits": RuntimeLimits::default(),
+                "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+                "snapshot_token": snapshot_token(&snapshot),
             },
             "payload": {
                 "type": "value",

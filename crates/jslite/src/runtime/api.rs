@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     cancellation::CancellationToken,
@@ -10,7 +10,10 @@ use crate::{
 };
 
 use super::{
-    Runtime, bytecode::BytecodeProgram, lower_to_bytecode, validation::validate_bytecode_program,
+    Runtime,
+    bytecode::BytecodeProgram,
+    lower_to_bytecode,
+    validation::{validate_bytecode_program, validate_snapshot},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,7 +69,7 @@ pub struct ResumeOptions {
     pub snapshot_policy: Option<SnapshotPolicy>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ExecutionSnapshot {
     pub(super) runtime: Runtime,
 }
@@ -82,6 +85,48 @@ pub struct Suspension {
 pub enum ExecutionStep {
     Completed(StructuredValue),
     Suspended(Box<Suspension>),
+}
+
+#[derive(Serialize)]
+struct SerializableExecutionSnapshot<'a> {
+    runtime: &'a Runtime,
+}
+
+#[derive(Deserialize)]
+struct DeserializableExecutionSnapshot {
+    runtime: Runtime,
+}
+
+impl ExecutionSnapshot {
+    pub(in crate::runtime) fn restore_loaded_runtime(runtime: Runtime) -> JsliteResult<Self> {
+        let mut snapshot = Self { runtime };
+        validate_snapshot(&snapshot)?;
+        snapshot.runtime.recompute_accounting_after_load()?;
+        snapshot.runtime.snapshot_policy_required = true;
+        Ok(snapshot)
+    }
+}
+
+impl Serialize for ExecutionSnapshot {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        SerializableExecutionSnapshot {
+            runtime: &self.runtime,
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for ExecutionSnapshot {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let decoded = DeserializableExecutionSnapshot::deserialize(deserializer)?;
+        Self::restore_loaded_runtime(decoded.runtime).map_err(serde::de::Error::custom)
+    }
 }
 
 pub fn execute(

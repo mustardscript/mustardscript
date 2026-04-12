@@ -10,6 +10,8 @@ description = "Shared bridge DTOs and operations for jslite adapters"
 [dependencies]
 anyhow.workspace = true
 base64 = "0.22.1"
+hmac.workspace = true
 jslite = { path = "../jslite" }
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true

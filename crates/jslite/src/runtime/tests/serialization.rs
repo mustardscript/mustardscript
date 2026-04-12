@@ -13,9 +13,16 @@ fn round_trips_program_and_snapshot() {
     let suspension = suspend(source, &["fetch_data"]);
     let snapshot_bytes = dump_snapshot(&suspension.snapshot).expect("snapshot dump should succeed");
     let loaded_snapshot = load_snapshot(&snapshot_bytes).expect("snapshot load should succeed");
-    let resumed = resume(
+    let resumed = resume_with_options(
         loaded_snapshot,
         ResumePayload::Value(number(1.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(SnapshotPolicy {
+                capabilities: vec!["fetch_data".to_string()],
+                limits: RuntimeLimits::default(),
+            }),
+        },
     )
     .expect("resume should succeed");
     match resumed {
@@ -72,6 +79,21 @@ fn rejects_invalid_snapshot_frame_state() {
     suspension.snapshot.runtime.frames[0].ip = 999;
     let bytes = dump_snapshot(&suspension.snapshot).expect("snapshot should serialize");
     let error = load_snapshot(&bytes).expect_err("invalid snapshot should fail validation");
+    assert!(
+        error
+            .to_string()
+            .contains("frame instruction pointer 999 is out of range")
+    );
+}
+
+#[test]
+fn direct_execution_snapshot_deserialize_reruns_validation() {
+    let mut suspension = suspend("const value = fetch_data(1); value + 2;", &["fetch_data"]);
+    suspension.snapshot.runtime.frames[0].ip = 999;
+    let bytes =
+        bincode::serialize(&suspension.snapshot).expect("snapshot should serialize directly");
+    let error = bincode::deserialize::<ExecutionSnapshot>(&bytes)
+        .expect_err("invalid snapshots should fail validation during direct deserialize");
     assert!(
         error
             .to_string()

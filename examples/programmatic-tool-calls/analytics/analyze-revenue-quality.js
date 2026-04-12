@@ -113,7 +113,7 @@ async function analyzeRevenueQuality() {
       watchlist.push({
         unitId: unit.id,
         unitName: unit.name,
-        riskSignals,
+        riskSignals: riskSignals.slice(),
         collectionsAccounts: riskEntries.map((entry) => ({
           accountId: entry.accountId,
           balance: entry.balance,
@@ -150,7 +150,7 @@ async function analyzeRevenueQuality() {
               unitId: worstUnit.unitId,
               unitName: worstUnit.unitName,
               variance: worstUnit.variance,
-              riskSignals: worstUnit.riskSignals,
+              riskSignals: worstUnit.riskSignals.slice(),
             },
       watchlistCount: watchlist.length,
     },

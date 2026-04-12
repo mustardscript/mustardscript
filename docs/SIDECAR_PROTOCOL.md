@@ -57,7 +57,9 @@ Successful responses return either:
   "snapshot_base64": "...",
   "policy": {
     "capabilities": ["fetch_data"],
-    "limits": {}
+    "limits": {},
+    "snapshot_key_base64": "...",
+    "snapshot_token": "..."
   },
   "payload": {
     "type": "value",
@@ -69,7 +71,11 @@ Successful responses return either:
 `payload.type` is either `value` or `error`.
 `policy` is required. The host must reassert the allowed capability names and
 authoritative runtime limits before the sidecar will inspect or resume a loaded
-snapshot.
+snapshot. `snapshot_key_base64` plus `snapshot_token` are also required for
+loaded snapshots: the token is the lowercase hex HMAC-SHA256 of the raw
+`snapshot_base64` bytes under the caller-chosen snapshot key. Missing or
+mismatched authentication fails closed before the runtime trusts the snapshot
+contents.
 
 ## Response Shape
 
@@ -105,7 +111,9 @@ shipping host callbacks or JavaScript functions into the sidecar process.
   between requests.
 - `program_base64` and `snapshot_base64` are host-managed opaque blobs. The host
   may reuse the same compiled program bytes for multiple `start` requests and
-  may replay the same snapshot bytes in multiple `resume` requests.
+  may replay the same snapshot bytes in multiple `resume` requests as long as
+  it also recomputes the matching `snapshot_token` for the supplied
+  `snapshot_key_base64`.
 - Replaying a snapshot re-executes from that suspension point deterministically
   under the supplied `policy`; there is no in-sidecar single-use tracking.
 - If the embedding host wants stronger single-use or anti-replay guarantees, it

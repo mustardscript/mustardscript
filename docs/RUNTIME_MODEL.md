@@ -19,6 +19,8 @@ The runtime represents guest values with an internal `Value` enum:
 The public host boundary does not expose `Value` directly. Host input, host
 output, sidecar messages, and snapshot-adjacent APIs use `StructuredValue`
 instead.
+`StructuredValue` is tree-shaped: it preserves nested data, holes, and special
+numeric tags, but it does not preserve guest object identity or alias graphs.
 
 ## Heap Objects and Handles
 

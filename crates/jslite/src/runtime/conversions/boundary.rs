@@ -4,8 +4,10 @@ const STRUCTURED_BOUNDARY_MAX_DEPTH: usize = 128;
 
 #[derive(Default)]
 struct StructuredTraversalState {
-    arrays: HashSet<ArrayKey>,
-    objects: HashSet<ObjectKey>,
+    active_arrays: HashSet<ArrayKey>,
+    active_objects: HashSet<ObjectKey>,
+    seen_arrays: HashSet<ArrayKey>,
+    seen_objects: HashSet<ObjectKey>,
 }
 
 impl Runtime {
@@ -84,8 +86,12 @@ impl Runtime {
             }
             Value::String(value) => StructuredValue::String(value),
             Value::Array(array) => {
-                if !traversal.arrays.insert(array) {
+                if !traversal.active_arrays.insert(array) {
                     return Err(structured_boundary_cycle_error());
+                }
+                if !traversal.seen_arrays.insert(array) {
+                    traversal.active_arrays.remove(&array);
+                    return Err(structured_boundary_shared_reference_error());
                 }
                 let elements = self
                     .arrays
@@ -108,7 +114,7 @@ impl Runtime {
                             .collect::<JsliteResult<Vec<_>>>()?,
                     ))
                 })();
-                traversal.arrays.remove(&array);
+                traversal.active_arrays.remove(&array);
                 result?
             }
             Value::Object(object) => {
@@ -121,8 +127,12 @@ impl Runtime {
                         "Date values cannot cross the structured host boundary",
                     ));
                 }
-                if !traversal.objects.insert(object) {
+                if !traversal.active_objects.insert(object) {
                     return Err(structured_boundary_cycle_error());
+                }
+                if !traversal.seen_objects.insert(object) {
+                    traversal.active_objects.remove(&object);
+                    return Err(structured_boundary_shared_reference_error());
                 }
                 let properties = object_ref.properties.clone();
                 let result = (|| {
@@ -142,7 +152,7 @@ impl Runtime {
                             .collect::<JsliteResult<IndexMap<_, _>>>()?,
                     ))
                 })();
-                traversal.objects.remove(&object);
+                traversal.active_objects.remove(&object);
                 result?
             }
             Value::Map(_) | Value::Set(_) => {
@@ -241,6 +251,10 @@ pub(in crate::runtime) fn structured_to_json(
 
 fn structured_boundary_cycle_error() -> JsliteError {
     JsliteError::runtime("cyclic values cannot cross the structured host boundary")
+}
+
+fn structured_boundary_shared_reference_error() -> JsliteError {
+    JsliteError::runtime("shared references cannot cross the structured host boundary")
 }
 
 fn structured_boundary_depth_error() -> JsliteError {

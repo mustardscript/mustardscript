@@ -35,6 +35,10 @@ the safety rules they are expected to follow.
 - Loaded snapshots are inert until the host rebinds explicit resume policy.
   Restores fail closed if the host does not reassert allowed capability names
   and authoritative runtime limits.
+- Public `ExecutionSnapshot` serde deserialization reuses the same validation,
+  accounting recomputation, and explicit-policy gate as `load_snapshot()`, so
+  callers cannot bypass restore checks by deserializing the public type
+  directly.
 - Opaque host references, native handles, and host futures are never
   serialized.
 - Snapshots are only created at explicit suspension points.

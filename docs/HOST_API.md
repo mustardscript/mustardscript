@@ -24,6 +24,7 @@ Rejected values:
 - `Map` and `Set`
 - proxies and other trap-bearing wrapper objects
 - cycles
+- guest-exported arrays or plain objects with shared references
 - class instances
 - accessors
 - custom prototypes
@@ -37,6 +38,9 @@ execution and snapshots, but results, inputs, capability arguments, and resume
 payloads still reject them at the structured boundary.
 Structured host-boundary traversal is depth-limited and fails closed with a
 typed error instead of recursing until the JS or Rust stack overflows.
+Structured values are trees, not identity graphs. Guest results and suspended
+capability arguments therefore fail closed on shared guest arrays or plain
+objects instead of alias-expanding them during export.
 
 ## Capability Calls
 
@@ -87,7 +91,9 @@ same guest-safe summary.
 The Node wrapper only trusts own data properties for those fields. Inherited
 getters, proxy traps, coercion hooks, and accessor-backed `details` fail closed
 instead of executing during host-error sanitization. If `name` or `message` are
-missing, the sanitized fallback is `Error` plus an empty message.
+missing, the sanitized fallback is `Error` plus an empty message. `code` is
+accepted only as an own string data property; missing or non-string `code`
+values are dropped instead of being coerced.
 The Node wrapper rethrows core failures as typed JavaScript errors:
 `JsliteParseError`, `JsliteValidationError`, `JsliteRuntimeError`,
 `JsliteLimitError`, and `JsliteSerializationError`. The original native error is
@@ -117,8 +123,8 @@ guest-only traceback with guest function names and source spans.
   blobs cannot be replayed into duplicated side effects after the real resume
   already happened.
 - Consumed progress tokens stay burned for the lifetime of the current process,
-  so unrelated same-process progress churn cannot make an old dumped snapshot
-  replayable again.
+  including across `worker_threads`, so unrelated same-process progress churn
+  cannot make an old dumped snapshot replayable again.
 - `Progress.dump()` includes a detached token authenticated by the configured
   `snapshotKey`, and `Progress.load()` verifies that token before trusting the
   dumped snapshot bytes.

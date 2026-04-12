@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
+const { Worker } = require('node:worker_threads');
 
 const { Jslite, JsliteError, Progress } = require('../../index.js');
 const { loadNative } = require('../../native-loader.js');
@@ -37,6 +38,19 @@ function isTamperedSnapshotError(error) {
     error.kind === 'Serialization' &&
     error.message.includes('tampered or unauthenticated snapshot')
   );
+}
+
+function runWorker(script, workerData) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(script, { eval: true, workerData });
+    worker.once('message', resolve);
+    worker.once('error', reject);
+    worker.once('exit', (code) => {
+      if (code !== 0) {
+        reject(new Error(`worker exited with code ${code}`));
+      }
+    });
+  });
 }
 
 test('progress load derives capability and args from the snapshot instead of caller metadata', () => {
@@ -142,6 +156,80 @@ test('progress snapshots remain single-use after unrelated same-process churn', 
       }),
     isSingleUseRuntimeError,
   );
+});
+
+test('progress load rejects already-consumed snapshots across same-process worker threads', async () => {
+  const progress = new Jslite(`
+    const response = fetch_data(4);
+    response * 2;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  const dumped = progress.dump();
+  assert.equal(progress.resume(4), 8);
+
+  const message = await runWorker(
+    `
+      const { parentPort, workerData } = require('node:worker_threads');
+      const { Progress } = require(workerData.indexPath);
+
+      const snapshotKey = Buffer.from(workerData.snapshotKeyBase64, 'base64');
+      let withoutOptions;
+      try {
+        Progress.load({
+          snapshot: Buffer.from(workerData.snapshotBase64, 'base64'),
+          token: workerData.token,
+        });
+      } catch (error) {
+        withoutOptions = String(error && error.message);
+      }
+
+      let withOptions;
+      try {
+        const restored = Progress.load({
+          snapshot: Buffer.from(workerData.snapshotBase64, 'base64'),
+          token: workerData.token,
+        }, {
+          snapshotKey,
+          capabilities: {
+            fetch_data() {},
+          },
+          limits: {},
+        });
+        withOptions = {
+          capability: restored.capability,
+          args: restored.args,
+          result: restored.resume(4),
+        };
+      } catch (error) {
+        withOptions = {
+          name: error && error.name,
+          message: String(error && error.message),
+        };
+      }
+
+      parentPort.postMessage({
+        pid: process.pid,
+        withoutOptions,
+        withOptions,
+      });
+    `,
+    {
+      indexPath: require.resolve('../../index.js'),
+      snapshotBase64: dumped.snapshot.toString('base64'),
+      token: dumped.token,
+      snapshotKeyBase64: SNAPSHOT_KEY.toString('base64'),
+    },
+  );
+
+  assert.equal(message.pid, process.pid);
+  assert.match(message.withoutOptions, /single-use/);
+  assert.equal(message.withOptions.name, 'JsliteRuntimeError');
+  assert.match(message.withOptions.message, /single-use/);
 });
 
 test('progress load rejects forged progress tokens', () => {

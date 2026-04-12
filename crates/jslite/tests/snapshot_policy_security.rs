@@ -1,9 +1,9 @@
 use indexmap::IndexMap;
 
 use jslite::{
-    ExecutionOptions, ExecutionStep, ResumeOptions, ResumePayload, RuntimeLimits, SnapshotPolicy,
-    StructuredValue, compile, dump_snapshot, inspect_snapshot, load_snapshot, resume,
-    resume_with_options, start,
+    ExecutionOptions, ExecutionSnapshot, ExecutionStep, ResumeOptions, ResumePayload,
+    RuntimeLimits, SnapshotPolicy, StructuredValue, compile, dump_snapshot, inspect_snapshot,
+    load_snapshot, resume, resume_with_options, start,
 };
 
 fn number(value: f64) -> StructuredValue {
@@ -163,6 +163,40 @@ fn loaded_snapshots_reapply_host_limits_before_resume() {
     .expect_err("lower host budget should win on resume");
     assert!(
         error.to_string().contains("instruction budget exhausted"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn direct_execution_snapshot_deserialize_requires_explicit_policy_before_resume() {
+    let source = "const value = fetch_data(1); value + 1;";
+    let bytes = {
+        let program = compile(source).expect("source should compile");
+        let step = start(
+            &program,
+            ExecutionOptions {
+                inputs: IndexMap::new(),
+                capabilities: vec!["fetch_data".to_string()],
+                limits: RuntimeLimits::default(),
+                cancellation_token: None,
+            },
+        )
+        .expect("program should suspend");
+        let suspension = match step {
+            ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+            ExecutionStep::Suspended(suspension) => suspension,
+        };
+        bincode::serialize(&suspension.snapshot).expect("snapshot should serialize directly")
+    };
+
+    let snapshot: ExecutionSnapshot =
+        bincode::deserialize(&bytes).expect("snapshot should deserialize directly");
+    let error = resume(snapshot, ResumePayload::Value(number(1.0)))
+        .expect_err("directly deserialized snapshots should still require policy");
+    assert!(
+        error
+            .to_string()
+            .contains("loaded snapshots require explicit host policy"),
         "unexpected error: {error}"
     );
 }

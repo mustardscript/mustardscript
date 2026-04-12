@@ -3,7 +3,38 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-use serde_json::Value;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use hmac::{Hmac, Mac};
+use serde_json::{Value, json};
+use sha2::Sha256;
+
+const SNAPSHOT_KEY: &[u8] = b"sidecar-protocol-test-key";
+
+type HmacSha256 = Hmac<Sha256>;
+
+fn snapshot_token(snapshot_base64: &str) -> String {
+    let snapshot = STANDARD
+        .decode(snapshot_base64)
+        .expect("snapshot base64 should decode");
+    let mut mac = HmacSha256::new_from_slice(SNAPSHOT_KEY).expect("snapshot key should be valid");
+    mac.update(&snapshot);
+    let digest = mac.finalize().into_bytes();
+    let mut token = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut token, "{byte:02x}");
+    }
+    token
+}
+
+fn authenticated_policy(snapshot_base64: &str, capabilities: &[&str]) -> Value {
+    json!({
+        "capabilities": capabilities,
+        "limits": {},
+        "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+        "snapshot_token": snapshot_token(snapshot_base64),
+    })
+}
 
 #[test]
 fn sidecar_compiles_starts_and_resumes() {
@@ -68,6 +99,7 @@ fn sidecar_compiles_starts_and_resumes() {
         .as_str()
         .expect("snapshot base64 should exist")
         .to_string();
+    let policy = authenticated_policy(&snapshot, &["fetch_data"]);
 
     writeln!(
         stdin,
@@ -76,10 +108,7 @@ fn sidecar_compiles_starts_and_resumes() {
             "method": "resume",
             "id": 3,
             "snapshot_base64": snapshot,
-            "policy": {
-                "capabilities": ["fetch_data"],
-                "limits": {},
-            },
+            "policy": policy,
             "payload": {
                 "type": "value",
                 "value": { "Number": { "Finite": 5.0 } }

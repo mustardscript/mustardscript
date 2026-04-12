@@ -76,7 +76,7 @@ pub fn supported_program_strategy() -> BoxedStrategy<String> {
 
     prop_oneof![
         (literal.clone(), literal.clone()).prop_map(|(left, right)| format!(
-            "const left = {left}; const right = {right}; [left, right, {{ left: left, right: right }}];"
+            "const left = {left}; const right = {right}; [left, right, {{ left: {left}, right: {right} }}];"
         )),
         numeric_array.clone().prop_map(|values| {
             let values = render_numeric_array(&values);

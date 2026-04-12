@@ -3,9 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::diagnostic::{DiagnosticKind, JsliteError, JsliteResult};
 
 use super::{
-    api::ExecutionSnapshot,
-    bytecode::BytecodeProgram,
-    validation::{validate_bytecode_program, validate_snapshot},
+    Runtime, api::ExecutionSnapshot, bytecode::BytecodeProgram,
+    validation::validate_bytecode_program,
 };
 
 const SERIAL_FORMAT_VERSION: u32 = 1;
@@ -49,7 +48,7 @@ pub fn load_program(bytes: &[u8]) -> JsliteResult<BytecodeProgram> {
 pub fn dump_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<Vec<u8>> {
     bincode::serialize(&SerializedSnapshot {
         version: SERIAL_FORMAT_VERSION,
-        snapshot: snapshot.clone(),
+        runtime: snapshot.runtime.clone(),
     })
     .map_err(|error| JsliteError::Message {
         kind: DiagnosticKind::Serialization,
@@ -78,11 +77,7 @@ pub fn load_snapshot(bytes: &[u8]) -> JsliteResult<ExecutionSnapshot> {
             traceback: Vec::new(),
         });
     }
-    let mut snapshot = decoded.snapshot;
-    validate_snapshot(&snapshot)?;
-    snapshot.runtime.recompute_accounting_after_load()?;
-    snapshot.runtime.snapshot_policy_required = true;
-    Ok(snapshot)
+    ExecutionSnapshot::restore_loaded_runtime(decoded.runtime)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,5 +89,5 @@ struct SerializedProgram {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SerializedSnapshot {
     version: u32,
-    snapshot: ExecutionSnapshot,
+    runtime: Runtime,
 }

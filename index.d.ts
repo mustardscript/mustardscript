@@ -2,11 +2,15 @@
 /* eslint-disable */
 export declare function cancelCancellationToken(tokenId: string): void
 
+export declare function claimProgressSnapshot(snapshotToken: string): boolean
+
 export declare function compileProgram(source: string): Buffer
 
 export declare function createCancellationToken(): string
 
 export declare function inspectSnapshot(snapshot: Buffer, policyJson: string): string
+
+export declare function isProgressSnapshotUsed(snapshotToken: string): boolean
 
 export declare function releaseCancellationToken(tokenId: string): void
 

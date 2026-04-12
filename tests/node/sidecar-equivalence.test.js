@@ -14,6 +14,7 @@ const {
   encodeResumePayloadError,
   encodeResumePayloadValue,
 } = require('../../lib/structured.js');
+const { snapshotToken } = require('../../lib/policy.js');
 const { normalizeValue } = require('./runtime-oracle.js');
 
 const REPO_ROOT = path.join(__dirname, '../..');
@@ -21,6 +22,7 @@ const CORPUS = JSON.parse(
   fs.readFileSync(path.join(REPO_ROOT, 'tests/shared/equivalence-corpus.json'), 'utf8'),
 );
 const EXPLICIT_SNAPSHOT_KEY = 'equivalence-corpus-snapshot-key';
+const EXPLICIT_SNAPSHOT_KEY_BASE64 = Buffer.from(EXPLICIT_SNAPSHOT_KEY, 'utf8').toString('base64');
 const EXPLICIT_LOAD_OPTIONS = Object.freeze({
   capabilities: {},
   limits: {},
@@ -239,6 +241,11 @@ async function runSidecar(entry) {
         policy: {
           capabilities: entry.capabilities,
           limits: {},
+          snapshot_key_base64: EXPLICIT_SNAPSHOT_KEY_BASE64,
+          snapshot_token: snapshotToken(
+            Buffer.from(step.snapshotBase64, 'base64'),
+            EXPLICIT_SNAPSHOT_KEY,
+          ),
         },
         payload,
       });
