@@ -100,6 +100,9 @@ Workers must preserve these invariants:
   durable state
 - every durable restore uses explicit `capabilities`, `limits`, and
   `snapshotKey`
+- stored progress must be bound to its owning `jobId`; this implementation
+  derives a per-job snapshot key from the configured executor `snapshotKey`
+  before every `start()` and `Progress.load(...)`
 - progress is persisted before a job is marked `waiting`
 - terminal state is persisted before worker-local state is discarded
 - invalid snapshots, missing capabilities, and missing stored progress fail the
