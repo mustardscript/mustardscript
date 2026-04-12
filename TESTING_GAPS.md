@@ -175,37 +175,37 @@ contract and already has meaningful security semantics in the docs and tests.
 
 Checklist:
 
-- [ ] Add model-based tests for `run`, `start`, `dump`, `load`, `resume`,
+- [x] Add model-based tests for `run`, `start`, `dump`, `load`, `resume`,
       `resumeError`, and cancellation sequences.
-- [ ] Encode same-process `Progress.load(...)` behavior separately from
+- [x] Encode same-process `Progress.load(...)` behavior separately from
       fresh-process restore behavior.
-- [ ] Assert single-use behavior across direct resume, resumeError, cancel, and
+- [x] Assert single-use behavior across direct resume, resumeError, cancel, and
       replay attempts.
-- [ ] Assert `snapshotKey` authentication and tamper rejection.
-- [ ] Assert policy reassertion across load and resume.
-- [ ] Assert post-load limit/accounting checks instead of trusting serialized
+- [x] Assert `snapshotKey` authentication and tamper rejection.
+- [x] Assert policy reassertion across load and resume.
+- [x] Assert post-load limit/accounting checks instead of trusting serialized
       runtime state.
-- [ ] Assert stale-token and replay rejection behavior.
-- [ ] Print minimized action histories on failures.
-- [ ] Add a thin Node-layer mirror for the public wrapper behavior where the
+- [x] Assert stale-token and replay rejection behavior.
+- [x] Print minimized action histories on failures.
+- [x] Add a thin Node-layer mirror for the public wrapper behavior where the
       Rust core model alone is not sufficient.
 
 Key invariants:
 
-- [ ] Dump only succeeds at valid suspension points.
-- [ ] Completed progress cannot resume.
-- [ ] Consumed progress cannot be reused.
-- [ ] Replayed or stale snapshots fail closed.
-- [ ] Fresh-process restore requires explicit capabilities, limits, and
+- [x] Dump only succeeds at valid suspension points.
+- [x] Completed progress cannot resume.
+- [x] Consumed progress cannot be reused.
+- [x] Replayed or stale snapshots fail closed.
+- [x] Fresh-process restore requires explicit capabilities, limits, and
       `snapshotKey`.
-- [ ] Same-process restore and fresh-process restore remain distinct and tested
+- [x] Same-process restore and fresh-process restore remain distinct and tested
       as distinct contracts.
 
 Done when:
 
-- [ ] Short stateful sequences run in presubmit.
-- [ ] Longer sequences run outside the critical PR lane.
-- [ ] Every failing case prints the action history and minimized sequence.
+- [x] Short stateful sequences run in presubmit.
+- [x] Longer sequences run outside the critical PR lane.
+- [x] Every failing case prints the action history and minimized sequence.
 
 ### 4. Boundary and Limits As First-Class Contracts
 
@@ -430,7 +430,7 @@ Checklist:
 - [ ] Every supported semantic family has generated parity coverage.
 - [x] Every documented unsupported class has mapped rejection coverage with
       expected phase and category.
-- [ ] Snapshot and progress bugs are found by lifecycle/stateful tests, not by
+- [x] Snapshot and progress bugs are found by lifecycle/stateful tests, not by
       ad hoc regressions alone.
 - [ ] Async ordering regressions show up as deterministic trace diffs, not flaky
       timing failures.

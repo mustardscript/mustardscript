@@ -20,6 +20,25 @@ test('start returns resumable progress objects', () => {
   assert.equal(finalValue, 8);
 });
 
+test('dump only exists on suspended progress objects', () => {
+  const completed = runtime('4 + 4;').start();
+  assert.equal(completed, 8);
+  assert.ok(!(completed instanceof Progress));
+  assert.equal(typeof completed.dump, 'undefined');
+
+  const progress = runtime('fetch_data(4);').start({
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+  assert.ok(progress instanceof Progress);
+  assert.equal(typeof progress.dump, 'function');
+
+  const finished = progress.resume(4);
+  assert.equal(finished, 4);
+  assert.equal(typeof finished.dump, 'undefined');
+});
+
 test('progress objects are single-use', () => {
   const progress = runtime(`
     const response = fetch_data(4);

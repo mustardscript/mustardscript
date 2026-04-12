@@ -58,6 +58,13 @@ category-sensitive cases such as ambient globals, unsupported operators, and
 deferred object-model built-ins like `Object.create`, `Object.freeze`, and
 `Object.seal`.
 
+Separate from parity and rejection generators, the Node test layer now carries
+a lifecycle property suite for `run()` / `start()` / `Progress.load()` /
+`resume()` / `resumeError()` / `cancel()` flows. It drives short stateful
+sequences through both same-process cached loads and explicit-policy restores,
+prints minimized action histories when a lifecycle invariant breaks, and keeps
+longer replay-sequence exploration in an opt-in out-of-band lane.
+
 ## Fixture Coverage
 
 The curated `test262` subset complements the generated layer:
