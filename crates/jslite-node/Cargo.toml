@@ -11,12 +11,10 @@ description = "Node-API addon for the jslite runtime"
 crate-type = ["cdylib"]
 
 [dependencies]
-base64 = "0.22.1"
 jslite = { path = "../jslite" }
+jslite-bridge = { path = "../jslite-bridge" }
 napi.workspace = true
 napi-derive.workspace = true
-serde.workspace = true
-serde_json.workspace = true
 
 [build-dependencies]
 napi-build = "2.3.1"

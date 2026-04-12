@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/jslite",
+  "crates/jslite-bridge",
   "crates/jslite-node",
   "crates/jslite-sidecar",
 ]
