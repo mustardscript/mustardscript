@@ -34,6 +34,8 @@ do not cross the structured host boundary in either addon mode or sidecar mode.
 Guest `BigInt` values now follow the same rule: they are available inside guest
 execution and snapshots, but results, inputs, capability arguments, and resume
 payloads still reject them at the structured boundary.
+Structured host-boundary traversal is depth-limited and fails closed with a
+typed error instead of recursing until the JS or Rust stack overflows.
 
 ## Capability Calls
 
@@ -100,6 +102,9 @@ guest-only traceback with guest function names and source spans.
 - Execution is single-threaded and non-reentrant.
 - The Node `Progress` wrapper is single-use and rejects repeated
   `resume()`/`resumeError()` calls for the same suspended snapshot.
+- Consumed progress tokens stay burned for the lifetime of the current process,
+  so unrelated same-process progress churn cannot make an old dumped snapshot
+  replayable again.
 - `Progress.dump()` includes a detached token authenticated by the configured
   `snapshotKey`, and `Progress.load()` verifies that token before trusting the
   dumped snapshot bytes.

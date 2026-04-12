@@ -81,6 +81,49 @@ test('progress load preserves single-use by authenticated snapshot token', () =>
   assert.throws(() => second.resume(4), isSingleUseRuntimeError);
 });
 
+test('progress snapshots remain single-use after unrelated same-process churn', () => {
+  const runtime = new Jslite(`
+    const response = fetch_data(seed);
+    response;
+  `);
+  const original = runtime.start({
+    inputs: {
+      seed: 1,
+    },
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  assert.ok(original instanceof Progress);
+  const dumped = original.dump();
+  assert.equal(original.resume(11), 11);
+
+  for (let index = 0; index < 6_000; index += 1) {
+    const progress = runtime.start({
+      inputs: {
+        seed: index + 2,
+      },
+      snapshotKey: SNAPSHOT_KEY,
+      capabilities: {
+        fetch_data() {},
+      },
+    });
+    assert.ok(progress instanceof Progress);
+    assert.equal(progress.resume(index), index);
+  }
+
+  const replay = Progress.load(dumped, {
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+    limits: {},
+  });
+  assert.throws(() => replay.resume(22), isSingleUseRuntimeError);
+});
+
 test('progress load rejects forged progress tokens', () => {
   const progress = new Jslite(`
     const response = fetch_data(4);

@@ -8,6 +8,7 @@ const path = require('node:path');
 
 const {
   getCurrentPrebuiltTarget,
+  localBinaryCandidates,
   loadNative,
   resolvePrebuiltPackage,
 } = require('../../native-loader.js');
@@ -60,6 +61,33 @@ test('native loader rejects JavaScript override payloads before execution', () =
     assert.equal(fs.existsSync(sentinelPath), false);
   });
 });
+
+test(
+  'local native fallback only accepts the exact expected local addon filenames',
+  {
+    skip: !getCurrentPrebuiltTarget(),
+  },
+  () => {
+    withTempDir('jslite-loader-local-', (root) => {
+      const target = getCurrentPrebuiltTarget();
+      writeFile(path.join(root, 'evil.node'), 'not-a-real-addon');
+      writeFile(path.join(root, 'index.node'), 'generic-addon');
+      writeFile(path.join(root, target.localFile), 'target-addon');
+      writeFile(path.join(root, 'crates', 'jslite-node', 'evil.node'), 'nested-rogue-addon');
+      writeFile(
+        path.join(root, 'crates', 'jslite-node', target.localFile),
+        'nested-target-addon',
+      );
+
+      assert.deepEqual(localBinaryCandidates(root), [
+        path.join(root, target.localFile),
+        path.join(root, 'index.node'),
+        path.join(root, 'crates', 'jslite-node', target.localFile),
+        path.join(root, 'crates', 'jslite-node', 'index.node'),
+      ].filter((candidate) => fs.existsSync(candidate)));
+    });
+  },
+);
 
 test(
   'optional prebuilt resolution rejects JavaScript package fallbacks',

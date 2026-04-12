@@ -1,8 +1,13 @@
 'use strict';
 
 const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
 const path = require('node:path');
-const { resolvePrebuiltPackage, getCurrentPrebuiltTarget } = require('./native-loader');
+const {
+  resolvePrebuiltPackage,
+  getCurrentPrebuiltTarget,
+  getLocalBuildOutputFile,
+} = require('./native-loader');
 
 let prebuilt = null;
 let prebuiltError = null;
@@ -35,27 +40,75 @@ if (target) {
   );
 }
 
-execFileSync(
-  process.execPath,
+function nativeLibraryExtension(platform) {
+  switch (platform) {
+    case 'win32':
+      return '.dll';
+    case 'darwin':
+      return '.dylib';
+    default:
+      return '.so';
+  }
+}
+
+function parseCargoArtifactPath(output) {
+  const expectedExtension = nativeLibraryExtension(process.platform);
+  let artifactPath = null;
+  for (const line of output.split(/\r?\n/u)) {
+    if (line.trim() === '') {
+      continue;
+    }
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (event.reason !== 'compiler-artifact') {
+      continue;
+    }
+    if (event.target?.name !== 'jslite_node') {
+      continue;
+    }
+    if (
+      !Array.isArray(event.target?.crate_types) ||
+      !event.target.crate_types.includes('cdylib')
+    ) {
+      continue;
+    }
+    if (!Array.isArray(event.filenames)) {
+      continue;
+    }
+    const filename = event.filenames.find((entry) => entry.endsWith(expectedExtension));
+    if (filename) {
+      artifactPath = filename;
+    }
+  }
+  if (!artifactPath) {
+    throw new Error('jslite: cargo did not report a native cdylib artifact');
+  }
+  return artifactPath;
+}
+
+const cargo = process.env.CARGO || 'cargo';
+const cargoOutput = execFileSync(
+  cargo,
   [
-    path.join(
-      path.dirname(require.resolve('@napi-rs/cli/package.json')),
-      'dist',
-      'cli.js',
-    ),
     'build',
-    '--platform',
     '--manifest-path',
     'crates/jslite-node/Cargo.toml',
-    '--js-package-name',
-    '@keppoai/jslite',
-    '--output-dir',
-    '.',
-    '--no-js',
+    '--message-format',
+    'json-render-diagnostics',
   ],
   {
     cwd: __dirname,
-    stdio: 'inherit',
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'inherit'],
     env: process.env,
   },
 );
+
+const artifactPath = parseCargoArtifactPath(cargoOutput);
+const outputPath = path.join(__dirname, getLocalBuildOutputFile());
+fs.copyFileSync(artifactPath, outputPath);
+process.stdout.write(`jslite: built local addon at ${path.basename(outputPath)}\n`);
