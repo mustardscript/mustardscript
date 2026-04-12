@@ -45,7 +45,9 @@ function normalizeValue(value) {
   if (Array.isArray(value)) {
     return {
       type: 'array',
-      value: Array.from(value, normalizeValue),
+      value: Array.from({ length: value.length }, (_, index) =>
+        index in value ? normalizeValue(value[index]) : { type: 'hole' }
+      ),
     };
   }
   if (value && typeof value === 'object') {

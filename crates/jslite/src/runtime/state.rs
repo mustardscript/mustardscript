@@ -204,7 +204,7 @@ pub(super) struct RegExpObject {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct ArrayObject {
-    pub(super) elements: Vec<Value>,
+    pub(super) elements: Vec<Option<Value>>,
     pub(super) properties: IndexMap<String, Value>,
     #[serde(skip, default)]
     pub(super) accounted_bytes: usize,

@@ -175,16 +175,43 @@ test('host arrays reject accessor-backed elements without executing them', async
   assert.equal(getterRuns, 0);
 });
 
-test('host arrays fail closed on holes instead of crossing the boundary opaquely', async () => {
-  const value = [];
-  value.length = 1;
+test('host arrays preserve holes across the structured boundary', async () => {
+  const value = new Array(3);
+  value[1] = 'middle';
 
-  await assert.rejects(
-    new Jslite('value[0];').run({
-      inputs: { value },
-    }),
-    (error) => error instanceof TypeError && error.message.includes('holes cannot cross'),
-  );
+  const result = await new Jslite(`
+    const echoed = echo(value);
+    ({
+      inputKeys: Object.keys(value),
+      echoedKeys: Object.keys(echoed),
+      resultKeys: Object.keys([value[0], value[1], value[2]]),
+      inputJson: JSON.stringify(value),
+      echoedJson: JSON.stringify(echoed),
+      holeRead: value[0],
+      middle: echoed[1],
+      hasHole: 0 in value,
+      hasMiddle: 1 in echoed,
+    });
+  `).run({
+    inputs: { value },
+    capabilities: {
+      echo(entry) {
+        return entry;
+      },
+    },
+  });
+
+  assert.deepEqual(result, {
+    inputKeys: ['1'],
+    echoedKeys: ['1'],
+    resultKeys: ['0', '1', '2'],
+    inputJson: '[null,"middle",null]',
+    echoedJson: '[null,"middle",null]',
+    holeRead: undefined,
+    middle: 'middle',
+    hasHole: false,
+    hasMiddle: true,
+  });
 });
 
 test('host-to-guest encoding rejects proxy-backed inputs without executing traps', async () => {

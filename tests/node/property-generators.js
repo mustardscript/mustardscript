@@ -650,7 +650,6 @@ const unsupportedValidationCaseArbitraries = [
     validationCase(`${name};`, `forbidden ambient global \`${name}\``),
   ),
   fc.constant(validationCase('for (let value = 1 of [1, 2]) { value; }', 'for...of binding initializers are not supported')),
-  fc.constant(validationCase('[1, , 2];', 'array holes are not supported in v1')),
   ...contractValidationCaseArbitraries,
 ];
 
@@ -660,14 +659,27 @@ const conformanceCaseArbitrary = fc.oneof(
   unsupportedValidationCaseArbitrary,
 );
 
+const holeMarker = Symbol('structured-hole');
+
 const structuredValueArbitrary = fc.letrec((tie) => ({
+  array: fc
+    .array(fc.oneof(tie('value'), fc.constant(holeMarker)), { maxLength: 3 })
+    .map((entries) => {
+      const array = new Array(entries.length);
+      entries.forEach((entry, index) => {
+        if (entry !== holeMarker) {
+          array[index] = entry;
+        }
+      });
+      return array;
+    }),
   value: fc.oneof(
     fc.constant(undefined),
     fc.constant(null),
     fc.boolean(),
     supportedNumberArbitrary,
     smallStringArbitrary,
-    fc.array(tie('value'), { maxLength: 3 }),
+    tie('array'),
     fc.dictionary(identifierArbitrary, tie('value'), { maxKeys: 3 }),
   ),
 })).value;

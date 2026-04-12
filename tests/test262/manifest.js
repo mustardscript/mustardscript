@@ -77,6 +77,17 @@ module.exports = {
       expected: { first: 1, third: 4, size: 3 },
     },
     {
+      id: 'language/expressions/array/holes/basic.js',
+      file: 'cases/pass/language/expressions/array/holes/basic.js',
+      expected: {
+        length: 3,
+        keys: ['0', '2'],
+        holeIsUndefined: true,
+        hasHole: false,
+        json: '[1,null,2]',
+      },
+    },
+    {
       id: 'language/statements/try/try-catch-finally-primitive.js',
       file: 'cases/pass/language/statements/try/try-catch-finally-primitive.js',
       expected: ['caught', 'ok', ['body', 'boom', 'finally', 'body', 'finally']],
@@ -257,13 +268,6 @@ module.exports = {
       errorKind: 'Validation',
       messageIncludes: 'debugger statements are not supported',
       reason: 'Debugger hooks are excluded from the guest surface.',
-    },
-    {
-      id: 'language/expressions/array/holes/basic.js',
-      file: 'cases/unsupported/language/expressions/array/holes/basic.js',
-      errorKind: 'Validation',
-      messageIncludes: 'array holes are not supported in v1',
-      reason: 'Sparse array literals remain outside the supported subset.',
     },
     {
       id: 'language/expressions/array/spread/basic.js',

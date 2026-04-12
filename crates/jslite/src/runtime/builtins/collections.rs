@@ -16,13 +16,15 @@ impl Runtime {
             if done {
                 break;
             }
-            let items = match entry {
+            let items: Vec<Value> = match entry {
                 Value::Array(array) => self
                     .arrays
                     .get(array)
                     .ok_or_else(|| JsliteError::runtime("array missing"))?
                     .elements
-                    .clone(),
+                    .iter()
+                    .map(|value| value.clone().unwrap_or(Value::Undefined))
+                    .collect(),
                 _ => {
                     return Err(JsliteError::runtime(
                         "TypeError: Map constructor expects an iterable of [key, value] pairs",

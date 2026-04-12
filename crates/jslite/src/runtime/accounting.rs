@@ -88,6 +88,14 @@ impl Runtime {
         elements: Vec<Value>,
         properties: IndexMap<String, Value>,
     ) -> JsliteResult<ArrayKey> {
+        self.insert_sparse_array(elements.into_iter().map(Some).collect(), properties)
+    }
+
+    pub(super) fn insert_sparse_array(
+        &mut self,
+        elements: Vec<Option<Value>>,
+        properties: IndexMap<String, Value>,
+    ) -> JsliteResult<ArrayKey> {
         let mut array = ArrayObject {
             elements,
             properties,
@@ -436,8 +444,13 @@ fn measure_object_bytes(object: &PlainObject) -> usize {
 
 fn measure_array_bytes(array: &ArrayObject) -> usize {
     std::mem::size_of::<ArrayObject>()
-        + array.elements.len() * std::mem::size_of::<Value>()
-        + array.elements.iter().map(extra_value_bytes).sum::<usize>()
+        + array.elements.len() * std::mem::size_of::<Option<Value>>()
+        + array
+            .elements
+            .iter()
+            .filter_map(Option::as_ref)
+            .map(extra_value_bytes)
+            .sum::<usize>()
         + measure_properties_bytes(&array.properties)
 }
 

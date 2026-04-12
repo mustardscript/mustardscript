@@ -215,8 +215,11 @@ impl Runtime {
                         .elements
                     {
                         serialized.push(
-                            self.json_stringify_value(value, traversal)?
-                                .unwrap_or_else(|| "null".to_string()),
+                            self.json_stringify_value(
+                                &value.clone().unwrap_or(Value::Undefined),
+                                traversal,
+                            )?
+                            .unwrap_or_else(|| "null".to_string()),
                         );
                     }
                     Ok(Some(format!("[{}]", serialized.join(","))))

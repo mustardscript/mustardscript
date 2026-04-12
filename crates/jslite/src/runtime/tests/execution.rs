@@ -271,6 +271,90 @@ fn runs_object_literals_with_computed_keys_methods_and_spread() {
 }
 
 #[test]
+fn runs_sparse_arrays_across_helpers_and_json() {
+    let value = run(
+        r#"
+            const values = [1, , undefined, 4];
+            const callbackIndexes = [];
+            values.forEach((value, index) => {
+              callbackIndexes[callbackIndexes.length] = index;
+            });
+            const sliced = values.slice(0, 4);
+            const mapped = values.map((value, index) => value ?? (index + 10));
+            JSON.stringify({
+              length: values.length,
+              holeIsUndefined: values[1] === undefined,
+              hasHole: 1 in values,
+              hasUndefined: 2 in values,
+              keys: Object.keys(values),
+              entries: Object.entries(values),
+              iterated: Array.from(values.values()),
+              includesUndefined: values.includes(undefined),
+              indexOfUndefined: values.indexOf(undefined),
+              joined: values.join("-"),
+              json: JSON.stringify(values),
+              callbackIndexes,
+              slicedHasHole: 1 in sliced,
+              mappedHasHole: 1 in mapped,
+              mappedKeys: Object.keys(mapped),
+            });
+            "#,
+    );
+    assert_eq!(
+        value,
+        StructuredValue::String(
+            r#"{"length":4,"holeIsUndefined":true,"hasHole":false,"hasUndefined":true,"keys":["0","2","3"],"entries":[["0",1],["2",null],["3",4]],"iterated":[1,null,null,4],"includesUndefined":true,"indexOfUndefined":2,"joined":"1---4","json":"[1,null,null,4]","callbackIndexes":[0,2,3],"slicedHasHole":false,"mappedHasHole":false,"mappedKeys":["0","2","3"]}"#
+                .to_string()
+        )
+    );
+}
+
+#[test]
+fn structured_inputs_preserve_sparse_array_holes() {
+    let program = compile(
+        r#"
+            [
+              Object.keys(value),
+              value[0] === undefined,
+              0 in value,
+              1 in value,
+              value[1],
+              JSON.stringify(value),
+            ];
+            "#,
+    )
+    .expect("source should compile");
+
+    let value = execute(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([(
+                "value".to_string(),
+                StructuredValue::Array(vec![
+                    StructuredValue::Hole,
+                    StructuredValue::Number(StructuredNumber::Finite(2.0)),
+                    StructuredValue::Hole,
+                ]),
+            )]),
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect("program should run");
+
+    assert_eq!(
+        value,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![StructuredValue::String("1".to_string())]),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(false),
+            StructuredValue::Bool(true),
+            StructuredValue::Number(StructuredNumber::Finite(2.0)),
+            StructuredValue::String("[null,2,null]".to_string()),
+        ])
+    );
+}
+
+#[test]
 fn object_spread_fails_closed_for_unsupported_sources() {
     let program = compile("({ ...1 });").expect("object spread should lower");
     let error = execute(&program, ExecutionOptions::default())

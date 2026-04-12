@@ -68,6 +68,12 @@ const FEATURE_CONTRACT = Object.freeze([
     coverage: [COVERAGE.GENERATED_AST, COVERAGE.EXHAUSTIVE_AST, COVERAGE.METAMORPHIC],
   },
   {
+    id: 'language.array-holes',
+    title: 'sparse array holes across the documented helper and JSON surface',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.EXISTING],
+  },
+  {
     id: 'language.object-literals',
     title: 'plain object literals with static keys',
     outcome: OUTCOME.NODE_PARITY,
@@ -272,14 +278,6 @@ const FEATURE_CONTRACT = Object.freeze([
     coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
     source: '[...value];',
     messageIncludes: 'array spread is not supported in v1',
-  },
-  {
-    id: 'validation.array-holes',
-    title: 'array holes are a validation reject',
-    outcome: OUTCOME.VALIDATION_REJECT,
-    coverage: [COVERAGE.PROPERTY_NEGATIVE],
-    source: '[1, , 2];',
-    messageIncludes: 'array holes are not supported in v1',
   },
   {
     id: 'validation.debugger',

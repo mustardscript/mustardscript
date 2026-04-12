@@ -227,7 +227,7 @@ pub enum Expr {
     },
     Array {
         span: SourceSpan,
-        elements: Vec<Expr>,
+        elements: Vec<ArrayElement>,
     },
     Object {
         span: SourceSpan,
@@ -276,13 +276,13 @@ pub enum Expr {
     Call {
         span: SourceSpan,
         callee: Box<Expr>,
-        arguments: Vec<Expr>,
+        arguments: Vec<CallArgument>,
         optional: bool,
     },
     New {
         span: SourceSpan,
         callee: Box<Expr>,
-        arguments: Vec<Expr>,
+        arguments: Vec<CallArgument>,
     },
     Template {
         span: SourceSpan,
@@ -293,6 +293,13 @@ pub enum Expr {
         span: SourceSpan,
         value: Box<Expr>,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ArrayElement {
+    Value(Expr),
+    Hole { span: SourceSpan },
+    Spread { span: SourceSpan, value: Expr },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -318,6 +325,12 @@ pub enum ObjectPropertyKey {
 pub enum MemberProperty {
     Static(PropertyName),
     Computed(Box<Expr>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CallArgument {
+    Value(Expr),
+    Spread { span: SourceSpan, value: Expr },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

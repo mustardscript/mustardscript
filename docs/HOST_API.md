@@ -12,7 +12,8 @@ Allowed values:
 - booleans
 - strings
 - numbers, including `NaN`, `Infinity`, and `-0`
-- arrays of allowed values
+- arrays of allowed values, including sparse arrays with preserved hole
+  positions
 - plain objects with string keys and allowed values
 
 Rejected values:

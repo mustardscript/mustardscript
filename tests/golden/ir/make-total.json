@@ -85,21 +85,25 @@
                               },
                               "elements": [
                                 {
-                                  "Identifier": {
-                                    "span": {
-                                      "start": 58,
-                                      "end": 62
-                                    },
-                                    "name": "left"
+                                  "Value": {
+                                    "Identifier": {
+                                      "span": {
+                                        "start": 58,
+                                        "end": 62
+                                      },
+                                      "name": "left"
+                                    }
                                   }
                                 },
                                 {
-                                  "Identifier": {
-                                    "span": {
-                                      "start": 64,
-                                      "end": 69
-                                    },
-                                    "name": "right"
+                                  "Value": {
+                                    "Identifier": {
+                                      "span": {
+                                        "start": 64,
+                                        "end": 69
+                                      },
+                                      "name": "right"
+                                    }
                                   }
                                 }
                               ]
@@ -245,12 +249,14 @@
                 },
                 "arguments": [
                   {
-                    "Number": {
-                      "span": {
-                        "start": 124,
-                        "end": 125
-                      },
-                      "value": 2.0
+                    "Value": {
+                      "Number": {
+                        "span": {
+                          "start": 124,
+                          "end": 125
+                        },
+                        "value": 2.0
+                      }
                     }
                   }
                 ],

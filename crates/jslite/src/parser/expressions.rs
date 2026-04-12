@@ -243,13 +243,13 @@ impl<'a> Lowerer<'a> {
                             return None;
                         }
                         ArrayExpressionElement::Elision(elision) => {
-                            self.unsupported(
-                                "array holes are not supported in v1",
-                                Some(elision.span.into()),
-                            );
-                            return None;
+                            elements.push(crate::ir::ArrayElement::Hole {
+                                span: elision.span.into(),
+                            });
                         }
-                        element => elements.push(self.lower_expr(element.to_expression())?),
+                        element => elements.push(crate::ir::ArrayElement::Value(
+                            self.lower_expr(element.to_expression())?,
+                        )),
                     }
                 }
                 Some(Expr::Array {
@@ -465,7 +465,10 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_call_args(&mut self, args: &[Argument<'a>]) -> Option<Vec<Expr>> {
+    pub(super) fn lower_call_args(
+        &mut self,
+        args: &[Argument<'a>],
+    ) -> Option<Vec<crate::ir::CallArgument>> {
         let mut lowered = Vec::with_capacity(args.len());
         for arg in args {
             match arg {
@@ -476,7 +479,9 @@ impl<'a> Lowerer<'a> {
                     );
                     return None;
                 }
-                expression => lowered.push(self.lower_expr(expression.to_expression())?),
+                expression => lowered.push(crate::ir::CallArgument::Value(
+                    self.lower_expr(expression.to_expression())?,
+                )),
             }
         }
         Some(lowered)
