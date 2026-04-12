@@ -1,0 +1,439 @@
+use super::*;
+
+impl Runtime {
+    pub(super) fn apply_unary(&mut self, operator: UnaryOp, value: Value) -> JsliteResult<Value> {
+        match operator {
+            UnaryOp::Plus => Ok(Value::Number(self.to_number(value)?)),
+            UnaryOp::Minus => Ok(Value::Number(-self.to_number(value)?)),
+            UnaryOp::Not => Ok(Value::Bool(!is_truthy(&value))),
+            UnaryOp::Typeof => Ok(Value::String(
+                match value {
+                    Value::Undefined => "undefined",
+                    Value::Null => "object",
+                    Value::Bool(_) => "boolean",
+                    Value::Number(_) => "number",
+                    Value::String(_) => "string",
+                    Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
+                        "function"
+                    }
+                    Value::Object(_)
+                    | Value::Array(_)
+                    | Value::Map(_)
+                    | Value::Set(_)
+                    | Value::Iterator(_)
+                    | Value::Promise(_) => "object",
+                }
+                .to_string(),
+            )),
+            UnaryOp::Void => Ok(Value::Undefined),
+        }
+    }
+
+    pub(super) fn apply_binary(
+        &mut self,
+        operator: BinaryOp,
+        left: Value,
+        right: Value,
+    ) -> JsliteResult<Value> {
+        match operator {
+            BinaryOp::Add => {
+                if matches!(left, Value::String(_)) || matches!(right, Value::String(_)) {
+                    Ok(Value::String(format!(
+                        "{}{}",
+                        self.to_string(left)?,
+                        self.to_string(right)?
+                    )))
+                } else {
+                    Ok(Value::Number(
+                        self.to_number(left)? + self.to_number(right)?,
+                    ))
+                }
+            }
+            BinaryOp::Sub => Ok(Value::Number(
+                self.to_number(left)? - self.to_number(right)?,
+            )),
+            BinaryOp::Mul => Ok(Value::Number(
+                self.to_number(left)? * self.to_number(right)?,
+            )),
+            BinaryOp::Div => Ok(Value::Number(
+                self.to_number(left)? / self.to_number(right)?,
+            )),
+            BinaryOp::Rem => Ok(Value::Number(
+                self.to_number(left)? % self.to_number(right)?,
+            )),
+            BinaryOp::Eq | BinaryOp::StrictEq => Ok(Value::Bool(strict_equal(&left, &right))),
+            BinaryOp::NotEq | BinaryOp::StrictNotEq => {
+                Ok(Value::Bool(!strict_equal(&left, &right)))
+            }
+            BinaryOp::LessThan => Ok(Value::Bool(self.to_number(left)? < self.to_number(right)?)),
+            BinaryOp::LessThanEq => {
+                Ok(Value::Bool(self.to_number(left)? <= self.to_number(right)?))
+            }
+            BinaryOp::GreaterThan => {
+                Ok(Value::Bool(self.to_number(left)? > self.to_number(right)?))
+            }
+            BinaryOp::GreaterThanEq => {
+                Ok(Value::Bool(self.to_number(left)? >= self.to_number(right)?))
+            }
+        }
+    }
+
+    pub(super) fn to_number(&self, value: Value) -> JsliteResult<f64> {
+        Ok(match value {
+            Value::Undefined => f64::NAN,
+            Value::Null => 0.0,
+            Value::Bool(value) => {
+                if value {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            Value::Number(value) => value,
+            Value::String(value) => value.parse::<f64>().unwrap_or(f64::NAN),
+            Value::Array(_)
+            | Value::Map(_)
+            | Value::Set(_)
+            | Value::Iterator(_)
+            | Value::Object(_)
+            | Value::Promise(_)
+            | Value::Closure(_)
+            | Value::BuiltinFunction(_)
+            | Value::HostFunction(_) => {
+                return Err(JsliteError::runtime(
+                    "cannot coerce complex value to number",
+                ));
+            }
+        })
+    }
+
+    pub(super) fn to_integer(&self, value: Value) -> JsliteResult<i64> {
+        let number = self.to_number(value)?;
+        if number.is_nan() || number == 0.0 {
+            Ok(0)
+        } else if number.is_infinite() {
+            Ok(if number.is_sign_positive() {
+                i64::MAX
+            } else {
+                i64::MIN
+            })
+        } else {
+            let truncated = number.trunc();
+            if truncated >= i64::MAX as f64 {
+                Ok(i64::MAX)
+            } else if truncated <= i64::MIN as f64 {
+                Ok(i64::MIN)
+            } else {
+                Ok(truncated as i64)
+            }
+        }
+    }
+
+    pub(super) fn to_string(&self, value: Value) -> JsliteResult<String> {
+        Ok(match value {
+            Value::Undefined => "undefined".to_string(),
+            Value::Null => "null".to_string(),
+            Value::Bool(value) => value.to_string(),
+            Value::Number(value) => {
+                if value.fract() == 0.0 {
+                    format!("{}", value as i64)
+                } else {
+                    value.to_string()
+                }
+            }
+            Value::String(value) => value,
+            Value::Array(array) => {
+                let array = self
+                    .arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                let mut parts = Vec::new();
+                for value in &array.elements {
+                    parts.push(self.to_string(value.clone())?);
+                }
+                parts.join(",")
+            }
+            Value::Map(_) => "[object Map]".to_string(),
+            Value::Set(_) => "[object Set]".to_string(),
+            Value::Object(object) => match &self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::Date(_) => "[object Date]".to_string(),
+                ObjectKind::RegExp(regex) => format!("/{}/{}", regex.pattern, regex.flags),
+                _ => self
+                    .error_summary(object)?
+                    .unwrap_or_else(|| "[object Object]".to_string()),
+            },
+            Value::Iterator(_) => "[object Iterator]".to_string(),
+            Value::Promise(_) => "[object Promise]".to_string(),
+            Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
+                "[Function]".to_string()
+            }
+        })
+    }
+
+    pub(super) fn make_error_object(
+        &mut self,
+        name: &str,
+        args: &[Value],
+        code: Option<String>,
+        details: Option<Value>,
+    ) -> JsliteResult<Value> {
+        let message = if let Some(value) = args.first() {
+            self.to_string(value.clone())?
+        } else {
+            String::new()
+        };
+        let mut properties = IndexMap::from([
+            ("name".to_string(), Value::String(name.to_string())),
+            ("message".to_string(), Value::String(message)),
+        ]);
+        if let Some(code) = code {
+            properties.insert("code".to_string(), Value::String(code));
+        }
+        if let Some(details) = details {
+            properties.insert("details".to_string(), details);
+        }
+        let object = self.insert_object(properties, ObjectKind::Error(name.to_string()))?;
+        Ok(Value::Object(object))
+    }
+
+    pub(super) fn value_from_runtime_message(&mut self, message: &str) -> JsliteResult<Value> {
+        let (name, detail) = match message.split_once(": ") {
+            Some((name, detail)) if name == "Error" || name.ends_with("Error") => {
+                (name.to_string(), detail.to_string())
+            }
+            _ => ("Error".to_string(), message.to_string()),
+        };
+        self.make_error_object(&name, &[Value::String(detail)], None, None)
+    }
+
+    pub(super) fn value_from_host_error(&mut self, error: HostError) -> JsliteResult<Value> {
+        let details = match error.details {
+            Some(details) => Some(self.value_from_structured(details)?),
+            None => None,
+        };
+        self.make_error_object(
+            &error.name,
+            &[Value::String(error.message)],
+            error.code,
+            details,
+        )
+    }
+
+    pub(super) fn render_exception(&self, value: &Value) -> JsliteResult<String> {
+        match value {
+            Value::Object(object) => {
+                if let Some(summary) = self.error_summary(*object)? {
+                    Ok(summary)
+                } else {
+                    self.to_string(value.clone())
+                }
+            }
+            _ => self.to_string(value.clone()),
+        }
+    }
+
+    pub(super) fn error_summary(&self, object: ObjectKey) -> JsliteResult<Option<String>> {
+        let object = self
+            .objects
+            .get(object)
+            .ok_or_else(|| JsliteError::runtime("object missing"))?;
+        let name = object.properties.get("name").and_then(|value| match value {
+            Value::String(value) => Some(value.as_str()),
+            _ => None,
+        });
+        let message = object
+            .properties
+            .get("message")
+            .and_then(|value| match value {
+                Value::String(value) => Some(value.as_str()),
+                _ => None,
+            });
+
+        if !matches!(object.kind, ObjectKind::Error(_)) && name.is_none() && message.is_none() {
+            return Ok(None);
+        }
+
+        let mut summary = match (name, message) {
+            (Some(name), Some("")) => name.to_string(),
+            (Some(name), Some(message)) => format!("{name}: {message}"),
+            (Some(name), None) => name.to_string(),
+            (None, Some(message)) => message.to_string(),
+            (None, None) => "Error".to_string(),
+        };
+
+        if let Some(Value::String(code)) = object.properties.get("code") {
+            summary.push_str(&format!(" [code={code}]"));
+        }
+        if let Some(details) = object.properties.get("details") {
+            let details = self.value_to_structured(details.clone())?;
+            summary.push_str(&format!(" [details={details:?}]"));
+        }
+
+        Ok(Some(summary))
+    }
+
+    pub(super) fn to_property_key(&self, value: Value) -> JsliteResult<String> {
+        match value {
+            Value::String(value) => Ok(value),
+            Value::Number(value) => Ok(format_number_key(value)),
+            Value::Bool(value) => Ok(value.to_string()),
+            Value::Null => Ok("null".to_string()),
+            Value::Undefined => Ok("undefined".to_string()),
+            _ => self.to_string(value),
+        }
+    }
+
+    pub(super) fn to_array_items(&self, value: Value) -> JsliteResult<Vec<Value>> {
+        match value {
+            Value::Array(array) => self
+                .arrays
+                .get(array)
+                .map(|array| array.elements.clone())
+                .ok_or_else(|| JsliteError::runtime("array missing")),
+            Value::Undefined | Value::Null => Ok(Vec::new()),
+            _ => Err(JsliteError::runtime(
+                "value is not destructurable as an array",
+            )),
+        }
+    }
+
+    pub(super) fn value_from_structured(&mut self, value: StructuredValue) -> JsliteResult<Value> {
+        Ok(match value {
+            StructuredValue::Undefined => Value::Undefined,
+            StructuredValue::Null => Value::Null,
+            StructuredValue::Bool(value) => Value::Bool(value),
+            StructuredValue::String(value) => Value::String(value),
+            StructuredValue::Number(number) => Value::Number(number.to_f64()),
+            StructuredValue::Array(items) => {
+                let mut values = Vec::with_capacity(items.len());
+                for item in items {
+                    values.push(self.value_from_structured(item)?);
+                }
+                let array = self.insert_array(values, IndexMap::new())?;
+                Value::Array(array)
+            }
+            StructuredValue::Object(object) => {
+                let mut properties = IndexMap::new();
+                for (key, value) in object {
+                    properties.insert(key, self.value_from_structured(value)?);
+                }
+                let object = self.insert_object(properties, ObjectKind::Plain)?;
+                Value::Object(object)
+            }
+        })
+    }
+
+    pub(super) fn value_to_structured(&self, value: Value) -> JsliteResult<StructuredValue> {
+        Ok(match value {
+            Value::Undefined => StructuredValue::Undefined,
+            Value::Null => StructuredValue::Null,
+            Value::Bool(value) => StructuredValue::Bool(value),
+            Value::Number(value) => StructuredValue::Number(StructuredNumber::from_f64(value)),
+            Value::String(value) => StructuredValue::String(value),
+            Value::Array(array) => StructuredValue::Array(
+                self.arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .iter()
+                    .cloned()
+                    .map(|value| self.value_to_structured(value))
+                    .collect::<JsliteResult<Vec<_>>>()?,
+            ),
+            Value::Object(object) => {
+                let object_ref = self
+                    .objects
+                    .get(object)
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?;
+                if matches!(object_ref.kind, ObjectKind::Date(_)) {
+                    return Err(JsliteError::runtime(
+                        "Date values cannot cross the structured host boundary",
+                    ));
+                }
+                StructuredValue::Object(
+                    object_ref
+                        .properties
+                        .iter()
+                        .map(|(key, value)| {
+                            Ok((key.clone(), self.value_to_structured(value.clone())?))
+                        })
+                        .collect::<JsliteResult<IndexMap<_, _>>>()?,
+                )
+            }
+            Value::Map(_) | Value::Set(_) => {
+                return Err(JsliteError::runtime(
+                    "Map and Set values cannot cross the structured host boundary",
+                ));
+            }
+            Value::Iterator(_)
+            | Value::Promise(_)
+            | Value::Closure(_)
+            | Value::BuiltinFunction(_)
+            | Value::HostFunction(_) => {
+                return Err(JsliteError::runtime(
+                    "functions cannot cross the structured host boundary",
+                ));
+            }
+        })
+    }
+
+    pub(super) fn value_from_json(&mut self, value: serde_json::Value) -> JsliteResult<Value> {
+        match value {
+            serde_json::Value::Null => Ok(Value::Null),
+            serde_json::Value::Bool(value) => Ok(Value::Bool(value)),
+            serde_json::Value::Number(number) => Ok(Value::Number(number.as_f64().unwrap_or(0.0))),
+            serde_json::Value::String(value) => Ok(Value::String(value)),
+            serde_json::Value::Array(items) => {
+                let mut values = Vec::with_capacity(items.len());
+                for item in items {
+                    values.push(self.value_from_json(item)?);
+                }
+                let array = self.insert_array(values, IndexMap::new())?;
+                Ok(Value::Array(array))
+            }
+            serde_json::Value::Object(object) => {
+                let mut properties = IndexMap::new();
+                for (key, value) in object {
+                    properties.insert(key, self.value_from_json(value)?);
+                }
+                let object = self.insert_object(properties, ObjectKind::Plain)?;
+                Ok(Value::Object(object))
+            }
+        }
+    }
+}
+
+pub(super) fn structured_to_json(value: StructuredValue) -> JsliteResult<serde_json::Value> {
+    Ok(match value {
+        StructuredValue::Undefined => serde_json::Value::Null,
+        StructuredValue::Null => serde_json::Value::Null,
+        StructuredValue::Bool(value) => serde_json::Value::Bool(value),
+        StructuredValue::String(value) => serde_json::Value::String(value),
+        StructuredValue::Number(number) => match number {
+            StructuredNumber::Finite(value) => serde_json::Number::from_f64(value)
+                .map(serde_json::Value::Number)
+                .unwrap_or(serde_json::Value::Null),
+            StructuredNumber::NaN
+            | StructuredNumber::Infinity
+            | StructuredNumber::NegInfinity
+            | StructuredNumber::NegZero => serde_json::Value::Null,
+        },
+        StructuredValue::Array(values) => serde_json::Value::Array(
+            values
+                .into_iter()
+                .map(structured_to_json)
+                .collect::<JsliteResult<Vec<_>>>()?,
+        ),
+        StructuredValue::Object(values) => serde_json::Value::Object(
+            values
+                .into_iter()
+                .map(|(key, value)| Ok((key, structured_to_json(value)?)))
+                .collect::<JsliteResult<serde_json::Map<_, _>>>()?,
+        ),
+    })
+}

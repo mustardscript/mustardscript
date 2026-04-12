@@ -1,0 +1,256 @@
+use super::*;
+
+impl Runtime {
+    pub(super) fn new_env(&mut self, parent: Option<EnvKey>) -> JsliteResult<EnvKey> {
+        self.insert_env(parent)
+    }
+
+    pub(super) fn define_global(
+        &mut self,
+        name: String,
+        value: Value,
+        mutable: bool,
+    ) -> JsliteResult<()> {
+        let cell = self.insert_cell(value, mutable, true)?;
+        self.envs
+            .get_mut(self.globals)
+            .ok_or_else(|| JsliteError::runtime("missing globals environment"))?
+            .bindings
+            .insert(name, cell);
+        self.refresh_env_accounting(self.globals)?;
+        Ok(())
+    }
+
+    pub(super) fn declare_name(
+        &mut self,
+        env: EnvKey,
+        name: String,
+        mutable: bool,
+    ) -> JsliteResult<()> {
+        if self
+            .envs
+            .get(env)
+            .ok_or_else(|| JsliteError::runtime("environment missing"))?
+            .bindings
+            .contains_key(&name)
+        {
+            return Ok(());
+        }
+        let cell = self.insert_cell(Value::Undefined, mutable, false)?;
+        self.envs
+            .get_mut(env)
+            .ok_or_else(|| JsliteError::runtime("environment missing"))?
+            .bindings
+            .insert(name, cell);
+        self.refresh_env_accounting(env)?;
+        Ok(())
+    }
+
+    pub(super) fn lookup_name(&self, env: EnvKey, name: &str) -> JsliteResult<Value> {
+        let cell = self
+            .find_cell(env, name)
+            .ok_or_else(|| JsliteError::Message {
+                kind: DiagnosticKind::Runtime,
+                message: format!("ReferenceError: `{name}` is not defined"),
+                span: None,
+                traceback: Vec::new(),
+            })?;
+        let cell = self
+            .cells
+            .get(cell)
+            .ok_or_else(|| JsliteError::runtime("binding cell missing"))?;
+        if !cell.initialized {
+            return Err(JsliteError::runtime(format!(
+                "ReferenceError: `{name}` accessed before initialization"
+            )));
+        }
+        Ok(cell.value.clone())
+    }
+
+    pub(super) fn assign_name(
+        &mut self,
+        env: EnvKey,
+        name: &str,
+        value: Value,
+    ) -> JsliteResult<()> {
+        let cell_key = self.find_cell(env, name).ok_or_else(|| {
+            JsliteError::runtime(format!("ReferenceError: `{name}` is not defined"))
+        })?;
+        {
+            let cell = self
+                .cells
+                .get_mut(cell_key)
+                .ok_or_else(|| JsliteError::runtime("binding cell missing"))?;
+            if !cell.initialized {
+                return Err(JsliteError::runtime(format!(
+                    "ReferenceError: `{name}` accessed before initialization"
+                )));
+            }
+            if !cell.mutable {
+                return Err(JsliteError::runtime(format!(
+                    "TypeError: assignment to constant variable `{name}`"
+                )));
+            }
+            cell.value = value;
+        }
+        self.refresh_cell_accounting(cell_key)?;
+        Ok(())
+    }
+
+    pub(super) fn initialize_name_in_env(
+        &mut self,
+        env: EnvKey,
+        name: &str,
+        value: Value,
+    ) -> JsliteResult<()> {
+        let cell_key = self
+            .envs
+            .get(env)
+            .and_then(|env| env.bindings.get(name).copied())
+            .ok_or_else(|| {
+                JsliteError::runtime(format!("binding `{name}` missing in current scope"))
+            })?;
+        let mut was_initialized = false;
+        {
+            let cell = self
+                .cells
+                .get_mut(cell_key)
+                .ok_or_else(|| JsliteError::runtime("binding cell missing"))?;
+            if cell.initialized {
+                if !cell.mutable {
+                    return Err(JsliteError::runtime(format!(
+                        "TypeError: binding `{name}` was already initialized"
+                    )));
+                }
+                cell.value = value;
+                was_initialized = true;
+            } else {
+                cell.value = value;
+                cell.initialized = true;
+            }
+        }
+        self.refresh_cell_accounting(cell_key)?;
+        if was_initialized {
+            return Ok(());
+        }
+        Ok(())
+    }
+
+    pub(super) fn find_cell(&self, env: EnvKey, name: &str) -> Option<CellKey> {
+        let mut current = Some(env);
+        while let Some(key) = current {
+            let env = self.envs.get(key)?;
+            if let Some(cell) = env.bindings.get(name) {
+                return Some(*cell);
+            }
+            current = env.parent;
+        }
+        None
+    }
+
+    pub(super) fn initialize_pattern(
+        &mut self,
+        env: EnvKey,
+        pattern: &Pattern,
+        value: Value,
+    ) -> JsliteResult<()> {
+        match pattern {
+            Pattern::Identifier { name, .. } => self.initialize_name_in_env(env, name, value),
+            Pattern::Default {
+                target,
+                default_value,
+                ..
+            } => {
+                let value = if matches!(value, Value::Undefined) {
+                    let bytecode = BytecodeProgram {
+                        functions: vec![FunctionPrototype {
+                            name: None,
+                            params: Vec::new(),
+                            rest: None,
+                            code: Vec::new(),
+                            is_async: false,
+                            is_arrow: false,
+                            span: SourceSpan::new(0, 0),
+                        }],
+                        root: 0,
+                    };
+                    drop(bytecode);
+                    return Err(JsliteError::runtime(format!(
+                        "default pattern initialization at runtime requires compiled evaluation support: {:?}",
+                        default_value
+                    )));
+                } else {
+                    value
+                };
+                self.initialize_pattern(env, target, value)
+            }
+            Pattern::Array { elements, rest, .. } => {
+                let items = self.to_array_items(value)?;
+                for (index, pattern) in elements.iter().enumerate() {
+                    if let Some(pattern) = pattern {
+                        self.initialize_pattern(
+                            env,
+                            pattern,
+                            items.get(index).cloned().unwrap_or(Value::Undefined),
+                        )?;
+                    }
+                }
+                if let Some(rest) = rest {
+                    let array = self.insert_array(
+                        items.into_iter().skip(elements.len()).collect(),
+                        IndexMap::new(),
+                    )?;
+                    self.initialize_pattern(env, rest, Value::Array(array))?;
+                }
+                Ok(())
+            }
+            Pattern::Object {
+                properties, rest, ..
+            } => {
+                let mut seen = HashSet::new();
+                for property in properties {
+                    let key = property_name_to_key(&property.key);
+                    let prop_value =
+                        self.get_property(value.clone(), Value::String(key.clone()), false)?;
+                    seen.insert(key);
+                    self.initialize_pattern(env, &property.value, prop_value)?;
+                }
+                if let Some(rest_pattern) = rest {
+                    let mut rest_object = IndexMap::new();
+                    match value {
+                        Value::Object(object) => {
+                            if let Some(object) = self.objects.get(object) {
+                                for (key, value) in &object.properties {
+                                    if !seen.contains(key) {
+                                        rest_object.insert(key.clone(), value.clone());
+                                    }
+                                }
+                            }
+                        }
+                        Value::Null | Value::Undefined => {
+                            return Err(JsliteError::runtime(
+                                "cannot destructure object pattern from nullish value",
+                            ));
+                        }
+                        _ => {}
+                    }
+                    let rest = self.insert_object(rest_object, ObjectKind::Plain)?;
+                    self.initialize_pattern(env, rest_pattern, Value::Object(rest))?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    pub(super) fn capability_value(&self, name: &str) -> Option<Value> {
+        let cell = self.find_cell(self.globals, name)?;
+        let cell = self.cells.get(cell)?;
+        if !cell.initialized {
+            return None;
+        }
+        match &cell.value {
+            Value::HostFunction(_) => Some(cell.value.clone()),
+            _ => None,
+        }
+    }
+}
