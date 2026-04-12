@@ -9,6 +9,14 @@ mod execution;
 mod gc;
 mod serialization;
 
+mod async_host;
+mod collections;
+mod diagnostics;
+mod exceptions;
+mod execution;
+mod gc;
+mod serialization;
+
 fn test_function(code: Vec<Instruction>) -> FunctionPrototype {
     FunctionPrototype {
         name: None,
