@@ -159,13 +159,14 @@ Representative retained ideas:
 These did not recur heavily in the generated example residue because the
 subagents were optimizing for realistic bounded guest programs, not for typed
 SDK ergonomics. They still matter for the use-case story and should stay
-visible.
+visible. The `new Promise(...)` item below should be treated as a support
+target, not as a permanent boundary.
 
 | Gap family | Evidence | Why it matters |
 | --- | --- | --- |
 | No guest-side modules or generated typed SDK imports | `README.md`, `docs/LANGUAGE.md`, `USE_CASE_EXAMPLES.md` | A major code-mode pattern is `import`-based SDK use rather than only global capabilities. |
 | No dynamic capability injection mid-execution | `USE_CASE_EXAMPLES.md` callout | Some realistic orchestration patterns want host-provided capability objects or phased tool availability. |
-| No `new Promise(...)` or general thenable adoption | `README.md`, `docs/LANGUAGE.md` | Guest wrappers around callback-style or adapter-style async flows cannot use the full Promise constructor surface. |
+| Missing `new Promise(...)` and general thenable adoption | `README.md`, `docs/LANGUAGE.md` | This is still unsupported today, but it should be treated as a real support gap because callback-adapter, approval-bridge, and wrapper-style async flows naturally depend on it. |
 
 Representative examples:
 
@@ -173,7 +174,9 @@ Representative examples:
 - `const step2 = await getScopedClient(accountId); await step2.updateLimits(...);`
 - `await new Promise((resolve, reject) => wait_for_approval(resolve, reject));`
 
-These are explicit product boundaries, not accidental omissions.
+The first two remain explicit product boundaries in the current docs.
+`new Promise(...)` should instead be treated as a support-target gap and kept
+visible as such until the runtime implements it.
 
 ## Highest-Signal Retained Examples By Cluster
 
