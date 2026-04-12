@@ -895,11 +895,23 @@ test('run supports broader Date, Number, string-formatting, and reverse array he
         date.getUTCSeconds(),
       ],
       parsedInt: Number.parseInt("  -0x10"),
+      globalParsedInt: parseInt("08"),
       parsedFloat: Number.parseFloat("  -10.25ms"),
       isNaN: Number.isNaN(0 / 0),
       isNaNString: Number.isNaN("NaN"),
+      globalIsNaN: isNaN(NaN),
       isFinite: Number.isFinite(12.5),
       isFiniteInfinite: Number.isFinite(1 / 0),
+      globalIsFinite: isFinite(12.5),
+      isInteger: Number.isInteger(12),
+      isSafeInteger: Number.isSafeInteger(Number.MAX_SAFE_INTEGER),
+      maxSafeInteger: Number.MAX_SAFE_INTEGER,
+      minSafeInteger: Number.MIN_SAFE_INTEGER,
+      epsilon: Number.EPSILON > 0 && Number.EPSILON < 1,
+      numberNaN: Number.isNaN(Number.NaN),
+      positiveInfinity: Number.POSITIVE_INFINITY,
+      negativeInfinity: Number.NEGATIVE_INFINITY,
+      globalInfinity: Infinity,
       trimStart: "  padded  ".trimStart(),
       trimEnd: "  padded  ".trimEnd(),
       padStart: "7".padStart(3, "0"),
@@ -907,6 +919,20 @@ test('run supports broader Date, Number, string-formatting, and reverse array he
       reduceRight: [1, 2, 3].reduceRight((acc, value) => acc + ":" + value, "tail"),
       findLast: [1, 2, 3, 4].findLast((value) => value % 2 === 0),
       findLastIndex: [1, 2, 3, 4].findLastIndex((value) => value % 2 === 0),
+      mathPiRounded: Math.round(Math.PI * 1000) / 1000,
+      mathExpRounded: Math.round(Math.exp(1) * 1000) / 1000,
+      mathLog2: Math.log2(8),
+      mathLog10: Math.log10(1000),
+      mathSinRounded: Math.round(Math.sin(Math.PI / 2) * 1000) / 1000,
+      mathCosRounded: Math.round(Math.cos(Math.PI) * 1000) / 1000,
+      mathAtan2Rounded: Math.round(Math.atan2(0, -1) * 1000) / 1000,
+      mathHypot: Math.hypot(3, 4),
+      mathCbrt: Math.cbrt(27),
+      syntaxError: [
+        new SyntaxError("bad").name,
+        new SyntaxError("bad") instanceof SyntaxError,
+        new SyntaxError("bad") instanceof Error,
+      ],
     });
   `).run();
 
@@ -915,11 +941,23 @@ test('run supports broader Date, Number, string-formatting, and reverse array he
     json: '{"date":"2026-04-10T14:05:06.789Z"}',
     utc: [2026, 3, 10, 14, 5, 6],
     parsedInt: -16,
+    globalParsedInt: 8,
     parsedFloat: -10.25,
     isNaN: true,
     isNaNString: false,
+    globalIsNaN: true,
     isFinite: true,
     isFiniteInfinite: false,
+    globalIsFinite: true,
+    isInteger: true,
+    isSafeInteger: true,
+    maxSafeInteger: 9007199254740991,
+    minSafeInteger: -9007199254740991,
+    epsilon: true,
+    numberNaN: true,
+    positiveInfinity: Infinity,
+    negativeInfinity: -Infinity,
+    globalInfinity: Infinity,
     trimStart: 'padded  ',
     trimEnd: '  padded',
     padStart: '007',
@@ -927,6 +965,57 @@ test('run supports broader Date, Number, string-formatting, and reverse array he
     reduceRight: 'tail:3:2:1',
     findLast: 4,
     findLastIndex: 3,
+    mathPiRounded: 3.142,
+    mathExpRounded: 2.718,
+    mathLog2: 3,
+    mathLog10: 3,
+    mathSinRounded: 1,
+    mathCosRounded: -1,
+    mathAtan2Rounded: 3.142,
+    mathHypot: 5,
+    mathCbrt: 3,
+    syntaxError: ['SyntaxError', true, true],
+  });
+});
+
+test('run supports additional string and array helper surface', async () => {
+  const result = await runtime(`
+    const values = [1, , 3, 1];
+    values.label = "seed";
+    const reversed = values.reverse();
+    const filled = Array(4);
+    filled.fill("x", 1, 3);
+    ({
+      stringIndexOf: "banana".indexOf("na", 1),
+      stringLastIndexOf: "banana".lastIndexOf("na"),
+      charAt: "hello".charAt(1),
+      at: "hello".at(-2),
+      missingAt: "hello".at(9),
+      repeat: "ha".repeat(3),
+      concat: "alpha".concat("-", 2, true),
+      reversedIdentity: reversed === values,
+      reversedKeys: Object.keys(values),
+      reversedValues: Array.from(values.values()),
+      reversedLastIndexOf: values.lastIndexOf(1),
+      filledKeys: Object.keys(filled),
+      filledValues: Array.from(filled.values()),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    stringIndexOf: 2,
+    stringLastIndexOf: 4,
+    charAt: 'e',
+    at: 'l',
+    missingAt: undefined,
+    repeat: 'hahaha',
+    concat: 'alpha-2true',
+    reversedIdentity: true,
+    reversedKeys: ['0', '1', '3', 'label'],
+    reversedValues: [1, 3, undefined, 1],
+    reversedLastIndexOf: 3,
+    filledKeys: ['1', '2'],
+    filledValues: [undefined, 'x', 'x', undefined],
   });
 });
 
@@ -1022,6 +1111,15 @@ test('Intl and new helper additions fail closed for unsupported options and inva
     isJsliteError({
       kind: 'Runtime',
       message: 'Array.prototype.findLast expects a callable callback',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('"ha".repeat(-1);').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'RangeError: Invalid count value',
       guestSafe: true,
     }),
   );

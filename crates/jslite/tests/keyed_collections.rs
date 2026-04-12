@@ -336,6 +336,88 @@ fn keyed_collection_iterators_continue_after_clear_followed_by_new_entries() {
 }
 
 #[test]
+fn keyed_collection_for_each_helpers_cover_supported_surface() {
+    let program = compile(
+        r#"
+        const map = new Map([
+          ['alpha', 1],
+          ['beta', 2],
+        ]);
+        const set = new Set(['alpha', 'beta']);
+        const mapSeen = [];
+        const setSeen = [];
+        map.forEach(function (value, key, source) {
+          mapSeen[mapSeen.length] = [key, value, source === map, this.tag];
+          if (key === 'alpha') {
+            map.set('tail', 3);
+          }
+        }, { tag: 'map' });
+        set.forEach(function (value, key, source) {
+          setSeen[setSeen.length] = [value, key, source === set, this.tag];
+          if (value === 'alpha') {
+            set.add('tail');
+          }
+        }, { tag: 'set' });
+        ({ mapSeen, setSeen });
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Object(IndexMap::from([
+            (
+                "mapSeen".to_string(),
+                StructuredValue::Array(vec![
+                    StructuredValue::Array(vec![
+                        string("alpha"),
+                        number(1.0),
+                        StructuredValue::Bool(true),
+                        string("map"),
+                    ]),
+                    StructuredValue::Array(vec![
+                        string("beta"),
+                        number(2.0),
+                        StructuredValue::Bool(true),
+                        string("map"),
+                    ]),
+                    StructuredValue::Array(vec![
+                        string("tail"),
+                        number(3.0),
+                        StructuredValue::Bool(true),
+                        string("map"),
+                    ]),
+                ]),
+            ),
+            (
+                "setSeen".to_string(),
+                StructuredValue::Array(vec![
+                    StructuredValue::Array(vec![
+                        string("alpha"),
+                        string("alpha"),
+                        StructuredValue::Bool(true),
+                        string("set"),
+                    ]),
+                    StructuredValue::Array(vec![
+                        string("beta"),
+                        string("beta"),
+                        StructuredValue::Bool(true),
+                        string("set"),
+                    ]),
+                    StructuredValue::Array(vec![
+                        string("tail"),
+                        string("tail"),
+                        StructuredValue::Bool(true),
+                        string("set"),
+                    ]),
+                ]),
+            ),
+        ]))
+    );
+}
+
+#[test]
 fn maps_and_sets_reject_structured_host_boundary_crossing() {
     let output = compile(
         r#"

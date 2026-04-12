@@ -294,20 +294,6 @@ module.exports = {
       reason: 'Debugger hooks are excluded from the guest surface.',
     },
     {
-      id: 'language/expressions/assignment/exponentiation/basic.js',
-      file: 'cases/unsupported/language/expressions/assignment/exponentiation/basic.js',
-      errorKind: 'Validation',
-      messageIncludes: 'unsupported assignment operator in v1',
-      reason: 'Exponent assignment remains outside the supported assignment surface.',
-    },
-    {
-      id: 'language/expressions/assignment/remainder.js',
-      file: 'cases/unsupported/language/expressions/assignment/remainder.js',
-      errorKind: 'Validation',
-      messageIncludes: 'unsupported assignment operator in v1',
-      reason: 'Remainder assignment remains outside the supported assignment surface.',
-    },
-    {
       id: 'language/expressions/assignment/bitwise-and.js',
       file: 'cases/unsupported/language/expressions/assignment/bitwise-and.js',
       errorKind: 'Validation',

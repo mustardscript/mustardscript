@@ -151,14 +151,9 @@ test('BigInt exponentiation supports non-negative BigInt exponents only', async 
   ]);
 });
 
-test('unsupported exponent assignment still fails closed during validation', () => {
-  assert.throws(
-    () => new Jslite('let value = 2; value **= 3; value;'),
-    (error) =>
-      error instanceof JsliteError &&
-      error.kind === 'Validation' &&
-      error.message.includes('unsupported assignment operator in v1'),
-  );
+test('exponent assignment now supports the documented compound-assignment surface', async () => {
+  const result = await new Jslite('let value = 2n; value **= 3n; String(value);').run();
+  assert.equal(result, '8');
 });
 
 test('BigInt values still fail closed at the structured host boundary', async () => {

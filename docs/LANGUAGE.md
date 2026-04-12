@@ -182,8 +182,8 @@ extensions are called out explicitly instead of being implied.
 
 - fully general Promise constructor and thenable-adoption edge cases,
   including hostile thenable cycles
-- unsupported assignment operators such as `**=`, `%=`, and the bitwise and
-  shift assignment families
+- unsupported assignment operators such as the bitwise and shift assignment
+  families
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
 - legacy `var` hoisting, same-scope redeclaration, and loop interaction rules
@@ -309,6 +309,9 @@ extensions are called out explicitly instead of being implied.
 - `Array.prototype.join`
 - `Array.prototype.includes`
 - `Array.prototype.indexOf`
+- `Array.prototype.lastIndexOf`
+- `Array.prototype.reverse`
+- `Array.prototype.fill`
 - `Array.prototype.sort`
 - `Array.prototype.values`
 - `Array.prototype.keys`
@@ -341,6 +344,7 @@ extensions are called out explicitly instead of being implied.
 - `Map.prototype.entries`
 - `Map.prototype.keys`
 - `Map.prototype.values`
+- `Map.prototype.forEach`
 - `Set.prototype.add`
 - `Set.prototype.has`
 - `Set.prototype.delete`
@@ -349,6 +353,7 @@ extensions are called out explicitly instead of being implied.
 - `Set.prototype.entries`
 - `Set.prototype.keys`
 - `Set.prototype.values`
+- `Set.prototype.forEach`
 - `Promise.resolve`
 - `Promise.reject`
 - `Promise.all`
@@ -374,16 +379,30 @@ extensions are called out explicitly instead of being implied.
 - `Number.parseFloat`
 - `Number.isNaN`
 - `Number.isFinite`
+- `Number.isInteger`
+- `Number.isSafeInteger`
+- global `parseInt`
+- global `parseFloat`
+- global `isNaN`
+- global `isFinite`
+- global `NaN`
+- global `Infinity`
 - `String.prototype.trim`
 - `String.prototype.trimStart`
 - `String.prototype.trimEnd`
 - `String.prototype.includes`
 - `String.prototype.startsWith`
 - `String.prototype.endsWith`
+- `String.prototype.indexOf`
+- `String.prototype.lastIndexOf`
+- `String.prototype.charAt`
+- `String.prototype.at`
 - `String.prototype.slice`
 - `String.prototype.substring`
 - `String.prototype.toLowerCase`
 - `String.prototype.toUpperCase`
+- `String.prototype.repeat`
+- `String.prototype.concat`
 - `String.prototype.padStart`
 - `String.prototype.padEnd`
 - `String.prototype.split`
@@ -405,6 +424,14 @@ extensions are called out explicitly instead of being implied.
 - `Math.trunc`
 - `Math.sign`
 - `Math.log`
+- `Math.exp`
+- `Math.log2`
+- `Math.log10`
+- `Math.sin`
+- `Math.cos`
+- `Math.atan2`
+- `Math.hypot`
+- `Math.cbrt`
 - `Math.random`
 - `JSON.stringify`
 - `JSON.parse`
@@ -436,6 +463,12 @@ extensions are called out explicitly instead of being implied.
   guest array arguments, and appends every other value as a single element
 - `Array.prototype.at` truncates the requested index, supports negative offsets
   from the end, and returns `undefined` when the computed index is out of range
+- `Array.prototype.lastIndexOf` mirrors the conservative equality and hole
+  treatment used by `indexOf`, but searches from right to left
+- `Array.prototype.reverse` mutates the original array in place, preserves hole
+  positions, and returns the same array value
+- `Array.prototype.fill` mutates the original array in place over the requested
+  start/end range and preserves holes outside that range
 - `Array.prototype.splice` mutates the original array in place, returns a fresh
   guest array of removed elements, and preserves non-index array properties on
   the mutated receiver
@@ -484,10 +517,15 @@ extensions are called out explicitly instead of being implied.
   full prototype semantics remain deferred
 - `Object.freeze` and `Object.seal` are exposed only as explicit runtime
   `TypeError`s because property descriptor semantics remain deferred
+- `Map.prototype.forEach` and `Set.prototype.forEach` support synchronous guest
+  callbacks plus `thisArg`, visit entries appended during active iteration, and
+  fail closed for synchronous host suspensions
 - `String.prototype.split`, `replace`, `replaceAll`, `search`, and `match`
   accept string-coercible patterns and real `RegExp` instances
 - `String.prototype.trimStart`, `trimEnd`, `padStart`, and `padEnd` are
   supported on primitive strings in the conservative helper surface
+- `String.prototype.indexOf`, `lastIndexOf`, `charAt`, `at`, `repeat`, and
+  `concat` are available on primitive strings in the conservative helper surface
 - `String.prototype.matchAll` returns a guest iterator over match-result arrays;
   `RegExp` inputs must be global
 - callback replacements for `replace` / `replaceAll` are supported for guest
@@ -510,14 +548,23 @@ extensions are called out explicitly instead of being implied.
   stored integral epoch milliseconds, `toISOString()` and `toJSON()` render
   UTC RFC3339 timestamps, and the documented `getUTC*` accessors expose UTC
   year/month/day/hour/minute/second fields
-- `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`, and
-  `Number.isFinite` are available as conservative static helpers on `Number`
+- `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`,
+  `Number.isFinite`, `Number.isInteger`, and `Number.isSafeInteger` are
+  available as conservative static helpers on `Number`; the corresponding
+  global aliases plus `NaN` / `Infinity` are also installed on `globalThis`
+- `Number.MAX_SAFE_INTEGER`, `MIN_SAFE_INTEGER`, `EPSILON`, `MAX_VALUE`,
+  `MIN_VALUE`, `POSITIVE_INFINITY`, `NEGATIVE_INFINITY`, and `NaN` are exposed
+  as conservative static constants on `Number`
 - `Intl.DateTimeFormat` and `Intl.NumberFormat` are available in a narrow
   deterministic subset: locale support is currently limited to `en-US`,
   `DateTimeFormat` currently accepts only `UTC` time-zone formatting plus the
   documented numeric / two-digit date-time fields, and `NumberFormat`
   currently supports only `decimal`, `percent`, and `currency` formatting with
   `USD` as the only supported currency code
+- `Math.PI`, `E`, `LN2`, `LN10`, `LOG2E`, `LOG10E`, `SQRT2`, and `SQRT1_2`
+  are available as numeric constants on `Math`
+- `Math.exp`, `log2`, `log10`, `sin`, `cos`, `atan2`, `hypot`, and `cbrt`
+  are available as pure numeric helpers over the supported number surface
 - `Math.random()` draws host entropy and returns a finite `number` in the
   half-open range `[0, 1)`; values are intentionally nondeterministic, are not
   seedable or reproducible across runs or resumes, and are not a

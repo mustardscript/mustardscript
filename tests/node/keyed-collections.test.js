@@ -272,6 +272,72 @@ test('Map and Set iterators can continue after clear followed by new entries', a
   });
 });
 
+test('Map.prototype.forEach and Set.prototype.forEach support callback iteration', async () => {
+  const runtime = new Jslite(`
+    const map = new Map([
+      ['alpha', 1],
+      ['beta', 2],
+    ]);
+    const set = new Set(['alpha', 'beta']);
+    const mapSeen = [];
+    const setSeen = [];
+    map.forEach(function (value, key, source) {
+      mapSeen[mapSeen.length] = [key, value, source === map, this.tag];
+      if (key === 'alpha') {
+        map.set('tail', 3);
+      }
+    }, { tag: 'map' });
+    set.forEach(function (value, key, source) {
+      setSeen[setSeen.length] = [value, key, source === set, this.tag];
+      if (value === 'alpha') {
+        set.add('tail');
+      }
+    }, { tag: 'set' });
+    ({ mapSeen, setSeen });
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, {
+    mapSeen: [
+      ['alpha', 1, true, 'map'],
+      ['beta', 2, true, 'map'],
+      ['tail', 3, true, 'map'],
+    ],
+    setSeen: [
+      ['alpha', 'alpha', true, 'set'],
+      ['beta', 'beta', true, 'set'],
+      ['tail', 'tail', true, 'set'],
+    ],
+  });
+});
+
+test('collection forEach helpers fail closed for invalid callbacks and host suspensions', async () => {
+  await assert.rejects(
+    () => new Jslite('new Map().forEach(1);').run(),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Runtime' &&
+      error.message.includes('Map.prototype.forEach expects a callable callback'),
+  );
+
+  await assert.rejects(
+    () =>
+      new Jslite('new Set([1]).forEach(fetch_data);').run({
+        capabilities: {
+          fetch_data(value) {
+            return value;
+          },
+        },
+      }),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Runtime' &&
+      error.message.includes(
+        'Set.prototype.forEach does not support synchronous host suspensions',
+      ),
+  );
+});
+
 test('guest keyed collections cannot cross the structured host boundary', async () => {
   await assert.rejects(
     () =>

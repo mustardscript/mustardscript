@@ -85,6 +85,41 @@ impl Runtime {
         }
     }
 
+    fn collection_callback(&self, method: &str, args: &[Value]) -> JsliteResult<(Value, Value)> {
+        let callback = args.first().cloned().unwrap_or(Value::Undefined);
+        if !is_callable(&callback) {
+            return Err(JsliteError::runtime(format!(
+                "TypeError: {method} expects a callable callback",
+            )));
+        }
+        let this_arg = args.get(1).cloned().unwrap_or(Value::Undefined);
+        Ok((callback, this_arg))
+    }
+
+    fn call_collection_callback(
+        &mut self,
+        method: &str,
+        callback: Value,
+        this_arg: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let host_suspension_message =
+            format!("TypeError: {method} does not support synchronous host suspensions");
+        let unsettled_message = format!("synchronous {method} callback did not settle");
+        self.call_callback(
+            callback,
+            this_arg,
+            args,
+            CallbackCallOptions {
+                non_callable_message: "TypeError: collection callback is not callable",
+                host_suspension_message: &host_suspension_message,
+                unsettled_message: &unsettled_message,
+                allow_host_suspension: false,
+                allow_pending_promise_result: false,
+            },
+        )
+    }
+
     pub(crate) fn call_iterator_next(&mut self, this_value: Value) -> JsliteResult<Value> {
         let iterator = self.iterator_receiver(this_value, "next")?;
         let (value, done) = self.iterator_next(Value::Iterator(iterator))?;
@@ -396,6 +431,49 @@ impl Runtime {
         )?))
     }
 
+    pub(crate) fn call_map_for_each(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let map = self.map_receiver(this_value, "forEach")?;
+        let (callback, this_arg) = self.collection_callback("Map.prototype.forEach", args)?;
+        let mut index = 0usize;
+        while index
+            < self
+                .maps
+                .get(map)
+                .ok_or_else(|| JsliteError::runtime("map missing"))?
+                .entries
+                .len()
+        {
+            self.charge_native_helper_work(1)?;
+            if let Some(entry) = self
+                .maps
+                .get(map)
+                .ok_or_else(|| JsliteError::runtime("map missing"))?
+                .entries
+                .get(index)
+                .cloned()
+            {
+                self.with_temporary_roots(
+                    &[Value::Map(map), callback.clone(), this_arg.clone()],
+                    |runtime| {
+                        runtime.call_collection_callback(
+                            "Map.prototype.forEach",
+                            callback.clone(),
+                            this_arg.clone(),
+                            &[entry.value, entry.key, Value::Map(map)],
+                        )?;
+                        Ok(())
+                    },
+                )?;
+            }
+            index += 1;
+        }
+        Ok(Value::Undefined)
+    }
+
     pub(crate) fn call_set_add(
         &mut self,
         this_value: Value,
@@ -448,5 +526,48 @@ impl Runtime {
         Ok(Value::Iterator(self.insert_iterator(
             IteratorState::SetValues(SetIteratorState { set, next_index: 0 }),
         )?))
+    }
+
+    pub(crate) fn call_set_for_each(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let set = self.set_receiver(this_value, "forEach")?;
+        let (callback, this_arg) = self.collection_callback("Set.prototype.forEach", args)?;
+        let mut index = 0usize;
+        while index
+            < self
+                .sets
+                .get(set)
+                .ok_or_else(|| JsliteError::runtime("set missing"))?
+                .entries
+                .len()
+        {
+            self.charge_native_helper_work(1)?;
+            if let Some(value) = self
+                .sets
+                .get(set)
+                .ok_or_else(|| JsliteError::runtime("set missing"))?
+                .entries
+                .get(index)
+                .cloned()
+            {
+                self.with_temporary_roots(
+                    &[Value::Set(set), callback.clone(), this_arg.clone()],
+                    |runtime| {
+                        runtime.call_collection_callback(
+                            "Set.prototype.forEach",
+                            callback.clone(),
+                            this_arg.clone(),
+                            &[value.clone(), value, Value::Set(set)],
+                        )?;
+                        Ok(())
+                    },
+                )?;
+            }
+            index += 1;
+        }
+        Ok(Value::Undefined)
     }
 }

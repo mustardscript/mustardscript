@@ -237,6 +237,9 @@ impl Runtime {
                     Ok(self.error_kind_matches(left, "ReferenceError"))
                 }
                 BuiltinFunction::RangeErrorCtor => Ok(self.error_kind_matches(left, "RangeError")),
+                BuiltinFunction::SyntaxErrorCtor => {
+                    Ok(self.error_kind_matches(left, "SyntaxError"))
+                }
                 _ => Err(JsliteError::runtime(
                     "TypeError: right-hand side of instanceof must be a supported constructor",
                 )),

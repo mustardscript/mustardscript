@@ -690,11 +690,23 @@ fn date_number_string_and_reverse_array_helpers_cover_supported_surface() {
             date.getUTCSeconds(),
           ],
           parsedInt: Number.parseInt("  -0x10"),
+          globalParsedInt: parseInt("08"),
           parsedFloat: Number.parseFloat("  -10.25ms"),
           isNaN: Number.isNaN(0 / 0),
           isNaNString: Number.isNaN("NaN"),
+          globalIsNaN: isNaN(NaN),
           isFinite: Number.isFinite(12.5),
           isFiniteInfinite: Number.isFinite(1 / 0),
+          globalIsFinite: isFinite(12.5),
+          isInteger: Number.isInteger(12),
+          isSafeInteger: Number.isSafeInteger(Number.MAX_SAFE_INTEGER),
+          maxSafeInteger: Number.MAX_SAFE_INTEGER,
+          minSafeInteger: Number.MIN_SAFE_INTEGER,
+          epsilon: Number.EPSILON > 0 && Number.EPSILON < 1,
+          numberNaN: Number.isNaN(Number.NaN),
+          positiveInfinity: Number.POSITIVE_INFINITY,
+          negativeInfinity: Number.NEGATIVE_INFINITY,
+          globalInfinity: Infinity,
           trimStart: "  padded  ".trimStart(),
           trimEnd: "  padded  ".trimEnd(),
           padStart: "7".padStart(3, "0"),
@@ -702,6 +714,20 @@ fn date_number_string_and_reverse_array_helpers_cover_supported_surface() {
           reduceRight: [1, 2, 3].reduceRight((acc, value) => acc + ":" + value, "tail"),
           findLast: [1, 2, 3, 4].findLast((value) => value % 2 === 0),
           findLastIndex: [1, 2, 3, 4].findLastIndex((value) => value % 2 === 0),
+          mathPiRounded: Math.round(Math.PI * 1000) / 1000,
+          mathExpRounded: Math.round(Math.exp(1) * 1000) / 1000,
+          mathLog2: Math.log2(8),
+          mathLog10: Math.log10(1000),
+          mathSinRounded: Math.round(Math.sin(Math.PI / 2) * 1000) / 1000,
+          mathCosRounded: Math.round(Math.cos(Math.PI) * 1000) / 1000,
+          mathAtan2Rounded: Math.round(Math.atan2(0, -1) * 1000) / 1000,
+          mathHypot: Math.hypot(3, 4),
+          mathCbrt: Math.cbrt(27),
+          syntaxError: [
+            new SyntaxError("bad").name,
+            new SyntaxError("bad") instanceof SyntaxError,
+            new SyntaxError("bad") instanceof Error,
+          ],
         });
         "#,
     )
@@ -728,11 +754,29 @@ fn date_number_string_and_reverse_array_helpers_cover_supported_surface() {
                 ]),
             ),
             ("parsedInt".to_string(), number(-16.0)),
+            ("globalParsedInt".to_string(), number(8.0)),
             ("parsedFloat".to_string(), number(-10.25)),
             ("isNaN".to_string(), StructuredValue::Bool(true)),
             ("isNaNString".to_string(), StructuredValue::Bool(false)),
+            ("globalIsNaN".to_string(), StructuredValue::Bool(true)),
             ("isFinite".to_string(), StructuredValue::Bool(true)),
             ("isFiniteInfinite".to_string(), StructuredValue::Bool(false)),
+            ("globalIsFinite".to_string(), StructuredValue::Bool(true)),
+            ("isInteger".to_string(), StructuredValue::Bool(true)),
+            ("isSafeInteger".to_string(), StructuredValue::Bool(true)),
+            (
+                "maxSafeInteger".to_string(),
+                number(9_007_199_254_740_991.0)
+            ),
+            (
+                "minSafeInteger".to_string(),
+                number(-9_007_199_254_740_991.0)
+            ),
+            ("epsilon".to_string(), StructuredValue::Bool(true)),
+            ("numberNaN".to_string(), StructuredValue::Bool(true)),
+            ("positiveInfinity".to_string(), number(f64::INFINITY)),
+            ("negativeInfinity".to_string(), number(f64::NEG_INFINITY)),
+            ("globalInfinity".to_string(), number(f64::INFINITY)),
             ("trimStart".to_string(), "padded  ".into()),
             ("trimEnd".to_string(), "  padded".into()),
             ("padStart".to_string(), "007".into()),
@@ -740,6 +784,103 @@ fn date_number_string_and_reverse_array_helpers_cover_supported_surface() {
             ("reduceRight".to_string(), "tail:3:2:1".into()),
             ("findLast".to_string(), number(4.0)),
             ("findLastIndex".to_string(), number(3.0)),
+            (
+                "mathPiRounded".to_string(),
+                number((std::f64::consts::PI * 1000.0).round() / 1000.0),
+            ),
+            (
+                "mathExpRounded".to_string(),
+                number((std::f64::consts::E * 1000.0).round() / 1000.0),
+            ),
+            ("mathLog2".to_string(), number(3.0)),
+            ("mathLog10".to_string(), number(3.0)),
+            ("mathSinRounded".to_string(), number(1.0)),
+            ("mathCosRounded".to_string(), number(-1.0)),
+            (
+                "mathAtan2Rounded".to_string(),
+                number((std::f64::consts::PI * 1000.0).round() / 1000.0),
+            ),
+            ("mathHypot".to_string(), number(5.0)),
+            ("mathCbrt".to_string(), number(3.0)),
+            (
+                "syntaxError".to_string(),
+                StructuredValue::Array(vec![
+                    "SyntaxError".into(),
+                    StructuredValue::Bool(true),
+                    StructuredValue::Bool(true),
+                ]),
+            ),
+        ]))
+    );
+}
+
+#[test]
+fn additional_string_and_array_helpers_cover_supported_surface() {
+    let program = compile(
+        r#"
+        const values = [1, , 3, 1];
+        values.label = "seed";
+        const reversed = values.reverse();
+        const filled = Array(4);
+        filled.fill("x", 1, 3);
+        ({
+          stringIndexOf: "banana".indexOf("na", 1),
+          stringLastIndexOf: "banana".lastIndexOf("na"),
+          charAt: "hello".charAt(1),
+          at: "hello".at(-2),
+          missingAt: "hello".at(9),
+          repeat: "ha".repeat(3),
+          concat: "alpha".concat("-", 2, true),
+          reversedIdentity: reversed === values,
+          reversedKeys: Object.keys(values),
+          reversedValues: Array.from(values.values()),
+          reversedLastIndexOf: values.lastIndexOf(1),
+          filledKeys: Object.keys(filled),
+          filledValues: Array.from(filled.values()),
+        });
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Object(IndexMap::from([
+            ("stringIndexOf".to_string(), number(2.0)),
+            ("stringLastIndexOf".to_string(), number(4.0)),
+            ("charAt".to_string(), "e".into()),
+            ("at".to_string(), "l".into()),
+            ("missingAt".to_string(), StructuredValue::Undefined),
+            ("repeat".to_string(), "hahaha".into()),
+            ("concat".to_string(), "alpha-2true".into()),
+            ("reversedIdentity".to_string(), StructuredValue::Bool(true)),
+            (
+                "reversedKeys".to_string(),
+                StructuredValue::Array(vec!["0".into(), "1".into(), "3".into(), "label".into(),]),
+            ),
+            (
+                "reversedValues".to_string(),
+                StructuredValue::Array(vec![
+                    number(1.0),
+                    number(3.0),
+                    StructuredValue::Undefined,
+                    number(1.0),
+                ]),
+            ),
+            ("reversedLastIndexOf".to_string(), number(3.0)),
+            (
+                "filledKeys".to_string(),
+                StructuredValue::Array(vec!["1".into(), "2".into(),]),
+            ),
+            (
+                "filledValues".to_string(),
+                StructuredValue::Array(vec![
+                    StructuredValue::Undefined,
+                    "x".into(),
+                    "x".into(),
+                    StructuredValue::Undefined,
+                ]),
+            ),
         ]))
     );
 }

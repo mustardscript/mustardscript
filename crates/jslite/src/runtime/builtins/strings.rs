@@ -175,6 +175,98 @@ impl Runtime {
         Ok(Value::Bool(chars[..end].ends_with(&needle)))
     }
 
+    pub(crate) fn call_string_index_of(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "indexOf")?;
+        let chars = value.chars().collect::<Vec<_>>();
+        let needle = self
+            .to_string(args.first().cloned().unwrap_or(Value::Undefined))?
+            .chars()
+            .collect::<Vec<_>>();
+        let position = clamp_index(
+            self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
+            chars.len(),
+        );
+        let index = if needle.is_empty() {
+            position as f64
+        } else {
+            chars[position..]
+                .windows(needle.len())
+                .position(|window| window == needle.as_slice())
+                .map(|offset| (position + offset) as f64)
+                .unwrap_or(-1.0)
+        };
+        Ok(Value::Number(index))
+    }
+
+    pub(crate) fn call_string_last_index_of(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "lastIndexOf")?;
+        let chars = value.chars().collect::<Vec<_>>();
+        let needle = self
+            .to_string(args.first().cloned().unwrap_or(Value::Undefined))?
+            .chars()
+            .collect::<Vec<_>>();
+        let position = match args.get(1) {
+            Some(value) => clamp_index(self.to_integer(value.clone())?, chars.len()),
+            None => chars.len(),
+        };
+        let index = if needle.is_empty() {
+            position as f64
+        } else if needle.len() > chars.len() {
+            -1.0
+        } else {
+            let max_start = position.min(chars.len().saturating_sub(needle.len()));
+            (0..=max_start)
+                .rev()
+                .find(|start| chars[*start..*start + needle.len()] == needle[..])
+                .map(|index| index as f64)
+                .unwrap_or(-1.0)
+        };
+        Ok(Value::Number(index))
+    }
+
+    pub(crate) fn call_string_char_at(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "charAt")?;
+        let chars = value.chars().collect::<Vec<_>>();
+        let index = clamp_index(
+            self.to_integer(args.first().cloned().unwrap_or(Value::Number(0.0)))?,
+            chars.len(),
+        );
+        Ok(Value::String(
+            chars
+                .get(index)
+                .map(|ch| ch.to_string())
+                .unwrap_or_default(),
+        ))
+    }
+
+    pub(crate) fn call_string_at(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "at")?;
+        let chars = value.chars().collect::<Vec<_>>();
+        let index = self.to_integer(args.first().cloned().unwrap_or(Value::Undefined))?;
+        let index = if index < 0 {
+            chars.len() as i64 + index
+        } else {
+            index
+        };
+        if index < 0 || index >= chars.len() as i64 {
+            Ok(Value::Undefined)
+        } else {
+            Ok(Value::String(chars[index as usize].to_string()))
+        }
+    }
+
     pub(crate) fn call_string_slice(
         &self,
         this_value: Value,
@@ -228,6 +320,32 @@ impl Runtime {
     pub(crate) fn call_string_to_upper_case(&self, this_value: Value) -> JsliteResult<Value> {
         let value = self.string_receiver(this_value, "toUpperCase")?;
         Ok(Value::String(value.to_uppercase()))
+    }
+
+    pub(crate) fn call_string_repeat(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let value = self.string_receiver(this_value, "repeat")?;
+        let count = self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?;
+        if !count.is_finite() || count < 0.0 {
+            return Err(JsliteError::runtime("RangeError: Invalid count value"));
+        }
+        let count = self.to_integer(Value::Number(count))? as usize;
+        Ok(Value::String(value.repeat(count)))
+    }
+
+    pub(crate) fn call_string_concat(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let mut value = self.string_receiver(this_value, "concat")?;
+        for arg in args {
+            value.push_str(&self.to_string(arg.clone())?);
+        }
+        Ok(Value::String(value))
     }
 
     pub(crate) fn call_string_pad_start(

@@ -161,6 +161,20 @@ fn parses_sequence_and_exponentiation_expressions() {
 }
 
 #[test]
+fn parses_remainder_and_exponent_assignment_expressions() {
+    compile(
+        r#"
+        let left = 10;
+        let right = 2;
+        left %= 3;
+        right **= 3;
+        [left, right];
+        "#,
+    )
+    .expect("compound remainder and exponent assignments should compile");
+}
+
+#[test]
 fn parses_in_operator_expressions() {
     compile(
         r#"

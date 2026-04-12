@@ -331,6 +331,23 @@ impl Runtime {
         Value::Bool(matches!(args.first(), Some(Value::Number(value)) if value.is_finite()))
     }
 
+    pub(crate) fn call_number_is_integer(&self, args: &[Value]) -> Value {
+        Value::Bool(matches!(
+            args.first(),
+            Some(Value::Number(value)) if value.is_finite() && value.fract() == 0.0
+        ))
+    }
+
+    pub(crate) fn call_number_is_safe_integer(&self, args: &[Value]) -> Value {
+        Value::Bool(matches!(
+            args.first(),
+            Some(Value::Number(value))
+                if value.is_finite()
+                    && value.fract() == 0.0
+                    && value.abs() <= 9_007_199_254_740_991.0
+        ))
+    }
+
     pub(crate) fn call_string_ctor(&self, args: &[Value]) -> JsliteResult<Value> {
         Ok(Value::String(self.to_string(
             args.first().cloned().unwrap_or(Value::Undefined),
@@ -449,6 +466,63 @@ impl Runtime {
         Ok(Value::Number(
             self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
                 .ln(),
+        ))
+    }
+
+    pub(crate) fn call_math_exp(&self, args: &[Value]) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                .exp(),
+        ))
+    }
+
+    pub(crate) fn call_math_log2(&self, args: &[Value]) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                .log2(),
+        ))
+    }
+
+    pub(crate) fn call_math_log10(&self, args: &[Value]) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                .log10(),
+        ))
+    }
+
+    pub(crate) fn call_math_sin(&self, args: &[Value]) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                .sin(),
+        ))
+    }
+
+    pub(crate) fn call_math_cos(&self, args: &[Value]) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                .cos(),
+        ))
+    }
+
+    pub(crate) fn call_math_atan2(&self, args: &[Value]) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                .atan2(self.to_number(args.get(1).cloned().unwrap_or(Value::Undefined))?),
+        ))
+    }
+
+    pub(crate) fn call_math_hypot(&self, args: &[Value]) -> JsliteResult<Value> {
+        let mut value: f64 = 0.0;
+        for arg in args {
+            value = value.hypot(self.to_number(arg.clone())?);
+        }
+        Ok(Value::Number(value))
+    }
+
+    pub(crate) fn call_math_cbrt(&self, args: &[Value]) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                .cbrt(),
         ))
     }
 

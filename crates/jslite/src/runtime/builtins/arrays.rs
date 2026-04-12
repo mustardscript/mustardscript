@@ -388,6 +388,100 @@ impl Runtime {
         Ok(Value::Number(index))
     }
 
+    pub(crate) fn call_array_last_index_of(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "lastIndexOf")?;
+        let search = args.first().cloned().unwrap_or(Value::Undefined);
+        let elements = &self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements;
+        if elements.is_empty() {
+            return Ok(Value::Number(-1.0));
+        }
+        let start = match args.get(1) {
+            Some(value) => {
+                let index = self.to_integer(value.clone())?;
+                if index < 0 {
+                    let adjusted = elements.len() as i64 + index;
+                    if adjusted < 0 {
+                        return Ok(Value::Number(-1.0));
+                    }
+                    adjusted as usize
+                } else {
+                    (index as usize).min(elements.len() - 1)
+                }
+            }
+            None => elements.len() - 1,
+        };
+        let index = elements
+            .iter()
+            .enumerate()
+            .take(start + 1)
+            .rev()
+            .find(|(_, value)| {
+                value
+                    .as_ref()
+                    .is_some_and(|value| strict_equal(value, &search))
+            })
+            .map(|(index, _)| index as f64)
+            .unwrap_or(-1.0);
+        Ok(Value::Number(index))
+    }
+
+    pub(crate) fn call_array_reverse(&mut self, this_value: Value) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "reverse")?;
+        self.arrays
+            .get_mut(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .reverse();
+        self.refresh_array_accounting(array)?;
+        Ok(Value::Array(array))
+    }
+
+    pub(crate) fn call_array_fill(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "fill")?;
+        let value = args.first().cloned().unwrap_or(Value::Undefined);
+        let length = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .len();
+        let start = normalize_relative_bound(
+            self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
+            length,
+        );
+        let end = normalize_relative_bound(
+            match args.get(2) {
+                Some(value) => self.to_integer(value.clone())?,
+                None => length as i64,
+            },
+            length,
+        );
+        {
+            let elements = &mut self
+                .arrays
+                .get_mut(array)
+                .ok_or_else(|| JsliteError::runtime("array missing"))?
+                .elements;
+            for slot in elements.iter_mut().take(end).skip(start) {
+                *slot = Some(value.clone());
+            }
+        }
+        self.refresh_array_accounting(array)?;
+        Ok(Value::Array(array))
+    }
+
     fn sort_compare(
         &mut self,
         comparator: Option<Value>,

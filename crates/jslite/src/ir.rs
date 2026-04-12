@@ -425,6 +425,8 @@ pub enum AssignOp {
     SubAssign,
     MulAssign,
     DivAssign,
+    RemAssign,
+    PowAssign,
     OrAssign,
     AndAssign,
     NullishAssign,

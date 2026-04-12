@@ -867,6 +867,7 @@ impl Runtime {
                 | BuiltinFunction::TypeErrorCtor
                 | BuiltinFunction::ReferenceErrorCtor
                 | BuiltinFunction::RangeErrorCtor
+                | BuiltinFunction::SyntaxErrorCtor
                 | BuiltinFunction::NumberCtor
                 | BuiltinFunction::StringCtor
                 | BuiltinFunction::BooleanCtor

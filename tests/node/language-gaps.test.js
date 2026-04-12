@@ -87,6 +87,28 @@ test('run supports prefix and postfix update expressions for identifiers and mem
   });
 });
 
+test('run supports remainder and exponent compound assignment operators', async () => {
+  const result = await runtime(`
+    let left = 10;
+    let right = 2;
+    const boxRef = { value: 9 };
+    left %= 4;
+    right **= 3;
+    boxRef.value %= 4;
+    ({
+      left,
+      right,
+      box: boxRef.value,
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    left: 2,
+    right: 8,
+    box: 1,
+  });
+});
+
 test('run supports conservative instanceof checks for supported constructors', async () => {
   const result = await runtime(`
     function Box() {}

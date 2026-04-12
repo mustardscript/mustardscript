@@ -91,6 +91,8 @@ impl<'a> Lowerer<'a> {
             AssignmentOperator::Subtraction => Some(AssignOp::SubAssign),
             AssignmentOperator::Multiplication => Some(AssignOp::MulAssign),
             AssignmentOperator::Division => Some(AssignOp::DivAssign),
+            AssignmentOperator::Remainder => Some(AssignOp::RemAssign),
+            AssignmentOperator::Exponential => Some(AssignOp::PowAssign),
             AssignmentOperator::LogicalOr => Some(AssignOp::OrAssign),
             AssignmentOperator::LogicalAnd => Some(AssignOp::AndAssign),
             AssignmentOperator::LogicalNullish => Some(AssignOp::NullishAssign),

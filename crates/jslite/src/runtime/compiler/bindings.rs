@@ -86,5 +86,7 @@ pub(super) fn assign_op_to_binary(operator: AssignOp) -> JsliteResult<BinaryOp> 
         AssignOp::SubAssign => Ok(BinaryOp::Sub),
         AssignOp::MulAssign => Ok(BinaryOp::Mul),
         AssignOp::DivAssign => Ok(BinaryOp::Div),
+        AssignOp::RemAssign => Ok(BinaryOp::Rem),
+        AssignOp::PowAssign => Ok(BinaryOp::Pow),
     }
 }

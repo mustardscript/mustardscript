@@ -28,6 +28,9 @@ impl Runtime {
             BuiltinFunction::ArrayJoin => self.call_array_join(this_value, args),
             BuiltinFunction::ArrayIncludes => self.call_array_includes(this_value, args),
             BuiltinFunction::ArrayIndexOf => self.call_array_index_of(this_value, args),
+            BuiltinFunction::ArrayLastIndexOf => self.call_array_last_index_of(this_value, args),
+            BuiltinFunction::ArrayReverse => self.call_array_reverse(this_value),
+            BuiltinFunction::ArrayFill => self.call_array_fill(this_value, args),
             BuiltinFunction::ArraySort => self.call_array_sort(this_value, args),
             BuiltinFunction::ArrayValues => self.call_array_values(this_value),
             BuiltinFunction::ArrayKeys => self.call_array_keys(this_value),
@@ -68,6 +71,7 @@ impl Runtime {
             BuiltinFunction::MapEntries => self.call_map_entries(this_value),
             BuiltinFunction::MapKeys => self.call_map_keys(this_value),
             BuiltinFunction::MapValues => self.call_map_values(this_value),
+            BuiltinFunction::MapForEach => self.call_map_for_each(this_value, args),
             BuiltinFunction::SetCtor => Err(JsliteError::runtime(
                 "TypeError: Set constructor must be called with new",
             )),
@@ -78,6 +82,7 @@ impl Runtime {
             BuiltinFunction::SetEntries => self.call_set_entries(this_value),
             BuiltinFunction::SetKeys => self.call_set_keys(this_value),
             BuiltinFunction::SetValues => self.call_set_values(this_value),
+            BuiltinFunction::SetForEach => self.call_set_for_each(this_value, args),
             BuiltinFunction::IteratorNext => self.call_iterator_next(this_value),
             BuiltinFunction::PromiseCtor => Err(JsliteError::runtime(
                 "TypeError: Promise constructor must be called with new",
@@ -127,11 +132,14 @@ impl Runtime {
             BuiltinFunction::TypeErrorCtor => self.call_error_ctor(args, "TypeError"),
             BuiltinFunction::ReferenceErrorCtor => self.call_error_ctor(args, "ReferenceError"),
             BuiltinFunction::RangeErrorCtor => self.call_error_ctor(args, "RangeError"),
+            BuiltinFunction::SyntaxErrorCtor => self.call_error_ctor(args, "SyntaxError"),
             BuiltinFunction::NumberCtor => self.call_number_ctor(args),
             BuiltinFunction::NumberParseInt => self.call_number_parse_int(args),
             BuiltinFunction::NumberParseFloat => self.call_number_parse_float(args),
             BuiltinFunction::NumberIsNaN => Ok(self.call_number_is_nan(args)),
             BuiltinFunction::NumberIsFinite => Ok(self.call_number_is_finite(args)),
+            BuiltinFunction::NumberIsInteger => Ok(self.call_number_is_integer(args)),
+            BuiltinFunction::NumberIsSafeInteger => Ok(self.call_number_is_safe_integer(args)),
             BuiltinFunction::DateCtor => Err(JsliteError::runtime(
                 "TypeError: Date constructor must be called with new",
             )),
@@ -167,10 +175,16 @@ impl Runtime {
             BuiltinFunction::StringIncludes => self.call_string_includes(this_value, args),
             BuiltinFunction::StringStartsWith => self.call_string_starts_with(this_value, args),
             BuiltinFunction::StringEndsWith => self.call_string_ends_with(this_value, args),
+            BuiltinFunction::StringIndexOf => self.call_string_index_of(this_value, args),
+            BuiltinFunction::StringLastIndexOf => self.call_string_last_index_of(this_value, args),
+            BuiltinFunction::StringCharAt => self.call_string_char_at(this_value, args),
+            BuiltinFunction::StringAt => self.call_string_at(this_value, args),
             BuiltinFunction::StringSlice => self.call_string_slice(this_value, args),
             BuiltinFunction::StringSubstring => self.call_string_substring(this_value, args),
             BuiltinFunction::StringToLowerCase => self.call_string_to_lower_case(this_value),
             BuiltinFunction::StringToUpperCase => self.call_string_to_upper_case(this_value),
+            BuiltinFunction::StringRepeat => self.call_string_repeat(this_value, args),
+            BuiltinFunction::StringConcat => self.call_string_concat(this_value, args),
             BuiltinFunction::StringPadStart => self.call_string_pad_start(this_value, args),
             BuiltinFunction::StringPadEnd => self.call_string_pad_end(this_value, args),
             BuiltinFunction::StringSplit => self.call_string_split(this_value, args),
@@ -191,6 +205,14 @@ impl Runtime {
             BuiltinFunction::MathTrunc => self.call_math_trunc(args),
             BuiltinFunction::MathSign => self.call_math_sign(args),
             BuiltinFunction::MathLog => self.call_math_log(args),
+            BuiltinFunction::MathExp => self.call_math_exp(args),
+            BuiltinFunction::MathLog2 => self.call_math_log2(args),
+            BuiltinFunction::MathLog10 => self.call_math_log10(args),
+            BuiltinFunction::MathSin => self.call_math_sin(args),
+            BuiltinFunction::MathCos => self.call_math_cos(args),
+            BuiltinFunction::MathAtan2 => self.call_math_atan2(args),
+            BuiltinFunction::MathHypot => self.call_math_hypot(args),
+            BuiltinFunction::MathCbrt => self.call_math_cbrt(args),
             BuiltinFunction::MathRandom => Ok(self.call_math_random()),
             BuiltinFunction::JsonStringify => self.call_json_stringify(args),
             BuiltinFunction::JsonParse => self.call_json_parse(args),
@@ -212,6 +234,7 @@ impl Runtime {
             BuiltinFunction::TypeErrorCtor,
             BuiltinFunction::ReferenceErrorCtor,
             BuiltinFunction::RangeErrorCtor,
+            BuiltinFunction::SyntaxErrorCtor,
             BuiltinFunction::NumberCtor,
             BuiltinFunction::BooleanCtor,
             BuiltinFunction::IntlDateTimeFormatCtor,
@@ -285,8 +308,35 @@ impl Runtime {
             false,
         )?;
         self.define_global(
+            "SyntaxError".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::SyntaxErrorCtor),
+            false,
+        )?;
+        self.define_global(
             "Number".to_string(),
             Value::BuiltinFunction(BuiltinFunction::NumberCtor),
+            false,
+        )?;
+        self.define_global("NaN".to_string(), Value::Number(f64::NAN), false)?;
+        self.define_global("Infinity".to_string(), Value::Number(f64::INFINITY), false)?;
+        self.define_global(
+            "parseInt".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::NumberParseInt),
+            false,
+        )?;
+        self.define_global(
+            "parseFloat".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::NumberParseFloat),
+            false,
+        )?;
+        self.define_global(
+            "isNaN".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::NumberIsNaN),
+            false,
+        )?;
+        self.define_global(
+            "isFinite".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::NumberIsFinite),
             false,
         )?;
         self.define_global(
@@ -311,6 +361,20 @@ impl Runtime {
 
         let math = self.insert_object(
             IndexMap::from([
+                ("E".to_string(), Value::Number(std::f64::consts::E)),
+                ("LN2".to_string(), Value::Number(std::f64::consts::LN_2)),
+                ("LN10".to_string(), Value::Number(std::f64::consts::LN_10)),
+                ("LOG2E".to_string(), Value::Number(std::f64::consts::LOG2_E)),
+                (
+                    "LOG10E".to_string(),
+                    Value::Number(std::f64::consts::LOG10_E),
+                ),
+                ("PI".to_string(), Value::Number(std::f64::consts::PI)),
+                ("SQRT2".to_string(), Value::Number(std::f64::consts::SQRT_2)),
+                (
+                    "SQRT1_2".to_string(),
+                    Value::Number(std::f64::consts::FRAC_1_SQRT_2),
+                ),
                 (
                     "abs".to_string(),
                     Value::BuiltinFunction(BuiltinFunction::MathAbs),
@@ -354,6 +418,38 @@ impl Runtime {
                 (
                     "log".to_string(),
                     Value::BuiltinFunction(BuiltinFunction::MathLog),
+                ),
+                (
+                    "exp".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathExp),
+                ),
+                (
+                    "log2".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathLog2),
+                ),
+                (
+                    "log10".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathLog10),
+                ),
+                (
+                    "sin".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathSin),
+                ),
+                (
+                    "cos".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathCos),
+                ),
+                (
+                    "atan2".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAtan2),
+                ),
+                (
+                    "hypot".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathHypot),
+                ),
+                (
+                    "cbrt".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathCbrt),
                 ),
                 (
                     "random".to_string(),

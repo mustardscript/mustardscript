@@ -127,6 +127,9 @@ impl Runtime {
             BuiltinFunction::ArrayJoin => "join",
             BuiltinFunction::ArrayIncludes => "includes",
             BuiltinFunction::ArrayIndexOf => "indexOf",
+            BuiltinFunction::ArrayLastIndexOf => "lastIndexOf",
+            BuiltinFunction::ArrayReverse => "reverse",
+            BuiltinFunction::ArrayFill => "fill",
             BuiltinFunction::ArraySort => "sort",
             BuiltinFunction::ArrayValues => "values",
             BuiltinFunction::ArrayKeys => "keys",
@@ -163,6 +166,7 @@ impl Runtime {
             BuiltinFunction::MapEntries => "entries",
             BuiltinFunction::MapKeys => "keys",
             BuiltinFunction::MapValues => "values",
+            BuiltinFunction::MapForEach => "forEach",
             BuiltinFunction::SetCtor => "Set",
             BuiltinFunction::SetAdd => "add",
             BuiltinFunction::SetHas => "has",
@@ -171,6 +175,7 @@ impl Runtime {
             BuiltinFunction::SetEntries => "entries",
             BuiltinFunction::SetKeys => "keys",
             BuiltinFunction::SetValues => "values",
+            BuiltinFunction::SetForEach => "forEach",
             BuiltinFunction::IteratorNext => "next",
             BuiltinFunction::PromiseCtor => "Promise",
             BuiltinFunction::PromiseResolve => "resolve",
@@ -191,11 +196,14 @@ impl Runtime {
             BuiltinFunction::TypeErrorCtor => "TypeError",
             BuiltinFunction::ReferenceErrorCtor => "ReferenceError",
             BuiltinFunction::RangeErrorCtor => "RangeError",
+            BuiltinFunction::SyntaxErrorCtor => "SyntaxError",
             BuiltinFunction::NumberCtor => "Number",
             BuiltinFunction::NumberParseInt => "parseInt",
             BuiltinFunction::NumberParseFloat => "parseFloat",
             BuiltinFunction::NumberIsNaN => "isNaN",
             BuiltinFunction::NumberIsFinite => "isFinite",
+            BuiltinFunction::NumberIsInteger => "isInteger",
+            BuiltinFunction::NumberIsSafeInteger => "isSafeInteger",
             BuiltinFunction::DateCtor => "Date",
             BuiltinFunction::DateNow => "now",
             BuiltinFunction::DateGetTime => "getTime",
@@ -221,10 +229,16 @@ impl Runtime {
             BuiltinFunction::StringIncludes => "includes",
             BuiltinFunction::StringStartsWith => "startsWith",
             BuiltinFunction::StringEndsWith => "endsWith",
+            BuiltinFunction::StringIndexOf => "indexOf",
+            BuiltinFunction::StringLastIndexOf => "lastIndexOf",
+            BuiltinFunction::StringCharAt => "charAt",
+            BuiltinFunction::StringAt => "at",
             BuiltinFunction::StringSlice => "slice",
             BuiltinFunction::StringSubstring => "substring",
             BuiltinFunction::StringToLowerCase => "toLowerCase",
             BuiltinFunction::StringToUpperCase => "toUpperCase",
+            BuiltinFunction::StringRepeat => "repeat",
+            BuiltinFunction::StringConcat => "concat",
             BuiltinFunction::StringPadStart => "padStart",
             BuiltinFunction::StringPadEnd => "padEnd",
             BuiltinFunction::StringSplit => "split",
@@ -245,6 +259,14 @@ impl Runtime {
             BuiltinFunction::MathTrunc => "trunc",
             BuiltinFunction::MathSign => "sign",
             BuiltinFunction::MathLog => "log",
+            BuiltinFunction::MathExp => "exp",
+            BuiltinFunction::MathLog2 => "log2",
+            BuiltinFunction::MathLog10 => "log10",
+            BuiltinFunction::MathSin => "sin",
+            BuiltinFunction::MathCos => "cos",
+            BuiltinFunction::MathAtan2 => "atan2",
+            BuiltinFunction::MathHypot => "hypot",
+            BuiltinFunction::MathCbrt => "cbrt",
             BuiltinFunction::MathRandom => "random",
             BuiltinFunction::JsonStringify => "stringify",
             BuiltinFunction::JsonParse => "parse",
@@ -269,6 +291,9 @@ impl Runtime {
             BuiltinFunction::ArrayJoin => 1,
             BuiltinFunction::ArrayIncludes => 1,
             BuiltinFunction::ArrayIndexOf => 1,
+            BuiltinFunction::ArrayLastIndexOf => 1,
+            BuiltinFunction::ArrayReverse => 0,
+            BuiltinFunction::ArrayFill => 1,
             BuiltinFunction::ArraySort => 1,
             BuiltinFunction::ArrayValues => 0,
             BuiltinFunction::ArrayKeys => 0,
@@ -305,6 +330,7 @@ impl Runtime {
             BuiltinFunction::MapEntries => 0,
             BuiltinFunction::MapKeys => 0,
             BuiltinFunction::MapValues => 0,
+            BuiltinFunction::MapForEach => 1,
             BuiltinFunction::SetCtor => 0,
             BuiltinFunction::SetAdd => 1,
             BuiltinFunction::SetHas => 1,
@@ -313,6 +339,7 @@ impl Runtime {
             BuiltinFunction::SetEntries => 0,
             BuiltinFunction::SetKeys => 0,
             BuiltinFunction::SetValues => 0,
+            BuiltinFunction::SetForEach => 1,
             BuiltinFunction::IteratorNext => 0,
             BuiltinFunction::PromiseCtor => 1,
             BuiltinFunction::PromiseResolve => 1,
@@ -333,11 +360,14 @@ impl Runtime {
             BuiltinFunction::TypeErrorCtor => 1,
             BuiltinFunction::ReferenceErrorCtor => 1,
             BuiltinFunction::RangeErrorCtor => 1,
+            BuiltinFunction::SyntaxErrorCtor => 1,
             BuiltinFunction::NumberCtor => 1,
             BuiltinFunction::NumberParseInt => 2,
             BuiltinFunction::NumberParseFloat => 1,
             BuiltinFunction::NumberIsNaN => 1,
             BuiltinFunction::NumberIsFinite => 1,
+            BuiltinFunction::NumberIsInteger => 1,
+            BuiltinFunction::NumberIsSafeInteger => 1,
             BuiltinFunction::DateCtor => 7,
             BuiltinFunction::DateNow => 0,
             BuiltinFunction::DateGetTime => 0,
@@ -363,10 +393,16 @@ impl Runtime {
             BuiltinFunction::StringIncludes => 1,
             BuiltinFunction::StringStartsWith => 1,
             BuiltinFunction::StringEndsWith => 1,
+            BuiltinFunction::StringIndexOf => 1,
+            BuiltinFunction::StringLastIndexOf => 1,
+            BuiltinFunction::StringCharAt => 1,
+            BuiltinFunction::StringAt => 1,
             BuiltinFunction::StringSlice => 2,
             BuiltinFunction::StringSubstring => 2,
             BuiltinFunction::StringToLowerCase => 0,
             BuiltinFunction::StringToUpperCase => 0,
+            BuiltinFunction::StringRepeat => 1,
+            BuiltinFunction::StringConcat => 1,
             BuiltinFunction::StringPadStart => 1,
             BuiltinFunction::StringPadEnd => 1,
             BuiltinFunction::StringSplit => 2,
@@ -387,6 +423,14 @@ impl Runtime {
             BuiltinFunction::MathTrunc => 1,
             BuiltinFunction::MathSign => 1,
             BuiltinFunction::MathLog => 1,
+            BuiltinFunction::MathExp => 1,
+            BuiltinFunction::MathLog2 => 1,
+            BuiltinFunction::MathLog10 => 1,
+            BuiltinFunction::MathSin => 1,
+            BuiltinFunction::MathCos => 1,
+            BuiltinFunction::MathAtan2 => 2,
+            BuiltinFunction::MathHypot => 2,
+            BuiltinFunction::MathCbrt => 1,
             BuiltinFunction::MathRandom => 0,
             BuiltinFunction::JsonStringify => 3,
             BuiltinFunction::JsonParse => 2,
@@ -437,6 +481,18 @@ impl Runtime {
                     "parseFloat" => Some(Value::BuiltinFunction(BuiltinFunction::NumberParseFloat)),
                     "isNaN" => Some(Value::BuiltinFunction(BuiltinFunction::NumberIsNaN)),
                     "isFinite" => Some(Value::BuiltinFunction(BuiltinFunction::NumberIsFinite)),
+                    "isInteger" => Some(Value::BuiltinFunction(BuiltinFunction::NumberIsInteger)),
+                    "isSafeInteger" => {
+                        Some(Value::BuiltinFunction(BuiltinFunction::NumberIsSafeInteger))
+                    }
+                    "MAX_SAFE_INTEGER" => Some(Value::Number(9_007_199_254_740_991.0)),
+                    "MIN_SAFE_INTEGER" => Some(Value::Number(-9_007_199_254_740_991.0)),
+                    "EPSILON" => Some(Value::Number(f64::EPSILON)),
+                    "MAX_VALUE" => Some(Value::Number(f64::MAX)),
+                    "MIN_VALUE" => Some(Value::Number(f64::MIN_POSITIVE)),
+                    "POSITIVE_INFINITY" => Some(Value::Number(f64::INFINITY)),
+                    "NEGATIVE_INFINITY" => Some(Value::Number(f64::NEG_INFINITY)),
+                    "NaN" => Some(Value::Number(f64::NAN)),
                     _ => None,
                 },
                 BuiltinFunction::PromiseCtor => match key {
@@ -540,10 +596,16 @@ impl Runtime {
                                     | "includes"
                                     | "startsWith"
                                     | "endsWith"
+                                    | "indexOf"
+                                    | "lastIndexOf"
+                                    | "charAt"
+                                    | "at"
                                     | "slice"
                                     | "substring"
                                     | "toLowerCase"
                                     | "toUpperCase"
+                                    | "repeat"
+                                    | "concat"
                                     | "split"
                                     | "replace"
                                     | "replaceAll"
@@ -588,6 +650,9 @@ impl Runtime {
                             | "join"
                             | "includes"
                             | "indexOf"
+                            | "lastIndexOf"
+                            | "reverse"
+                            | "fill"
                             | "values"
                             | "keys"
                             | "entries"
@@ -622,6 +687,7 @@ impl Runtime {
                         | "entries"
                         | "keys"
                         | "values"
+                        | "forEach"
                 ))
             }
             Value::Set(set) => {
@@ -639,6 +705,7 @@ impl Runtime {
                         | "entries"
                         | "keys"
                         | "values"
+                        | "forEach"
                 ))
             }
             Value::Iterator(iterator) => {
@@ -1106,6 +1173,7 @@ impl Runtime {
                                 "TypeError" => BuiltinFunction::TypeErrorCtor,
                                 "ReferenceError" => BuiltinFunction::ReferenceErrorCtor,
                                 "RangeError" => BuiltinFunction::RangeErrorCtor,
+                                "SyntaxError" => BuiltinFunction::SyntaxErrorCtor,
                                 _ => BuiltinFunction::ErrorCtor,
                             };
                             return Ok(Value::BuiltinFunction(ctor));
@@ -1145,6 +1213,11 @@ impl Runtime {
                         "join" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayJoin)),
                         "includes" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIncludes)),
                         "indexOf" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIndexOf)),
+                        "lastIndexOf" => {
+                            Ok(Value::BuiltinFunction(BuiltinFunction::ArrayLastIndexOf))
+                        }
+                        "reverse" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayReverse)),
+                        "fill" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFill)),
                         "values" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayValues)),
                         "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayKeys)),
                         "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayEntries)),
@@ -1185,6 +1258,7 @@ impl Runtime {
                     "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::MapEntries)),
                     "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::MapKeys)),
                     "values" => Ok(Value::BuiltinFunction(BuiltinFunction::MapValues)),
+                    "forEach" => Ok(Value::BuiltinFunction(BuiltinFunction::MapForEach)),
                     _ => Ok(Value::Undefined),
                 }
             }
@@ -1203,6 +1277,7 @@ impl Runtime {
                     "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::SetEntries)),
                     "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::SetKeys)),
                     "values" => Ok(Value::BuiltinFunction(BuiltinFunction::SetValues)),
+                    "forEach" => Ok(Value::BuiltinFunction(BuiltinFunction::SetForEach)),
                     _ => Ok(Value::Undefined),
                 }
             }
@@ -1239,10 +1314,16 @@ impl Runtime {
                 "includes" => Ok(Value::BuiltinFunction(BuiltinFunction::StringIncludes)),
                 "startsWith" => Ok(Value::BuiltinFunction(BuiltinFunction::StringStartsWith)),
                 "endsWith" => Ok(Value::BuiltinFunction(BuiltinFunction::StringEndsWith)),
+                "indexOf" => Ok(Value::BuiltinFunction(BuiltinFunction::StringIndexOf)),
+                "lastIndexOf" => Ok(Value::BuiltinFunction(BuiltinFunction::StringLastIndexOf)),
+                "charAt" => Ok(Value::BuiltinFunction(BuiltinFunction::StringCharAt)),
+                "at" => Ok(Value::BuiltinFunction(BuiltinFunction::StringAt)),
                 "slice" => Ok(Value::BuiltinFunction(BuiltinFunction::StringSlice)),
                 "substring" => Ok(Value::BuiltinFunction(BuiltinFunction::StringSubstring)),
                 "toLowerCase" => Ok(Value::BuiltinFunction(BuiltinFunction::StringToLowerCase)),
                 "toUpperCase" => Ok(Value::BuiltinFunction(BuiltinFunction::StringToUpperCase)),
+                "repeat" => Ok(Value::BuiltinFunction(BuiltinFunction::StringRepeat)),
+                "concat" => Ok(Value::BuiltinFunction(BuiltinFunction::StringConcat)),
                 "padStart" => Ok(Value::BuiltinFunction(BuiltinFunction::StringPadStart)),
                 "padEnd" => Ok(Value::BuiltinFunction(BuiltinFunction::StringPadEnd)),
                 "split" => Ok(Value::BuiltinFunction(BuiltinFunction::StringSplit)),

@@ -78,13 +78,8 @@ fn rejects_function_scoped_var_declarations() {
 
 #[test]
 fn rejects_additional_unsupported_assignment_operators() {
-    for source in [
-        "let value = 2; value %= 3;",
-        "let value = 2; value **= 3;",
-        "let value = 2; value &= 3;",
-    ] {
-        assert_validation_reject(source, "unsupported assignment operator in v1");
-    }
+    let source = "let value = 2; value &= 3;";
+    assert_validation_reject(source, "unsupported assignment operator in v1");
 }
 
 #[test]
