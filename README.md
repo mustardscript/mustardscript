@@ -500,7 +500,8 @@ The host boundary should be narrowly defined and documented as its own contract.
 - booleans
 - strings
 - numbers, including non-finite values and `-0`
-- arrays of structured host values
+- arrays of structured host values, including sparse arrays with preserved hole
+  positions
 - plain objects with string keys and structured host values
 
 ### Rejected at the Host Boundary

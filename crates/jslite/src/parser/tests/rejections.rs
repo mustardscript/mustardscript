@@ -58,11 +58,6 @@ fn rejects_array_spread() {
 }
 
 #[test]
-fn rejects_array_holes() {
-    assert_validation_reject("[1, , 2];", "array holes are not supported in v1");
-}
-
-#[test]
 fn rejects_spread_arguments() {
     assert_validation_reject(
         "run(...values);",

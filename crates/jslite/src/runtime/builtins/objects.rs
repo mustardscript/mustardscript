@@ -77,14 +77,17 @@ impl Runtime {
                         .get(array)
                         .ok_or_else(|| JsliteError::runtime("array missing"))?;
                     (
-                        array.elements.len(),
+                        array
+                            .elements
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, value)| value.as_ref().map(|_| index.to_string()))
+                            .collect::<Vec<_>>(),
                         array.properties.len(),
                         ordered_own_property_keys(&array.properties),
                     )
                 };
-                let mut keys = (0..array_len)
-                    .map(|index| index.to_string())
-                    .collect::<Vec<_>>();
+                let mut keys = array_len;
                 self.charge_native_helper_work(keys.len())?;
                 self.charge_native_helper_work(extra_len)?;
                 keys.extend(extra_keys);
@@ -112,6 +115,7 @@ impl Runtime {
                         .elements
                         .get(index)
                         .cloned()
+                        .flatten()
                         .unwrap_or(Value::Undefined))
                 } else {
                     array
@@ -203,13 +207,15 @@ impl Runtime {
                     if done {
                         break;
                     }
-                    let items = match entry {
+                    let items: Vec<Value> = match entry {
                         Value::Array(array) => runtime
                             .arrays
                             .get(array)
                             .ok_or_else(|| JsliteError::runtime("array missing"))?
                             .elements
-                            .clone(),
+                            .iter()
+                            .map(|value| value.clone().unwrap_or(Value::Undefined))
+                            .collect(),
                         _ => {
                             return Err(JsliteError::runtime(
                                 "TypeError: Object.fromEntries expects an iterable of [key, value] pairs",
@@ -277,7 +283,7 @@ impl Runtime {
                     .get(array)
                     .ok_or_else(|| JsliteError::runtime("array missing"))?;
                 array_index_from_property_key(&key)
-                    .is_some_and(|index| index < array.elements.len())
+                    .is_some_and(|index| array.elements.get(index).is_some_and(Option::is_some))
                     || array.properties.contains_key(&key)
             }
             _ => return Err(Self::object_helper_type_error()),

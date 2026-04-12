@@ -71,7 +71,8 @@ Audit sources:
   conservative key-order and header surface.
 - [x] `for await...of` now works inside async functions over the documented
   sync-iterable surface by awaiting each yielded value before the loop body.
-- [x] Array holes in literals are rejected during validation.
+- [x] Sparse array holes now work across literals, indexed property access, the
+  documented helper surface, JSON, and structured host-boundary round trips.
 - [x] `instanceof` is rejected as an unsupported binary operator.
 - [x] Math helper gaps remaining: `Math.random`.
 
@@ -123,7 +124,7 @@ Audit sources:
 - [x] Add IR, compiler, and runtime support for `in` if it stays in scope for
   the compatibility target.
 - [x] Add IR, compiler, and runtime support for sequence expressions.
-- [ ] Decide and implement sparse-array semantics so array holes can exist
+- [x] Decide and implement sparse-array semantics so array holes can exist
   consistently across literals, property access, helper methods, JSON, and the
   host boundary.
 - [ ] Add lowering and runtime expansion for array spread and spread arguments

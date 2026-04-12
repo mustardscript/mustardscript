@@ -662,14 +662,27 @@ const conformanceCaseArbitrary = fc.oneof(
   unsupportedValidationCaseArbitrary,
 );
 
+const holeMarker = Symbol('structured-hole');
+
 const structuredValueArbitrary = fc.letrec((tie) => ({
+  array: fc
+    .array(fc.oneof(tie('value'), fc.constant(holeMarker)), { maxLength: 3 })
+    .map((entries) => {
+      const array = new Array(entries.length);
+      entries.forEach((entry, index) => {
+        if (entry !== holeMarker) {
+          array[index] = entry;
+        }
+      });
+      return array;
+    }),
   value: fc.oneof(
     fc.constant(undefined),
     fc.constant(null),
     fc.boolean(),
     supportedNumberArbitrary,
     smallStringArbitrary,
-    fc.array(tie('value'), { maxLength: 3 }),
+    tie('array'),
     fc.dictionary(identifierArbitrary, tie('value'), { maxKeys: 3 }),
   ),
 })).value;

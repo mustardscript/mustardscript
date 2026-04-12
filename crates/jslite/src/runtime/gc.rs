@@ -171,7 +171,7 @@ impl Runtime {
                     .arrays
                     .get(key)
                     .ok_or_else(|| JsliteError::runtime("gc encountered missing array"))?;
-                for value in &array.elements {
+                for value in array.elements.iter().flatten() {
                     self.mark_value(value, &mut marks, &mut worklist);
                 }
                 for value in array.properties.values() {
@@ -552,6 +552,8 @@ fn instruction_may_allocate(instruction: &Instruction) -> bool {
             | Instruction::DeclareName { .. }
             | Instruction::MakeClosure { .. }
             | Instruction::MakeArray { .. }
+            | Instruction::ArrayPush
+            | Instruction::ArrayPushHole
             | Instruction::MakeObject { .. }
             | Instruction::CopyDataProperties
             | Instruction::CreateIterator

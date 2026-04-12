@@ -14,15 +14,23 @@ impl Runtime {
         Ok(match value {
             StructuredValue::Undefined => Value::Undefined,
             StructuredValue::Null => Value::Null,
+            StructuredValue::Hole => {
+                return Err(JsliteError::runtime(
+                    "array holes can only appear inside structured arrays",
+                ));
+            }
             StructuredValue::Bool(value) => Value::Bool(value),
             StructuredValue::String(value) => Value::String(value),
             StructuredValue::Number(number) => Value::Number(number.to_f64()),
             StructuredValue::Array(items) => {
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {
-                    values.push(self.value_from_structured(item)?);
+                    values.push(match item {
+                        StructuredValue::Hole => None,
+                        other => Some(self.value_from_structured(other)?),
+                    });
                 }
-                let array = self.insert_array(values, IndexMap::new())?;
+                let array = self.insert_sparse_array(values, IndexMap::new())?;
                 Value::Array(array)
             }
             StructuredValue::Object(object) => {
@@ -71,8 +79,12 @@ impl Runtime {
                             .ok_or_else(|| JsliteError::runtime("array missing"))?
                             .elements
                             .iter()
-                            .cloned()
-                            .map(|value| self.value_to_structured_inner(value, traversal))
+                            .map(|value| match value {
+                                Some(value) => {
+                                    self.value_to_structured_inner(value.clone(), traversal)
+                                }
+                                None => Ok(StructuredValue::Hole),
+                            })
                             .collect::<JsliteResult<Vec<_>>>()?,
                     ))
                 })();
@@ -162,6 +174,11 @@ pub(in crate::runtime) fn structured_to_json(
     Ok(match value {
         StructuredValue::Undefined => serde_json::Value::Null,
         StructuredValue::Null => serde_json::Value::Null,
+        StructuredValue::Hole => {
+            return Err(JsliteError::runtime(
+                "array holes cannot appear outside structured arrays",
+            ));
+        }
         StructuredValue::Bool(value) => serde_json::Value::Bool(value),
         StructuredValue::String(value) => serde_json::Value::String(value),
         StructuredValue::Number(number) => match number {

@@ -99,6 +99,42 @@ impl Runtime {
                 let array = self.insert_array(values, IndexMap::new())?;
                 self.frames[frame_index].stack.push(Value::Array(array));
             }
+            Instruction::ArrayPush => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let target = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let Value::Array(array) = target else {
+                    return Err(JsliteError::runtime("array builder target is not an array"));
+                };
+                self.arrays
+                    .get_mut(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .push(Some(value));
+                self.refresh_array_accounting(array)?;
+                self.frames[frame_index].stack.push(Value::Array(array));
+            }
+            Instruction::ArrayPushHole => {
+                let target = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let Value::Array(array) = target else {
+                    return Err(JsliteError::runtime("array builder target is not an array"));
+                };
+                self.arrays
+                    .get_mut(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .push(None);
+                self.refresh_array_accounting(array)?;
+                self.frames[frame_index].stack.push(Value::Array(array));
+            }
             Instruction::MakeObject { keys } => {
                 let values = pop_many(&mut self.frames[frame_index].stack, keys.len())?;
                 let mut properties = IndexMap::new();

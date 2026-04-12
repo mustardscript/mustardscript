@@ -78,7 +78,10 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("array missing"))?;
                 let mut parts = Vec::new();
                 for value in &array.elements {
-                    parts.push(self.to_string(value.clone())?);
+                    parts.push(match value {
+                        None | Some(Value::Undefined) | Some(Value::Null) => String::new(),
+                        Some(value) => self.to_string(value.clone())?,
+                    });
                 }
                 parts.join(",")
             }
@@ -121,7 +124,13 @@ impl Runtime {
             Value::Array(array) => self
                 .arrays
                 .get(array)
-                .map(|array| array.elements.clone())
+                .map(|array| {
+                    array
+                        .elements
+                        .iter()
+                        .map(|value| value.clone().unwrap_or(Value::Undefined))
+                        .collect()
+                })
                 .ok_or_else(|| JsliteError::runtime("array missing")),
             Value::Undefined | Value::Null => Ok(Vec::new()),
             _ => Err(JsliteError::runtime(

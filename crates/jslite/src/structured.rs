@@ -45,6 +45,7 @@ impl StructuredNumber {
 pub enum StructuredValue {
     Undefined,
     Null,
+    Hole,
     Bool(bool),
     String(String),
     Number(StructuredNumber),

@@ -3,6 +3,15 @@ use std::cmp::Ordering;
 use super::*;
 
 impl Runtime {
+    fn array_slots(&self, array: ArrayKey) -> JsliteResult<Vec<Option<Value>>> {
+        Ok(self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .clone())
+    }
+
     fn array_receiver(&self, value: Value, method: &str) -> JsliteResult<ArrayKey> {
         match value {
             Value::Array(key) => Ok(key),
@@ -80,7 +89,7 @@ impl Runtime {
                     .get_mut(result)
                     .ok_or_else(|| JsliteError::runtime("array missing"))?
                     .elements
-                    .push(mapped);
+                    .push(Some(mapped));
                 runtime.refresh_array_accounting(result)?;
                 index += 1;
             }
@@ -100,7 +109,7 @@ impl Runtime {
                 .get_mut(array)
                 .ok_or_else(|| JsliteError::runtime("array missing"))?
                 .elements;
-            elements.extend(args.iter().cloned());
+            elements.extend(args.iter().cloned().map(Some));
         }
         self.refresh_array_accounting(array)?;
         let length = self
@@ -120,6 +129,7 @@ impl Runtime {
             .ok_or_else(|| JsliteError::runtime("array missing"))?
             .elements
             .pop()
+            .flatten()
             .unwrap_or(Value::Undefined);
         self.refresh_array_accounting(array)?;
         Ok(value)
@@ -131,12 +141,7 @@ impl Runtime {
         args: &[Value],
     ) -> JsliteResult<Value> {
         let array = self.array_receiver(this_value, "slice")?;
-        let elements = self
-            .arrays
-            .get(array)
-            .ok_or_else(|| JsliteError::runtime("array missing"))?
-            .elements
-            .clone();
+        let elements = self.array_slots(array)?;
         let start = normalize_relative_bound(
             self.to_integer(args.first().cloned().unwrap_or(Value::Number(0.0)))?,
             elements.len(),
@@ -149,7 +154,7 @@ impl Runtime {
             elements.len(),
         );
         let end = end.max(start);
-        Ok(Value::Array(self.insert_array(
+        Ok(Value::Array(self.insert_sparse_array(
             elements[start..end].to_vec(),
             IndexMap::new(),
         )?))
@@ -189,11 +194,16 @@ impl Runtime {
                 .ok_or_else(|| JsliteError::runtime("array missing"))?;
             array_ref
                 .elements
-                .splice(start..start + delete_count, args[2..].iter().cloned())
-                .collect::<Vec<_>>()
+                .splice(
+                    start..start + delete_count,
+                    args[2..].iter().cloned().map(Some),
+                )
+                .collect::<Vec<Option<Value>>>()
         };
         self.refresh_array_accounting(array)?;
-        Ok(Value::Array(self.insert_array(removed, IndexMap::new())?))
+        Ok(Value::Array(
+            self.insert_sparse_array(removed, IndexMap::new())?,
+        ))
     }
 
     pub(crate) fn call_array_concat(
@@ -202,12 +212,7 @@ impl Runtime {
         args: &[Value],
     ) -> JsliteResult<Value> {
         let array = self.array_receiver(this_value, "concat")?;
-        let mut elements = self
-            .arrays
-            .get(array)
-            .ok_or_else(|| JsliteError::runtime("array missing"))?
-            .elements
-            .clone();
+        let mut elements = self.array_slots(array)?;
         for value in args {
             match value {
                 Value::Array(other) => {
@@ -217,10 +222,12 @@ impl Runtime {
                         .ok_or_else(|| JsliteError::runtime("array missing"))?;
                     elements.extend(other.elements.iter().cloned());
                 }
-                other => elements.push(other.clone()),
+                other => elements.push(Some(other.clone())),
             }
         }
-        Ok(Value::Array(self.insert_array(elements, IndexMap::new())?))
+        Ok(Value::Array(
+            self.insert_sparse_array(elements, IndexMap::new())?,
+        ))
     }
 
     pub(crate) fn call_array_at(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
@@ -239,7 +246,7 @@ impl Runtime {
         if index < 0 || index >= elements.len() as i64 {
             Ok(Value::Undefined)
         } else {
-            Ok(elements[index as usize].clone())
+            Ok(elements[index as usize].clone().unwrap_or(Value::Undefined))
         }
     }
 
@@ -259,13 +266,8 @@ impl Runtime {
         if depth > 0
             && let Value::Array(array) = value
         {
-            let elements = self
-                .arrays
-                .get(array)
-                .ok_or_else(|| JsliteError::runtime("array missing"))?
-                .elements
-                .clone();
-            for element in elements {
+            let elements = self.array_slots(array)?;
+            for element in elements.into_iter().flatten() {
                 self.collect_flattened_value(flattened, element, depth - 1)?;
             }
             return Ok(());
@@ -281,14 +283,9 @@ impl Runtime {
     ) -> JsliteResult<Value> {
         let array = self.array_receiver(this_value, "flat")?;
         let depth = self.normalized_flat_depth(args)?;
-        let elements = self
-            .arrays
-            .get(array)
-            .ok_or_else(|| JsliteError::runtime("array missing"))?
-            .elements
-            .clone();
+        let elements = self.array_slots(array)?;
         let mut flattened = Vec::new();
-        for element in elements {
+        for element in elements.into_iter().flatten() {
             self.collect_flattened_value(&mut flattened, element, depth)?;
         }
         Ok(Value::Array(self.insert_array(flattened, IndexMap::new())?))
@@ -314,8 +311,8 @@ impl Runtime {
         for value in &elements {
             self.charge_native_helper_work(1)?;
             parts.push(match value {
-                Value::Undefined | Value::Null => String::new(),
-                other => self.to_string(other.clone())?,
+                None | Some(Value::Undefined) | Some(Value::Null) => String::new(),
+                Some(other) => self.to_string(other.clone())?,
             });
         }
         Ok(Value::String(parts.join(&separator)))
@@ -337,12 +334,9 @@ impl Runtime {
             self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
             elements.len(),
         );
-        Ok(Value::Bool(
-            elements
-                .iter()
-                .skip(start)
-                .any(|value| same_value_zero(value, &search)),
-        ))
+        Ok(Value::Bool(elements.iter().skip(start).any(|value| {
+            same_value_zero(&value.clone().unwrap_or(Value::Undefined), &search)
+        })))
     }
 
     pub(crate) fn call_array_index_of(
@@ -365,7 +359,11 @@ impl Runtime {
             .iter()
             .enumerate()
             .skip(start)
-            .find(|(_, value)| strict_equal(value, &search))
+            .find(|(_, value)| {
+                value
+                    .as_ref()
+                    .is_some_and(|value| strict_equal(value, &search))
+            })
             .map(|(index, _)| index as f64)
             .unwrap_or(-1.0);
         Ok(Value::Number(index))
@@ -433,33 +431,34 @@ impl Runtime {
             roots.push(comparator.clone());
         }
         self.with_temporary_roots(&roots, |runtime| {
-            let mut elements = runtime
-                .arrays
-                .get(array)
-                .ok_or_else(|| JsliteError::runtime("array missing"))?
-                .elements
-                .clone();
-            for index in 1..elements.len() {
+            let elements = runtime.array_slots(array)?;
+            let mut present = elements.into_iter().flatten().collect::<Vec<_>>();
+            for index in 1..present.len() {
                 runtime.charge_native_helper_work(1)?;
-                let current = elements[index].clone();
+                let current = present[index].clone();
                 let mut position = index;
                 while position > 0
                     && runtime.sort_compare(
                         comparator.clone(),
                         current.clone(),
-                        elements[position - 1].clone(),
+                        present[position - 1].clone(),
                     )? == Ordering::Less
                 {
-                    elements[position] = elements[position - 1].clone();
+                    present[position] = present[position - 1].clone();
                     position -= 1;
                 }
-                elements[position] = current;
+                present[position] = current;
             }
+            let holes = runtime.array_length(array)?.saturating_sub(present.len());
             runtime
                 .arrays
                 .get_mut(array)
                 .ok_or_else(|| JsliteError::runtime("array missing"))?
-                .elements = elements;
+                .elements = present
+                .into_iter()
+                .map(Some)
+                .chain(std::iter::repeat_with(|| None).take(holes))
+                .collect();
             runtime.refresh_array_accounting(array)?;
             Ok(Value::Array(array))
         })
@@ -528,37 +527,25 @@ impl Runtime {
     }
 
     fn array_callback_value(&self, array: ArrayKey, index: usize) -> JsliteResult<Value> {
-        Ok(self
-            .arrays
-            .get(array)
-            .ok_or_else(|| JsliteError::runtime("array missing"))?
-            .elements
-            .get(index)
-            .cloned()
-            .unwrap_or(Value::Undefined))
+        self.array_value_at(array, index)
     }
 
     fn append_flat_map_value(&mut self, result: ArrayKey, value: Value) -> JsliteResult<()> {
         match value {
             Value::Array(array) => {
-                let elements = self
-                    .arrays
-                    .get(array)
-                    .ok_or_else(|| JsliteError::runtime("array missing"))?
-                    .elements
-                    .clone();
+                let elements = self.array_slots(array)?;
                 self.arrays
                     .get_mut(result)
                     .ok_or_else(|| JsliteError::runtime("array missing"))?
                     .elements
-                    .extend(elements);
+                    .extend(elements.into_iter().flatten().map(Some));
             }
             other => {
                 self.arrays
                     .get_mut(result)
                     .ok_or_else(|| JsliteError::runtime("array missing"))?
                     .elements
-                    .push(other);
+                    .push(Some(other));
             }
         }
         self.refresh_array_accounting(result)?;
@@ -580,6 +567,9 @@ impl Runtime {
             .len();
         for index in 0..length {
             self.charge_native_helper_work(1)?;
+            if !self.array_has_index(array, index)? {
+                continue;
+            }
             let value = self.array_callback_value(array, index)?;
             self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -609,7 +599,7 @@ impl Runtime {
             .ok_or_else(|| JsliteError::runtime("array missing"))?
             .elements
             .len();
-        let result = self.insert_array(Vec::new(), IndexMap::new())?;
+        let result = self.insert_sparse_array(vec![None; length], IndexMap::new())?;
         self.with_temporary_roots(
             &[
                 Value::Array(array),
@@ -620,6 +610,9 @@ impl Runtime {
             |runtime| {
                 for index in 0..length {
                     runtime.charge_native_helper_work(1)?;
+                    if !runtime.array_has_index(array, index)? {
+                        continue;
+                    }
                     let value = runtime.array_callback_value(array, index)?;
                     let mapped = runtime.call_array_callback(
                         callback.clone(),
@@ -630,8 +623,7 @@ impl Runtime {
                         .arrays
                         .get_mut(result)
                         .ok_or_else(|| JsliteError::runtime("array missing"))?
-                        .elements
-                        .push(mapped);
+                        .elements[index] = Some(mapped);
                     runtime.refresh_array_accounting(result)?;
                 }
                 Ok(Value::Array(result))
@@ -663,6 +655,9 @@ impl Runtime {
             |runtime| {
                 for index in 0..length {
                     runtime.charge_native_helper_work(1)?;
+                    if !runtime.array_has_index(array, index)? {
+                        continue;
+                    }
                     let value = runtime.array_callback_value(array, index)?;
                     let keep = runtime.call_array_callback(
                         callback.clone(),
@@ -679,7 +674,7 @@ impl Runtime {
                             .get_mut(result)
                             .ok_or_else(|| JsliteError::runtime("array missing"))?
                             .elements
-                            .push(value);
+                            .push(Some(value));
                         runtime.refresh_array_accounting(result)?;
                     }
                 }
@@ -703,6 +698,9 @@ impl Runtime {
             .len();
         for index in 0..length {
             self.charge_native_helper_work(1)?;
+            if !self.array_has_index(array, index)? {
+                continue;
+            }
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -740,6 +738,9 @@ impl Runtime {
             .len();
         for index in 0..length {
             self.charge_native_helper_work(1)?;
+            if !self.array_has_index(array, index)? {
+                continue;
+            }
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -773,6 +774,9 @@ impl Runtime {
             .len();
         for index in 0..length {
             self.charge_native_helper_work(1)?;
+            if !self.array_has_index(array, index)? {
+                continue;
+            }
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -806,6 +810,9 @@ impl Runtime {
             .len();
         for index in 0..length {
             self.charge_native_helper_work(1)?;
+            if !self.array_has_index(array, index)? {
+                continue;
+            }
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -847,6 +854,9 @@ impl Runtime {
             ],
             |runtime| {
                 for index in 0..length {
+                    if !runtime.array_has_index(array, index)? {
+                        continue;
+                    }
                     let value = runtime.array_callback_value(array, index)?;
                     let mapped = runtime.call_array_callback(
                         callback.clone(),
@@ -875,15 +885,23 @@ impl Runtime {
             .len();
         let (mut accumulator, start_index) = match args.get(1).cloned() {
             Some(initial) => (initial, 0),
-            None if length > 0 => (self.array_callback_value(array, 0)?, 1),
             None => {
-                return Err(JsliteError::runtime(
-                    "TypeError: Array.prototype.reduce requires an initial value for empty arrays",
-                ));
+                let Some(index) = (0..length).find(|index| {
+                    self.array_has_index(array, *index)
+                        .expect("array existence should be stable during reduce")
+                }) else {
+                    return Err(JsliteError::runtime(
+                        "TypeError: Array.prototype.reduce requires an initial value for empty arrays",
+                    ));
+                };
+                (self.array_callback_value(array, index)?, index + 1)
             }
         };
         for index in start_index..length {
             self.charge_native_helper_work(1)?;
+            if !self.array_has_index(array, index)? {
+                continue;
+            }
             let value = self.array_callback_value(array, index)?;
             accumulator = self.with_temporary_roots(
                 &[

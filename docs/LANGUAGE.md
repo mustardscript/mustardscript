@@ -118,8 +118,8 @@ extensions are called out explicitly instead of being implied.
 - each `for...of` iteration gets a fresh lexical binding environment for
   declaration headers; assignment-target headers reuse the existing binding or
   member reference each iteration
-- array iteration yields values in ascending numeric index order and ignores
-  non-index properties
+- array iteration yields values in ascending numeric index order, treats holes
+  as `undefined`, and ignores non-index properties
 - active array iterators observe the live backing array length, so elements
   appended before exhaustion are visited in order
 - strings iterate by Unicode scalar values and preserve source order
@@ -174,7 +174,7 @@ extensions are called out explicitly instead of being implied.
 - `debugger`
 - labeled statements
 - object literal accessors
-- array spread, array holes, and spread arguments
+- array spread and spread arguments
 - update expressions
 - `instanceof`
 
@@ -245,6 +245,10 @@ extensions are called out explicitly instead of being implied.
   array-index keys in ascending numeric order, then remaining string keys in
   insertion order.
 - `JSON.stringify` on arrays renders elements in ascending numeric index order.
+- Sparse array holes are supported in literals and array storage. Reading a
+  hole yields `undefined`, `Object.keys` / `Object.values` / `Object.entries`
+  / `for...in` skip missing indices, array iteration treats holes as
+  `undefined`, and `JSON.stringify` renders holes as `null`.
 - Non-index array properties are ignored by `JSON.stringify`.
 - `JSON.stringify` omits object properties whose values are `undefined` or
   callable, serializes those values as `null` inside arrays, returns
@@ -260,8 +264,8 @@ extensions are called out explicitly instead of being implied.
 - `Object.keys`, `Object.values`, and `Object.entries` on plain objects follow
   the same JavaScript own-property order as `JSON.stringify`.
 - `Object.keys`, `Object.values`, and `Object.entries` on arrays enumerate
-  numeric indices in ascending order followed by custom string properties in
-  insertion order.
+  present numeric indices in ascending order followed by custom string
+  properties in insertion order.
 - Canonical array-index keys are the standard JavaScript string forms such as
   `"0"` and `"10"`; non-canonical numeric-looking keys such as `"01"` and
   `"4294967295"` remain ordinary string properties.
@@ -466,6 +470,8 @@ extensions are called out explicitly instead of being implied.
   half-open range `[0, 1)`; values are intentionally nondeterministic, are not
   seedable or reproducible across runs or resumes, and are not a
   cryptographically strong API contract
+- structured host arrays may be sparse; hole positions are preserved across the
+  boundary in both directions
 - direct `Date()` calls, multi-argument `new Date(...)`, and returning `Date`
   values across the structured host boundary all fail closed
 - real `RegExp` instances support `source`, `flags`, `global`, `ignoreCase`,

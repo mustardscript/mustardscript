@@ -233,6 +233,14 @@ fn apply_validation_effect(
                 ..state
             }
         }
+        Instruction::ArrayPush => {
+            require_stack(2)?;
+            state
+        }
+        Instruction::ArrayPushHole => {
+            require_stack(1)?;
+            state
+        }
         Instruction::MakeObject { keys } => {
             require_stack(keys.len())?;
             ValidationState {

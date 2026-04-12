@@ -161,3 +161,14 @@ fn parses_object_literals_with_computed_keys_methods_and_spread() {
     )
     .expect("object literal computed keys, methods, and spread should compile");
 }
+
+#[test]
+fn parses_sparse_array_literals() {
+    compile(
+        r#"
+        const values = [1, , 3];
+        [values.length, values[1], 1 in values];
+        "#,
+    )
+    .expect("sparse array literals should compile");
+}

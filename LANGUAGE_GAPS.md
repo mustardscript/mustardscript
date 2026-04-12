@@ -102,7 +102,8 @@ missing:
   headers, but destructuring assignment targets remain unsupported.
 - Generators and `yield` are unsupported.
 - Tagged template literals are unsupported.
-- Array holes in literals are rejected during validation.
+- Sparse array holes are now supported across literals, property access, the
+  documented helper surface, JSON, and structured host-boundary round trips.
 - Labeled statements are unsupported.
 - `debugger` statements are unsupported.
 - Meta properties such as `new.target` and `import.meta` are unsupported.
@@ -183,8 +184,8 @@ missing:
 - The full symbol-based iterable protocol is not implemented.
 - Arrays, strings, `Map`, `Set`, and the documented iterator helper objects are
   iterable in the current surface.
-- Spread syntax is still unsupported even though part of the iterable surface
-  exists.
+- Spread syntax is still only partially supported: sparse arrays exist now, but
+  array spread and spread arguments remain unsupported.
 - Plain objects are not iterable in `for...of`.
 - Custom iterables and `Symbol.iterator`-based patterns are unsupported because
   symbols and the public iterator protocol remain deferred.
@@ -207,7 +208,8 @@ missing:
 ### Host Boundary And Interop Gaps
 
 - The host boundary only accepts structured values: `undefined`, `null`,
-  booleans, strings, numbers, arrays, and plain objects.
+  booleans, strings, numbers, arrays, and plain objects. Structured arrays may
+  now be sparse, and hole positions round-trip across the boundary.
 - Functions cannot cross the host boundary.
 - Symbols cannot cross the host boundary.
 - BigInts cannot cross the host boundary.

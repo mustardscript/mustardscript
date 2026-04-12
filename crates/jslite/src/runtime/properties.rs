@@ -1,6 +1,37 @@
 use super::*;
 
 impl Runtime {
+    pub(super) fn array_length(&self, array: ArrayKey) -> JsliteResult<usize> {
+        Ok(self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .len())
+    }
+
+    pub(super) fn array_has_index(&self, array: ArrayKey, index: usize) -> JsliteResult<bool> {
+        Ok(self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .get(index)
+            .is_some_and(Option::is_some))
+    }
+
+    pub(super) fn array_value_at(&self, array: ArrayKey, index: usize) -> JsliteResult<Value> {
+        Ok(self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .get(index)
+            .cloned()
+            .flatten()
+            .unwrap_or(Value::Undefined))
+    }
+
     pub(super) fn has_property_in_supported_surface(
         &self,
         object: Value,
@@ -42,10 +73,9 @@ impl Runtime {
                     .get(array)
                     .ok_or_else(|| JsliteError::runtime("array missing"))?;
                 Ok(key == "length"
-                    || key
-                        .parse::<usize>()
-                        .ok()
-                        .is_some_and(|index| index < array.elements.len())
+                    || key.parse::<usize>().ok().is_some_and(|index| {
+                        array.elements.get(index).is_some_and(Option::is_some)
+                    })
                     || array.properties.contains_key(&key)
                     || matches!(
                         key.as_str(),
@@ -204,7 +234,7 @@ impl Runtime {
                 .ok_or_else(|| JsliteError::runtime("array missing"))?
                 .elements
                 .get(state.next_index)
-                .cloned(),
+                .map(|value| value.clone().unwrap_or(Value::Undefined)),
             IteratorState::ArrayKeys(state) => self
                 .arrays
                 .get(state.array)
@@ -219,7 +249,7 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("array missing"))?
                     .elements
                     .get(state.next_index)
-                    .cloned();
+                    .map(|value| value.clone().unwrap_or(Value::Undefined));
                 match value {
                     Some(value) => Some(Value::Array(self.insert_array(
                         vec![Value::Number(state.next_index as f64), value],
@@ -375,6 +405,7 @@ impl Runtime {
                         .elements
                         .get(index)
                         .cloned()
+                        .flatten()
                         .unwrap_or(Value::Undefined))
                 } else if let Some(value) = array.properties.get(&key) {
                     Ok(value.clone())
@@ -554,9 +585,9 @@ impl Runtime {
                         .ok_or_else(|| JsliteError::runtime("array missing"))?;
                     if let Some(index) = array_index_from_property_key(&key) {
                         if index >= array_ref.elements.len() {
-                            array_ref.elements.resize(index + 1, Value::Undefined);
+                            array_ref.elements.resize(index + 1, None);
                         }
-                        array_ref.elements[index] = value;
+                        array_ref.elements[index] = Some(value);
                     } else {
                         array_ref.properties.insert(key, value);
                     }

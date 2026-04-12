@@ -13,7 +13,7 @@ where
         }
     }
     for array in runtime.arrays.values() {
-        for value in &array.elements {
+        for value in array.elements.iter().flatten() {
             visit(value)?;
         }
         for value in array.properties.values() {

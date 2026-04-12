@@ -48,6 +48,8 @@ pub enum Instruction {
     MakeArray {
         count: usize,
     },
+    ArrayPush,
+    ArrayPushHole,
     MakeObject {
         keys: Vec<PropertyName>,
     },

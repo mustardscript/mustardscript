@@ -1,5 +1,6 @@
 use jslite::ir::{
-    AssignTarget, Expr, LogicalOp, MemberProperty, ObjectProperty, ObjectPropertyKey, Stmt,
+    ArrayElement, AssignTarget, CallArgument, Expr, LogicalOp, MemberProperty, ObjectProperty,
+    ObjectPropertyKey, Stmt,
 };
 use jslite::structured::StructuredNumber;
 use jslite::{
@@ -127,9 +128,9 @@ fn expr_contains(expr: &Expr, predicate: &impl Fn(&Expr) -> bool) -> bool {
         | Expr::RegExp { .. }
         | Expr::Identifier { .. }
         | Expr::This { .. } => false,
-        Expr::Array { elements, .. } => {
-            elements.iter().any(|entry| expr_contains(entry, predicate))
-        }
+        Expr::Array { elements, .. } => elements
+            .iter()
+            .any(|entry| array_element_contains_expr(entry, predicate)),
         Expr::Object { properties, .. } => properties
             .iter()
             .any(|property| object_property_contains_expr(property, predicate)),
@@ -169,12 +170,30 @@ fn expr_contains(expr: &Expr, predicate: &impl Fn(&Expr) -> bool) -> bool {
             expr_contains(callee, predicate)
                 || arguments
                     .iter()
-                    .any(|entry| expr_contains(entry, predicate))
+                    .any(|entry| call_argument_contains_expr(entry, predicate))
         }
         Expr::Template { expressions, .. } => expressions
             .iter()
             .any(|entry| expr_contains(entry, predicate)),
         Expr::Await { value, .. } => expr_contains(value, predicate),
+    }
+}
+
+fn array_element_contains_expr(element: &ArrayElement, predicate: &impl Fn(&Expr) -> bool) -> bool {
+    match element {
+        ArrayElement::Value(expression) => expr_contains(expression, predicate),
+        ArrayElement::Hole { .. } => false,
+        ArrayElement::Spread { value, .. } => expr_contains(value, predicate),
+    }
+}
+
+fn call_argument_contains_expr(
+    argument: &CallArgument,
+    predicate: &impl Fn(&Expr) -> bool,
+) -> bool {
+    match argument {
+        CallArgument::Value(expression) => expr_contains(expression, predicate),
+        CallArgument::Spread { value, .. } => expr_contains(value, predicate),
     }
 }
 

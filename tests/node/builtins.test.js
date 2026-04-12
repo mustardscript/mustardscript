@@ -210,6 +210,58 @@ test('run supports Array.prototype.splice, Array.prototype.flat, and Array.proto
   });
 });
 
+test('run preserves sparse array holes across helpers, enumeration, and JSON', async () => {
+  const result = await runtime(`
+    const values = [1, , undefined, 4];
+    const callbackIndexes = [];
+    values.forEach((value, index) => {
+      callbackIndexes[callbackIndexes.length] = index;
+    });
+    const sliced = values.slice(0, 4);
+    const mapped = values.map((value, index) => value ?? (index + 10));
+    const merged = values.concat([, 5]);
+    ({
+      length: values.length,
+      holeIsUndefined: values[1] === undefined,
+      hasHole: 1 in values,
+      hasUndefined: 2 in values,
+      keys: Object.keys(values),
+      entries: Object.entries(values),
+      iterated: Array.from(values.values()),
+      includesUndefined: values.includes(undefined),
+      indexOfUndefined: values.indexOf(undefined),
+      joined: values.join("-"),
+      json: JSON.stringify(values),
+      callbackIndexes,
+      slicedKeys: Object.keys(sliced),
+      mappedKeys: Object.keys(mapped),
+      mappedHasHole: 1 in mapped,
+      mergedKeys: Object.keys(merged),
+      mergedTail: merged[5],
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    length: 4,
+    holeIsUndefined: true,
+    hasHole: false,
+    hasUndefined: true,
+    keys: ['0', '2', '3'],
+    entries: [['0', 1], ['2', undefined], ['3', 4]],
+    iterated: [1, undefined, undefined, 4],
+    includesUndefined: true,
+    indexOfUndefined: 2,
+    joined: '1---4',
+    json: '[1,null,null,4]',
+    callbackIndexes: [0, 2, 3],
+    slicedKeys: ['0', '2', '3'],
+    mappedKeys: ['0', '2', '3'],
+    mappedHasHole: false,
+    mergedKeys: ['0', '2', '3', '5'],
+    mergedTail: 5,
+  });
+});
+
 test('run supports computed object literal keys, method shorthand, and object spread for plain objects and arrays', async () => {
   const result = await runtime(`
     const key = "value";

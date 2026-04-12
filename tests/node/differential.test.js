@@ -154,6 +154,38 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'sparse array holes across helpers and JSON',
+    source: `
+      const values = [1, , undefined, 4];
+      const callbackIndexes = [];
+      values.forEach((value, index) => {
+        callbackIndexes[callbackIndexes.length] = index;
+      });
+      const sliced = values.slice(0, 4);
+      const mapped = values.map((value, index) => value ?? (index + 10));
+      const merged = values.concat([, 5]);
+      ({
+        length: values.length,
+        holeIsUndefined: values[1] === undefined,
+        hasHole: 1 in values,
+        hasUndefined: 2 in values,
+        keys: Object.keys(values),
+        entries: Object.entries(values),
+        iterated: Array.from(values.values()),
+        includesUndefined: values.includes(undefined),
+        indexOfUndefined: values.indexOf(undefined),
+        joined: values.join('-'),
+        json: JSON.stringify(values),
+        callbackIndexes,
+        slicedKeys: Object.keys(sliced),
+        mappedKeys: Object.keys(mapped),
+        mappedHasHole: 1 in mapped,
+        mergedKeys: Object.keys(merged),
+        mergedTail: merged[5],
+      });
+    `,
+  },
+  {
     name: 'string helpers',
     source: `
       const value = "  MiXeD Example  ";

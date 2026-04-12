@@ -2,7 +2,10 @@ use super::super::{bytecode::Instruction, format_number_key};
 use super::{Compiler, context::CompileContext};
 use crate::{
     diagnostic::JsliteResult,
-    ir::{BinaryOp, Expr, MemberProperty, ObjectProperty, ObjectPropertyKey, PropertyName},
+    ir::{
+        ArrayElement, BinaryOp, CallArgument, Expr, MemberProperty, ObjectProperty,
+        ObjectPropertyKey, PropertyName,
+    },
     span::SourceSpan,
 };
 
@@ -26,12 +29,36 @@ impl Compiler {
             Expr::Identifier { name, .. } => context.code.push(Instruction::LoadName(name.clone())),
             Expr::This { .. } => context.code.push(Instruction::LoadName("this".to_string())),
             Expr::Array { elements, .. } => {
-                for element in elements {
-                    self.compile_expr(context, element)?;
+                if elements
+                    .iter()
+                    .all(|element| matches!(element, ArrayElement::Value(_)))
+                {
+                    for element in elements {
+                        let ArrayElement::Value(element) = element else {
+                            unreachable!("dense array fast-path should only see value entries");
+                        };
+                        self.compile_expr(context, element)?;
+                    }
+                    context.code.push(Instruction::MakeArray {
+                        count: elements.len(),
+                    });
+                } else {
+                    context.code.push(Instruction::MakeArray { count: 0 });
+                    for element in elements {
+                        match element {
+                            ArrayElement::Value(element) => {
+                                self.compile_expr(context, element)?;
+                                context.code.push(Instruction::ArrayPush);
+                            }
+                            ArrayElement::Hole { .. } => {
+                                context.code.push(Instruction::ArrayPushHole);
+                            }
+                            ArrayElement::Spread { .. } => {
+                                unreachable!("array spread lowering is not wired in this milestone")
+                            }
+                        }
+                    }
                 }
-                context.code.push(Instruction::MakeArray {
-                    count: elements.len(),
-                });
             }
             Expr::Object { properties, .. } => {
                 context
@@ -229,6 +256,9 @@ impl Compiler {
                     self.compile_expr(context, callee)?;
                 }
                 for argument in arguments {
+                    let CallArgument::Value(argument) = argument else {
+                        unreachable!("spread arguments are not lowered in this milestone");
+                    };
                     self.compile_expr(context, argument)?;
                 }
                 context.code.push(Instruction::Call {
@@ -242,6 +272,9 @@ impl Compiler {
             } => {
                 self.compile_expr(context, callee)?;
                 for argument in arguments {
+                    let CallArgument::Value(argument) = argument else {
+                        unreachable!("spread arguments are not lowered in this milestone");
+                    };
                     self.compile_expr(context, argument)?;
                 }
                 context.code.push(Instruction::Construct {

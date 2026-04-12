@@ -340,7 +340,7 @@ impl Compiler {
                                 ),
                                 optional: false,
                             }),
-                            arguments: vec![object.clone()],
+                            arguments: vec![crate::ir::CallArgument::Value(object.clone())],
                             optional: false,
                         },
                         body: body.clone(),
