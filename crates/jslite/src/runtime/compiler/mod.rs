@@ -558,6 +558,7 @@ impl Compiler {
             Expr::Null { .. } => context.code.push(Instruction::PushNull),
             Expr::Bool { value, .. } => context.code.push(Instruction::PushBool(*value)),
             Expr::Number { value, .. } => context.code.push(Instruction::PushNumber(*value)),
+            Expr::BigInt { value, .. } => context.code.push(Instruction::PushBigInt(value.clone())),
             Expr::String { value, .. } => context.code.push(Instruction::PushString(value.clone())),
             Expr::RegExp { pattern, flags, .. } => context.code.push(Instruction::PushRegExp {
                 pattern: pattern.clone(),

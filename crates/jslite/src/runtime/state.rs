@@ -1,6 +1,7 @@
 use std::collections::{HashSet, VecDeque};
 
 use indexmap::IndexMap;
+use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
 use slotmap::{SlotMap, new_key_type};
 
@@ -37,6 +38,7 @@ pub(super) enum Value {
     Promise(PromiseKey),
     BuiltinFunction(BuiltinFunction),
     HostFunction(String),
+    BigInt(BigInt),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

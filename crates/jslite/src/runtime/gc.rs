@@ -425,6 +425,7 @@ impl Runtime {
             | Value::Null
             | Value::Bool(_)
             | Value::Number(_)
+            | Value::BigInt(_)
             | Value::String(_)
             | Value::BuiltinFunction(_)
             | Value::HostFunction(_) => {}

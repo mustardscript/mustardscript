@@ -198,6 +198,7 @@ fn apply_validation_effect(
         | Instruction::PushNull
         | Instruction::PushBool(_)
         | Instruction::PushNumber(_)
+        | Instruction::PushBigInt(_)
         | Instruction::PushString(_)
         | Instruction::PushRegExp { .. }
         | Instruction::LoadName(_)

@@ -193,6 +193,10 @@ pub enum Expr {
         span: SourceSpan,
         value: f64,
     },
+    BigInt {
+        span: SourceSpan,
+        value: String,
+    },
     String {
         span: SourceSpan,
         value: String,

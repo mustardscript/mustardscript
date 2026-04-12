@@ -398,6 +398,7 @@ impl Runtime {
 fn extra_value_bytes(value: &Value) -> usize {
     match value {
         Value::String(value) | Value::HostFunction(value) => value.len(),
+        Value::BigInt(value) => value.to_signed_bytes_le().len(),
         _ => 0,
     }
 }
