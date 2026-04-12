@@ -122,3 +122,24 @@ fn parses_in_operator_expressions() {
     )
     .expect("in operator expressions should compile");
 }
+
+#[test]
+fn parses_object_literals_with_computed_keys_methods_and_spread() {
+    compile(
+        r#"
+        const key = "value";
+        const extra = [3];
+        extra.label = "ok";
+        ({
+          [key]: 1,
+          total(step) {
+            return this[key] + step;
+          },
+          ...null,
+          ...extra,
+          beta: 4,
+        });
+        "#,
+    )
+    .expect("object literal computed keys, methods, and spread should compile");
+}

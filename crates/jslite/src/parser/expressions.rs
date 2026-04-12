@@ -109,6 +109,64 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    fn lower_object_property_key(
+        &mut self,
+        key: &PropertyKey<'a>,
+        computed: bool,
+    ) -> Option<crate::ir::ObjectPropertyKey> {
+        if computed {
+            return Some(crate::ir::ObjectPropertyKey::Computed(Box::new(
+                self.lower_expr(key.to_expression())?,
+            )));
+        }
+
+        Some(crate::ir::ObjectPropertyKey::Static(
+            self.lower_property_name(key)?,
+        ))
+    }
+
+    fn object_method_name(key: &crate::ir::ObjectPropertyKey) -> Option<String> {
+        match key {
+            crate::ir::ObjectPropertyKey::Static(PropertyName::Identifier(name))
+            | crate::ir::ObjectPropertyKey::Static(PropertyName::String(name)) => {
+                Some(name.clone())
+            }
+            crate::ir::ObjectPropertyKey::Static(PropertyName::Number(number)) => {
+                Some(number.to_string())
+            }
+            crate::ir::ObjectPropertyKey::Computed(_) => None,
+        }
+    }
+
+    fn lower_object_literal_property(
+        &mut self,
+        property: &oxc_ast::ast::ObjectProperty<'a>,
+    ) -> Option<crate::ir::ObjectProperty> {
+        if property.kind != PropertyKind::Init {
+            self.unsupported(
+                "object literal accessors are not supported in v1",
+                Some(property.span.into()),
+            );
+            return None;
+        }
+
+        let key = self.lower_object_property_key(&property.key, property.computed)?;
+        let mut value = self.lower_expr(&property.value)?;
+        if property.method
+            && let (Some(name), Expr::Function(function)) =
+                (Self::object_method_name(&key), &mut value)
+            && function.name.is_none()
+        {
+            function.name = Some(name);
+        }
+
+        Some(crate::ir::ObjectProperty::Property {
+            span: property.span.into(),
+            key,
+            value,
+        })
+    }
+
     pub(super) fn lower_expr(&mut self, expression: &Expression<'a>) -> Option<Expr> {
         match expression {
             Expression::BooleanLiteral(literal) => Some(Expr::Bool {
@@ -206,25 +264,13 @@ impl<'a> Lowerer<'a> {
                     .iter()
                     .filter_map(|property| match property {
                         ObjectPropertyKind::ObjectProperty(property) => {
-                            if property.method {
-                                self.unsupported(
-                                    "object literal methods are not supported in v1",
-                                    Some(property.span.into()),
-                                );
-                                return None;
-                            }
-                            Some(crate::ir::ObjectProperty {
-                                span: property.span.into(),
-                                key: self.lower_property_name(&property.key)?,
-                                value: self.lower_expr(&property.value)?,
-                            })
+                            self.lower_object_literal_property(property)
                         }
                         ObjectPropertyKind::SpreadProperty(property) => {
-                            self.unsupported(
-                                "object spread is not supported in v1",
-                                Some(property.span.into()),
-                            );
-                            None
+                            Some(crate::ir::ObjectProperty::Spread {
+                                span: property.span.into(),
+                                value: self.lower_expr(&property.argument)?,
+                            })
                         }
                     })
                     .collect(),

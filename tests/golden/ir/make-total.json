@@ -123,76 +123,80 @@
                           },
                           "properties": [
                             {
-                              "span": {
-                                "start": 83,
-                                "end": 107
-                              },
-                              "key": {
-                                "Identifier": "total"
-                              },
-                              "value": {
-                                "Binary": {
-                                  "span": {
-                                    "start": 90,
-                                    "end": 107
-                                  },
-                                  "operator": "Add",
-                                  "left": {
-                                    "Member": {
-                                      "span": {
-                                        "start": 90,
-                                        "end": 97
-                                      },
-                                      "object": {
-                                        "Identifier": {
-                                          "span": {
-                                            "start": 90,
-                                            "end": 94
-                                          },
-                                          "name": "pair"
-                                        }
-                                      },
-                                      "property": {
-                                        "Computed": {
-                                          "Number": {
+                              "Property": {
+                                "span": {
+                                  "start": 83,
+                                  "end": 107
+                                },
+                                "key": {
+                                  "Static": {
+                                    "Identifier": "total"
+                                  }
+                                },
+                                "value": {
+                                  "Binary": {
+                                    "span": {
+                                      "start": 90,
+                                      "end": 107
+                                    },
+                                    "operator": "Add",
+                                    "left": {
+                                      "Member": {
+                                        "span": {
+                                          "start": 90,
+                                          "end": 97
+                                        },
+                                        "object": {
+                                          "Identifier": {
                                             "span": {
-                                              "start": 95,
-                                              "end": 96
+                                              "start": 90,
+                                              "end": 94
                                             },
-                                            "value": 0.0
+                                            "name": "pair"
                                           }
-                                        }
-                                      },
-                                      "optional": false
-                                    }
-                                  },
-                                  "right": {
-                                    "Member": {
-                                      "span": {
-                                        "start": 100,
-                                        "end": 107
-                                      },
-                                      "object": {
-                                        "Identifier": {
-                                          "span": {
-                                            "start": 100,
-                                            "end": 104
-                                          },
-                                          "name": "pair"
-                                        }
-                                      },
-                                      "property": {
-                                        "Computed": {
-                                          "Number": {
+                                        },
+                                        "property": {
+                                          "Computed": {
+                                            "Number": {
+                                              "span": {
+                                                "start": 95,
+                                                "end": 96
+                                              },
+                                              "value": 0.0
+                                            }
+                                          }
+                                        },
+                                        "optional": false
+                                      }
+                                    },
+                                    "right": {
+                                      "Member": {
+                                        "span": {
+                                          "start": 100,
+                                          "end": 107
+                                        },
+                                        "object": {
+                                          "Identifier": {
                                             "span": {
-                                              "start": 105,
-                                              "end": 106
+                                              "start": 100,
+                                              "end": 104
                                             },
-                                            "value": 1.0
+                                            "name": "pair"
                                           }
-                                        }
-                                      },
-                                      "optional": false
+                                        },
+                                        "property": {
+                                          "Computed": {
+                                            "Number": {
+                                              "span": {
+                                                "start": 105,
+                                                "end": 106
+                                              },
+                                              "value": 1.0
+                                            }
+                                          }
+                                        },
+                                        "optional": false
+                                      }
                                     }
                                   }
                                 }

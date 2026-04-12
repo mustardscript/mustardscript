@@ -114,6 +114,40 @@ fn conditional_expressions_do_not_corrupt_enclosing_object_literals() {
 }
 
 #[test]
+fn object_literals_support_computed_keys_methods_and_spread() {
+    let program = compile(
+        r#"
+        const key = "value";
+        const extra = [3];
+        extra.label = "ok";
+        const record = {
+          alpha: 1,
+          [key]: 2,
+          total(step) {
+            return this.alpha + this[key] + step;
+          },
+          ...null,
+          ...extra,
+          ...{ beta: 4 },
+        };
+        [record.value, record[0], record.label, record.total(5)];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            number(2.0),
+            number(3.0),
+            StructuredValue::String("ok".to_string()),
+            number(8.0),
+        ])
+    );
+}
+
+#[test]
 fn sequence_expressions_preserve_left_to_right_side_effects_and_last_value() {
     let program = compile(
         r#"

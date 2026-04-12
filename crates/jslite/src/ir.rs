@@ -295,10 +295,22 @@ pub enum Expr {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ObjectProperty {
-    pub span: SourceSpan,
-    pub key: PropertyName,
-    pub value: Expr,
+pub enum ObjectProperty {
+    Property {
+        span: SourceSpan,
+        key: ObjectPropertyKey,
+        value: Expr,
+    },
+    Spread {
+        span: SourceSpan,
+        value: Expr,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ObjectPropertyKey {
+    Static(PropertyName),
+    Computed(Box<Expr>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -2,7 +2,7 @@ use super::super::{bytecode::Instruction, format_number_key};
 use super::{Compiler, context::CompileContext};
 use crate::{
     diagnostic::JsliteResult,
-    ir::{BinaryOp, Expr, MemberProperty, PropertyName},
+    ir::{BinaryOp, Expr, MemberProperty, ObjectProperty, ObjectPropertyKey, PropertyName},
     span::SourceSpan,
 };
 
@@ -34,12 +34,39 @@ impl Compiler {
                 });
             }
             Expr::Object { properties, .. } => {
-                let mut keys = Vec::with_capacity(properties.len());
+                context
+                    .code
+                    .push(Instruction::MakeObject { keys: Vec::new() });
                 for property in properties {
-                    self.compile_expr(context, &property.value)?;
-                    keys.push(property.key.clone());
+                    context.code.push(Instruction::Dup);
+                    match property {
+                        ObjectProperty::Property { key, value, .. } => match key {
+                            ObjectPropertyKey::Static(PropertyName::Identifier(name))
+                            | ObjectPropertyKey::Static(PropertyName::String(name)) => {
+                                self.compile_expr(context, value)?;
+                                context
+                                    .code
+                                    .push(Instruction::SetPropStatic { name: name.clone() });
+                            }
+                            ObjectPropertyKey::Static(PropertyName::Number(number)) => {
+                                self.compile_expr(context, value)?;
+                                context.code.push(Instruction::SetPropStatic {
+                                    name: format_number_key(*number),
+                                });
+                            }
+                            ObjectPropertyKey::Computed(expression) => {
+                                self.compile_expr(context, expression)?;
+                                self.compile_expr(context, value)?;
+                                context.code.push(Instruction::SetPropComputed);
+                            }
+                        },
+                        ObjectProperty::Spread { value, .. } => {
+                            self.compile_expr(context, value)?;
+                            context.code.push(Instruction::CopyDataProperties);
+                        }
+                    }
+                    context.code.push(Instruction::Pop);
                 }
-                context.code.push(Instruction::MakeObject { keys });
             }
             Expr::Function(function) => {
                 context.code.push(Instruction::MakeClosure {

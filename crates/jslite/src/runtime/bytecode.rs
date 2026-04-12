@@ -51,6 +51,7 @@ pub enum Instruction {
     MakeObject {
         keys: Vec<PropertyName>,
     },
+    CopyDataProperties,
     CreateIterator,
     IteratorNext,
     GetPropStatic {

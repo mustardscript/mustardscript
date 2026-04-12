@@ -7,6 +7,12 @@ impl Runtime {
         )
     }
 
+    fn object_spread_type_error() -> JsliteError {
+        JsliteError::runtime(
+            "TypeError: object spread currently only supports plain objects and arrays",
+        )
+    }
+
     fn ensure_assign_target(&self, value: Value) -> JsliteResult<()> {
         match value {
             Value::Object(object) => match self
@@ -28,6 +34,26 @@ impl Runtime {
         }
     }
 
+    fn ensure_object_spread_source(&self, value: Value) -> JsliteResult<()> {
+        match value {
+            Value::Object(object) => match self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::Plain => Ok(()),
+                _ => Err(Self::object_spread_type_error()),
+            },
+            Value::Array(array) => {
+                self.arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                Ok(())
+            }
+            _ => Err(Self::object_spread_type_error()),
+        }
+    }
     fn enumerable_keys(&mut self, value: Value) -> JsliteResult<Vec<String>> {
         match value {
             Value::Object(object) => {
@@ -97,6 +123,25 @@ impl Runtime {
             }
             _ => Err(Self::object_helper_type_error()),
         }
+    }
+
+    pub(crate) fn copy_data_properties(
+        &mut self,
+        target: Value,
+        source: Value,
+    ) -> JsliteResult<()> {
+        self.ensure_assign_target(target.clone())?;
+        if matches!(source, Value::Null | Value::Undefined) {
+            return Ok(());
+        }
+
+        self.ensure_object_spread_source(source.clone())?;
+        let keys = self.enumerable_keys(source.clone())?;
+        for key in keys {
+            let value = self.enumerable_value(source.clone(), &key)?;
+            self.set_property(target.clone(), Value::String(key), value)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn call_object_assign(&mut self, args: &[Value]) -> JsliteResult<Value> {

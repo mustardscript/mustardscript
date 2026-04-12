@@ -392,6 +392,26 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'object literals with computed keys, methods, and spread',
+    source: `
+      const key = 'value';
+      const extra = [3];
+      extra.label = 'ok';
+      const obj = {
+        alpha: 1,
+        [key]: 2,
+        total(step) {
+          return this.alpha + this[key] + step;
+        },
+        ...null,
+        ...undefined,
+        ...extra,
+        ...{ beta: 4 },
+      };
+      ({ value: obj.value, zero: obj[0], label: obj.label, total: obj.total(5) });
+    `,
+  },
+  {
     name: 'array growth through indexed writes',
     source: `
       const values = [1, 2];

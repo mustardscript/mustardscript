@@ -553,6 +553,7 @@ fn instruction_may_allocate(instruction: &Instruction) -> bool {
             | Instruction::MakeClosure { .. }
             | Instruction::MakeArray { .. }
             | Instruction::MakeObject { .. }
+            | Instruction::CopyDataProperties
             | Instruction::CreateIterator
             | Instruction::SetPropStatic { .. }
             | Instruction::SetPropComputed

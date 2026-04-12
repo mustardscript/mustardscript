@@ -1,4 +1,6 @@
-use jslite::ir::{AssignTarget, Expr, LogicalOp, MemberProperty, Stmt};
+use jslite::ir::{
+    AssignTarget, Expr, LogicalOp, MemberProperty, ObjectProperty, ObjectPropertyKey, Stmt,
+};
 use jslite::structured::StructuredNumber;
 use jslite::{
     ExecutionOptions, ExecutionStep, ResumeOptions, ResumePayload, RuntimeLimits, SnapshotPolicy,
@@ -130,7 +132,7 @@ fn expr_contains(expr: &Expr, predicate: &impl Fn(&Expr) -> bool) -> bool {
         }
         Expr::Object { properties, .. } => properties
             .iter()
-            .any(|property| expr_contains(&property.value, predicate)),
+            .any(|property| object_property_contains_expr(property, predicate)),
         Expr::Function(function) => function
             .body
             .iter()
@@ -192,6 +194,28 @@ fn member_property_contains_expr(
     match property {
         MemberProperty::Static(_) => false,
         MemberProperty::Computed(expression) => expr_contains(expression, predicate),
+    }
+}
+
+fn object_property_contains_expr(
+    property: &ObjectProperty,
+    predicate: &impl Fn(&Expr) -> bool,
+) -> bool {
+    match property {
+        ObjectProperty::Property { key, value, .. } => {
+            object_property_key_contains_expr(key, predicate) || expr_contains(value, predicate)
+        }
+        ObjectProperty::Spread { value, .. } => expr_contains(value, predicate),
+    }
+}
+
+fn object_property_key_contains_expr(
+    key: &ObjectPropertyKey,
+    predicate: &impl Fn(&Expr) -> bool,
+) -> bool {
+    match key {
+        ObjectPropertyKey::Static(_) => false,
+        ObjectPropertyKey::Computed(expression) => expr_contains(expression, predicate),
     }
 }
 

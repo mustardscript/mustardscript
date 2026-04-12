@@ -239,6 +239,50 @@ fn preserves_supported_enumeration_order_for_json_stringify() {
 }
 
 #[test]
+fn runs_object_literals_with_computed_keys_methods_and_spread() {
+    let value = run(
+        r#"
+            const key = "value";
+            const extra = [3];
+            extra.label = "ok";
+            const record = {
+              alpha: 1,
+              [key]: 2,
+              total(step) {
+                return this.alpha + this[key] + step;
+              },
+              ...null,
+              ...extra,
+              ...{ beta: 4 },
+            };
+            [record.value, record[0], record.label, record.total(5), record.beta];
+            "#,
+    );
+    assert_eq!(
+        value,
+        StructuredValue::Array(vec![
+            StructuredValue::Number(StructuredNumber::Finite(2.0)),
+            StructuredValue::Number(StructuredNumber::Finite(3.0)),
+            StructuredValue::String("ok".to_string()),
+            StructuredValue::Number(StructuredNumber::Finite(8.0)),
+            StructuredValue::Number(StructuredNumber::Finite(4.0)),
+        ])
+    );
+}
+
+#[test]
+fn object_spread_fails_closed_for_unsupported_sources() {
+    let program = compile("({ ...1 });").expect("object spread should lower");
+    let error = execute(&program, ExecutionOptions::default())
+        .expect_err("unsupported object spread sources should fail closed at runtime");
+    assert!(
+        error
+            .to_string()
+            .contains("object spread currently only supports plain objects and arrays")
+    );
+}
+
+#[test]
 fn enforces_instruction_budget() {
     let program = compile("while (true) {}").expect("source should compile");
     let error = execute(

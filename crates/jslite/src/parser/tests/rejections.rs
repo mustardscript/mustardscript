@@ -114,3 +114,14 @@ fn rejects_instanceof_operator() {
             .contains("unsupported binary operator in v1")
     );
 }
+
+#[test]
+fn rejects_object_literal_accessors() {
+    let error = compile("({ get value() { return 1; } });")
+        .expect_err("object literal accessors should fail closed");
+    assert!(
+        error
+            .to_string()
+            .contains("object literal accessors are not supported in v1")
+    );
+}

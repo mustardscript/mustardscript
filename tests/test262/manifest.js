@@ -57,6 +57,21 @@ module.exports = {
       expected: { total: 7, key: 3 },
     },
     {
+      id: 'language/expressions/object/computed-key.js',
+      file: 'cases/pass/language/expressions/object/computed-key.js',
+      expected: [1, 2],
+    },
+    {
+      id: 'language/expressions/object/method-basic.js',
+      file: 'cases/pass/language/expressions/object/method-basic.js',
+      expected: [7, 'function'],
+    },
+    {
+      id: 'language/expressions/object/spread/basic.js',
+      file: 'cases/pass/language/expressions/object/spread/basic.js',
+      expected: { alpha: 1, beta: 2, zero: 3, label: 'ok' },
+    },
+    {
       id: 'language/expressions/array/index-growth.js',
       file: 'cases/pass/language/expressions/array/index-growth.js',
       expected: { first: 1, third: 4, size: 3 },
@@ -239,13 +254,6 @@ module.exports = {
       reason: 'Debugger hooks are excluded from the guest surface.',
     },
     {
-      id: 'language/expressions/object/spread/basic.js',
-      file: 'cases/unsupported/language/expressions/object/spread/basic.js',
-      errorKind: 'Validation',
-      messageIncludes: 'object spread is not supported in v1',
-      reason: 'Object spread remains outside the supported subset.',
-    },
-    {
       id: 'language/expressions/array/spread/basic.js',
       file: 'cases/unsupported/language/expressions/array/spread/basic.js',
       errorKind: 'Validation',
@@ -260,11 +268,11 @@ module.exports = {
       reason: 'Exponent assignment remains outside the supported assignment surface.',
     },
     {
-      id: 'language/expressions/object/method-basic.js',
-      file: 'cases/unsupported/language/expressions/object/method-basic.js',
+      id: 'language/expressions/object/accessor-basic.js',
+      file: 'cases/unsupported/language/expressions/object/accessor-basic.js',
       errorKind: 'Validation',
-      messageIncludes: 'object literal methods are not supported in v1',
-      reason: 'Object literal methods are part of the documented exclusions.',
+      messageIncludes: 'object literal accessors are not supported in v1',
+      reason: 'Accessors remain outside the documented plain-object subset.',
     },
   ],
 };

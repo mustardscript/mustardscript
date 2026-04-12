@@ -524,6 +524,27 @@ const supportedProgramArbitraries = [
     `),
   fc
     .record({
+      value: finiteIntegerArbitrary,
+      step: finiteIntegerArbitrary,
+      label: smallStringArbitrary,
+    })
+    .map(({ value, step, label }) => `
+      const key = "value";
+      const extra = [${value}];
+      extra.label = ${JSON.stringify(label)};
+      const obj = {
+        alpha: ${step},
+        [key]: ${value},
+        total(amount) {
+          return this.alpha + this[key] + amount;
+        },
+        ...null,
+        ...extra,
+      };
+      ({ value: obj.value, zero: obj[0], label: obj.label, total: obj.total(${step}) });
+    `),
+  fc
+    .record({
       message: wordStringArbitrary,
     })
     .map(({ message }) => `

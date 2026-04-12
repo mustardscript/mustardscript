@@ -240,6 +240,13 @@ fn apply_validation_effect(
                 ..state
             }
         }
+        Instruction::CopyDataProperties => {
+            require_stack(2)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                ..state
+            }
+        }
         Instruction::CreateIterator => {
             require_stack(1)?;
             state
