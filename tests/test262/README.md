@@ -9,6 +9,9 @@ Rules for this subset:
   scope.
 - `pass` cases are expected to match both `jslite` and Node for the selected
   Node-parity subset.
+- pass fixtures belong under `cases/pass/**`; if a fixture is meant to pin a
+  specific machine-readable contract entry, `manifest.js` records that with a
+  `contractId`.
 - `unsupported` cases are explicit exclusions. Each one records a concrete
   reason instead of relying on accidental gaps.
 - Fixtures are organized under canonical-style `test262` paths so future

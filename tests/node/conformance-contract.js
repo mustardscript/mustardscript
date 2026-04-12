@@ -374,6 +374,12 @@ const FEATURE_CONTRACT = Object.freeze([
     coverage: [COVERAGE.EXISTING],
   },
   {
+    id: 'validation.logical-assignment-nullish',
+    title: 'logical assignment ??= matches Node nullish short-circuit assignment semantics',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.EXISTING],
+  },
+  {
     id: 'validation.tagged-templates',
     title: 'tagged templates are a validation reject',
     outcome: OUTCOME.VALIDATION_REJECT,

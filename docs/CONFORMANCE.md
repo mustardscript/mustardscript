@@ -87,6 +87,9 @@ timing flakes.
 The curated `test262` subset complements the generated layer:
 
 - `pass` fixtures are stable regression cases inside the Node-parity subset.
+- `pass` fixtures live under `tests/test262/cases/pass/**`; when a fixture pins a
+  specific machine-readable contract entry, the manifest records that link with
+  `contractId`.
 - `unsupported` fixtures are stable regression cases for explicit validator
   exclusions.
 

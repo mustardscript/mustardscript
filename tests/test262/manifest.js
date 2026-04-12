@@ -9,13 +9,21 @@ module.exports = {
     },
     {
       id: 'language/expressions/assignment/logical-or.js',
-      file: 'cases/unsupported/language/expressions/assignment/logical-or.js',
+      file: 'cases/pass/language/expressions/assignment/logical-or.js',
       expected: 1,
+      contractId: 'validation.logical-assignment-or',
     },
     {
       id: 'language/expressions/assignment/logical-and.js',
-      file: 'cases/unsupported/language/expressions/assignment/logical-and.js',
+      file: 'cases/pass/language/expressions/assignment/logical-and.js',
       expected: 2,
+      contractId: 'validation.logical-assignment-and',
+    },
+    {
+      id: 'language/expressions/assignment/nullish.js',
+      file: 'cases/pass/language/expressions/assignment/nullish.js',
+      expected: [7, 5, 11, 13],
+      contractId: 'validation.logical-assignment-nullish',
     },
     {
       id: 'language/expressions/optional-chaining/member-chain.js',
@@ -195,8 +203,9 @@ module.exports = {
     },
     {
       id: 'language/expressions/array/spread/basic.js',
-      file: 'cases/unsupported/language/expressions/array/spread/basic.js',
+      file: 'cases/pass/language/expressions/array/spread/basic.js',
       expected: [1, 2, 3],
+      contractId: 'language.array-spread',
     },
     {
       id: 'language/statements/function/recursion-factorial.js',

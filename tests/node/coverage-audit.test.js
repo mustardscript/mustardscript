@@ -84,6 +84,10 @@ const MANUAL_CONFORMANCE_BUCKETS = Object.freeze({
     file: 'tests/node/differential.test.js',
     pattern: 'logical assignment short-circuits and evaluates member targets once',
   },
+  'validation.logical-assignment-nullish': {
+    file: 'tests/node/builtins.test.js',
+    pattern: 'run applies nullish assignment only to nullish identifiers and members',
+  },
   'validation.default-parameters': {
     file: 'tests/node/language-gaps.test.js',
     pattern: 'run supports default parameters and default destructuring in parameter scope',
