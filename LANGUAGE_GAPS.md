@@ -84,9 +84,13 @@ missing:
 - Destructuring assignment is rejected during validation. Binding destructuring
   works in declarations, `catch` parameters, and the supported `for...of`
   surface.
-- `var` is rejected during validation. Only `let` and `const` are accepted.
+- `var` is rejected during validation. This is a deliberate v1 contract
+  decision: the runtime supports only lexical `let` / `const` bindings and
+  does not emulate hoisting or legacy redeclaration.
 - Update expressions are rejected during validation.
-- `delete` is rejected during validation.
+- `delete` is rejected during validation. Plain-object and array deletion stay
+  intentionally unsupported until own-property absence, sparse-array behavior,
+  and descriptor/configurability semantics are chosen explicitly.
 - `with` is unsupported.
 - `for...in` now works for plain objects and arrays only, using the same key
   order as `Object.keys(...)` and the same header surface as the documented
@@ -112,6 +116,9 @@ missing:
 - Binary operators are still limited. `**` and conservative `in` support now
   exist, but common generated operators such as `instanceof`, bitwise
   operators, and shift operators are rejected during validation.
+- `instanceof` is not blocked on a missing opcode alone. It remains deferred
+  until the runtime has explicit prototype-parent links and constructor
+  `.prototype` identities for the values that participate in the check.
 - Assignment operators are limited. Only `=`, `+=`, `-=`, `*=`, `/=`, and `??=`
   are implemented. Generated `||=`, `&&=`, `%=`, `**=`, and bitwise assignment
   forms are rejected during validation.
@@ -191,6 +198,9 @@ missing:
 - Full prototype semantics are still deferred, so codegen that relies on
   prototype inheritance, `instanceof`, or method dispatch through prototypes is
   outside the supported contract.
+- The missing prototype surface is deliberate rather than accidental: `jslite`
+  does not yet store guest-visible prototype-parent links or constructor
+  `.prototype` identities broadly enough to specify `instanceof`.
 - Accessors are unsupported, so generated getter and setter objects and classes
   are out of scope.
 
@@ -214,6 +224,13 @@ missing:
 - Default parameters and default destructuring now fail closed at validation.
   The older runtime-only fallback path is no longer reachable from validated
   source code.
+- `var` is not a temporary parser gap. The v1 contract deliberately keeps only
+  lexical bindings, so legacy hoisting and redeclaration behavior remain out of
+  scope.
+- `delete` is not a temporary parser gap. Plain-object and array deletion stay
+  rejected until the runtime deliberately chooses an absence/sparse-array model;
+  supported `Map.prototype.delete` and `Set.prototype.delete` methods are a
+  separate collection API surface.
 - `for...of` is narrower than full JavaScript: declaration headers still must
   declare exactly one `let` or `const` binding, destructuring assignment
   targets remain unsupported, and `for...in` is still limited to plain objects
@@ -224,6 +241,9 @@ missing:
 - `in` intentionally checks only the runtime's currently exposed property
   surface. It does not introduce full prototype walking, descriptor semantics,
   or a reflective `globalThis` mirror of every global binding.
+- `instanceof` remains intentionally rejected until the runtime exposes the
+  prototype chain and constructor links needed to specify it without implying
+  full class or descriptor semantics.
 - Array callback helpers and `Array.from` mapping fail closed when a callback
   would cause a synchronous host suspension.
 - `JSON.stringify` does not match normal JavaScript plain-object key order. The

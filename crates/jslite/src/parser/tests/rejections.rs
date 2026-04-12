@@ -85,6 +85,11 @@ fn rejects_delete_operator() {
 }
 
 #[test]
+fn rejects_delete_on_array_elements() {
+    assert_validation_reject("delete values[0];", "delete is not supported in v1");
+}
+
+#[test]
 fn rejects_for_of_destructuring_assignment_targets() {
     let error = compile("let value = 0; for ([value] of [[1], [2]]) { value; }")
         .expect_err("destructuring assignment-target for...of should fail closed");
@@ -120,6 +125,14 @@ fn rejects_var_declarations() {
 }
 
 #[test]
+fn rejects_function_scoped_var_declarations() {
+    assert_validation_reject(
+        "function wrap() { var value = 1; return value; }",
+        "only let and const are supported",
+    );
+}
+
+#[test]
 fn rejects_update_expressions() {
     assert_validation_reject(
         "let value = 1; value++;",
@@ -134,6 +147,14 @@ fn rejects_instanceof_operator() {
         error
             .to_string()
             .contains("unsupported binary operator in v1")
+    );
+}
+
+#[test]
+fn rejects_instanceof_with_guest_functions() {
+    assert_validation_reject(
+        "function Box() {} const value = {}; value instanceof Box;",
+        "unsupported binary operator in v1",
     );
 }
 

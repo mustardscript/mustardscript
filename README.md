@@ -455,6 +455,20 @@ Current function-call support is intentionally narrow:
   are rejected with validation diagnostics
 - `new` remains limited to the documented conservative built-in constructors
 
+Current legacy-binding and prototype-related exclusions are deliberate:
+
+- `var` is intentionally not part of the v1 contract. The runtime keeps only
+  lexical `let` / `const` bindings and does not emulate function/global
+  hoisting or legacy redeclaration rules.
+- the `delete` operator is intentionally unavailable for plain objects and
+  arrays. Supporting it would require explicit rules for own-property absence,
+  sparse arrays, and descriptor/configurability semantics; until then guest
+  code must rebuild values instead. This does not affect the supported
+  `Map.prototype.delete` and `Set.prototype.delete` methods.
+- `instanceof` is intentionally unavailable until the runtime has explicit
+  prototype-parent links plus constructor `.prototype` identities for the
+  values that participate in the check.
+
 Current keyed-collection support is intentionally narrow:
 
 - `new Map()` and `new Set()` accept the supported iterable surface

@@ -157,7 +157,7 @@ extensions are called out explicitly instead of being implied.
 ## Rejected With Validation Diagnostics
 
 - `import`, `export`, and dynamic `import()`
-- `delete`
+- `delete` for plain objects and arrays
 - default parameters
 - default destructuring
 - free `arguments`
@@ -187,17 +187,38 @@ extensions are called out explicitly instead of being implied.
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
 - default parameter evaluation
+- legacy `var` hoisting, same-scope redeclaration, and loop interaction rules
+- plain-object and array deletion semantics, including sparse-array behavior
 - symbol-based custom iterable protocol support
 - custom iterator authoring beyond the documented collection helpers
 - module loading
 - property descriptor semantics
 - full prototype semantics
+- the constructor/prototype links required for `instanceof`
 - accessors
 - symbols
 - typed arrays
 - full `Date` parity beyond the documented conservative subset
 - `Intl`
 - `Proxy`
+
+## Deliberate V1 Decisions
+
+- `var` is intentionally out of scope for v1. The supported binding surface is
+  lexical `let` / `const` only, so the runtime does not emulate function or
+  global hoisting, same-scope redeclaration, or legacy loop-scoping behavior.
+- The `delete` operator is intentionally out of scope for plain objects and
+  arrays. Supporting it would require an explicit model for own-property
+  absence, sparse arrays, JSON/host-boundary interactions, and whether
+  descriptor-level configurability exists at all. Until that broader model is
+  chosen, validation rejects every use of the language operator. This does not
+  affect the supported `Map.prototype.delete` and `Set.prototype.delete`
+  collection methods.
+- `instanceof` is intentionally out of scope until the runtime grows an
+  explicit prototype model. The minimum future model would need stored
+  prototype-parent links on the participating guest heap objects plus stable
+  constructor `.prototype` identities for the built-ins or guest functions
+  meant to participate in the check.
 
 ## Diagnostics and Tracebacks
 
