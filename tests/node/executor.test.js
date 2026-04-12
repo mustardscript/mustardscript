@@ -20,6 +20,17 @@ function buildExecutor(source, capabilities, options = {}) {
   });
 }
 
+function clonePersistedProgress(progress) {
+  return {
+    capability: progress.capability,
+    args: structuredClone(progress.args),
+    snapshot: Buffer.from(progress.snapshot),
+    snapshot_id: progress.snapshot_id,
+    snapshot_key_digest: progress.snapshot_key_digest,
+    token: progress.token,
+  };
+}
+
 test('executor runs queued jobs to completion', async () => {
   const executor = buildExecutor(
     `
@@ -192,4 +203,69 @@ test('executor honours cancellation requests for waiting jobs', async () => {
   const job = await executor.get('job-1');
   assert.equal(job.state, 'cancelled');
   assert.match(job.error.message, /execution cancelled/);
+});
+
+test('executor rejects waiting progress swapped across job ids', async () => {
+  class SwappedProgressStore extends InMemoryJsliteExecutorStore {
+    constructor() {
+      super();
+      this._capturedAttackerProgress = null;
+      this._attackerProgressReady = new Promise((resolve) => {
+        this._resolveAttackerProgress = resolve;
+      });
+      this._victimLoadAttempted = new Promise((resolve) => {
+        this._resolveVictimLoad = resolve;
+      });
+    }
+
+    async saveProgress(jobId, progress) {
+      await super.saveProgress(jobId, progress);
+      if (jobId === 'attacker' && this._capturedAttackerProgress === null) {
+        this._capturedAttackerProgress = clonePersistedProgress(progress);
+        this._resolveAttackerProgress();
+      }
+    }
+
+    async loadProgress(jobId) {
+      if (jobId === 'victim') {
+        await this._attackerProgressReady;
+        this._resolveVictimLoad();
+        return clonePersistedProgress(this._capturedAttackerProgress);
+      }
+      if (jobId === 'attacker') {
+        await this._victimLoadAttempted;
+      }
+      return super.loadProgress(jobId);
+    }
+  }
+
+  const executor = buildExecutor(
+    `
+      const response = fetch_data(seed);
+      response;
+    `,
+    {
+      fetch_data(value) {
+        return value.label;
+      },
+    },
+    {
+      compileOptions: { inputs: ['seed'] },
+      store: new SwappedProgressStore(),
+    },
+  );
+
+  await Promise.all([
+    executor.enqueue({ seed: { label: 'ATTACKER' } }, { jobId: 'attacker' }),
+    executor.enqueue({ seed: { label: 'VICTIM' } }, { jobId: 'victim' }),
+  ]);
+  await executor.runWorker({ drain: true, maxConcurrentJobs: 2 });
+
+  const attacker = await executor.get('attacker');
+  const victim = await executor.get('victim');
+
+  assert.equal(attacker.state, 'completed');
+  assert.equal(attacker.result, 'ATTACKER');
+  assert.equal(victim.state, 'failed');
+  assert.match(victim.error.message, /snapshot key digest/);
 });

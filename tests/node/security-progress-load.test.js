@@ -3,10 +3,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 
 const { Jslite, JsliteError, Progress } = require('../../index.js');
-const { loadNative } = require('../../native-loader.js');
+const {
+  loadNative,
+  localBinaryCandidates,
+  resolvePrebuiltPackage,
+} = require('../../native-loader.js');
 const { KNOWN_PROGRESS_POLICY_CACHE_LIMIT, snapshotToken } = require('../../lib/policy.js');
 
 const SNAPSHOT_KEY = Buffer.from('progress-security-test-key');
@@ -26,8 +33,10 @@ function replaceAllAscii(buffer, from, to) {
 
 function isSingleUseRuntimeError(error) {
   return (
-    error instanceof JsliteError &&
+    error &&
+    error.name === 'JsliteRuntimeError' &&
     error.kind === 'Runtime' &&
+    typeof error.message === 'string' &&
     error.message.includes('single-use')
   );
 }
@@ -51,6 +60,18 @@ function runWorker(script, workerData) {
       }
     });
   });
+}
+
+function resolveCurrentNativeBinaryPath() {
+  const localCandidates = localBinaryCandidates(path.join(__dirname, '..', '..'));
+  if (localCandidates.length > 0) {
+    return localCandidates[0];
+  }
+  const prebuilt = resolvePrebuiltPackage(path.join(__dirname, '..', '..'));
+  if (prebuilt) {
+    return prebuilt.binaryPath;
+  }
+  throw new Error('unable to resolve the current jslite native addon path');
 }
 
 test('progress load derives capability and args from the snapshot instead of caller metadata', () => {
@@ -273,6 +294,57 @@ test('progress load rejects already-consumed snapshots across same-process worke
   assert.match(message.withoutOptions, /single-use/);
   assert.equal(message.withOptions.name, 'JsliteRuntimeError');
   assert.match(message.withOptions.message, /single-use/);
+});
+
+test('progress load rejects already-consumed snapshots across duplicate package copies', () => {
+  const progress = new Jslite(`
+    const response = fetch_data(4);
+    response * 2;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  const dumped = progress.dump();
+  assert.equal(progress.resume(4), 8);
+
+  const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-dup-copy-'));
+  try {
+    fs.copyFileSync(
+      path.join(__dirname, '..', '..', 'index.js'),
+      path.join(packageRoot, 'index.js'),
+    );
+    fs.copyFileSync(
+      path.join(__dirname, '..', '..', 'native-loader.js'),
+      path.join(packageRoot, 'native-loader.js'),
+    );
+    fs.cpSync(path.join(__dirname, '..', '..', 'lib'), path.join(packageRoot, 'lib'), {
+      recursive: true,
+    });
+
+    const nativeBinaryPath = resolveCurrentNativeBinaryPath();
+    fs.copyFileSync(
+      nativeBinaryPath,
+      path.join(packageRoot, path.basename(nativeBinaryPath)),
+    );
+
+    const duplicateCopy = require(path.join(packageRoot, 'index.js'));
+    assert.throws(
+      () =>
+        duplicateCopy.Progress.load(dumped, {
+          snapshotKey: SNAPSHOT_KEY,
+          capabilities: {
+            fetch_data() {},
+          },
+          limits: {},
+        }),
+      isSingleUseRuntimeError,
+    );
+  } finally {
+    fs.rmSync(packageRoot, { recursive: true, force: true });
+  }
 });
 
 test('progress load rejects forged progress tokens', () => {

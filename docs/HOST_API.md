@@ -126,8 +126,9 @@ guest-only traceback with guest function names and source spans.
   blobs cannot be replayed into duplicated side effects after the real resume
   already happened.
 - Consumed progress tokens stay burned for the lifetime of the current process,
-  including across `worker_threads`, so unrelated same-process progress churn
-  cannot make an old dumped snapshot replayable again.
+  including across `worker_threads` and duplicate physical package/addon copies
+  in the same PID, so unrelated same-process progress churn cannot make an old
+  dumped snapshot replayable again.
 - `Progress.dump()` includes detached `snapshot_id`, `snapshot_key_digest`, and
   `token` metadata authenticated by the configured `snapshotKey`, and
   `Progress.load()` verifies that bundle before trusting the dumped snapshot

@@ -103,6 +103,49 @@ fn inspect_snapshot_derives_metadata_and_rejects_unauthorized_capabilities() {
 }
 
 #[test]
+fn loaded_snapshots_reject_closure_retained_capabilities_outside_restore_policy() {
+    let program = compile(
+        r#"
+            function helper() {}
+            helper.backdoor = drop_table;
+            const value = fetch_data(1);
+            helper.backdoor("boom");
+        "#,
+    )
+    .expect("source should compile");
+    let step = start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string(), "drop_table".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("program should suspend");
+    let snapshot = match step {
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+        ExecutionStep::Suspended(suspension) => suspension.snapshot,
+    };
+
+    let error = resume_with_options(
+        snapshot,
+        ResumePayload::Value(number(1.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(snapshot_policy(&["fetch_data"], RuntimeLimits::default())),
+        },
+    )
+    .expect_err("restore policy should reject hidden unauthorized capabilities");
+    assert!(
+        error
+            .to_string()
+            .contains("snapshot policy rejected unauthorized capability `drop_table`"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
 fn forged_snapshots_cannot_switch_to_unauthorized_capabilities() {
     let mut bytes = serialized_suspension(
         "const first = fetch_data(1); const second = fetch_data(2); [first, second];",

@@ -8,6 +8,17 @@ where
         visit(&cell.value)?;
     }
     for object in runtime.objects.values() {
+        match &object.kind {
+            ObjectKind::FunctionPrototype(constructor) => visit(constructor)?,
+            ObjectKind::BoundFunction(bound) => {
+                visit(&bound.target)?;
+                visit(&bound.this_value)?;
+                for value in &bound.args {
+                    visit(value)?;
+                }
+            }
+            _ => {}
+        }
         for value in object.properties.values() {
             visit(value)?;
         }
@@ -28,6 +39,15 @@ where
     }
     for set in runtime.sets.values() {
         for value in &set.entries {
+            visit(value)?;
+        }
+    }
+    for closure in runtime.closures.values() {
+        visit(&closure.this_value)?;
+        if let Some(prototype) = closure.prototype {
+            visit(&Value::Object(prototype))?;
+        }
+        for value in closure.properties.values() {
             visit(value)?;
         }
     }
