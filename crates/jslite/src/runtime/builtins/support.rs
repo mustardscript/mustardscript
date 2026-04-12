@@ -46,6 +46,54 @@ pub(super) fn parse_date_timestamp_ms(value: &str) -> f64 {
         .unwrap_or(f64::NAN)
 }
 
+pub(super) fn date_time_from_timestamp_ms(timestamp_ms: f64) -> Option<OffsetDateTime> {
+    if !timestamp_ms.is_finite() {
+        return None;
+    }
+    let timestamp_ms = timestamp_ms.trunc();
+    if timestamp_ms < (i128::MIN / 1_000_000) as f64
+        || timestamp_ms > (i128::MAX / 1_000_000) as f64
+    {
+        return None;
+    }
+    OffsetDateTime::from_unix_timestamp_nanos(timestamp_ms as i128 * 1_000_000).ok()
+}
+
+pub(super) fn format_iso_datetime(timestamp_ms: f64) -> Option<String> {
+    let datetime = date_time_from_timestamp_ms(timestamp_ms)?;
+    Some(format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+        datetime.year(),
+        datetime.month() as u8,
+        datetime.day(),
+        datetime.hour(),
+        datetime.minute(),
+        datetime.second(),
+        datetime.millisecond(),
+    ))
+}
+
+pub(super) fn format_en_us_number_grouped(integer: &str) -> String {
+    let mut chars = integer.chars().collect::<Vec<_>>();
+    let negative = matches!(chars.first(), Some('-'));
+    if negative {
+        chars.remove(0);
+    }
+    let mut grouped = String::new();
+    for (index, ch) in chars.iter().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(*ch);
+    }
+    let grouped = grouped.chars().rev().collect::<String>();
+    if negative {
+        format!("-{grouped}")
+    } else {
+        grouped
+    }
+}
+
 pub(super) fn clamp_index(index: i64, len: usize) -> usize {
     if index < 0 {
         0

@@ -782,7 +782,9 @@ impl Runtime {
                 | BuiltinFunction::RangeErrorCtor
                 | BuiltinFunction::NumberCtor
                 | BuiltinFunction::StringCtor
-                | BuiltinFunction::BooleanCtor,
+                | BuiltinFunction::BooleanCtor
+                | BuiltinFunction::IntlDateTimeFormatCtor
+                | BuiltinFunction::IntlNumberFormatCtor,
             ) => match callee {
                 Value::BuiltinFunction(BuiltinFunction::MapCtor) => self.construct_map(args),
                 Value::BuiltinFunction(BuiltinFunction::SetCtor) => self.construct_set(args),
@@ -795,6 +797,12 @@ impl Runtime {
                 Value::BuiltinFunction(BuiltinFunction::StringCtor) => self.construct_string(args),
                 Value::BuiltinFunction(BuiltinFunction::BooleanCtor) => {
                     self.construct_boolean(args)
+                }
+                Value::BuiltinFunction(BuiltinFunction::IntlDateTimeFormatCtor) => {
+                    self.construct_intl_date_time_format(args)
+                }
+                Value::BuiltinFunction(BuiltinFunction::IntlNumberFormatCtor) => {
+                    self.construct_intl_number_format(args)
                 }
                 Value::BuiltinFunction(kind) => self.call_builtin(kind, Value::Undefined, args),
                 _ => unreachable!(),

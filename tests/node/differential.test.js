@@ -228,6 +228,47 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'Date Number string reverse-array and Intl helpers',
+    source: `
+      const date = new Date("2026-04-10T14:05:06.789Z");
+      const currency = Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      ({
+        iso: date.toISOString(),
+        utc: [
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          date.getUTCHours(),
+          date.getUTCMinutes(),
+          date.getUTCSeconds(),
+        ],
+        parsedInt: Number.parseInt("  -0x10"),
+        parsedFloat: Number.parseFloat("  -10.25ms"),
+        isNaN: Number.isNaN(0 / 0),
+        isFinite: Number.isFinite(12.5),
+        trimStart: "  padded  ".trimStart(),
+        trimEnd: "  padded  ".trimEnd(),
+        padStart: "7".padStart(3, "0"),
+        padEnd: "7".padEnd(3, "0"),
+        reduceRight: [1, 2, 3].reduceRight((acc, value) => acc + ":" + value, "tail"),
+        findLast: [1, 2, 3, 4].findLast((value) => value % 2 === 0),
+        findLastIndex: [1, 2, 3, 4].findLastIndex((value) => value % 2 === 0),
+        intlDate: Intl.DateTimeFormat("en-US", {
+          timeZone: "UTC",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(date),
+        intlCurrency: currency.format(1234.5),
+      });
+    `,
+  },
+  {
     name: 'sparse array holes across helpers and JSON',
     source: `
       const values = [1, , undefined, 4];

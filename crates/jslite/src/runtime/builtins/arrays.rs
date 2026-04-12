@@ -951,4 +951,147 @@ impl Runtime {
         }
         Ok(accumulator)
     }
+
+    pub(crate) fn call_array_reduce_right(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "reduceRight")?;
+        let callback = args.first().cloned().unwrap_or(Value::Undefined);
+        if !is_callable(&callback) {
+            return Err(JsliteError::runtime(
+                "TypeError: Array.prototype.reduceRight expects a callable callback",
+            ));
+        }
+        let this_arg = Value::Undefined;
+        let length = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .len();
+        let (mut accumulator, mut index) = match args.get(1).cloned() {
+            Some(initial) => (initial, length as isize - 1),
+            None => {
+                let Some(found_index) = (0..length).rev().find(|index| {
+                    self.array_has_index(array, *index)
+                        .expect("array existence should be stable during reduceRight")
+                }) else {
+                    return Err(JsliteError::runtime(
+                        "TypeError: Array.prototype.reduceRight requires an initial value for empty arrays",
+                    ));
+                };
+                (
+                    self.array_callback_value(array, found_index)?,
+                    found_index as isize - 1,
+                )
+            }
+        };
+        while index >= 0 {
+            let current_index = index as usize;
+            self.charge_native_helper_work(1)?;
+            if self.array_has_index(array, current_index)? {
+                let value = self.array_callback_value(array, current_index)?;
+                accumulator = self.with_temporary_roots(
+                    &[
+                        Value::Array(array),
+                        callback.clone(),
+                        this_arg.clone(),
+                        accumulator.clone(),
+                    ],
+                    |runtime| {
+                        runtime.call_array_callback(
+                            callback.clone(),
+                            this_arg.clone(),
+                            &[
+                                accumulator.clone(),
+                                value,
+                                Value::Number(current_index as f64),
+                                Value::Array(array),
+                            ],
+                        )
+                    },
+                )?;
+            }
+            index -= 1;
+        }
+        Ok(accumulator)
+    }
+
+    pub(crate) fn call_array_find_last(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "findLast")?;
+        let (callback, this_arg) = self.array_callback(args, "findLast")?;
+        let length = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .len();
+        for index in (0..length).rev() {
+            self.charge_native_helper_work(1)?;
+            if !self.array_has_index(array, index)? {
+                continue;
+            }
+            let value = self.array_callback_value(array, index)?;
+            let found = self.with_temporary_roots(
+                &[Value::Array(array), callback.clone(), this_arg.clone()],
+                |runtime| {
+                    runtime.call_array_callback(
+                        callback.clone(),
+                        this_arg.clone(),
+                        &[
+                            value.clone(),
+                            Value::Number(index as f64),
+                            Value::Array(array),
+                        ],
+                    )
+                },
+            )?;
+            if is_truthy(&found) {
+                return Ok(value);
+            }
+        }
+        Ok(Value::Undefined)
+    }
+
+    pub(crate) fn call_array_find_last_index(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "findLastIndex")?;
+        let (callback, this_arg) = self.array_callback(args, "findLastIndex")?;
+        let length = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .len();
+        for index in (0..length).rev() {
+            self.charge_native_helper_work(1)?;
+            if !self.array_has_index(array, index)? {
+                continue;
+            }
+            let value = self.array_callback_value(array, index)?;
+            let found = self.with_temporary_roots(
+                &[Value::Array(array), callback.clone(), this_arg.clone()],
+                |runtime| {
+                    runtime.call_array_callback(
+                        callback.clone(),
+                        this_arg.clone(),
+                        &[value, Value::Number(index as f64), Value::Array(array)],
+                    )
+                },
+            )?;
+            if is_truthy(&found) {
+                return Ok(Value::Number(index as f64));
+            }
+        }
+        Ok(Value::Number(-1.0))
+    }
 }

@@ -239,6 +239,16 @@ const DOCUMENTED_BUILTIN_COVERAGE = Object.freeze({
       pattern: 'primitive and error constructors expose the documented built-in surface',
     },
   ],
+  '`Intl`': [
+    {
+      file: 'tests/node/builtins.test.js',
+      pattern: 'run supports a narrow Intl DateTimeFormat and NumberFormat subset',
+    },
+    {
+      file: 'tests/node/builtins.test.js',
+      pattern: 'Intl and new helper additions fail closed for unsupported options and invalid callbacks',
+    },
+  ],
   '`Date`': [
     {
       file: 'tests/node/builtins.test.js',
@@ -517,10 +527,6 @@ test('documented unsupported classes map to conformance reject entries with phas
     {
       snippet: '- typed arrays',
       ids: ['runtime.typed-arrays'],
-    },
-    {
-      snippet: '- `Intl`',
-      ids: ['runtime.intl'],
     },
     {
       snippet: '- `Proxy`',

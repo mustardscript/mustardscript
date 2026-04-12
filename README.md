@@ -46,8 +46,11 @@ The current implementation already supports:
 - conservative array, string, object, and Math helper methods, including
   callback-driven array helpers, iterable normalization helpers, and
   string-pattern search/replacement helpers
-- a conservative `Date` subset with `Date.now()` plus
-  `new Date(value).getTime()` for realistic SLA and freshness checks
+- a conservative `Date` subset with UTC formatting/access helpers plus
+  `Date.now()` and `new Date(value).getTime()` for realistic SLA and
+  freshness checks
+- narrow `Intl.DateTimeFormat` and `Intl.NumberFormat` support for explicit
+  `en-US` / `UTC` formatting without widening the ambient runtime surface
 - `throw`, `try`/`catch`/`finally`, and guest-visible `Error` objects
 - `Math` and `JSON` built-ins
 - explicit named host capabilities with `start()` / `resume()` suspension,
@@ -349,7 +352,7 @@ JavaScript.
 - `WeakMap`, `WeakSet`
 - Typed arrays, `ArrayBuffer`, shared memory, and atomics
 - Full `Date` parity beyond the documented conservative subset
-- `Intl`
+- Full `Intl` parity beyond the documented conservative subset
 - `Proxy`
 - Full `RegExp` parity
 - Full property descriptor semantics
@@ -394,6 +397,7 @@ Currently implemented built-ins:
 - `RangeError`
 - `Number`
 - `Boolean`
+- `Intl`
 - `Math`
 - `JSON`
 - A placeholder `console` global object
@@ -436,10 +440,12 @@ Current built-in helper support is intentionally conservative:
 
 - arrays support `push`, `pop`, `slice`, `join`, `includes`, `indexOf`,
   `values`, `keys`, `entries`, `forEach`, `map`, `filter`, `find`,
-  `findIndex`, `some`, `every`, and `reduce`
-- strings support `trim`, `includes`, `startsWith`, `endsWith`, `slice`,
-  `substring`, `toLowerCase`, `toUpperCase`, `split`, `replace`,
-  `replaceAll`, `search`, and `match`
+  `findIndex`, `findLast`, `findLastIndex`, `some`, `every`, `reduce`, and
+  `reduceRight`
+- strings support `trim`, `trimStart`, `trimEnd`, `includes`, `startsWith`,
+  `endsWith`, `slice`, `substring`, `toLowerCase`, `toUpperCase`,
+  `padStart`, `padEnd`, `split`, `replace`, `replaceAll`, `search`, and
+  `match`
 - `Array(...)` and `new Array(...)` follow JavaScript's single-length
   constructor behavior for one numeric argument and reject invalid lengths
   with `RangeError`
@@ -449,8 +455,14 @@ Current built-in helper support is intentionally conservative:
   support plain objects, arrays, supported callables, and conservative boxed
   strings
 - `Math.pow`, `Math.sqrt`, `Math.trunc`, and `Math.sign` are supported
-- `Date.now()` and `new Date(value).getTime()` return integral epoch
-  milliseconds
+- `Date.now()`, `new Date(value).getTime()`, `Date.prototype.toISOString()`,
+  `Date.prototype.toJSON()`, and the documented UTC field accessors are
+  supported
+- `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`, and
+  `Number.isFinite` are supported
+- `Intl.DateTimeFormat` and `Intl.NumberFormat` are available in a narrow
+  `en-US` / `UTC` subset with explicit fail-closed behavior for unsupported
+  locales and options
 - array callback helpers currently support guest callbacks, built-in callbacks,
   and async host callbacks reached from an async guest boundary; synchronous
   host suspensions from those helpers fail closed
