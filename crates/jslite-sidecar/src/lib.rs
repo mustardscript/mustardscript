@@ -20,8 +20,8 @@ enum Request {
     Resume {
         id: u64,
         snapshot_base64: String,
-        policy: SnapshotPolicyDto,
-        payload: ResumeDto,
+        policy: Box<SnapshotPolicyDto>,
+        payload: Box<ResumeDto>,
     },
 }
 
@@ -70,7 +70,7 @@ fn handle(request: Request) -> Response {
             ..
         } => (|| {
             let snapshot_bytes = decode_base64(&snapshot_base64)?;
-            let step = resume_program(&snapshot_bytes, payload, policy, None)?;
+            let step = resume_program(&snapshot_bytes, *payload, *policy, None)?;
             Ok(ResponsePayload::Step { step })
         })(),
     };

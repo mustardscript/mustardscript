@@ -146,6 +146,52 @@ test('direct JSON.stringify returns respect the heap limit before crossing the h
   );
 });
 
+test('bare string capability results respect the heap limit before crossing the host boundary', async () => {
+  await assert.rejects(
+    runtime('fetch_data();').run({
+      capabilities: {
+        fetch_data() {
+          return 'x'.repeat(5_000_000);
+        },
+      },
+      limits: {
+        heapLimitBytes: 50_000,
+        allocationBudget: 1_000_000,
+        instructionBudget: 10_000_000,
+        callDepthLimit: 1_000,
+        maxOutstandingHostCalls: 1,
+      },
+    }),
+    isJsliteError({
+      kind: 'Limit',
+      message: /heap limit exceeded/,
+    }),
+  );
+});
+
+test('bare string resume payloads respect the heap limit before crossing the host boundary', () => {
+  const progress = runtime('fetch_data();').start({
+    capabilities: {
+      fetch_data() {},
+    },
+    limits: {
+      heapLimitBytes: 50_000,
+      allocationBudget: 1_000_000,
+      instructionBudget: 10_000_000,
+      callDepthLimit: 1_000,
+      maxOutstandingHostCalls: 1,
+    },
+  });
+
+  assert.throws(
+    () => progress.resume('x'.repeat(5_000_000)),
+    isJsliteError({
+      kind: 'Limit',
+      message: /heap limit exceeded/,
+    }),
+  );
+});
+
 test('resume payloads charge instruction budget during structured boundary conversion', () => {
   const progress = runtime('fetch_data(); 0;').start({
     capabilities: {

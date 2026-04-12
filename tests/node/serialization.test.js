@@ -1,11 +1,13 @@
 'use strict';
 
 const { assert, isJsliteError, Jslite, Progress, runtime, test } = require('./support/helpers.js');
-const { snapshotToken } = require('../../lib/policy.js');
+const { snapshotKeyDigest } = require('../../lib/policy.js');
 
 const SNAPSHOT_KEY = Buffer.from('serialization-test-key');
 const INVALID_SNAPSHOT = Buffer.from('not-a-valid-snapshot');
-const INVALID_SNAPSHOT_TOKEN = snapshotToken(INVALID_SNAPSHOT, SNAPSHOT_KEY);
+const INVALID_SNAPSHOT_TOKEN = 'invalid-snapshot-token';
+const INVALID_SNAPSHOT_ID = 'invalid-snapshot-id';
+const INVALID_SNAPSHOT_KEY_DIGEST = snapshotKeyDigest(SNAPSHOT_KEY);
 
 test('progress load surfaces snapshot failures as typed errors', () => {
   assert.throws(
@@ -13,6 +15,8 @@ test('progress load surfaces snapshot failures as typed errors', () => {
       Progress.load(
         {
           snapshot: INVALID_SNAPSHOT,
+          snapshot_id: INVALID_SNAPSHOT_ID,
+          snapshot_key_digest: INVALID_SNAPSHOT_KEY_DIGEST,
           token: INVALID_SNAPSHOT_TOKEN,
         },
         {
@@ -35,6 +39,8 @@ test('serialization errors do not leak host internals', () => {
       Progress.load(
         {
           snapshot: INVALID_SNAPSHOT,
+          snapshot_id: INVALID_SNAPSHOT_ID,
+          snapshot_key_digest: INVALID_SNAPSHOT_KEY_DIGEST,
           token: INVALID_SNAPSHOT_TOKEN,
         },
         {

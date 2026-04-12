@@ -49,6 +49,10 @@ pub struct SnapshotPolicyDto {
     pub snapshot_key_base64: Option<String>,
     #[serde(default)]
     pub snapshot_token: Option<String>,
+    #[serde(default)]
+    pub snapshot_id: Option<String>,
+    #[serde(default)]
+    pub snapshot_key_digest: Option<String>,
 }
 
 impl SnapshotPolicyDto {

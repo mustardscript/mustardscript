@@ -34,7 +34,10 @@ impl Runtime {
                 ));
             }
             StructuredValue::Bool(value) => Value::Bool(value),
-            StructuredValue::String(value) => Value::String(value),
+            StructuredValue::String(value) => {
+                self.ensure_heap_capacity(value.len())?;
+                Value::String(value)
+            }
             StructuredValue::Number(number) => Value::Number(number.to_f64()),
             StructuredValue::Array(items) => {
                 let mut values = Vec::with_capacity(items.len());
@@ -84,7 +87,10 @@ impl Runtime {
                     "BigInt values cannot cross the structured host boundary",
                 ));
             }
-            Value::String(value) => StructuredValue::String(value),
+            Value::String(value) => {
+                self.ensure_heap_capacity(value.len())?;
+                StructuredValue::String(value)
+            }
             Value::Array(array) => {
                 if !traversal.active_arrays.insert(array) {
                     return Err(structured_boundary_cycle_error());
