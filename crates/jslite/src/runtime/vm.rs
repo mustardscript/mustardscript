@@ -1,0 +1,617 @@
+use super::*;
+
+impl Runtime {
+    pub(super) fn run_root(&mut self) -> JsliteResult<ExecutionStep> {
+        self.check_cancellation()?;
+        self.collect_garbage()?;
+        self.check_call_depth()?;
+        let root_env = self.new_env(Some(self.globals))?;
+        self.push_frame(self.program.root, root_env, &[], Value::Undefined, None)?;
+        self.run()
+    }
+
+    pub(super) fn step_active_frame(&mut self) -> JsliteResult<StepAction> {
+        let frame_index = self
+            .frames
+            .len()
+            .checked_sub(1)
+            .ok_or_else(|| JsliteError::runtime("vm lost all frames"))?;
+        let function_id = self.frames[frame_index].function_id;
+        let ip = self.frames[frame_index].ip;
+        let instruction = self
+            .program
+            .functions
+            .get(function_id)
+            .and_then(|function| function.code.get(ip))
+            .cloned()
+            .ok_or_else(|| JsliteError::runtime("instruction pointer out of range"))?;
+        self.frames[frame_index].ip += 1;
+        self.bump_instruction_budget()?;
+        self.collect_garbage_before_instruction(&instruction)?;
+        match instruction {
+            Instruction::PushUndefined => {
+                self.frames[frame_index].stack.push(Value::Undefined);
+            }
+            Instruction::PushNull => self.frames[frame_index].stack.push(Value::Null),
+            Instruction::PushBool(value) => self.frames[frame_index].stack.push(Value::Bool(value)),
+            Instruction::PushNumber(value) => {
+                self.frames[frame_index].stack.push(Value::Number(value))
+            }
+            Instruction::PushString(value) => {
+                self.frames[frame_index].stack.push(Value::String(value))
+            }
+            Instruction::PushRegExp { pattern, flags } => {
+                let value = self.make_regexp_value(pattern, flags)?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::LoadName(name) => {
+                let env = self.frames[frame_index].env;
+                let value = self.lookup_name(env, &name)?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::StoreName(name) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let env = self.frames[frame_index].env;
+                self.assign_name(env, &name, value.clone())?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::InitializePattern(pattern) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let env = self.frames[frame_index].env;
+                self.initialize_pattern(env, &pattern, value)?;
+            }
+            Instruction::PushEnv => {
+                let current_env = self.frames[frame_index].env;
+                let env = self.new_env(Some(current_env))?;
+                self.frames[frame_index].scope_stack.push(current_env);
+                self.frames[frame_index].env = env;
+            }
+            Instruction::PopEnv => {
+                let restored = self.frames[frame_index]
+                    .scope_stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("scope stack underflow"))?;
+                self.frames[frame_index].env = restored;
+            }
+            Instruction::DeclareName { name, mutable } => {
+                let env = self.frames[frame_index].env;
+                self.declare_name(env, name, mutable)?;
+            }
+            Instruction::MakeClosure { function_id } => {
+                let env = self.frames[frame_index].env;
+                let closure = self.insert_closure(function_id, env)?;
+                self.frames[frame_index].stack.push(Value::Closure(closure));
+            }
+            Instruction::MakeArray { count } => {
+                let values = pop_many(&mut self.frames[frame_index].stack, count)?;
+                let array = self.insert_array(values, IndexMap::new())?;
+                self.frames[frame_index].stack.push(Value::Array(array));
+            }
+            Instruction::MakeObject { keys } => {
+                let values = pop_many(&mut self.frames[frame_index].stack, keys.len())?;
+                let mut properties = IndexMap::new();
+                for (key, value) in keys.into_iter().zip(values.into_iter()) {
+                    properties.insert(property_name_to_key(&key), value);
+                }
+                let object = self.insert_object(properties, ObjectKind::Plain)?;
+                self.frames[frame_index].stack.push(Value::Object(object));
+            }
+            Instruction::CreateIterator => {
+                let iterable = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let iterator = self.create_iterator(iterable)?;
+                self.frames[frame_index].stack.push(iterator);
+            }
+            Instruction::IteratorNext => {
+                let iterator = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let (value, done) = self.iterator_next(iterator)?;
+                self.frames[frame_index].stack.push(value);
+                self.frames[frame_index].stack.push(Value::Bool(done));
+            }
+            Instruction::GetPropStatic { name, optional } => {
+                let object = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let value = self.get_property(object, Value::String(name), optional)?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::GetPropComputed { optional } => {
+                let property = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let object = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let value = self.get_property(object, property, optional)?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::SetPropStatic { name } => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let object = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                self.set_property(object, Value::String(name), value.clone())?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::SetPropComputed => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let property = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let object = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                self.set_property(object, property, value.clone())?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::Unary(operator) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let result = self.apply_unary(operator, value)?;
+                self.frames[frame_index].stack.push(result);
+            }
+            Instruction::Binary(operator) => {
+                let right = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let left = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let result = self.apply_binary(operator, left, right)?;
+                self.frames[frame_index].stack.push(result);
+            }
+            Instruction::Pop => {
+                self.frames[frame_index].stack.pop();
+            }
+            Instruction::Dup => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::Dup2 => {
+                let len = self.frames[frame_index].stack.len();
+                if len < 2 {
+                    return Err(JsliteError::runtime("stack underflow"));
+                }
+                let a = self.frames[frame_index].stack[len - 2].clone();
+                let b = self.frames[frame_index].stack[len - 1].clone();
+                self.frames[frame_index].stack.push(a);
+                self.frames[frame_index].stack.push(b);
+            }
+            Instruction::PushHandler { catch, finally } => {
+                let frame = &mut self.frames[frame_index];
+                frame.handlers.push(ExceptionHandler {
+                    catch,
+                    finally,
+                    env: frame.env,
+                    scope_stack_len: frame.scope_stack.len(),
+                    stack_len: frame.stack.len(),
+                });
+            }
+            Instruction::PopHandler => {
+                self.frames[frame_index]
+                    .handlers
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("handler stack underflow"))?;
+            }
+            Instruction::EnterFinally { exit } => {
+                let completion_index = self.frames[frame_index]
+                    .pending_completions
+                    .len()
+                    .checked_sub(1)
+                    .ok_or_else(|| JsliteError::runtime("missing pending completion"))?;
+                self.frames[frame_index]
+                    .active_finally
+                    .push(ActiveFinallyState {
+                        completion_index,
+                        exit,
+                    });
+            }
+            Instruction::BeginCatch => {
+                let value = self.frames[frame_index]
+                    .pending_exception
+                    .take()
+                    .ok_or_else(|| JsliteError::runtime("missing pending exception"))?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::Throw { span } => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                return self.raise_exception(value, Some(span));
+            }
+            Instruction::PushPendingJump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+            } => {
+                self.store_completion(
+                    frame_index,
+                    CompletionRecord::Jump {
+                        target,
+                        target_handler_depth,
+                        target_scope_depth,
+                    },
+                )?;
+            }
+            Instruction::PushPendingReturn => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                self.store_completion(frame_index, CompletionRecord::Return(value))?;
+            }
+            Instruction::PushPendingThrow => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                self.store_completion(frame_index, CompletionRecord::Throw(value))?;
+            }
+            Instruction::ContinuePending => {
+                let marker = self.frames[frame_index]
+                    .active_finally
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("missing active finally state"))?;
+                if marker.completion_index >= self.frames[frame_index].pending_completions.len() {
+                    return Err(JsliteError::runtime(
+                        "active finally references missing completion",
+                    ));
+                }
+                let completion = self.frames[frame_index]
+                    .pending_completions
+                    .remove(marker.completion_index);
+                return self.resume_completion(completion);
+            }
+            Instruction::Jump(target) => self.frames[frame_index].ip = target,
+            Instruction::JumpIfFalse(target) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                if !is_truthy(&value) {
+                    self.frames[frame_index].ip = target;
+                }
+            }
+            Instruction::JumpIfTrue(target) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                if is_truthy(&value) {
+                    self.frames[frame_index].ip = target;
+                }
+            }
+            Instruction::JumpIfNullish(target) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                if matches!(value, Value::Null | Value::Undefined) {
+                    self.frames[frame_index].ip = target;
+                }
+            }
+            Instruction::Call {
+                argc,
+                with_this,
+                optional,
+            } => {
+                let args = pop_many(&mut self.frames[frame_index].stack, argc)?;
+                let callee = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let this_value = if with_this {
+                    self.frames[frame_index]
+                        .stack
+                        .pop()
+                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?
+                } else {
+                    Value::Undefined
+                };
+                if optional && matches!(callee, Value::Undefined | Value::Null) {
+                    self.frames[frame_index].stack.push(Value::Undefined);
+                    return Ok(StepAction::Continue);
+                }
+                match self.call_callable(callee, this_value, &args)? {
+                    RunState::Completed(value) => {
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    RunState::PushedFrame => {}
+                    RunState::StartedAsync(value) => {
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    RunState::Suspended {
+                        capability,
+                        args,
+                        resume_behavior,
+                    } => {
+                        self.pending_resume_behavior = resume_behavior;
+                        return Ok(StepAction::Return(ExecutionStep::Suspended(Box::new(
+                            Suspension {
+                                capability,
+                                args,
+                                snapshot: ExecutionSnapshot {
+                                    runtime: self.clone(),
+                                },
+                            },
+                        ))));
+                    }
+                }
+            }
+            Instruction::Await => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                self.suspend_async_await(value)?;
+            }
+            Instruction::Construct { argc } => {
+                let args = pop_many(&mut self.frames[frame_index].stack, argc)?;
+                let callee = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let value = self.construct(callee, &args)?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::Return => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .unwrap_or(Value::Undefined);
+                return self.complete_return(value);
+            }
+        }
+        Ok(StepAction::Continue)
+    }
+
+    pub(super) fn run(&mut self) -> JsliteResult<ExecutionStep> {
+        loop {
+            self.check_cancellation()
+                .map_err(|error| self.annotate_runtime_error(error))?;
+            if self.frames.is_empty() {
+                match self.process_idle_state() {
+                    Ok(Some(step)) => return Ok(step),
+                    Ok(None) => continue,
+                    Err(error) => return Err(self.annotate_runtime_error(error)),
+                }
+            }
+            let action = match self.step_active_frame() {
+                Ok(action) => action,
+                Err(error) => match self.handle_runtime_fault(error) {
+                    Ok(action) => action,
+                    Err(error) => return Err(self.annotate_runtime_error(error)),
+                },
+            };
+
+            match action {
+                StepAction::Continue => {}
+                StepAction::Return(step) => return Ok(step),
+            }
+        }
+    }
+
+    pub(super) fn run_until_frame_depth(&mut self, target_depth: usize) -> JsliteResult<()> {
+        while self.frames.len() > target_depth {
+            self.check_cancellation()?;
+            let action = match self.step_active_frame() {
+                Ok(action) => action,
+                Err(error) => self.handle_runtime_fault(error)?,
+            };
+            match action {
+                StepAction::Continue => {}
+                StepAction::Return(ExecutionStep::Suspended(_)) => {
+                    return Err(JsliteError::runtime(
+                        "TypeError: array callback helpers do not support synchronous host suspensions",
+                    ));
+                }
+                StepAction::Return(ExecutionStep::Completed(_)) => {
+                    return Err(JsliteError::runtime(
+                        "nested callback execution unexpectedly completed the program",
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn check_call_depth(&self) -> JsliteResult<()> {
+        if self.frames.len() >= self.limits.call_depth_limit {
+            return Err(limit_error("call depth limit exceeded"));
+        }
+        Ok(())
+    }
+
+    pub(super) fn push_frame(
+        &mut self,
+        function_id: usize,
+        env: EnvKey,
+        args: &[Value],
+        this_value: Value,
+        async_promise: Option<PromiseKey>,
+    ) -> JsliteResult<()> {
+        self.check_call_depth()?;
+        let (params, rest) = self
+            .program
+            .functions
+            .get(function_id)
+            .map(|function| (function.params.clone(), function.rest.clone()))
+            .ok_or_else(|| JsliteError::runtime("function not found"))?;
+        let this_cell = self.insert_cell(this_value, true, true)?;
+        self.envs
+            .get_mut(env)
+            .ok_or_else(|| JsliteError::runtime("environment missing"))?
+            .bindings
+            .insert("this".to_string(), this_cell);
+        self.refresh_env_accounting(env)?;
+        for pattern in &params {
+            for (name, _) in pattern_bindings(pattern) {
+                self.declare_name(env, name, true)?;
+            }
+        }
+        for (index, pattern) in params.iter().enumerate() {
+            let arg = args.get(index).cloned().unwrap_or(Value::Undefined);
+            self.initialize_pattern(env, pattern, arg)?;
+        }
+        if let Some(rest) = &rest {
+            for (name, _) in pattern_bindings(rest) {
+                self.declare_name(env, name, true)?;
+            }
+            let rest_array = self.insert_array(
+                args.iter().skip(params.len()).cloned().collect(),
+                IndexMap::new(),
+            )?;
+            self.initialize_pattern(env, rest, Value::Array(rest_array))?;
+        }
+        self.frames.push(Frame {
+            function_id,
+            ip: 0,
+            env,
+            scope_stack: Vec::new(),
+            stack: Vec::new(),
+            handlers: Vec::new(),
+            pending_exception: None,
+            pending_completions: Vec::new(),
+            active_finally: Vec::new(),
+            async_promise,
+        });
+        Ok(())
+    }
+
+    pub(super) fn call_callable(
+        &mut self,
+        callee: Value,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<RunState> {
+        match callee {
+            Value::Closure(closure) => {
+                let closure = self
+                    .closures
+                    .get(closure)
+                    .cloned()
+                    .ok_or_else(|| JsliteError::runtime("closure not found"))?;
+                let env = self.new_env(Some(closure.env))?;
+                let (is_async, is_arrow) = self
+                    .program
+                    .functions
+                    .get(closure.function_id)
+                    .map(|function| (function.is_async, function.is_arrow))
+                    .ok_or_else(|| JsliteError::runtime("function not found"))?;
+                let frame_this = if is_arrow {
+                    Value::Undefined
+                } else {
+                    this_value
+                };
+                if is_async {
+                    let promise = self.insert_promise(PromiseState::Pending)?;
+                    self.push_frame(closure.function_id, env, args, frame_this, Some(promise))?;
+                    Ok(RunState::StartedAsync(Value::Promise(promise)))
+                } else {
+                    self.push_frame(closure.function_id, env, args, frame_this, None)?;
+                    Ok(RunState::PushedFrame)
+                }
+            }
+            Value::BuiltinFunction(function) => Ok(RunState::Completed(
+                self.call_builtin(function, this_value, args)?,
+            )),
+            Value::HostFunction(capability) => {
+                let resume_behavior = resume_behavior_for_capability(&capability);
+                let args = args
+                    .iter()
+                    .cloned()
+                    .map(|value| self.value_to_structured(value))
+                    .collect::<JsliteResult<Vec<_>>>()?;
+                if self.current_async_boundary_index().is_some() {
+                    let outstanding = self.pending_host_calls.len()
+                        + usize::from(self.suspended_host_call.is_some());
+                    if outstanding >= self.limits.max_outstanding_host_calls {
+                        return Err(limit_error("outstanding host-call limit exhausted"));
+                    }
+                    let promise = self.insert_promise(PromiseState::Pending)?;
+                    self.pending_host_calls.push_back(PendingHostCall {
+                        capability,
+                        args,
+                        promise,
+                        resume_behavior,
+                        traceback: self.traceback_snapshots(),
+                    });
+                    Ok(RunState::Completed(Value::Promise(promise)))
+                } else {
+                    Ok(RunState::Suspended {
+                        resume_behavior,
+                        capability,
+                        args,
+                    })
+                }
+            }
+            _ => Err(JsliteError::runtime("value is not callable")),
+        }
+    }
+
+    pub(super) fn construct(&mut self, callee: Value, args: &[Value]) -> JsliteResult<Value> {
+        match callee {
+            Value::BuiltinFunction(
+                BuiltinFunction::ArrayCtor
+                | BuiltinFunction::DateCtor
+                | BuiltinFunction::ObjectCtor
+                | BuiltinFunction::MapCtor
+                | BuiltinFunction::SetCtor
+                | BuiltinFunction::PromiseCtor
+                | BuiltinFunction::RegExpCtor
+                | BuiltinFunction::ErrorCtor
+                | BuiltinFunction::TypeErrorCtor
+                | BuiltinFunction::ReferenceErrorCtor
+                | BuiltinFunction::RangeErrorCtor
+                | BuiltinFunction::NumberCtor
+                | BuiltinFunction::StringCtor
+                | BuiltinFunction::BooleanCtor,
+            ) => match callee {
+                Value::BuiltinFunction(BuiltinFunction::MapCtor) => self.construct_map(args),
+                Value::BuiltinFunction(BuiltinFunction::SetCtor) => self.construct_set(args),
+                Value::BuiltinFunction(BuiltinFunction::DateCtor) => self.construct_date(args),
+                Value::BuiltinFunction(BuiltinFunction::RegExpCtor) => self.construct_regexp(args),
+                Value::BuiltinFunction(kind) => self.call_builtin(kind, Value::Undefined, args),
+                _ => unreachable!(),
+            },
+            _ => Err(JsliteError::runtime(
+                "only conservative built-in constructors are supported in v1",
+            )),
+        }
+    }
+}
