@@ -26,12 +26,15 @@ export interface CompileOptions {
   inputs?: string[];
 }
 
+export type SnapshotKey = string | Buffer | Uint8Array;
+
 export interface ExecutionOptions {
   inputs?: Record<string, StructuredValue>;
   capabilities?: Record<string, Capability>;
   console?: ConsoleCallbacks;
   limits?: RuntimeLimits;
   signal?: AbortSignal;
+  snapshotKey?: SnapshotKey;
 }
 
 export interface ResumeOptions {
@@ -42,6 +45,7 @@ export interface ProgressLoadOptions {
   capabilities?: Record<string, Capability>;
   console?: ConsoleCallbacks;
   limits?: RuntimeLimits;
+  snapshotKey?: SnapshotKey;
 }
 
 export interface RuntimeLimits {
@@ -70,7 +74,7 @@ export interface SerializedProgress {
   capability: string;
   args: StructuredValue[];
   snapshot: Buffer;
-  token?: string;
+  token: string;
 }
 
 export class Progress {

@@ -5,6 +5,9 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 
 const { Jslite, JsliteError, Progress } = require('../../index.js');
+const { KNOWN_PROGRESS_POLICY_CACHE_LIMIT } = require('../../lib/policy.js');
+
+const SNAPSHOT_KEY = Buffer.from('progress-security-test-key');
 
 function replaceAllAscii(buffer, from, to) {
   const source = Buffer.from(from, 'utf8');
@@ -27,11 +30,20 @@ function isSingleUseRuntimeError(error) {
   );
 }
 
+function isTamperedSnapshotError(error) {
+  return (
+    error instanceof JsliteError &&
+    error.kind === 'Serialization' &&
+    error.message.includes('tampered or unauthenticated snapshot')
+  );
+}
+
 test('progress load derives capability and args from the snapshot instead of caller metadata', () => {
   const progress = new Jslite(`
     const response = fetch_data(4);
     response * 2;
   `).start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data() {},
     },
@@ -42,7 +54,6 @@ test('progress load derives capability and args from the snapshot instead of cal
     ...progress.dump(),
     capability: 'drop_table',
     args: ['users'],
-    token: 'forged-token',
   });
 
   assert.equal(restored.capability, 'fetch_data');
@@ -50,11 +61,12 @@ test('progress load derives capability and args from the snapshot instead of cal
   assert.equal(restored.resume(4), 8);
 });
 
-test('progress load ignores caller tokens and preserves single-use by snapshot identity', () => {
+test('progress load preserves single-use by authenticated snapshot token', () => {
   const progress = new Jslite(`
     const response = fetch_data(4);
     response * 2;
   `).start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data() {},
     },
@@ -62,20 +74,53 @@ test('progress load ignores caller tokens and preserves single-use by snapshot i
 
   assert.ok(progress instanceof Progress);
   const dumped = progress.dump();
-  const first = Progress.load({ ...dumped, token: 'token-a' });
-  const second = Progress.load({ ...dumped, token: 'token-b' });
+  const first = Progress.load(dumped);
+  const second = Progress.load(dumped);
 
   assert.equal(first.resume(4), 8);
   assert.throws(() => second.resume(4), isSingleUseRuntimeError);
 });
 
-test('progress load requires explicit policy outside the current process', () => {
-  const progress = new Jslite('fetch_data(1);').start({
+test('progress load rejects forged progress tokens', () => {
+  const progress = new Jslite(`
+    const response = fetch_data(4);
+    response * 2;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data() {},
     },
   });
 
+  assert.ok(progress instanceof Progress);
+  assert.throws(
+    () =>
+      Progress.load(
+        {
+          ...progress.dump(),
+          token: 'forged-token',
+        },
+        {
+          snapshotKey: SNAPSHOT_KEY,
+          capabilities: {
+            fetch_data() {},
+          },
+          limits: {},
+        },
+      ),
+    isTamperedSnapshotError,
+  );
+});
+
+test('progress load requires explicit policy and snapshotKey outside the current process', () => {
+  const progress = new Jslite('fetch_data(1);').start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  const dumped = progress.dump();
   assert.ok(progress instanceof Progress);
   const child = spawnSync(
     process.execPath,
@@ -84,7 +129,10 @@ test('progress load requires explicit policy outside the current process', () =>
       `
         const { Progress } = require('./index.js');
         try {
-          Progress.load({ snapshot: Buffer.from(process.env.SNAPSHOT_BASE64, 'base64') });
+          Progress.load({
+            snapshot: Buffer.from(process.env.SNAPSHOT_BASE64, 'base64'),
+            token: process.env.SNAPSHOT_TOKEN,
+          });
           process.stdout.write('loaded');
         } catch (error) {
           process.stdout.write(String(error && error.message));
@@ -95,7 +143,8 @@ test('progress load requires explicit policy outside the current process', () =>
       cwd: process.cwd(),
       env: {
         ...process.env,
-        SNAPSHOT_BASE64: progress.dump().snapshot.toString('base64'),
+        SNAPSHOT_BASE64: dumped.snapshot.toString('base64'),
+        SNAPSHOT_TOKEN: dumped.token,
       },
       encoding: 'utf8',
     },
@@ -104,42 +153,140 @@ test('progress load requires explicit policy outside the current process', () =>
   assert.equal(child.status, 0);
   assert.match(
     child.stdout,
-    /requires explicit capabilities and limits when restoring progress outside the current process/,
+    /requires explicit capabilities, limits, and snapshotKey when restoring progress outside the current process/,
   );
 });
 
-test('progress load rejects forged snapshots that switch to unauthorized capabilities', () => {
+test('progress load works across processes when explicit policy and snapshotKey are provided', () => {
+  const progress = new Jslite(`
+    const response = fetch_data(4);
+    response * 2;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  const dumped = progress.dump();
+  assert.ok(progress instanceof Progress);
+  const child = spawnSync(
+    process.execPath,
+    [
+      '-e',
+      `
+        const { Progress } = require('./index.js');
+        const restored = Progress.load(
+          {
+            snapshot: Buffer.from(process.env.SNAPSHOT_BASE64, 'base64'),
+            token: process.env.SNAPSHOT_TOKEN,
+          },
+          {
+            snapshotKey: Buffer.from(process.env.SNAPSHOT_KEY_BASE64, 'base64'),
+            capabilities: {
+              fetch_data(value) {
+                return value;
+              },
+            },
+            limits: {},
+          },
+        );
+        process.stdout.write(String(restored.resume(4)));
+      `,
+    ],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        SNAPSHOT_BASE64: dumped.snapshot.toString('base64'),
+        SNAPSHOT_TOKEN: dumped.token,
+        SNAPSHOT_KEY_BASE64: SNAPSHOT_KEY.toString('base64'),
+      },
+      encoding: 'utf8',
+    },
+  );
+
+  assert.equal(child.status, 0);
+  assert.equal(child.stdout, '8');
+});
+
+test('progress load rejects tampered snapshots that switch capability bytes', () => {
   const progress = new Jslite(`
     const first = fetch_data(1);
     const second = fetch_data(2);
     [first, second];
   `).start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data() {},
     },
   });
 
   assert.ok(progress instanceof Progress);
-  const forgedSnapshot = Buffer.from(progress.dump().snapshot);
+  const dumped = progress.dump();
+  const forgedSnapshot = Buffer.from(dumped.snapshot);
   replaceAllAscii(forgedSnapshot, 'fetch_data', 'drop_table');
 
   assert.throws(
     () =>
       Progress.load(
         {
+          ...dumped,
           snapshot: forgedSnapshot,
         },
         {
+          snapshotKey: SNAPSHOT_KEY,
           capabilities: {
             fetch_data() {},
           },
           limits: {},
         },
       ),
-    (error) =>
-      error instanceof JsliteError &&
-      error.kind === 'Serialization' &&
-      error.message.includes('unauthorized capability `drop_table`'),
+    isTamperedSnapshotError,
+  );
+});
+
+test('progress load rejects tampered snapshots that lower serialized instruction counters', () => {
+  const progress = new Jslite(`
+    const ready = fetch_data(1);
+    let total = 0;
+    for (let i = 0; i < 10000; i = i + 1) {
+      total = total + 1;
+    }
+    total;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
+    limits: {
+      instructionBudget: 5_000_000,
+    },
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  assert.ok(progress instanceof Progress);
+  const dumped = progress.dump();
+  const forgedSnapshot = Buffer.from(dumped.snapshot);
+  forgedSnapshot[1554] ^= 1;
+
+  assert.throws(
+    () =>
+      Progress.load(
+        {
+          ...dumped,
+          snapshot: forgedSnapshot,
+        },
+        {
+          snapshotKey: SNAPSHOT_KEY,
+          capabilities: {
+            fetch_data() {},
+          },
+          limits: {
+            instructionBudget: 3,
+          },
+        },
+      ),
+    isTamperedSnapshotError,
   );
 });
 
@@ -152,6 +299,7 @@ test('progress load reapplies explicit host limits before resume', () => {
     }
     total;
   `).start({
+    snapshotKey: SNAPSHOT_KEY,
     limits: {
       instructionBudget: 5_000_000,
     },
@@ -162,6 +310,7 @@ test('progress load reapplies explicit host limits before resume', () => {
 
   assert.ok(progress instanceof Progress);
   const restored = Progress.load(progress.dump(), {
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data() {},
     },
@@ -177,4 +326,35 @@ test('progress load reapplies explicit host limits before resume', () => {
       error.kind === 'Limit' &&
       error.message.includes('instruction budget exhausted'),
   );
+});
+
+test('same-process progress policy cache is bounded and falls back to explicit restore policy', () => {
+  const snapshotKey = Buffer.from('bounded-progress-policy-key');
+  const progresses = [];
+  for (let index = 0; index <= KNOWN_PROGRESS_POLICY_CACHE_LIMIT; index += 1) {
+    progresses.push(
+      new Jslite(`fetch_data(${index});`).start({
+        snapshotKey,
+        capabilities: {
+          fetch_data() {},
+        },
+      }),
+    );
+  }
+
+  const oldest = progresses[0].dump();
+  assert.throws(
+    () => Progress.load(oldest),
+    /requires explicit capabilities, limits, and snapshotKey when restoring progress outside the current process/,
+  );
+
+  const restored = Progress.load(oldest, {
+    snapshotKey,
+    capabilities: {
+      fetch_data() {},
+    },
+    limits: {},
+  });
+  assert.equal(restored.capability, 'fetch_data');
+  assert.equal(restored.resume(0), 0);
 });

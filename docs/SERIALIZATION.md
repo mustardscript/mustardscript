@@ -50,9 +50,13 @@ the safety rules they are expected to follow.
 - In the Node wrapper, `start()` and `Progress.dump()` happen before any async
   capability promise is awaited, so JavaScript `Promise` objects never enter the
   serialized snapshot.
-- In the Node wrapper, same-process `Progress.load(...)` can reuse cached policy
-  for a dumped snapshot, but fresh-process restores must pass explicit
-  `capabilities` and `limits` before inspection or resume.
+- In the Node wrapper, `Progress.dump()` includes a detached token
+  authenticated by the configured `snapshotKey`. `Progress.load(...)` verifies
+  that token before it inspects or resumes a dumped snapshot.
+- Same-process `Progress.load(...)` can reuse cached policy for a dumped
+  snapshot while that authenticated token remains in the local cache, but
+  fresh-process restores must pass explicit `capabilities`, `limits`, and
+  `snapshotKey` before inspection or resume.
 
 ## Value Encoding
 
