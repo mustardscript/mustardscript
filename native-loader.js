@@ -85,6 +85,14 @@ function getCurrentPrebuiltTarget() {
   return TARGETS_BY_RUNTIME.get(`${process.platform}:${process.arch}`) ?? null;
 }
 
+function getLocalBuildOutputFile() {
+  return getCurrentPrebuiltTarget()?.localFile ?? 'index.node';
+}
+
+function getLocalBinaryFilenames() {
+  return [...new Set([getLocalBuildOutputFile(), 'index.node'])];
+}
+
 function validatePrebuiltPackageManifest(manifest, target, packageJsonPath) {
   if (manifest?.name !== target.packageName) {
     throw new Error(
@@ -132,37 +140,23 @@ function resolvePrebuiltPackage(searchRoot = __dirname) {
 }
 
 function localBinaryCandidates(searchRoot = __dirname) {
-  const target = getCurrentPrebuiltTarget();
   const roots = [
     searchRoot,
     path.join(searchRoot, 'crates', 'jslite-node'),
   ];
   const candidates = [];
-  const seen = new Set();
 
   for (const root of roots) {
-    if (target) {
-      const candidate = path.join(root, target.localFile);
-      if (fs.existsSync(candidate)) {
-        candidates.push(candidate);
-        seen.add(candidate);
-      }
-    }
-
     if (!fs.existsSync(root)) {
       continue;
     }
 
-    for (const entry of fs.readdirSync(root)) {
-      if (!entry.endsWith('.node')) {
-        continue;
+    for (const filename of getLocalBinaryFilenames()) {
+      const candidate = path.join(root, filename);
+      const stats = fs.statSync(candidate, { throwIfNoEntry: false });
+      if (stats?.isFile()) {
+        candidates.push(candidate);
       }
-      const candidate = path.join(root, entry);
-      if (seen.has(candidate)) {
-        continue;
-      }
-      candidates.push(candidate);
-      seen.add(candidate);
     }
   }
 
@@ -218,6 +212,9 @@ function loadNative(options = {}) {
 module.exports = {
   PREBUILT_TARGETS,
   getCurrentPrebuiltTarget,
+  getLocalBinaryFilenames,
+  getLocalBuildOutputFile,
+  localBinaryCandidates,
   resolveNativeAddonPath,
   resolvePrebuiltPackage,
   loadNative,

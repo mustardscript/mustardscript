@@ -229,11 +229,13 @@ Current mechanics:
 
 - `package.json` carries the target list in the `napi.targets` field so
   `@napi-rs/cli` can generate per-platform npm package directories.
-- `native-loader.js` first tries local `.node` files from a source build or
-  maintainer checkout, then falls back to the matching optional package if one
-  is installed.
-- `install.js` preserves the source-build path by only skipping `napi build`
-  when the matching optional package is already installed for the current host.
+- `native-loader.js` first tries only the exact expected local source-build
+  artifact names (`index.<platform>.node` for configured hosts, plus
+  `index.node` as the generic local-build fallback), then falls back to the
+  matching optional package if one is installed.
+- `install.js` preserves the source-build path by only skipping the local Cargo
+  build when the matching optional package is already installed for the current
+  host.
 - `.github/workflows/prebuilt-binaries.yml` is the manual, explicit prebuilt
   workflow. It builds the configured targets, stages them with
   `napi create-npm-dirs` plus `napi artifacts`, runs `npm run verify:prebuilt`,
