@@ -70,6 +70,7 @@ struct Lowerer<'a> {
     diagnostics: Vec<Diagnostic>,
     _source: &'a str,
     scopes: Vec<HashSet<String>>,
+    internal_name_counter: usize,
 }
 
 impl<'a> Lowerer<'a> {
@@ -78,6 +79,7 @@ impl<'a> Lowerer<'a> {
             diagnostics: Vec::new(),
             _source: source,
             scopes: vec![HashSet::new()],
+            internal_name_counter: 0,
         }
     }
 
@@ -97,5 +99,11 @@ impl<'a> Lowerer<'a> {
     fn unsupported(&mut self, message: impl Into<String>, span: Option<SourceSpan>) {
         self.diagnostics
             .push(Diagnostic::validation(message.into(), span));
+    }
+
+    fn fresh_internal_name(&mut self, prefix: &str) -> String {
+        let name = format!("\0jslite_{prefix}_{}", self.internal_name_counter);
+        self.internal_name_counter += 1;
+        name
     }
 }

@@ -158,6 +158,7 @@ fn expr_contains(expr: &Expr, predicate: &impl Fn(&Expr) -> bool) -> bool {
         Expr::Assignment { target, value, .. } => {
             assign_target_contains_expr(target, predicate) || expr_contains(value, predicate)
         }
+        Expr::Update { target, .. } => assign_target_contains_expr(target, predicate),
         Expr::Member {
             object, property, ..
         } => expr_contains(object, predicate) || member_property_contains_expr(property, predicate),
@@ -203,6 +204,33 @@ fn assign_target_contains_expr(target: &AssignTarget, predicate: &impl Fn(&Expr)
         AssignTarget::Member {
             object, property, ..
         } => expr_contains(object, predicate) || member_property_contains_expr(property, predicate),
+        AssignTarget::Array { elements, rest, .. } => {
+            elements
+                .iter()
+                .flatten()
+                .any(|entry| assign_target_contains_expr(entry, predicate))
+                || rest
+                    .as_ref()
+                    .is_some_and(|entry| assign_target_contains_expr(entry, predicate))
+        }
+        AssignTarget::Object {
+            properties, rest, ..
+        } => {
+            properties
+                .iter()
+                .any(|entry| assign_target_contains_expr(&entry.value, predicate))
+                || rest
+                    .as_ref()
+                    .is_some_and(|entry| assign_target_contains_expr(entry, predicate))
+        }
+        AssignTarget::Default {
+            target,
+            default_value,
+            ..
+        } => {
+            assign_target_contains_expr(target, predicate)
+                || expr_contains(default_value, predicate)
+        }
     }
 }
 

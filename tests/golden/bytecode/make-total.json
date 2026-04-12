@@ -9,7 +9,7 @@
               "start": 20,
               "end": 24
             },
-            "name": "left"
+            "name": "\u0000jslite_param_0"
           }
         },
         {
@@ -18,12 +18,52 @@
               "start": 26,
               "end": 31
             },
-            "name": "right"
+            "name": "\u0000jslite_param_1"
           }
         }
       ],
       "rest": null,
       "code": [
+        {
+          "DeclareName": {
+            "name": "left",
+            "mutable": true
+          }
+        },
+        {
+          "LoadName": "\u0000jslite_param_0"
+        },
+        {
+          "InitializePattern": {
+            "Identifier": {
+              "span": {
+                "start": 20,
+                "end": 24
+              },
+              "name": "left"
+            }
+          }
+        },
+        {
+          "DeclareName": {
+            "name": "right",
+            "mutable": true
+          }
+        },
+        {
+          "LoadName": "\u0000jslite_param_1"
+        },
+        {
+          "InitializePattern": {
+            "Identifier": {
+              "span": {
+                "start": 26,
+                "end": 31
+              },
+              "name": "right"
+            }
+          }
+        },
         {
           "DeclareName": {
             "name": "pair",

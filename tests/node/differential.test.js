@@ -54,6 +54,25 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'defaults destructuring assignment and update expressions',
+    source: `
+      function wrap(value = 1, next = value + 1, { label = "ok" } = {}) {
+        return [value, next, label];
+      }
+      let left = 0;
+      const record = { count: 4 };
+      [left, record.count] = [2, 3];
+      ({ left = 5, count: record.count = 7 } = { count: 9 });
+      ({
+        defaults: wrap(),
+        postfix: left++,
+        afterPostfix: left,
+        prefix: ++record.count,
+        final: [left, record.count],
+      });
+    `,
+  },
+  {
     name: 'optional chaining and nullish coalescing',
     source: `
       const present = { nested: { value: 3 } };
@@ -385,6 +404,22 @@ const DIFFERENTIAL_CASES = [
         "now" in Date,
         "resolve" in Promise,
       ];
+    `,
+  },
+  {
+    name: 'conservative instanceof surface',
+    source: `
+      function Box() {}
+      ({
+        array: [] instanceof Array,
+        arrayObject: [] instanceof Object,
+        map: new Map() instanceof Map,
+        mapObject: new Map() instanceof Object,
+        set: new Set() instanceof Set,
+        promise: Promise.resolve(1) instanceof Promise,
+        error: new TypeError("boom") instanceof Error,
+        guestFunction: ({}) instanceof Box,
+      });
     `,
   },
   {

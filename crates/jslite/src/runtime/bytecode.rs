@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ir::{BinaryOp, Pattern, PropertyName, UnaryOp},
+    ir::{BinaryOp, Pattern, PropertyName, UnaryOp, UpdateOp},
     span::SourceSpan,
 };
 
@@ -70,6 +70,10 @@ pub enum Instruction {
     SetPropComputed,
     Unary(UnaryOp),
     Binary(BinaryOp),
+    Update(UpdateOp),
+    PatternArrayIndex(usize),
+    PatternArrayRest(usize),
+    PatternObjectRest(Vec<String>),
     Pop,
     Dup,
     Dup2,

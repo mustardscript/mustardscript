@@ -61,11 +61,14 @@ Audit sources:
   `null` / `undefined`, and fails closed for other source values.
 - [x] Array spread is rejected during validation.
 - [x] Spread arguments are rejected during validation.
-- [x] Default parameters are rejected during validation.
-- [x] Default destructuring is rejected during validation.
-- [x] Destructuring assignment is rejected during validation.
+- [x] Default parameters now evaluate in function-parameter scope.
+- [x] Default destructuring now evaluates across declarations, catch bindings,
+  and function parameters.
+- [x] Destructuring assignment now works for the documented identifier,
+  member, array, and object target surface.
 - [x] `var` is rejected; only `let` and `const` are supported.
-- [x] Update expressions are rejected during validation.
+- [x] Prefix and postfix update expressions now work for identifiers and
+  member targets.
 - [x] `delete` is rejected during validation.
 - [x] `for...in` now works for plain objects and arrays with the documented
   conservative key-order and header surface.
@@ -73,7 +76,8 @@ Audit sources:
   sync-iterable surface by awaiting each yielded value before the loop body.
 - [x] Sparse array holes now work across literals, indexed property access, the
   documented helper surface, JSON, and structured host-boundary round trips.
-- [x] `instanceof` is rejected as an unsupported binary operator.
+- [x] `instanceof` now works for the documented conservative constructor
+  surface.
 - [x] Math helper gaps remaining: `Math.random`.
 
 ### Missing but not in the original requested list
@@ -90,8 +94,8 @@ Audit sources:
 
 ### Stale assumptions corrected by this audit
 
-- [x] Default parameters and default destructuring no longer parse and then
-  fail later at runtime; they now fail closed at validation.
+- [x] Default parameters and default destructuring now lower and execute in
+  guest semantics instead of failing at validation or runtime.
 - [x] Rest parameters are no longer a runtime hole.
 - [x] `for...of` is no longer arrays-only.
 
@@ -132,10 +136,10 @@ Audit sources:
   plain-object enumeration rules.
 - [x] Add lowering for computed object literal keys and object literal methods
   if they stay in scope for the compatibility target.
-- [ ] Add destructuring assignment lowering for identifier and member targets.
-- [ ] Add default parameter and default destructuring evaluation in
+- [x] Add destructuring assignment lowering for identifier and member targets.
+- [x] Add default parameter and default destructuring evaluation in
   function-parameter scope.
-- [ ] Add update-expression lowering and semantics for prefix and postfix
+- [x] Add update-expression lowering and semantics for prefix and postfix
   `++` / `--`.
 - [x] Add logical assignment operators `||=` and `&&=` if they stay in scope
   for the compatibility target.
@@ -163,8 +167,8 @@ Audit sources:
   document whether descriptor-level configurability remains deferred.
 - [x] Decide the minimum prototype and constructor model needed for
   `instanceof`.
-- [ ] Implement `instanceof` only after the prototype model is explicit and
-  tested.
+- [x] Implement `instanceof` for the documented conservative constructor
+  surface and test it end to end.
 
 ### Phase 6: Explicit rejections and non-goals
 
@@ -182,8 +186,8 @@ Audit sources:
 
 - [x] Parser-facing syntax work adds positive coverage plus rejection snapshots
   for nearby unsupported forms.
-- [ ] Runtime built-in work adds direct Node tests for success paths.
-- [ ] Runtime built-in work adds guest-safe failure tests for wrong receivers,
+- [x] Runtime built-in work adds direct Node tests for success paths.
+- [x] Runtime built-in work adds guest-safe failure tests for wrong receivers,
   wrong arity, wrong callback types, and unsupported host-suspension cases.
 - [x] Semantics-sensitive work adds differential tests against Node for the
   supported subset.
@@ -202,9 +206,9 @@ Audit sources:
 
 ## Done Criteria For Each Checklist Item
 
-- [ ] Parser and validator behavior is explicit and fail-closed for unsupported
+- [x] Parser and validator behavior is explicit and fail-closed for unsupported
   edge cases.
-- [ ] IR, compiler, and runtime support exists end to end.
-- [ ] Rust and Node tests cover success paths plus guest-safe failure behavior.
-- [ ] `docs/LANGUAGE.md` and `LANGUAGE_GAPS.md` are updated.
-- [ ] The gap is removed from this file only after verification.
+- [x] IR, compiler, and runtime support exists end to end.
+- [x] Rust and Node tests cover success paths plus guest-safe failure behavior.
+- [x] `docs/LANGUAGE.md` and `LANGUAGE_GAPS.md` are updated.
+- [x] Gap state in this file is only updated after verification.

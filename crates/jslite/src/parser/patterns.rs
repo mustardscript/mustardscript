@@ -43,87 +43,68 @@ impl<'a> Lowerer<'a> {
                     .and_then(|rest| self.lower_pattern(&rest.argument))
                     .map(Box::new),
             }),
-            BindingPattern::AssignmentPattern(pattern) => {
-                self.unsupported(
-                    "default destructuring is not supported in v1",
-                    Some(pattern.span.into()),
-                );
-                None
-            }
-        }
-    }
-
-    pub(super) fn validate_function_params(&mut self, params: &FormalParameters<'a>) -> bool {
-        let mut valid = true;
-        for param in &params.items {
-            if param.initializer.is_some() {
-                self.unsupported(
-                    "default parameters are not supported in v1",
-                    Some(param.span.into()),
-                );
-                valid = false;
-            }
-            if !self.validate_param_pattern(&param.pattern) {
-                valid = false;
-            }
-        }
-        if let Some(rest) = &params.rest
-            && !self.validate_param_pattern(&rest.rest.argument)
-        {
-            valid = false;
-        }
-        valid
-    }
-
-    pub(super) fn validate_param_pattern(&mut self, pattern: &BindingPattern<'a>) -> bool {
-        match pattern {
-            BindingPattern::BindingIdentifier(_) => true,
-            BindingPattern::ObjectPattern(pattern) => {
-                pattern
-                    .properties
-                    .iter()
-                    .all(|property| self.validate_param_pattern(&property.value))
-                    && pattern
-                        .rest
-                        .as_ref()
-                        .is_none_or(|rest| self.validate_param_pattern(&rest.argument))
-            }
-            BindingPattern::ArrayPattern(pattern) => {
-                pattern
-                    .elements
-                    .iter()
-                    .flatten()
-                    .all(|element| self.validate_param_pattern(element))
-                    && pattern
-                        .rest
-                        .as_ref()
-                        .is_none_or(|rest| self.validate_param_pattern(&rest.argument))
-            }
-            BindingPattern::AssignmentPattern(pattern) => {
-                self.unsupported(
-                    "default parameters are not supported in v1",
-                    Some(pattern.span.into()),
-                );
-                false
-            }
+            BindingPattern::AssignmentPattern(pattern) => Some(Pattern::Default {
+                span: pattern.span.into(),
+                target: Box::new(self.lower_pattern(&pattern.left)?),
+                default_value: self.lower_expr(&pattern.right)?,
+            }),
         }
     }
 
     pub(super) fn lower_function_params(
         &mut self,
         params: &FormalParameters<'a>,
-    ) -> Option<(Vec<Pattern>, Option<Pattern>)> {
+    ) -> Option<(Vec<Pattern>, Option<Pattern>, Vec<Stmt>)> {
         let mut lowered = Vec::with_capacity(params.items.len());
+        let mut param_init = Vec::new();
         for param in &params.items {
-            lowered.push(self.lower_pattern(&param.pattern)?);
+            let temp_name = self.fresh_internal_name("param");
+            lowered.push(Pattern::Identifier {
+                span: param.span.into(),
+                name: temp_name.clone(),
+            });
+            let mut pattern = self.lower_pattern(&param.pattern)?;
+            if let Some(initializer) = &param.initializer {
+                pattern = Pattern::Default {
+                    span: param.span.into(),
+                    target: Box::new(pattern),
+                    default_value: self.lower_expr(initializer)?,
+                };
+            }
+            param_init.push(Stmt::VariableDecl {
+                span: param.span.into(),
+                kind: BindingKind::Let,
+                declarators: vec![Declarator {
+                    span: param.span.into(),
+                    pattern,
+                    initializer: Some(Expr::Identifier {
+                        span: param.span.into(),
+                        name: temp_name,
+                    }),
+                }],
+            });
         }
-        let rest = params
-            .rest
-            .as_ref()
-            .and_then(|rest| self.lower_pattern(&rest.rest.argument));
-        if params.rest.is_some() && rest.is_none() {
-            return None;
-        }
-        Some((lowered, rest))
+        let rest = if let Some(rest) = &params.rest {
+            let temp_name = self.fresh_internal_name("rest");
+            param_init.push(Stmt::VariableDecl {
+                span: rest.span.into(),
+                kind: BindingKind::Let,
+                declarators: vec![Declarator {
+                    span: rest.span.into(),
+                    pattern: self.lower_pattern(&rest.rest.argument)?,
+                    initializer: Some(Expr::Identifier {
+                        span: rest.span.into(),
+                        name: temp_name.clone(),
+                    }),
+                }],
+            });
+            Some(Pattern::Identifier {
+                span: rest.span.into(),
+                name: temp_name,
+            })
+        } else {
+            None
+        };
+        Some((lowered, rest, param_init))
     }
 }

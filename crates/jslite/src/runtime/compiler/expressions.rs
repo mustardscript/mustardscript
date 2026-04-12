@@ -186,7 +186,13 @@ impl Compiler {
                 operator,
                 value,
                 ..
-            } => self.compile_assignment(context, target, *operator, value)?,
+            } => self.compile_assignment(context, target.as_ref(), *operator, value)?,
+            Expr::Update {
+                target,
+                operator,
+                prefix,
+                ..
+            } => self.compile_update(context, target.as_ref(), *operator, *prefix)?,
             Expr::Member {
                 object,
                 property,

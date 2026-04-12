@@ -33,9 +33,7 @@ impl Compiler {
                     } else {
                         context.code.push(Instruction::PushUndefined);
                     }
-                    context
-                        .code
-                        .push(Instruction::InitializePattern(declarator.pattern.clone()));
+                    self.compile_pattern_binding(context, &declarator.pattern)?;
                 }
             }
             Stmt::FunctionDecl { .. } => {}
@@ -142,9 +140,7 @@ impl Compiler {
                                 } else {
                                     context.code.push(Instruction::PushUndefined);
                                 }
-                                context.code.push(Instruction::InitializePattern(
-                                    declarator.pattern.clone(),
-                                ));
+                                self.compile_pattern_binding(context, &declarator.pattern)?;
                             }
                         }
                         ForInit::Expression(expression) => {
@@ -259,9 +255,7 @@ impl Compiler {
                                 mutable: *kind == BindingKind::Let,
                             });
                         }
-                        context
-                            .code
-                            .push(Instruction::InitializePattern(pattern.clone()));
+                        self.compile_pattern_binding(context, pattern)?;
                     }
                     ForOfHead::Assignment { target } => {
                         let binding = assignment_value_binding

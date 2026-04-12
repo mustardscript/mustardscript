@@ -29,7 +29,8 @@ extensions are called out explicitly instead of being implied.
 ## Supported End-to-End Syntax
 
 - variable declarations with `let` and `const`
-- function declarations and expressions, including rest parameters
+- function declarations and expressions, including rest parameters and default
+  parameter initializers
 - `async` function declarations and expressions
 - arrow functions
 - `await` inside async functions
@@ -39,14 +40,16 @@ extensions are called out explicitly instead of being implied.
   `for await...of`, `for...in`, `break`, and `continue`
 - `return`
 - `throw`, `try`, `catch`, and `finally`
-- common destructuring
-- assignment to identifiers and member expressions
+- common destructuring, including conservative default initializers
+- assignment to identifiers, member expressions, and conservative
+  array/object destructuring targets
 - sequence expressions
 - member access, calls, and `new` for supported built-ins
 - template literals
 - optional chaining
 - nullish coalescing
-- binary `**` and `in`
+- update expressions
+- binary `**`, `in`, and conservative `instanceof`
 - named host capability calls
 
 ## Supported Function Call Surface
@@ -113,8 +116,9 @@ extensions are called out explicitly instead of being implied.
   helper surface are iterable in the current surface
 - declaration headers can use the same identifier, array, and object
   destructuring forms already supported elsewhere in the runtime
-- assignment-target headers support identifier and member targets only because
-  destructuring assignment remains unsupported
+- assignment-target headers support identifiers, members, and the same
+  conservative array/object destructuring forms supported by ordinary
+  assignment
 - each `for...of` iteration gets a fresh lexical binding environment for
   declaration headers; assignment-target headers reuse the existing binding or
   member reference each iteration
@@ -158,8 +162,6 @@ extensions are called out explicitly instead of being implied.
 
 - `import`, `export`, and dynamic `import()`
 - `delete` for plain objects and arrays
-- default parameters
-- default destructuring
 - free `arguments`
 - free `eval` and free `Function`
 - free references to `process`, `module`, `exports`, `global`, `require`,
@@ -169,13 +171,11 @@ extensions are called out explicitly instead of being implied.
 - generators and `yield`
 - `var`, `using`, and `await using`
 - `for...of` declaration headers that do not declare exactly one `let` or
-  `const` binding, declaration initializers in `for...of` / `for...in`
-  headers, and destructuring assignment targets
+  `const` binding, and declaration initializers in `for...of` / `for...in`
+  headers
 - `debugger`
 - labeled statements
 - object literal accessors
-- update expressions
-- `instanceof`
 
 ## Explicit Deferrals
 
@@ -185,7 +185,6 @@ extensions are called out explicitly instead of being implied.
   shift assignment families
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
-- default parameter evaluation
 - legacy `var` hoisting, same-scope redeclaration, and loop interaction rules
 - plain-object and array deletion semantics, including sparse-array behavior
 - symbol-based custom iterable protocol support
@@ -193,7 +192,6 @@ extensions are called out explicitly instead of being implied.
 - module loading
 - property descriptor semantics
 - full prototype semantics
-- the constructor/prototype links required for `instanceof`
 - accessors
 - symbols
 - typed arrays
@@ -213,11 +211,12 @@ extensions are called out explicitly instead of being implied.
   chosen, validation rejects every use of the language operator. This does not
   affect the supported `Map.prototype.delete` and `Set.prototype.delete`
   collection methods.
-- `instanceof` is intentionally out of scope until the runtime grows an
-  explicit prototype model. The minimum future model would need stored
-  prototype-parent links on the participating guest heap objects plus stable
-  constructor `.prototype` identities for the built-ins or guest functions
-  meant to participate in the check.
+- `instanceof` is intentionally conservative in v1. The supported surface is
+  constructor-instance checks for the runtime's built-in instance kinds
+  (`Array`, `Object`, `Map`, `Set`, `Promise`, `Date`, `RegExp`, and the
+  supported error constructors). Guest-function constructors are accepted on
+  the right-hand side but currently return `false` because `new` on guest
+  functions and general prototype-link semantics remain deferred.
 
 ## Diagnostics and Tracebacks
 

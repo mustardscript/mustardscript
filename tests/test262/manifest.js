@@ -306,13 +306,6 @@ module.exports = {
       reason: 'Bitwise assignment remains outside the supported assignment surface.',
     },
     {
-      id: 'language/expressions/binary/instanceof-basic.js',
-      file: 'cases/unsupported/language/expressions/binary/instanceof-basic.js',
-      errorKind: 'Validation',
-      messageIncludes: 'unsupported binary operator in v1',
-      reason: 'instanceof remains deferred until participating values have explicit prototype links and constructor .prototype identities.',
-    },
-    {
       id: 'language/expressions/object/accessor-basic.js',
       file: 'cases/unsupported/language/expressions/object/accessor-basic.js',
       errorKind: 'Validation',
@@ -339,27 +332,6 @@ module.exports = {
       errorKind: 'Validation',
       messageIncludes: 'tagged templates are not supported in v1',
       reason: 'Tagged template literals remain outside the supported subset.',
-    },
-    {
-      id: 'language/expressions/update/postfix.js',
-      file: 'cases/unsupported/language/expressions/update/postfix.js',
-      errorKind: 'Validation',
-      messageIncludes: 'update expressions are not supported in v1',
-      reason: 'Update expressions remain outside the supported subset.',
-    },
-    {
-      id: 'language/statements/function/default-params.js',
-      file: 'cases/unsupported/language/statements/function/default-params.js',
-      errorKind: 'Validation',
-      messageIncludes: 'default parameters are not supported in v1',
-      reason: 'Default parameter evaluation remains outside the supported subset.',
-    },
-    {
-      id: 'language/statements/variable/default-destructuring.js',
-      file: 'cases/unsupported/language/statements/variable/default-destructuring.js',
-      errorKind: 'Validation',
-      messageIncludes: 'default destructuring is not supported in v1',
-      reason: 'Default destructuring remains outside the supported subset.',
     },
     {
       id: 'language/statements/variable/var-basic.js',

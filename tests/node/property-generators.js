@@ -1102,18 +1102,6 @@ function contractCaseArbitrariesFor(cases, category) {
 }
 
 const unsupportedSyntaxValidationCaseArbitraries = [
-  identifierArbitrary.map((name) => ({
-    source: `function ${name}(value = 1) { return value; }`,
-    messageIncludes: 'default parameters are not supported in v1',
-    phase: REJECT_PHASE.CONSTRUCTOR,
-    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
-  })),
-  identifierArbitrary.map((name) => ({
-    source: `const { ${name} = 1 } = {};`,
-    messageIncludes: 'default destructuring is not supported in v1',
-    phase: REJECT_PHASE.CONSTRUCTOR,
-    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
-  })),
   ...contractCaseArbitrariesFor(VALIDATION_REJECT_CASES, DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX),
 ];
 

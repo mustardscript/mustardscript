@@ -37,22 +37,6 @@ fn rejects_free_arguments() {
 }
 
 #[test]
-fn rejects_default_parameters() {
-    let error = compile("function wrap(value = 1) { return value; }")
-        .expect_err("should reject default parameters");
-    let text = error.to_string();
-    assert!(text.contains("default parameters are not supported in v1"));
-}
-
-#[test]
-fn rejects_default_destructuring() {
-    let error =
-        compile("const { value = 1 } = {};").expect_err("should reject default destructuring");
-    let text = error.to_string();
-    assert!(text.contains("default destructuring is not supported in v1"));
-}
-
-#[test]
 fn rejects_module_syntax() {
     let error = compile("export const x = 1;").expect_err("module syntax should fail");
     assert!(error.to_string().contains("module syntax"));
@@ -80,36 +64,6 @@ fn rejects_delete_on_array_elements() {
 }
 
 #[test]
-fn rejects_for_of_destructuring_assignment_targets() {
-    let error = compile("let value = 0; for ([value] of [[1], [2]]) { value; }")
-        .expect_err("destructuring assignment-target for...of should fail closed");
-    assert!(
-        error
-            .to_string()
-            .contains("destructuring assignment is not supported in v1")
-    );
-}
-
-#[test]
-fn rejects_destructuring_assignment() {
-    assert_validation_reject(
-        "[value] = [1];",
-        "destructuring assignment is not supported in v1",
-    );
-}
-
-#[test]
-fn rejects_for_in_destructuring_assignment_targets() {
-    let error = compile("let value = ''; for ([value] in { alpha: 1 }) { value; }")
-        .expect_err("destructuring assignment-target for...in should fail closed");
-    assert!(
-        error
-            .to_string()
-            .contains("destructuring assignment is not supported in v1")
-    );
-}
-
-#[test]
 fn rejects_var_declarations() {
     assert_validation_reject("var value = 1;", "only let and const are supported");
 }
@@ -119,32 +73,6 @@ fn rejects_function_scoped_var_declarations() {
     assert_validation_reject(
         "function wrap() { var value = 1; return value; }",
         "only let and const are supported",
-    );
-}
-
-#[test]
-fn rejects_update_expressions() {
-    assert_validation_reject(
-        "let value = 1; value++;",
-        "update expressions are not supported in v1",
-    );
-}
-
-#[test]
-fn rejects_instanceof_operator() {
-    let error = compile("1 instanceof Number;").expect_err("instanceof should stay unsupported");
-    assert!(
-        error
-            .to_string()
-            .contains("unsupported binary operator in v1")
-    );
-}
-
-#[test]
-fn rejects_instanceof_with_guest_functions() {
-    assert_validation_reject(
-        "function Box() {} const value = {}; value instanceof Box;",
-        "unsupported binary operator in v1",
     );
 }
 

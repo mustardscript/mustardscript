@@ -2,13 +2,247 @@ use super::super::{bytecode::Instruction, format_number_key};
 use super::{Compiler, context::CompileContext};
 use crate::{
     diagnostic::JsliteResult,
-    ir::{AssignOp, AssignTarget, Expr, MemberProperty, Pattern, PropertyName},
+    ir::{AssignOp, AssignTarget, Expr, MemberProperty, Pattern, PropertyName, UpdateOp},
     span::SourceSpan,
 };
 
 use super::bindings::assign_op_to_binary;
 
 impl Compiler {
+    fn declare_internal_binding(&mut self, context: &mut CompileContext, prefix: &str) -> String {
+        let name = self.fresh_internal_name(context, prefix);
+        context.code.push(Instruction::DeclareName {
+            name: name.clone(),
+            mutable: true,
+        });
+        name
+    }
+
+    fn store_internal_binding(
+        &mut self,
+        context: &mut CompileContext,
+        name: &str,
+        span: SourceSpan,
+    ) {
+        context
+            .code
+            .push(Instruction::InitializePattern(Pattern::Identifier {
+                span,
+                name: name.to_string(),
+            }));
+    }
+
+    pub(super) fn compile_pattern_binding(
+        &mut self,
+        context: &mut CompileContext,
+        pattern: &Pattern,
+    ) -> JsliteResult<()> {
+        match pattern {
+            Pattern::Identifier { .. } => {
+                context
+                    .code
+                    .push(Instruction::InitializePattern(pattern.clone()));
+            }
+            Pattern::Array {
+                span,
+                elements,
+                rest,
+            } => {
+                let source = self.declare_internal_binding(context, "pattern_array");
+                self.store_internal_binding(context, &source, *span);
+                for (index, element) in elements.iter().enumerate() {
+                    if let Some(element) = element {
+                        context.code.push(Instruction::LoadName(source.clone()));
+                        context.code.push(Instruction::PatternArrayIndex(index));
+                        self.compile_pattern_binding(context, element)?;
+                    }
+                }
+                if let Some(rest) = rest {
+                    context.code.push(Instruction::LoadName(source));
+                    context
+                        .code
+                        .push(Instruction::PatternArrayRest(elements.len()));
+                    self.compile_pattern_binding(context, rest)?;
+                }
+            }
+            Pattern::Object {
+                span,
+                properties,
+                rest,
+            } => {
+                let source = self.declare_internal_binding(context, "pattern_object");
+                self.store_internal_binding(context, &source, *span);
+                for property in properties {
+                    context.code.push(Instruction::LoadName(source.clone()));
+                    match &property.key {
+                        PropertyName::Identifier(name) | PropertyName::String(name) => {
+                            context.code.push(Instruction::GetPropStatic {
+                                name: name.clone(),
+                                optional: false,
+                            });
+                        }
+                        PropertyName::Number(number) => {
+                            context.code.push(Instruction::GetPropStatic {
+                                name: format_number_key(*number),
+                                optional: false,
+                            });
+                        }
+                    }
+                    self.compile_pattern_binding(context, &property.value)?;
+                }
+                if let Some(rest) = rest {
+                    let excluded = properties
+                        .iter()
+                        .map(|property| match &property.key {
+                            PropertyName::Identifier(name) | PropertyName::String(name) => {
+                                name.clone()
+                            }
+                            PropertyName::Number(number) => format_number_key(*number),
+                        })
+                        .collect();
+                    context.code.push(Instruction::LoadName(source));
+                    context.code.push(Instruction::PatternObjectRest(excluded));
+                    self.compile_pattern_binding(context, rest)?;
+                }
+            }
+            Pattern::Default {
+                span,
+                target,
+                default_value,
+            } => {
+                let source = self.declare_internal_binding(context, "pattern_default");
+                self.store_internal_binding(context, &source, *span);
+                context.code.push(Instruction::LoadName(source.clone()));
+                context.code.push(Instruction::PushUndefined);
+                context
+                    .code
+                    .push(Instruction::Binary(crate::ir::BinaryOp::StrictEq));
+                let use_source = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
+                context.code.push(Instruction::Pop);
+                self.compile_expr(context, default_value)?;
+                let end = self.emit_jump(context, Instruction::Jump(usize::MAX));
+                let use_source_ip = context.code.len();
+                self.patch_jump(context, use_source, use_source_ip);
+                context.code.push(Instruction::Pop);
+                context.code.push(Instruction::LoadName(source));
+                let end_ip = context.code.len();
+                self.patch_jump(context, end, end_ip);
+                self.compile_pattern_binding(context, target)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn compile_assign_target_pattern(
+        &mut self,
+        context: &mut CompileContext,
+        target: &AssignTarget,
+    ) -> JsliteResult<()> {
+        match target {
+            AssignTarget::Identifier { .. } | AssignTarget::Member { .. } => {
+                let source = self.declare_internal_binding(context, "assign_value");
+                self.store_internal_binding(context, &source, SourceSpan::new(0, 0));
+                self.compile_assignment(
+                    context,
+                    target,
+                    AssignOp::Assign,
+                    &Expr::Identifier {
+                        span: SourceSpan::new(0, 0),
+                        name: source,
+                    },
+                )?;
+                context.code.push(Instruction::Pop);
+            }
+            AssignTarget::Default {
+                span,
+                target,
+                default_value,
+            } => {
+                let source = self.declare_internal_binding(context, "assign_default");
+                self.store_internal_binding(context, &source, *span);
+                context.code.push(Instruction::LoadName(source.clone()));
+                context.code.push(Instruction::PushUndefined);
+                context
+                    .code
+                    .push(Instruction::Binary(crate::ir::BinaryOp::StrictEq));
+                let use_source = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
+                context.code.push(Instruction::Pop);
+                self.compile_expr(context, default_value)?;
+                let end = self.emit_jump(context, Instruction::Jump(usize::MAX));
+                let use_source_ip = context.code.len();
+                self.patch_jump(context, use_source, use_source_ip);
+                context.code.push(Instruction::Pop);
+                context.code.push(Instruction::LoadName(source));
+                let end_ip = context.code.len();
+                self.patch_jump(context, end, end_ip);
+                self.compile_assign_target_pattern(context, target)?;
+            }
+            AssignTarget::Array {
+                span,
+                elements,
+                rest,
+            } => {
+                let source = self.declare_internal_binding(context, "assign_array");
+                self.store_internal_binding(context, &source, *span);
+                for (index, element) in elements.iter().enumerate() {
+                    if let Some(element) = element {
+                        context.code.push(Instruction::LoadName(source.clone()));
+                        context.code.push(Instruction::PatternArrayIndex(index));
+                        self.compile_assign_target_pattern(context, element)?;
+                    }
+                }
+                if let Some(rest) = rest {
+                    context.code.push(Instruction::LoadName(source));
+                    context
+                        .code
+                        .push(Instruction::PatternArrayRest(elements.len()));
+                    self.compile_assign_target_pattern(context, rest)?;
+                }
+            }
+            AssignTarget::Object {
+                span,
+                properties,
+                rest,
+            } => {
+                let source = self.declare_internal_binding(context, "assign_object");
+                self.store_internal_binding(context, &source, *span);
+                for property in properties {
+                    context.code.push(Instruction::LoadName(source.clone()));
+                    match &property.key {
+                        PropertyName::Identifier(name) | PropertyName::String(name) => {
+                            context.code.push(Instruction::GetPropStatic {
+                                name: name.clone(),
+                                optional: false,
+                            });
+                        }
+                        PropertyName::Number(number) => {
+                            context.code.push(Instruction::GetPropStatic {
+                                name: format_number_key(*number),
+                                optional: false,
+                            });
+                        }
+                    }
+                    self.compile_assign_target_pattern(context, &property.value)?;
+                }
+                if let Some(rest) = rest {
+                    let excluded = properties
+                        .iter()
+                        .map(|property| match &property.key {
+                            PropertyName::Identifier(name) | PropertyName::String(name) => {
+                                name.clone()
+                            }
+                            PropertyName::Number(number) => format_number_key(*number),
+                        })
+                        .collect();
+                    context.code.push(Instruction::LoadName(source));
+                    context.code.push(Instruction::PatternObjectRest(excluded));
+                    self.compile_assign_target_pattern(context, rest)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn compile_short_circuit_assignment_identifier(
         &mut self,
         context: &mut CompileContext,
@@ -138,6 +372,26 @@ impl Compiler {
         operator: AssignOp,
         value: &Expr,
     ) -> JsliteResult<()> {
+        if matches!(
+            target,
+            AssignTarget::Array { .. } | AssignTarget::Object { .. } | AssignTarget::Default { .. }
+        ) {
+            self.compile_expr(context, value)?;
+            let result = self.declare_internal_binding(context, "assign_result");
+            self.store_internal_binding(context, &result, SourceSpan::new(0, 0));
+            context.code.push(Instruction::LoadName(result.clone()));
+            self.compile_assign_target_pattern(
+                context,
+                match target {
+                    AssignTarget::Array { .. }
+                    | AssignTarget::Object { .. }
+                    | AssignTarget::Default { .. } => target,
+                    _ => unreachable!(),
+                },
+            )?;
+            context.code.push(Instruction::LoadName(result));
+            return Ok(());
+        }
         match target {
             AssignTarget::Identifier { name, .. } => {
                 if operator == AssignOp::Assign {
@@ -325,6 +579,111 @@ impl Compiler {
                     }
                 }
             },
+            AssignTarget::Array { .. }
+            | AssignTarget::Object { .. }
+            | AssignTarget::Default { .. } => unreachable!(),
+        }
+        Ok(())
+    }
+
+    pub(super) fn compile_update(
+        &mut self,
+        context: &mut CompileContext,
+        target: &AssignTarget,
+        operator: UpdateOp,
+        prefix: bool,
+    ) -> JsliteResult<()> {
+        match target {
+            AssignTarget::Identifier { name, .. } => {
+                context.code.push(Instruction::LoadName(name.clone()));
+                if !prefix {
+                    context.code.push(Instruction::Dup);
+                }
+                context.code.push(Instruction::Update(operator));
+                context.code.push(Instruction::StoreName(name.clone()));
+                if !prefix {
+                    context.code.push(Instruction::Pop);
+                }
+            }
+            AssignTarget::Member {
+                object,
+                property,
+                optional,
+                ..
+            } => {
+                let object_binding = self.declare_internal_binding(context, "update_obj");
+                self.compile_expr(context, object)?;
+                self.store_internal_binding(context, &object_binding, SourceSpan::new(0, 0));
+                let key_binding = if let MemberProperty::Computed(property) = property {
+                    let key_binding = self.declare_internal_binding(context, "update_key");
+                    self.compile_expr(context, property)?;
+                    self.store_internal_binding(context, &key_binding, SourceSpan::new(0, 0));
+                    Some(key_binding)
+                } else {
+                    None
+                };
+                context
+                    .code
+                    .push(Instruction::LoadName(object_binding.clone()));
+                match property {
+                    MemberProperty::Static(PropertyName::Identifier(name))
+                    | MemberProperty::Static(PropertyName::String(name)) => {
+                        context.code.push(Instruction::GetPropStatic {
+                            name: name.clone(),
+                            optional: *optional,
+                        });
+                    }
+                    MemberProperty::Static(PropertyName::Number(number)) => {
+                        context.code.push(Instruction::GetPropStatic {
+                            name: format_number_key(*number),
+                            optional: *optional,
+                        });
+                    }
+                    MemberProperty::Computed(_) => {
+                        context.code.push(Instruction::LoadName(
+                            key_binding.clone().expect("computed update key missing"),
+                        ));
+                        context.code.push(Instruction::GetPropComputed {
+                            optional: *optional,
+                        });
+                    }
+                }
+                if !prefix {
+                    context.code.push(Instruction::Dup);
+                }
+                context.code.push(Instruction::Update(operator));
+                let value_binding = self.declare_internal_binding(context, "update_value");
+                self.store_internal_binding(context, &value_binding, SourceSpan::new(0, 0));
+                context.code.push(Instruction::LoadName(object_binding));
+                match property {
+                    MemberProperty::Static(PropertyName::Identifier(name))
+                    | MemberProperty::Static(PropertyName::String(name)) => {
+                        context.code.push(Instruction::LoadName(value_binding));
+                        context
+                            .code
+                            .push(Instruction::SetPropStatic { name: name.clone() });
+                    }
+                    MemberProperty::Static(PropertyName::Number(number)) => {
+                        context.code.push(Instruction::LoadName(value_binding));
+                        context.code.push(Instruction::SetPropStatic {
+                            name: format_number_key(*number),
+                        });
+                    }
+                    MemberProperty::Computed(_) => {
+                        context.code.push(Instruction::LoadName(
+                            key_binding.expect("computed update key missing"),
+                        ));
+                        context.code.push(Instruction::LoadName(value_binding));
+                        context.code.push(Instruction::SetPropComputed);
+                    }
+                }
+                if !prefix {
+                    context.code.push(Instruction::Pop);
+                }
+            }
+            AssignTarget::Array { .. }
+            | AssignTarget::Object { .. }
+            | AssignTarget::Default { .. } => unreachable!(),
         }
         Ok(())
     }

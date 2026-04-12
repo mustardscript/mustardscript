@@ -121,6 +121,34 @@ fn parses_for_await_of_inside_async_functions() {
 }
 
 #[test]
+fn parses_default_parameters_and_default_destructuring() {
+    compile(
+        r#"
+        function wrap(value = 1, { label = "ok" } = {}) {
+          return [value, label];
+        }
+        wrap();
+        "#,
+    )
+    .expect("default parameters and destructuring should compile");
+}
+
+#[test]
+fn parses_destructuring_assignment_targets_and_update_expressions() {
+    compile(
+        r#"
+        let value = 0;
+        let boxRef = { current: 1 };
+        [value, boxRef.current] = [2, 3];
+        ({ value, current: boxRef.current = 4 } = { value: 5 });
+        ++value;
+        boxRef.current--;
+        "#,
+    )
+    .expect("destructuring assignment and update expressions should compile");
+}
+
+#[test]
 fn parses_sequence_and_exponentiation_expressions() {
     compile(
         r#"
@@ -142,6 +170,17 @@ fn parses_in_operator_expressions() {
         "#,
     )
     .expect("in operator expressions should compile");
+}
+
+#[test]
+fn parses_instanceof_expressions() {
+    compile(
+        r#"
+        function Box() {}
+        [([] instanceof Array), (new Map() instanceof Object), ({} instanceof Box)];
+        "#,
+    )
+    .expect("instanceof should compile for the documented constructor surface");
 }
 
 #[test]
