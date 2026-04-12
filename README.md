@@ -718,6 +718,12 @@ Lower-level control should exist for advanced hosts:
 - `progress.dump()`
 - `Progress.load(...)`
 
+For hosts managing a large backlog of resumable jobs, the Node wrapper also
+exports `JsliteExecutor` plus `InMemoryJsliteExecutorStore` as a thin
+queue-oriented layer over `start()` / `Progress.dump()` / `Progress.load()`.
+The design and invariants for that layer are documented in
+[JSLITE_EXECUTOR.md](JSLITE_EXECUTOR.md).
+
 Native failures are surfaced in Node as typed JavaScript errors:
 `JsliteParseError`, `JsliteValidationError`, `JsliteRuntimeError`,
 `JsliteLimitError`, and `JsliteSerializationError`.

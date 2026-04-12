@@ -3,7 +3,11 @@ import type {
   CapabilityError,
   ConsoleCallbacks,
   ExecutionOptions,
+  InMemoryJsliteExecutorStore as InMemoryJsliteExecutorStoreType,
   JsliteError as JsliteErrorType,
+  JsliteExecutor as JsliteExecutorType,
+  JsliteExecutorStore,
+  JsliteJobRecord,
   JsliteErrorKind,
   ProgressLoadOptions,
   Progress as ProgressType,
@@ -13,7 +17,8 @@ import type {
   StructuredValue,
 } from '@keppoai/jslite';
 
-const { Jslite, JsliteError, Progress } = require('@keppoai/jslite') as typeof import('@keppoai/jslite');
+const { InMemoryJsliteExecutorStore, Jslite, JsliteError, JsliteExecutor, Progress } =
+  require('@keppoai/jslite') as typeof import('@keppoai/jslite');
 
 const runtime = new Jslite('const response = fetch_data(seed); response + 1;', {
   inputs: ['seed'],
@@ -62,6 +67,23 @@ const progressLoadOptions: ProgressLoadOptions = {
     instructionBudget: 1000,
   },
 };
+const executorStore: JsliteExecutorStore<{ seed: StructuredValue }, StructuredValue> =
+  new InMemoryJsliteExecutorStore();
+const typedStore: InMemoryJsliteExecutorStoreType<{ seed: StructuredValue }, StructuredValue> =
+  new InMemoryJsliteExecutorStore();
+const executor: JsliteExecutorType<{ seed: StructuredValue }, StructuredValue> = new JsliteExecutor({
+  program: runtime,
+  store: executorStore,
+  snapshotKey: Buffer.from('snapshot-key'),
+  capabilities: {
+    fetch_data(value) {
+      return value;
+    },
+  },
+  limits: {
+    instructionBudget: 1000,
+  },
+});
 
 const errorKind: JsliteErrorKind = 'Runtime';
 const capability: Capability = async (...args) => args[0] ?? structured;
@@ -116,6 +138,14 @@ async function typecheck(): Promise<void> {
 void typecheck();
 
 const typedError: JsliteErrorType = new JsliteError(errorKind, 'boom', new Error('cause'));
+const jobRecordPromise: Promise<JsliteJobRecord<{ seed: StructuredValue }, StructuredValue> | null> =
+  executor.get('job-1');
+const enqueuePromise: Promise<string> = executor.enqueue({ seed: 1 }, { jobId: 'job-1' });
+const runWorkerPromise: Promise<void> = executor.runWorker({ maxConcurrentJobs: 2, drain: true });
+void jobRecordPromise;
+void enqueuePromise;
+void runWorkerPromise;
+void typedStore;
 void typedError;
 void runtimeLimits;
 void resumeOptions;
@@ -125,6 +155,9 @@ void consoleCallbacks;
 
 // @ts-expect-error symbols are not structured values
 runtime.run({ inputs: { bad: Symbol('nope') } });
+
+// @ts-expect-error executor input must be a structured input object
+executor.enqueue(Symbol('nope'));
 
 // @ts-expect-error capabilities must return structured values
 const invalidCapability: Capability = () => Symbol('nope');
