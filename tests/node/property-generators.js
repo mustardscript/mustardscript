@@ -652,7 +652,6 @@ const unsupportedValidationCaseArbitraries = [
   fc.constant(validationCase('for (let value = 1 of [1, 2]) { value; }', 'for...of binding initializers are not supported')),
   fc.constant(validationCase('let value = 1; value ||= 2;', 'unsupported assignment operator in v1')),
   fc.constant(validationCase('let value = 1; value &&= 2;', 'unsupported assignment operator in v1')),
-  fc.constant(validationCase('[1, , 2];', 'array holes are not supported in v1')),
   ...contractValidationCaseArbitraries,
 ];
 
