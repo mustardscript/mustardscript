@@ -114,6 +114,9 @@ async function typecheck(): Promise<void> {
     const args: StructuredValue[] = step.args;
     const snapshot: Buffer = step.snapshot;
     const dumpedProgress: SerializedProgress = step.dump();
+    const snapshotId: string = dumpedProgress.snapshot_id;
+    const snapshotKeyDigest: string = dumpedProgress.snapshot_key_digest;
+    // @ts-expect-error Progress.load now requires explicit restore policy.
     const restored: ProgressType = Progress.load(dumpedProgress);
     const restoredWithPolicy: ProgressType = Progress.load(dumpedProgress, progressLoadOptions);
     const resumed: StructuredValue | ProgressType = step.resume(1, resumeOptions);
@@ -127,6 +130,8 @@ async function typecheck(): Promise<void> {
     void capabilityName;
     void args;
     void snapshot;
+    void snapshotId;
+    void snapshotKeyDigest;
     void restored;
     void restoredWithPolicy;
     void resumed;

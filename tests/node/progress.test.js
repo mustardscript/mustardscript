@@ -2,6 +2,15 @@
 
 const { assert, isJsliteError, Progress, runtime, test } = require('./support/helpers.js');
 
+const SNAPSHOT_KEY = Buffer.from('progress-test-snapshot-key');
+const PROGRESS_LOAD_OPTIONS = Object.freeze({
+  snapshotKey: SNAPSHOT_KEY,
+  capabilities: {
+    fetch_data() {},
+  },
+  limits: {},
+});
+
 test('start returns resumable progress objects', () => {
   const progress = runtime(`
     const response = fetch_data(4);
@@ -64,12 +73,13 @@ test('progress dump and load preserve suspended execution state', () => {
     const response = fetch_data(4);
     response * 2;
   `).start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data() {},
     },
   });
 
-  const restored = Progress.load(progress.dump());
+  const restored = Progress.load(progress.dump(), PROGRESS_LOAD_OPTIONS);
   assert.ok(restored instanceof Progress);
   assert.equal(restored.capability, 'fetch_data');
   assert.deepEqual(restored.args, [4]);
@@ -82,6 +92,7 @@ test('start snapshots guest state before async host futures exist', () => {
     const response = fetch_data(4);
     response * 2;
   `).start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       async fetch_data() {
         calls += 1;
@@ -92,7 +103,7 @@ test('start snapshots guest state before async host futures exist', () => {
 
   assert.equal(calls, 0);
   const dumped = progress.dump();
-  const restored = Progress.load(dumped);
+  const restored = Progress.load(dumped, PROGRESS_LOAD_OPTIONS);
   assert.equal(restored.resume(4), 8);
 });
 

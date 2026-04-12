@@ -10,6 +10,7 @@ use time::OffsetDateTime;
 use super::*;
 
 const JSON_HELPER_IO_CHUNK_BYTES: usize = 256;
+const NUMBER_PARSE_HELPER_CHUNK_CHARS: usize = 256;
 
 #[derive(Default)]
 struct JsonStringifyTraversalState {
@@ -237,7 +238,7 @@ impl Runtime {
         )?))
     }
 
-    pub(crate) fn call_number_parse_int(&self, args: &[Value]) -> JsliteResult<Value> {
+    pub(crate) fn call_number_parse_int(&mut self, args: &[Value]) -> JsliteResult<Value> {
         let input = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
         let trimmed = input.trim_start();
         let radix_value = args.get(1).cloned().unwrap_or(Value::Undefined);
@@ -251,37 +252,39 @@ impl Runtime {
             Some(parsed as u32)
         };
 
-        let mut chars = trimmed.chars().peekable();
-        let sign = match chars.peek().copied() {
-            Some('+') => {
-                chars.next();
-                1.0
-            }
-            Some('-') => {
-                chars.next();
-                -1.0
-            }
-            _ => 1.0,
+        let (sign, remainder) = if let Some(stripped) = trimmed.strip_prefix('+') {
+            (1.0, stripped)
+        } else if let Some(stripped) = trimmed.strip_prefix('-') {
+            (-1.0, stripped)
+        } else {
+            (1.0, trimmed)
         };
-        let remainder = chars.collect::<String>();
         let (radix, digits) =
             if radix.is_none() && (remainder.starts_with("0x") || remainder.starts_with("0X")) {
                 (16u32, &remainder[2..])
             } else {
-                (radix.unwrap_or(10), remainder.as_str())
+                (radix.unwrap_or(10), remainder)
             };
-        let accepted = digits
-            .chars()
-            .take_while(|ch| ch.is_digit(radix))
-            .collect::<String>();
-        if accepted.is_empty() {
+        let mut end = 0usize;
+        let mut saw_digit = false;
+        for (index, ch) in digits.char_indices() {
+            if index % NUMBER_PARSE_HELPER_CHUNK_CHARS == 0 {
+                self.charge_native_helper_work(1)?;
+            }
+            if ch.to_digit(radix).is_none() {
+                break;
+            }
+            saw_digit = true;
+            end = index + ch.len_utf8();
+        }
+        if !saw_digit {
             return Ok(Value::Number(f64::NAN));
         }
-        let parsed = i128::from_str_radix(&accepted, radix).unwrap_or(0) as f64 * sign;
+        let parsed = i128::from_str_radix(&digits[..end], radix).unwrap_or(0) as f64 * sign;
         Ok(Value::Number(parsed))
     }
 
-    pub(crate) fn call_number_parse_float(&self, args: &[Value]) -> JsliteResult<Value> {
+    pub(crate) fn call_number_parse_float(&mut self, args: &[Value]) -> JsliteResult<Value> {
         let input = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
         let trimmed = input.trim_start();
         if trimmed.starts_with("Infinity") || trimmed.starts_with("+Infinity") {
@@ -296,6 +299,9 @@ impl Runtime {
         let mut seen_exp = false;
         let mut allow_sign = true;
         for (index, ch) in trimmed.char_indices() {
+            if index % NUMBER_PARSE_HELPER_CHUNK_CHARS == 0 {
+                self.charge_native_helper_work(1)?;
+            }
             let accepted = if allow_sign && matches!(ch, '+' | '-') {
                 allow_sign = false;
                 true

@@ -41,12 +41,20 @@ export interface ResumeOptions {
   signal?: AbortSignal;
 }
 
-export interface ProgressLoadOptions {
-  capabilities?: Record<string, Capability>;
-  console?: ConsoleCallbacks;
-  limits?: RuntimeLimits;
-  snapshotKey?: SnapshotKey;
+export interface ProgressLoadOptionsBase {
+  limits: RuntimeLimits;
+  snapshotKey: SnapshotKey;
 }
+
+export type ProgressLoadOptions =
+  | (ProgressLoadOptionsBase & {
+      capabilities: Record<string, Capability>;
+      console?: ConsoleCallbacks;
+    })
+  | (ProgressLoadOptionsBase & {
+      capabilities?: Record<string, Capability>;
+      console: ConsoleCallbacks;
+    });
 
 export interface RuntimeLimits {
   instructionBudget?: number;
@@ -148,6 +156,8 @@ export interface SerializedProgress {
   capability: string;
   args: StructuredValue[];
   snapshot: Buffer;
+  snapshot_id: string;
+  snapshot_key_digest: string;
   token: string;
 }
 
@@ -161,7 +171,7 @@ export class Progress {
   resumeError(error: unknown, options?: ResumeOptions): StructuredValue | Progress;
   cancel(): StructuredValue | Progress;
 
-  static load(state: SerializedProgress, options?: ProgressLoadOptions): Progress;
+  static load(state: SerializedProgress, options: ProgressLoadOptions): Progress;
 }
 
 export class Jslite {

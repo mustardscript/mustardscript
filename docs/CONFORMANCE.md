@@ -61,9 +61,9 @@ deferred object-model built-ins like `Object.create`, `Object.freeze`, and
 Separate from parity and rejection generators, the Node test layer now carries
 a lifecycle property suite for `run()` / `start()` / `Progress.load()` /
 `resume()` / `resumeError()` / `cancel()` flows. It drives short stateful
-sequences through both same-process cached loads and explicit-policy restores,
-prints minimized action histories when a lifecycle invariant breaks, and keeps
-longer replay-sequence exploration in an opt-in out-of-band lane.
+sequences through direct progress reuse and explicit-policy restores, prints
+minimized action histories when a lifecycle invariant breaks, and keeps longer
+replay-sequence exploration in an opt-in out-of-band lane.
 
 The async surface also now has a deterministic schedule matrix in
 `tests/node/async-schedule.test.js`:
