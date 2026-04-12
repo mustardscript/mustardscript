@@ -9,8 +9,8 @@ This document is based on:
 - [README.md](/Users/mini/jslite/README.md)
 - [docs/LANGUAGE.md](/Users/mini/jslite/docs/LANGUAGE.md)
 - [docs/HOST_API.md](/Users/mini/jslite/docs/HOST_API.md)
-- [crates/jslite/src/parser.rs](/Users/mini/jslite/crates/jslite/src/parser.rs)
-- [crates/jslite/src/runtime.rs](/Users/mini/jslite/crates/jslite/src/runtime.rs)
+- [crates/jslite/src/parser/mod.rs](/Users/mini/jslite/crates/jslite/src/parser/mod.rs)
+- [crates/jslite/src/runtime/mod.rs](/Users/mini/jslite/crates/jslite/src/runtime/mod.rs)
 - targeted runtime probes run on 2026-04-11
 
 When a gap says "rejected", that means parse/validation fails before execution.

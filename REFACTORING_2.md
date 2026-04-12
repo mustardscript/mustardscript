@@ -40,9 +40,6 @@ As of the current tree, these are the highest-value remaining refactor targets:
 - `crates/jslite/src/runtime/compiler/mod.rs` is still about 1.3k lines and
   mixes root/function setup, statement lowering, expression lowering,
   assignment lowering, and control-transfer patching.
-- `crates/jslite/src/parser.rs` is still about 1.3k lines and mixes parse
-  entry, scope tracking, AST -> IR lowering, validation decisions, operator
-  mapping, and inline tests.
 - `index.js` is still over 600 lines and mixes native error normalization,
   structured-value codecs, policy encoding, abort/cancellation bridging,
   `Progress` lifecycle, host capability orchestration, and the public API.
@@ -169,14 +166,14 @@ stops concentrating in one file.
 
 Checklist:
 
-- [ ] Rename `crates/jslite/src/parser.rs` to `crates/jslite/src/parser/mod.rs`
-- [ ] Extract scope tracking and binding registration into `scope.rs`
-- [ ] Extract pattern lowering helpers into `patterns.rs`
-- [ ] Extract statement lowering into `statements.rs`
-- [ ] Extract expression lowering into `expressions.rs`
-- [ ] Extract operator/property-name helpers into `operators.rs`
-- [ ] Move parser unit tests into `parser/tests/`
-- [ ] Keep `compile()` stable and keep current diagnostics behavior
+- [x] Rename `crates/jslite/src/parser.rs` to `crates/jslite/src/parser/mod.rs`
+- [x] Extract scope tracking and binding registration into `scope.rs`
+- [x] Extract pattern lowering helpers into `patterns.rs`
+- [x] Extract statement lowering into `statements.rs`
+- [x] Extract expression lowering into `expressions.rs`
+- [x] Extract operator/property-name helpers into `operators.rs`
+- [x] Move parser unit tests into `parser/tests/`
+- [x] Keep `compile()` stable and keep current diagnostics behavior
 
 Exit criteria:
 

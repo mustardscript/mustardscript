@@ -1,0 +1,101 @@
+mod expressions;
+mod operators;
+mod patterns;
+mod scope;
+mod statements;
+
+#[cfg(test)]
+mod tests;
+
+use std::collections::HashSet;
+
+use oxc_allocator::Allocator;
+use oxc_ast::ast::*;
+use oxc_parser::{ParseOptions, Parser};
+use oxc_span::{GetSpan, SourceType};
+
+use crate::{
+    diagnostic::{Diagnostic, JsliteError, JsliteResult},
+    ir::*,
+    span::SourceSpan,
+};
+
+const FORBIDDEN_AMBIENT_GLOBALS: &[&str] = &[
+    "arguments",
+    "eval",
+    "process",
+    "module",
+    "exports",
+    "global",
+    "require",
+    "Function",
+    "setTimeout",
+    "setInterval",
+    "queueMicrotask",
+    "fetch",
+];
+
+pub fn compile(source: &str) -> JsliteResult<CompiledProgram> {
+    let allocator = Allocator::default();
+    let parser = Parser::new(&allocator, source, SourceType::default().with_script(true))
+        .with_options(ParseOptions {
+            allow_return_outside_function: false,
+            ..ParseOptions::default()
+        });
+    let parsed = parser.parse();
+    let mut diagnostics = Vec::new();
+    diagnostics.extend(
+        parsed
+            .errors
+            .into_iter()
+            .map(|error| Diagnostic::parse(error.to_string(), None)),
+    );
+    if parsed.panicked {
+        return Err(JsliteError::Diagnostics(diagnostics));
+    }
+
+    let mut lowerer = Lowerer::new(source);
+    let script = lowerer.lower_program(&parsed.program);
+    diagnostics.extend(lowerer.diagnostics);
+    if !diagnostics.is_empty() {
+        return Err(JsliteError::Diagnostics(diagnostics));
+    }
+    Ok(CompiledProgram {
+        source: source.to_string(),
+        script,
+    })
+}
+
+struct Lowerer<'a> {
+    diagnostics: Vec<Diagnostic>,
+    _source: &'a str,
+    scopes: Vec<HashSet<String>>,
+}
+
+impl<'a> Lowerer<'a> {
+    fn new(source: &'a str) -> Self {
+        Self {
+            diagnostics: Vec::new(),
+            _source: source,
+            scopes: vec![HashSet::new()],
+        }
+    }
+
+    fn lower_program(&mut self, program: &Program<'a>) -> Script {
+        self.predeclare_block(&program.body);
+        let body = program
+            .body
+            .iter()
+            .filter_map(|statement| self.lower_stmt(statement))
+            .collect();
+        Script {
+            span: program.span.into(),
+            body,
+        }
+    }
+
+    fn unsupported(&mut self, message: impl Into<String>, span: Option<SourceSpan>) {
+        self.diagnostics
+            .push(Diagnostic::validation(message.into(), span));
+    }
+}
