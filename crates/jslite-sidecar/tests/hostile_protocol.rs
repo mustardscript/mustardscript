@@ -92,6 +92,10 @@ fn hostile_but_well_formed_requests_fail_closed() {
             "method": "resume",
             "id": 2,
             "snapshot_base64": "%%%%",
+            "policy": {
+                "capabilities": ["fetch_data"],
+                "limits": {},
+            },
             "payload": {
                 "type": "value",
                 "value": { "Undefined": null }
@@ -119,6 +123,10 @@ fn hostile_but_well_formed_requests_fail_closed() {
             "method": "resume",
             "id": 4,
             "snapshot_base64": encoded_snapshot(),
+            "policy": {
+                "capabilities": ["fetch_data"],
+                "limits": RuntimeLimits::default(),
+            },
             "payload": {
                 "type": "error",
                 "error": {
@@ -169,6 +177,10 @@ fn mutated_request_lines_never_panic() {
             "method": "resume",
             "id": 3,
             "snapshot_base64": encoded_snapshot(),
+            "policy": {
+                "capabilities": ["fetch_data"],
+                "limits": RuntimeLimits::default(),
+            },
             "payload": {
                 "type": "value",
                 "value": StructuredValue::Number(StructuredNumber::Finite(5.0)),

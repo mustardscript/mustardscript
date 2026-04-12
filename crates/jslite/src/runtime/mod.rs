@@ -16,7 +16,8 @@ mod vm;
 
 pub use api::{
     ExecutionOptions, ExecutionSnapshot, ExecutionStep, HostError, ResumeOptions, ResumePayload,
-    Suspension, execute, resume, resume_with_options, start, start_bytecode,
+    SnapshotInspection, SnapshotPolicy, Suspension, execute, inspect_snapshot, resume,
+    resume_with_options, start, start_bytecode,
 };
 pub use bytecode::{BytecodeProgram, FunctionPrototype, Instruction};
 pub use compiler::lower_to_bytecode;
@@ -85,6 +86,7 @@ impl Runtime {
             allocation_count: 0,
             cancellation_token,
             pending_internal_exception: None,
+            snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         };
         runtime.account_existing_env(globals)?;
@@ -99,10 +101,38 @@ impl Runtime {
         Ok(runtime)
     }
 
-    fn apply_resume_options(&mut self, options: ResumeOptions) {
+    fn apply_resume_options(&mut self, options: ResumeOptions) -> JsliteResult<()> {
         if options.cancellation_token.is_some() {
             self.cancellation_token = options.cancellation_token;
         }
+        if let Some(policy) = options.snapshot_policy {
+            self.apply_snapshot_policy(policy)?;
+        }
+        if self.snapshot_policy_required {
+            return Err(serialization_error(
+                "loaded snapshots require explicit host policy before resume",
+            ));
+        }
+        Ok(())
+    }
+
+    fn apply_snapshot_policy(&mut self, policy: SnapshotPolicy) -> JsliteResult<()> {
+        validation::validate_snapshot_policy(self, &policy)?;
+        self.limits = policy.limits;
+        if self.frames.len() > self.limits.call_depth_limit {
+            return Err(limit_error("call depth limit exceeded"));
+        }
+        self.recompute_accounting_after_load()?;
+        let outstanding_host_calls =
+            self.pending_host_calls.len() + usize::from(self.suspended_host_call.is_some());
+        if outstanding_host_calls > self.limits.max_outstanding_host_calls {
+            return Err(limit_error("outstanding host-call limit exhausted"));
+        }
+        if self.instruction_counter > self.limits.instruction_budget {
+            return Err(limit_error("instruction budget exhausted"));
+        }
+        self.snapshot_policy_required = false;
+        Ok(())
     }
 
     fn check_cancellation(&self) -> JsliteResult<()> {
@@ -196,7 +226,7 @@ impl Runtime {
                 self.pending_host_calls.push_back(PendingHostCall {
                     capability,
                     args,
-                    promise,
+                    promise: Some(promise),
                     resume_behavior: ResumeBehavior::Value,
                     traceback: self.traceback_snapshots(),
                 });

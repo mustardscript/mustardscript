@@ -76,6 +76,10 @@ fn sidecar_compiles_starts_and_resumes() {
             "method": "resume",
             "id": 3,
             "snapshot_base64": snapshot,
+            "policy": {
+                "capabilities": ["fetch_data"],
+                "limits": {},
+            },
             "payload": {
                 "type": "value",
                 "value": { "Number": { "Finite": 5.0 } }

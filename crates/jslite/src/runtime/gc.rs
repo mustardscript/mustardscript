@@ -115,10 +115,14 @@ impl Runtime {
             }
         }
         for request in &self.pending_host_calls {
-            self.mark_promise(request.promise, &mut marks, &mut worklist);
+            if let Some(promise) = request.promise {
+                self.mark_promise(promise, &mut marks, &mut worklist);
+            }
         }
         if let Some(request) = &self.suspended_host_call {
-            self.mark_promise(request.promise, &mut marks, &mut worklist);
+            if let Some(promise) = request.promise {
+                self.mark_promise(promise, &mut marks, &mut worklist);
+            }
         }
 
         while !worklist.envs.is_empty()

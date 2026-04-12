@@ -1,12 +1,20 @@
 use indexmap::IndexMap;
 
 use jslite::{
-    ExecutionOptions, ExecutionStep, ResumePayload, RuntimeLimits, StructuredValue, compile,
-    dump_snapshot, execute, load_snapshot, resume, start,
+    ExecutionOptions, ExecutionStep, ResumeOptions, ResumePayload, RuntimeLimits, SnapshotPolicy,
+    StructuredValue, compile, dump_snapshot, execute, load_snapshot, resume, resume_with_options,
+    start,
 };
 
 fn number(value: f64) -> StructuredValue {
     StructuredValue::from(value)
+}
+
+fn snapshot_policy(capabilities: &[&str], limits: RuntimeLimits) -> SnapshotPolicy {
+    SnapshotPolicy {
+        capabilities: capabilities.iter().map(|name| (*name).to_string()).collect(),
+        limits,
+    }
 }
 
 #[test]
@@ -180,8 +188,18 @@ fn snapshot_round_trip_preserves_active_array_iterators() {
     let encoded = dump_snapshot(&first.snapshot).expect("snapshot should serialize");
     let loaded = load_snapshot(&encoded).expect("snapshot should deserialize");
 
-    let second = match resume(loaded, ResumePayload::Value(number(10.0)))
-        .expect("resume should work")
+    let second = match resume_with_options(
+        loaded,
+        ResumePayload::Value(number(10.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(snapshot_policy(
+                &["fetch_data"],
+                RuntimeLimits::default(),
+            )),
+        },
+    )
+    .expect("resume should work")
     {
         ExecutionStep::Suspended(suspension) => suspension,
         ExecutionStep::Completed(value) => panic!("expected a second suspension, got {value:?}"),

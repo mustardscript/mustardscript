@@ -245,7 +245,7 @@ impl Runtime {
                 self.pending_host_calls.push_back(PendingHostCall {
                     capability,
                     args,
-                    promise,
+                    promise: Some(promise),
                     resume_behavior: ResumeBehavior::Value,
                     traceback: self.traceback_snapshots(),
                 });
@@ -617,7 +617,35 @@ impl Runtime {
         self.collect_garbage()
             .map_err(|error| self.annotate_runtime_error(error))?;
         if let Some(request) = self.suspended_host_call.take() {
-            let outcome = match payload {
+            if let Some(promise) = request.promise {
+                let outcome = match payload {
+                    ResumePayload::Value(value) => {
+                        let value = match request.resume_behavior {
+                            ResumeBehavior::Value => self
+                                .value_from_structured(value)
+                                .map_err(|error| self.annotate_runtime_error(error))?,
+                            ResumeBehavior::Undefined => Value::Undefined,
+                        };
+                        PromiseOutcome::Fulfilled(value)
+                    }
+                    ResumePayload::Error(error) => PromiseOutcome::Rejected(PromiseRejection {
+                        value: self
+                            .value_from_host_error(error)
+                            .map_err(|error| self.annotate_runtime_error(error))?,
+                        span: None,
+                        traceback: Vec::new(),
+                    }),
+                    ResumePayload::Cancelled => {
+                        return Err(limit_error("execution cancelled")
+                            .with_traceback(self.compose_traceback(&request.traceback)));
+                    }
+                };
+                self.resolve_promise_with_outcome(promise, outcome)
+                    .map_err(|error| self.annotate_runtime_error(error))?;
+                return self.run();
+            }
+
+            return match payload {
                 ResumePayload::Value(value) => {
                     let value = match request.resume_behavior {
                         ResumeBehavior::Value => self
@@ -625,23 +653,30 @@ impl Runtime {
                             .map_err(|error| self.annotate_runtime_error(error))?,
                         ResumeBehavior::Undefined => Value::Undefined,
                     };
-                    PromiseOutcome::Fulfilled(value)
+                    self.pending_resume_behavior = ResumeBehavior::Value;
+                    let Some(frame) = self.frames.last_mut() else {
+                        return Err(self.annotate_runtime_error(JsliteError::runtime(
+                            "no suspended frame available",
+                        )));
+                    };
+                    frame.stack.push(value);
+                    self.run()
                 }
-                ResumePayload::Error(error) => PromiseOutcome::Rejected(PromiseRejection {
-                    value: self
+                ResumePayload::Error(error) => {
+                    self.pending_resume_behavior = ResumeBehavior::Value;
+                    let value = self
                         .value_from_host_error(error)
-                        .map_err(|error| self.annotate_runtime_error(error))?,
-                    span: None,
-                    traceback: Vec::new(),
-                }),
+                        .map_err(|error| self.annotate_runtime_error(error))?;
+                    match self.raise_exception(value, None) {
+                        Ok(StepAction::Continue) => self.run(),
+                        Ok(StepAction::Return(step)) => Ok(step),
+                        Err(error) => Err(self.annotate_runtime_error(error)),
+                    }
+                }
                 ResumePayload::Cancelled => {
-                    return Err(limit_error("execution cancelled")
-                        .with_traceback(self.compose_traceback(&request.traceback)));
+                    Err(self.annotate_runtime_error(limit_error("execution cancelled")))
                 }
             };
-            self.resolve_promise_with_outcome(request.promise, outcome)
-                .map_err(|error| self.annotate_runtime_error(error))?;
-            return self.run();
         }
         match payload {
             ResumePayload::Value(value) => {

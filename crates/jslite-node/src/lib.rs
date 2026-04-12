@@ -12,8 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use jslite::{
     BytecodeProgram, CancellationToken, ExecutionOptions, ExecutionStep, HostError, ResumeOptions,
-    ResumePayload, RuntimeLimits, StructuredValue, compile, dump_program, dump_snapshot,
-    load_program, load_snapshot, lower_to_bytecode, resume_with_options, start_bytecode,
+    ResumePayload, RuntimeLimits, SnapshotPolicy, StructuredValue, compile, dump_program,
+    dump_snapshot, inspect_snapshot as inspect_loaded_snapshot, load_program, load_snapshot,
+    lower_to_bytecode, resume_with_options, start_bytecode,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,6 +49,23 @@ impl RuntimeLimitsDto {
             max_outstanding_host_calls: self
                 .max_outstanding_host_calls
                 .unwrap_or(defaults.max_outstanding_host_calls),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SnapshotPolicyDto {
+    #[serde(default)]
+    capabilities: Vec<String>,
+    #[serde(default)]
+    limits: RuntimeLimitsDto,
+}
+
+impl SnapshotPolicyDto {
+    fn into_snapshot_policy(self) -> SnapshotPolicy {
+        SnapshotPolicy {
+            capabilities: self.capabilities,
+            limits: self.limits.into_runtime_limits(),
         }
     }
 }
@@ -122,6 +140,10 @@ fn decode_program(bytes: Buffer) -> Result<BytecodeProgram> {
     load_program(bytes.as_ref()).map_err(to_napi_error)
 }
 
+fn encode_json<T: Serialize>(value: &T) -> Result<String> {
+    serde_json::to_string(value).map_err(to_napi_error)
+}
+
 #[napi]
 pub fn compile_program(source: String) -> Result<Buffer> {
     let parsed = compile(&source).map_err(to_napi_error)?;
@@ -184,20 +206,38 @@ pub fn start_program(
 }
 
 #[napi]
+pub fn inspect_snapshot(snapshot: Buffer, policy_json: String) -> Result<String> {
+    let mut snapshot = load_snapshot(snapshot.as_ref()).map_err(to_napi_error)?;
+    let policy: SnapshotPolicyDto = parse_json(&policy_json)?;
+    let inspection =
+        inspect_loaded_snapshot(&mut snapshot, policy.into_snapshot_policy()).map_err(to_napi_error)?;
+    encode_json(&inspection)
+}
+
+#[napi]
 pub fn resume_program(
     snapshot: Buffer,
     payload_json: String,
+    policy_json: String,
     cancellation_token_id: Option<String>,
 ) -> Result<String> {
     let snapshot = load_snapshot(snapshot.as_ref()).map_err(to_napi_error)?;
     let payload: ResumeDto = parse_json(&payload_json)?;
+    let policy: SnapshotPolicyDto = parse_json(&policy_json)?;
     let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
     let payload = match payload {
         ResumeDto::Value { value } => ResumePayload::Value(value),
         ResumeDto::Error { error } => ResumePayload::Error(error),
         ResumeDto::Cancelled => ResumePayload::Cancelled,
     };
-    let step = resume_with_options(snapshot, payload, ResumeOptions { cancellation_token })
-        .map_err(to_napi_error)?;
+    let step = resume_with_options(
+        snapshot,
+        payload,
+        ResumeOptions {
+            cancellation_token,
+            snapshot_policy: Some(policy.into_snapshot_policy()),
+        },
+    )
+    .map_err(to_napi_error)?;
     encode_step(step)
 }

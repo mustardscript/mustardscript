@@ -81,6 +81,7 @@ pub fn load_snapshot(bytes: &[u8]) -> JsliteResult<ExecutionSnapshot> {
     let mut snapshot = decoded.snapshot;
     validate_snapshot(&snapshot)?;
     snapshot.runtime.recompute_accounting_after_load()?;
+    snapshot.runtime.snapshot_policy_required = true;
     Ok(snapshot)
 }
 

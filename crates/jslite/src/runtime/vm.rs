@@ -361,6 +361,13 @@ impl Runtime {
                         resume_behavior,
                     } => {
                         self.pending_resume_behavior = resume_behavior;
+                        self.suspended_host_call = Some(PendingHostCall {
+                            capability: capability.clone(),
+                            args: args.clone(),
+                            promise: None,
+                            resume_behavior,
+                            traceback: self.traceback_snapshots(),
+                        });
                         return Ok(StepAction::Return(ExecutionStep::Suspended(Box::new(
                             Suspension {
                                 capability,
@@ -567,7 +574,7 @@ impl Runtime {
                     self.pending_host_calls.push_back(PendingHostCall {
                         capability,
                         args,
-                        promise,
+                        promise: Some(promise),
                         resume_behavior,
                         traceback: self.traceback_snapshots(),
                     });

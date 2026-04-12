@@ -376,7 +376,7 @@ pub(super) enum MicrotaskJob {
 pub(super) struct PendingHostCall {
     pub(super) capability: String,
     pub(super) args: Vec<StructuredValue>,
-    pub(super) promise: PromiseKey,
+    pub(super) promise: Option<PromiseKey>,
     pub(super) resume_behavior: ResumeBehavior,
     pub(super) traceback: Vec<TraceFrameSnapshot>,
 }
@@ -449,6 +449,8 @@ pub(super) struct Runtime {
     pub(super) cancellation_token: Option<CancellationToken>,
     #[serde(skip, default)]
     pub(super) pending_internal_exception: Option<PromiseRejection>,
+    #[serde(skip, default)]
+    pub(super) snapshot_policy_required: bool,
     pub(super) pending_resume_behavior: ResumeBehavior,
 }
 

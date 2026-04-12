@@ -1,10 +1,17 @@
 use jslite::ir::{AssignTarget, Expr, LogicalOp, MemberProperty, Stmt};
 use jslite::structured::StructuredNumber;
 use jslite::{
-    ExecutionOptions, ExecutionStep, ResumePayload, RuntimeLimits, StructuredValue, compile,
-    dump_program, dump_snapshot, execute, load_program, load_snapshot, lower_to_bytecode, resume,
-    start_bytecode,
+    ExecutionOptions, ExecutionStep, ResumeOptions, ResumePayload, RuntimeLimits, SnapshotPolicy,
+    StructuredValue, compile, dump_program, dump_snapshot, execute, load_program, load_snapshot,
+    lower_to_bytecode, resume, resume_with_options, start_bytecode,
 };
+
+fn snapshot_policy(capabilities: &[&str], limits: RuntimeLimits) -> SnapshotPolicy {
+    SnapshotPolicy {
+        capabilities: capabilities.iter().map(|name| (*name).to_string()).collect(),
+        limits,
+    }
+}
 
 fn stmt_contains_expr(stmt: &Stmt, predicate: &impl Fn(&Expr) -> bool) -> bool {
     match stmt {
@@ -264,9 +271,16 @@ fn bytecode_and_snapshot_round_trips_preserve_resume_behavior() {
 
     let encoded_snapshot = dump_snapshot(&suspension.snapshot).expect("snapshot should serialize");
     let loaded_snapshot = load_snapshot(&encoded_snapshot).expect("snapshot should deserialize");
-    let resumed = resume(
+    let resumed = resume_with_options(
         loaded_snapshot,
         ResumePayload::Value(StructuredValue::Number(StructuredNumber::Finite(4.0))),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(snapshot_policy(
+                &["fetch_data"],
+                RuntimeLimits::default(),
+            )),
+        },
     )
     .expect("resume should succeed");
 

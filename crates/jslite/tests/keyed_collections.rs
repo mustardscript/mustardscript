@@ -1,8 +1,8 @@
 use indexmap::IndexMap;
 
 use jslite::{
-    ExecutionOptions, ExecutionStep, RuntimeLimits, StructuredValue, compile, dump_snapshot,
-    execute, load_snapshot, resume, start,
+    ExecutionOptions, ExecutionStep, ResumeOptions, RuntimeLimits, SnapshotPolicy, StructuredValue,
+    compile, dump_snapshot, execute, load_snapshot, resume, resume_with_options, start,
 };
 
 fn number(value: f64) -> StructuredValue {
@@ -11,6 +11,13 @@ fn number(value: f64) -> StructuredValue {
 
 fn string(value: &str) -> StructuredValue {
     StructuredValue::from(value)
+}
+
+fn snapshot_policy(capabilities: &[&str], limits: RuntimeLimits) -> SnapshotPolicy {
+    SnapshotPolicy {
+        capabilities: capabilities.iter().map(|name| (*name).to_string()).collect(),
+        limits,
+    }
 }
 
 #[test]
@@ -306,8 +313,18 @@ fn snapshots_preserve_keyed_collections_and_cycles() {
     let encoded = dump_snapshot(&first.snapshot).expect("snapshot should serialize");
     let loaded = load_snapshot(&encoded).expect("snapshot should deserialize");
 
-    let completed =
-        resume(loaded, jslite::ResumePayload::Value(number(41.0))).expect("resume should work");
+    let completed = resume_with_options(
+        loaded,
+        jslite::ResumePayload::Value(number(41.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(snapshot_policy(
+                &["fetch_data"],
+                RuntimeLimits::default(),
+            )),
+        },
+    )
+    .expect("resume should work");
     match completed {
         ExecutionStep::Completed(value) => assert_eq!(
             value,

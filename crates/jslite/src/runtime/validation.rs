@@ -1,11 +1,12 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 use crate::diagnostic::{DiagnosticKind, JsliteError, JsliteResult};
 
 use super::{
-    CompletionRecord, IteratorState, PromiseDriver, PromiseOutcome, PromiseReaction,
-    PromiseSettledResult, PromiseState, Runtime, Value,
-    api::ExecutionSnapshot,
+    CompletionRecord, Frame, IteratorState, MicrotaskJob, PendingHostCall, PromiseDriver,
+    PromiseOutcome, PromiseReaction, PromiseRejection, PromiseSettledResult, PromiseState, Runtime,
+    Value,
+    api::{ExecutionSnapshot, SnapshotPolicy},
     bytecode::{BytecodeProgram, FunctionPrototype, Instruction},
     limit_error,
 };
@@ -792,7 +793,9 @@ pub(super) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()
         validate_runtime_value(runtime, root_result)?;
     }
     for request in &runtime.pending_host_calls {
-        if runtime.promises.get(request.promise).is_none() {
+        if let Some(promise) = request.promise
+            && runtime.promises.get(promise).is_none()
+        {
             return Err(JsliteError::Message {
                 kind: DiagnosticKind::Serialization,
                 message:
@@ -804,7 +807,8 @@ pub(super) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()
         }
     }
     if let Some(request) = &runtime.suspended_host_call
-        && runtime.promises.get(request.promise).is_none()
+        && let Some(promise) = request.promise
+        && runtime.promises.get(promise).is_none()
     {
         return Err(JsliteError::Message {
             kind: DiagnosticKind::Serialization,
@@ -876,6 +880,119 @@ pub(super) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> JsliteResult<()
         }
     }
 
+    Ok(())
+}
+
+pub(super) fn validate_snapshot_policy(
+    runtime: &Runtime,
+    policy: &SnapshotPolicy,
+) -> JsliteResult<()> {
+    let allowed = policy
+        .capabilities
+        .iter()
+        .cloned()
+        .collect::<HashSet<String>>();
+
+    for cell in runtime.cells.values() {
+        validate_runtime_host_capability(&cell.value, &allowed)?;
+    }
+    for object in runtime.objects.values() {
+        for value in object.properties.values() {
+            validate_runtime_host_capability(value, &allowed)?;
+        }
+    }
+    for array in runtime.arrays.values() {
+        for value in &array.elements {
+            validate_runtime_host_capability(value, &allowed)?;
+        }
+        for value in array.properties.values() {
+            validate_runtime_host_capability(value, &allowed)?;
+        }
+    }
+    for map in runtime.maps.values() {
+        for entry in &map.entries {
+            validate_runtime_host_capability(&entry.key, &allowed)?;
+            validate_runtime_host_capability(&entry.value, &allowed)?;
+        }
+    }
+    for set in runtime.sets.values() {
+        for value in &set.entries {
+            validate_runtime_host_capability(value, &allowed)?;
+        }
+    }
+    for frame in &runtime.frames {
+        validate_frame_host_capabilities(frame, &allowed)?;
+    }
+    if let Some(root_result) = &runtime.root_result {
+        validate_runtime_host_capability(root_result, &allowed)?;
+    }
+    for request in &runtime.pending_host_calls {
+        validate_pending_host_call_capability(request, &allowed)?;
+    }
+    if let Some(request) = &runtime.suspended_host_call {
+        validate_pending_host_call_capability(request, &allowed)?;
+    }
+    for promise in runtime.promises.values() {
+        match &promise.state {
+            PromiseState::Pending => {}
+            PromiseState::Fulfilled(value) => validate_runtime_host_capability(value, &allowed)?,
+            PromiseState::Rejected(rejection) => {
+                validate_promise_rejection_host_capabilities(rejection, &allowed)?
+            }
+        }
+        for reaction in &promise.reactions {
+            validate_promise_reaction_host_capabilities(reaction, &allowed)?;
+        }
+        if let Some(driver) = &promise.driver {
+            match driver {
+                PromiseDriver::All { values, .. } => {
+                    for value in values.iter().flatten() {
+                        validate_runtime_host_capability(value, &allowed)?;
+                    }
+                }
+                PromiseDriver::AllSettled { results, .. } => {
+                    for result in results.iter().flatten() {
+                        match result {
+                            PromiseSettledResult::Fulfilled(value)
+                            | PromiseSettledResult::Rejected(value) => {
+                                validate_runtime_host_capability(value, &allowed)?
+                            }
+                        }
+                    }
+                }
+                PromiseDriver::Any { reasons, .. } => {
+                    for value in reasons.iter().flatten() {
+                        validate_runtime_host_capability(value, &allowed)?;
+                    }
+                }
+            }
+        }
+        for continuation in &promise.awaiters {
+            for frame in &continuation.frames {
+                validate_frame_host_capabilities(frame, &allowed)?;
+            }
+        }
+    }
+    for microtask in &runtime.microtasks {
+        match microtask {
+            MicrotaskJob::ResumeAsync {
+                continuation,
+                outcome,
+            } => {
+                for frame in &continuation.frames {
+                    validate_frame_host_capabilities(frame, &allowed)?;
+                }
+                validate_promise_outcome_host_capabilities(outcome, &allowed)?;
+            }
+            MicrotaskJob::PromiseReaction { reaction, outcome } => {
+                validate_promise_reaction_host_capabilities(reaction, &allowed)?;
+                validate_promise_outcome_host_capabilities(outcome, &allowed)?;
+            }
+        }
+    }
+    if let Some(exception) = &runtime.pending_internal_exception {
+        validate_promise_rejection_host_capabilities(exception, &allowed)?;
+    }
     Ok(())
 }
 
@@ -954,4 +1071,103 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> JsliteResult<()> 
         }
         _ => Ok(()),
     }
+}
+
+fn validate_runtime_host_capability(value: &Value, allowed: &HashSet<String>) -> JsliteResult<()> {
+    match value {
+        Value::HostFunction(capability) if !allowed.contains(capability) => Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: format!(
+                "snapshot policy rejected unauthorized capability `{capability}`"
+            ),
+            span: None,
+            traceback: Vec::new(),
+        }),
+        _ => Ok(()),
+    }
+}
+
+fn validate_pending_host_call_capability(
+    request: &PendingHostCall,
+    allowed: &HashSet<String>,
+) -> JsliteResult<()> {
+    if !allowed.contains(&request.capability) {
+        return Err(JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: format!(
+                "snapshot policy rejected unauthorized capability `{}`",
+                request.capability
+            ),
+            span: None,
+            traceback: Vec::new(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_frame_host_capabilities(frame: &Frame, allowed: &HashSet<String>) -> JsliteResult<()> {
+    for value in &frame.stack {
+        validate_runtime_host_capability(value, allowed)?;
+    }
+    if let Some(value) = &frame.pending_exception {
+        validate_runtime_host_capability(value, allowed)?;
+    }
+    for completion in &frame.pending_completions {
+        match completion {
+            CompletionRecord::Return(value) | CompletionRecord::Throw(value) => {
+                validate_runtime_host_capability(value, allowed)?
+            }
+            CompletionRecord::Jump { .. } => {}
+        }
+    }
+    Ok(())
+}
+
+fn validate_promise_outcome_host_capabilities(
+    outcome: &PromiseOutcome,
+    allowed: &HashSet<String>,
+) -> JsliteResult<()> {
+    match outcome {
+        PromiseOutcome::Fulfilled(value) => validate_runtime_host_capability(value, allowed),
+        PromiseOutcome::Rejected(rejection) => {
+            validate_promise_rejection_host_capabilities(rejection, allowed)
+        }
+    }
+}
+
+fn validate_promise_rejection_host_capabilities(
+    rejection: &PromiseRejection,
+    allowed: &HashSet<String>,
+) -> JsliteResult<()> {
+    validate_runtime_host_capability(&rejection.value, allowed)
+}
+
+fn validate_promise_reaction_host_capabilities(
+    reaction: &PromiseReaction,
+    allowed: &HashSet<String>,
+) -> JsliteResult<()> {
+    match reaction {
+        PromiseReaction::Then {
+            on_fulfilled,
+            on_rejected,
+            ..
+        } => {
+            if let Some(handler) = on_fulfilled {
+                validate_runtime_host_capability(handler, allowed)?;
+            }
+            if let Some(handler) = on_rejected {
+                validate_runtime_host_capability(handler, allowed)?;
+            }
+        }
+        PromiseReaction::Finally { callback, .. } => {
+            if let Some(callback) = callback {
+                validate_runtime_host_capability(callback, allowed)?;
+            }
+        }
+        PromiseReaction::FinallyPassThrough {
+            original_outcome, ..
+        } => validate_promise_outcome_host_capabilities(original_outcome, allowed)?,
+        PromiseReaction::Combinator { .. } => {}
+    }
+    Ok(())
 }

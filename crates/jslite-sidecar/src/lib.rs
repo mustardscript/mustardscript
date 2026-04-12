@@ -2,8 +2,8 @@ use anyhow::{Context, Result};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jslite::{
     BytecodeProgram, ExecutionOptions, ExecutionStep, HostError, ResumePayload, RuntimeLimits,
-    StructuredValue, compile, dump_program, dump_snapshot, load_program, load_snapshot,
-    lower_to_bytecode, resume, start_bytecode,
+    SnapshotPolicy, StructuredValue, compile, dump_program, dump_snapshot, load_program,
+    load_snapshot, lower_to_bytecode, resume_with_options, start_bytecode,
 };
 use serde::{Deserialize, Serialize};
 
@@ -44,6 +44,23 @@ impl RuntimeLimitsDto {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct SnapshotPolicyDto {
+    #[serde(default)]
+    capabilities: Vec<String>,
+    #[serde(default)]
+    limits: RuntimeLimitsDto,
+}
+
+impl SnapshotPolicyDto {
+    fn into_snapshot_policy(self) -> SnapshotPolicy {
+        SnapshotPolicy {
+            capabilities: self.capabilities,
+            limits: self.limits.into_runtime_limits(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum StepDto {
     Completed {
@@ -78,6 +95,7 @@ enum Request {
     Resume {
         id: u64,
         snapshot_base64: String,
+        policy: SnapshotPolicyDto,
         payload: ResumeDto,
     },
 }
@@ -150,6 +168,7 @@ fn handle(request: Request) -> Response {
         })(),
         Request::Resume {
             snapshot_base64,
+            policy,
             payload,
             ..
         } => (|| {
@@ -159,7 +178,14 @@ fn handle(request: Request) -> Response {
                 ResumeDto::Value { value } => ResumePayload::Value(value),
                 ResumeDto::Error { error } => ResumePayload::Error(error),
             };
-            let step = resume(snapshot, payload)?;
+            let step = resume_with_options(
+                snapshot,
+                payload,
+                jslite::ResumeOptions {
+                    cancellation_token: None,
+                    snapshot_policy: Some(policy.into_snapshot_policy()),
+                },
+            )?;
             Ok(ResponsePayload::Step {
                 step: encode_step(step)?,
             })

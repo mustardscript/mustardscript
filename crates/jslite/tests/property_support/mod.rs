@@ -3,13 +3,20 @@
 use std::fmt::Write;
 
 use jslite::{
-    ExecutionStep, JsliteResult, ResumePayload, StructuredValue, dump_snapshot, load_snapshot,
-    resume,
+    ExecutionStep, JsliteResult, ResumeOptions, ResumePayload, RuntimeLimits, SnapshotPolicy,
+    StructuredValue, dump_snapshot, load_snapshot, resume, resume_with_options,
 };
 use proptest::prelude::*;
 
 const SAFE_MESSAGE_PATH_FRAGMENTS: &[&str] = &["/Users/", "\\Users\\", "C:\\", "/home/"];
 const OBJECT_KEYS: &[&str] = &["alpha", "beta", "gamma", "delta", "epsilon"];
+
+fn snapshot_policy(capabilities: &[&str], limits: RuntimeLimits) -> SnapshotPolicy {
+    SnapshotPolicy {
+        capabilities: capabilities.iter().map(|name| (*name).to_string()).collect(),
+        limits,
+    }
+}
 
 pub fn assert_host_safe_message(message: &str) {
     for fragment in SAFE_MESSAGE_PATH_FRAGMENTS {
@@ -182,7 +189,18 @@ pub fn drive_with_echo(
                 } else {
                     suspension.snapshot
                 };
-                step = resume(snapshot, payload)?;
+                let options = if serialize_each_snapshot {
+                    ResumeOptions {
+                        cancellation_token: None,
+                        snapshot_policy: Some(snapshot_policy(
+                            &[suspension.capability.as_str()],
+                            RuntimeLimits::default(),
+                        )),
+                    }
+                } else {
+                    ResumeOptions::default()
+                };
+                step = resume_with_options(snapshot, payload, options)?;
             }
         }
     }

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     cancellation::CancellationToken,
-    diagnostic::{JsliteError, JsliteResult},
+    diagnostic::{DiagnosticKind, JsliteError, JsliteResult},
     ir::CompiledProgram,
     limits::RuntimeLimits,
     structured::StructuredValue,
@@ -48,9 +48,22 @@ pub enum ResumePayload {
     Cancelled,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotPolicy {
+    pub capabilities: Vec<String>,
+    pub limits: RuntimeLimits,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotInspection {
+    pub capability: String,
+    pub args: Vec<StructuredValue>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ResumeOptions {
     pub cancellation_token: Option<CancellationToken>,
+    pub snapshot_policy: Option<SnapshotPolicy>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,6 +121,27 @@ pub fn resume_with_options(
     options: ResumeOptions,
 ) -> JsliteResult<ExecutionStep> {
     let mut runtime = snapshot.runtime;
-    runtime.apply_resume_options(options);
+    runtime.apply_resume_options(options)?;
     runtime.resume(payload)
+}
+
+pub fn inspect_snapshot(
+    snapshot: &mut ExecutionSnapshot,
+    policy: SnapshotPolicy,
+) -> JsliteResult<SnapshotInspection> {
+    snapshot.runtime.apply_snapshot_policy(policy)?;
+    let request = snapshot
+        .runtime
+        .suspended_host_call
+        .as_ref()
+        .ok_or_else(|| JsliteError::Message {
+            kind: DiagnosticKind::Serialization,
+            message: "snapshot is not suspended on a host capability".to_string(),
+            span: None,
+            traceback: Vec::new(),
+        })?;
+    Ok(SnapshotInspection {
+        capability: request.capability.clone(),
+        args: request.args.clone(),
+    })
 }
