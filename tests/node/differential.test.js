@@ -523,6 +523,26 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'for await...of awaits yielded values from supported iterables',
+    source: `
+      async function main() {
+        const values = [Promise.resolve(1), 2, Promise.resolve(3)];
+        const seen = [];
+        let total = 0;
+        for await (const value of values.values()) {
+          seen[seen.length] = value;
+          total += value;
+        }
+        const state = { current: 0 };
+        for await (state.current of new Set([Promise.resolve(4), 5]).values()) {
+          total += state.current;
+        }
+        return [seen, total, state.current];
+      }
+      main();
+    `,
+  },
+  {
     name: 'Map lookup and SameValueZero semantics',
     source: `
       const shared = {};

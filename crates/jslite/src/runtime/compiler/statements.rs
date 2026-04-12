@@ -197,6 +197,7 @@ impl Compiler {
             }
             Stmt::ForOf {
                 span,
+                await_each,
                 head,
                 iterable,
                 body,
@@ -244,6 +245,9 @@ impl Compiler {
                 context.code.push(Instruction::IteratorNext);
                 let exit_jump = self.emit_jump(context, Instruction::JumpIfTrue(usize::MAX));
                 context.code.push(Instruction::Pop);
+                if *await_each {
+                    context.code.push(Instruction::Await);
+                }
 
                 match head {
                     ForOfHead::Binding { kind, pattern } => {
@@ -321,6 +325,7 @@ impl Compiler {
                     context,
                     &Stmt::ForOf {
                         span: *span,
+                        await_each: false,
                         head: head.clone(),
                         iterable: Expr::Call {
                             span: *span,

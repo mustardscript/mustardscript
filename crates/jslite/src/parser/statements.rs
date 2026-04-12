@@ -62,14 +62,6 @@ impl<'a> Lowerer<'a> {
                 })
             }
             Statement::ForOfStatement(statement) => {
-                if statement.r#await {
-                    self.unsupported(
-                        "for await...of is not supported",
-                        Some(statement.span.into()),
-                    );
-                    return None;
-                }
-
                 let head = self.lower_for_loop_head(&statement.left, "for...of")?;
 
                 let iterable = self.lower_expr(&statement.right)?;
@@ -88,6 +80,7 @@ impl<'a> Lowerer<'a> {
 
                 Some(Stmt::ForOf {
                     span: statement.span.into(),
+                    await_each: statement.r#await,
                     head,
                     iterable,
                     body,

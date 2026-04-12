@@ -58,6 +58,7 @@ pub enum Stmt {
     },
     ForOf {
         span: SourceSpan,
+        await_each: bool,
         head: ForOfHead,
         iterable: Expr,
         body: Box<Stmt>,

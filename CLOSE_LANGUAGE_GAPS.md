@@ -59,19 +59,20 @@ Audit sources:
 
 - [x] Object spread now works for plain-object and array sources, skips
   `null` / `undefined`, and fails closed for other source values.
-- [ ] Array spread is rejected during validation.
-- [ ] Spread arguments are rejected during validation.
-- [ ] Default parameters are rejected during validation.
-- [ ] Default destructuring is rejected during validation.
-- [ ] Destructuring assignment is rejected during validation.
-- [ ] `var` is rejected; only `let` and `const` are supported.
-- [ ] Update expressions are rejected during validation.
-- [ ] `delete` is rejected during validation.
+- [x] Array spread is rejected during validation.
+- [x] Spread arguments are rejected during validation.
+- [x] Default parameters are rejected during validation.
+- [x] Default destructuring is rejected during validation.
+- [x] Destructuring assignment is rejected during validation.
+- [x] `var` is rejected; only `let` and `const` are supported.
+- [x] Update expressions are rejected during validation.
+- [x] `delete` is rejected during validation.
 - [x] `for...in` now works for plain objects and arrays with the documented
   conservative key-order and header surface.
-- [ ] `for await...of` is rejected during validation.
-- [ ] Array holes in literals are rejected during validation.
-- [ ] `instanceof` is rejected as an unsupported binary operator.
+- [x] `for await...of` now works inside async functions over the documented
+  sync-iterable surface by awaiting each yielded value before the loop body.
+- [x] Array holes in literals are rejected during validation.
+- [x] `instanceof` is rejected as an unsupported binary operator.
 - [x] Math helper gaps remaining: `Math.random`.
 
 ### Missing but not in the original requested list
@@ -82,9 +83,10 @@ Audit sources:
   plain-object and array source surface.
 - [x] Conservative `in` support exists for the runtime's currently exposed
   property surface without widening prototype or descriptor semantics.
-- [ ] Logical assignment operators `||=` and `&&=` are unsupported.
-- [ ] Additional unsupported compound assignments worth auditing for priority:
-  `%=`, `**=`, and bitwise assignment operators.
+- [x] Logical assignment operators `||=` and `&&=` are rejected during
+  validation.
+- [x] Additional unsupported compound assignments `%=`, `**=`, and bitwise
+  assignment operators are rejected during validation.
 
 ### Stale assumptions corrected by this audit
 
@@ -146,9 +148,11 @@ Audit sources:
   binding by supporting identifier and member assignment-target headers.
 - [x] Decide the supported `for...in` surface for plain objects and arrays,
   including enumeration order and inherited-property behavior.
-- [ ] Decide the minimum `for await...of` surface: async arrays and guest
-  promises only, or a broader async-iterator protocol.
-- [ ] Implement the chosen `for await...of` surface with snapshot and resume
+- [x] Decide the minimum `for await...of` surface: reuse the existing
+  synchronous iterable inputs (`Array`, `String`, `Map`, `Set`, and supported
+  iterator helper objects) inside async functions, await each yielded value,
+  and continue to defer custom async-iterator protocol support.
+- [x] Implement the chosen `for await...of` surface with snapshot and resume
   coverage where suspension is possible.
 
 ### Phase 5: Hard semantic gaps that need design first
@@ -183,7 +187,7 @@ Audit sources:
   wrong arity, wrong callback types, and unsupported host-suspension cases.
 - [ ] Semantics-sensitive work adds differential tests against Node for the
   supported subset.
-- [ ] Loop and iterator work adds snapshot and resume coverage when suspension
+- [x] Loop and iterator work adds snapshot and resume coverage when suspension
   can occur mid-iteration.
 - [ ] Any new unsupported decision is documented in `docs/LANGUAGE.md` and
   reflected in `LANGUAGE_GAPS.md`.

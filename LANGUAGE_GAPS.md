@@ -77,26 +77,28 @@ missing:
   constructors.
 - Private fields are unsupported.
 - Object literal accessors are unsupported.
-- Array spread is unsupported.
-- Spread arguments are unsupported.
+- Array spread is rejected during validation.
+- Spread arguments are rejected during validation.
 - Default parameters are rejected during validation.
 - Default destructuring is rejected during validation.
-- Destructuring assignment is unsupported. Binding destructuring works in
-  declarations, `catch` parameters, and the supported `for...of` surface.
-- `var` is unsupported. Only `let` and `const` are accepted.
-- Update expressions are unsupported.
-- `delete` is unsupported.
+- Destructuring assignment is rejected during validation. Binding destructuring
+  works in declarations, `catch` parameters, and the supported `for...of`
+  surface.
+- `var` is rejected during validation. Only `let` and `const` are accepted.
+- Update expressions are rejected during validation.
+- `delete` is rejected during validation.
 - `with` is unsupported.
 - `for...in` now works for plain objects and arrays only, using the same key
   order as `Object.keys(...)` and the same header surface as the documented
   `for...of` subset.
-- `for await...of` is unsupported.
+- `for await...of` is supported for the documented synchronous iterable
+  surface by awaiting each yielded value inside async functions.
 - `for...of` supports the documented iterable surface plus single-binding
   `let` / `const` declaration headers and identifier/member assignment-target
   headers, but destructuring assignment targets remain unsupported.
 - Generators and `yield` are unsupported.
 - Tagged template literals are unsupported.
-- Array holes in literals are unsupported.
+- Array holes in literals are rejected during validation.
 - Labeled statements are unsupported.
 - `debugger` statements are unsupported.
 - Meta properties such as `new.target` and `import.meta` are unsupported.
@@ -109,10 +111,10 @@ missing:
 
 - Binary operators are still limited. `**` and conservative `in` support now
   exist, but common generated operators such as `instanceof`, bitwise
-  operators, and shift operators are unsupported.
+  operators, and shift operators are rejected during validation.
 - Assignment operators are limited. Only `=`, `+=`, `-=`, `*=`, `/=`, and `??=`
   are implemented. Generated `||=`, `&&=`, `%=`, `**=`, and bitwise assignment
-  forms are unsupported.
+  forms are rejected during validation.
 - Unary operators are limited. Generated code using `~value` is unsupported.
 
 ### Built-Ins And Standard Library Surface
@@ -214,8 +216,8 @@ missing:
   source code.
 - `for...of` is narrower than full JavaScript: declaration headers still must
   declare exactly one `let` or `const` binding, destructuring assignment
-  targets remain unsupported, `for...in` is still limited to plain objects and
-  arrays, and `for await...of` remains unsupported.
+  targets remain unsupported, and `for...in` is still limited to plain objects
+  and arrays.
 - Object spread is narrower than full JavaScript: plain-object and array
   sources work, `null` / `undefined` are skipped, and other source values fail
   closed instead of following full boxing and coercion rules.

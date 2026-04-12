@@ -105,6 +105,73 @@ test('progress snapshots preserve active array iterators across resumes', () => 
   assert.equal(result, 60);
 });
 
+test('run supports for await...of over the documented iterable surface', async () => {
+  const runtime = new Jslite(`
+    async function run() {
+      const values = [Promise.resolve(1), 2, Promise.resolve(3)];
+      const seen = [];
+      let total = 0;
+      for await (const value of values.values()) {
+        seen[seen.length] = value;
+        total += value;
+      }
+      const state = { current: 0 };
+      for await (state.current of new Set([Promise.resolve(4), 5]).values()) {
+        total += state.current;
+      }
+      return [seen, total, state.current];
+    }
+    run();
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, [[1, 2, 3], 15, 5]);
+});
+
+test('progress snapshots preserve for await...of assignment-target headers across resumes', () => {
+  const runtime = new Jslite(`
+    async function load(value) {
+      return await fetch_data(value);
+    }
+    async function run() {
+      const state = { current: 0, total: 0 };
+      for await (state.current of [load(1), load(2), load(3)]) {
+        state.total += state.current;
+      }
+      return [state.current, state.total];
+    }
+    run();
+  `);
+
+  const first = runtime.start({
+    capabilities: {
+      fetch_data() {
+        throw new Error('start should suspend before invoking JS handlers');
+      },
+    },
+  });
+
+  assert.ok(first instanceof Progress);
+  assert.equal(first.capability, 'fetch_data');
+  assert.deepEqual(first.args, [1]);
+
+  const restored = Progress.load(first.dump());
+  assert.ok(restored instanceof Progress);
+
+  const second = restored.resume(1);
+  assert.ok(second instanceof Progress);
+  assert.equal(second.capability, 'fetch_data');
+  assert.deepEqual(second.args, [2]);
+
+  const third = second.resume(2);
+  assert.ok(third instanceof Progress);
+  assert.equal(third.capability, 'fetch_data');
+  assert.deepEqual(third.args, [3]);
+
+  const result = third.resume(3);
+  assert.deepEqual(result, [3, 6]);
+});
+
 test('progress snapshots preserve assignment-target for...of headers across resumes', () => {
   const runtime = new Jslite(`
     const state = { current: 0, total: 0 };

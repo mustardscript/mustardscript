@@ -201,6 +201,62 @@ fn for_of_rejects_unsupported_iterable_inputs() {
 }
 
 #[test]
+fn for_await_supports_documented_iterable_surface() {
+    let program = compile(
+        r#"
+        async function main() {
+          const values = [Promise.resolve(1), 2, Promise.resolve(3)];
+          const seen = [];
+          let total = 0;
+          for await (const value of values.values()) {
+            seen[seen.length] = value;
+            total += value;
+          }
+          const state = { current: 0 };
+          for await (state.current of new Set([Promise.resolve(4), 5]).values()) {
+            total += state.current;
+          }
+          return [seen, total, state.current];
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![number(1.0), number(2.0), number(3.0)]),
+            number(15.0),
+            number(5.0),
+        ])
+    );
+}
+
+#[test]
+fn for_await_rejects_unsupported_iterable_inputs() {
+    let program = compile(
+        r#"
+        async function main() {
+          for await (const value of { alpha: 1 }) {
+            value;
+          }
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let error = execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("value is not iterable in the supported surface")
+    );
+}
+
+#[test]
 fn for_in_supports_plain_objects_arrays_and_assignment_targets() {
     let program = compile(
         r#"
@@ -386,6 +442,81 @@ fn snapshot_round_trip_preserves_assignment_target_for_of_headers() {
         ExecutionStep::Completed(value) => assert_eq!(
             value,
             StructuredValue::Array(vec![number(3.0), number(60.0)])
+        ),
+        ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
+    }
+}
+
+#[test]
+fn snapshot_round_trip_preserves_for_await_assignment_targets() {
+    let program = compile(
+        r#"
+        async function load(value) {
+          return await fetch_data(value);
+        }
+        async function main() {
+          const state = { current: 0, total: 0 };
+          for await (state.current of [load(1), load(2), load(3)]) {
+            state.total += state.current;
+          }
+          return [state.current, state.total];
+        }
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let first = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+    assert_eq!(first.capability, "fetch_data");
+    assert_eq!(first.args, vec![number(1.0)]);
+
+    let encoded = dump_snapshot(&first.snapshot).expect("snapshot should serialize");
+    let loaded = load_snapshot(&encoded).expect("snapshot should deserialize");
+
+    let second = match resume_with_options(
+        loaded,
+        ResumePayload::Value(number(1.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(snapshot_policy(&["fetch_data"], RuntimeLimits::default())),
+        },
+    )
+    .expect("resume should work")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected a second suspension, got {value:?}"),
+    };
+    assert_eq!(second.capability, "fetch_data");
+    assert_eq!(second.args, vec![number(2.0)]);
+
+    let third = match resume(second.snapshot, ResumePayload::Value(number(2.0)))
+        .expect("second resume should work")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected a third suspension, got {value:?}"),
+    };
+    assert_eq!(third.capability, "fetch_data");
+    assert_eq!(third.args, vec![number(3.0)]);
+
+    let completed = resume(third.snapshot, ResumePayload::Value(number(3.0)))
+        .expect("final resume should work");
+    match completed {
+        ExecutionStep::Completed(value) => assert_eq!(
+            value,
+            StructuredValue::Array(vec![number(3.0), number(6.0)])
         ),
         ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
     }

@@ -35,8 +35,8 @@ extensions are called out explicitly instead of being implied.
 - `await` inside async functions
 - literals, arrays, and plain-object literals with static keys, computed keys,
   method shorthand, and spread from plain objects or arrays
-- `if`, `switch`, `while`, `do...while`, `for`, array `for...of`, `break`,
-  and `continue`
+- `if`, `switch`, `while`, `do...while`, `for`, `for...of`,
+  `for await...of`, `for...in`, `break`, and `continue`
 - `return`
 - `throw`, `try`, `catch`, and `finally`
 - common destructuring
@@ -63,6 +63,8 @@ extensions are called out explicitly instead of being implied.
 - async functions return guest promise values
 - `await` suspends the current async continuation onto the runtime microtask
   queue
+- `for await...of` is supported inside async functions over the documented
+  iterable surface by awaiting each yielded value before the loop body runs
 - host capability calls inside async guest code return guest promises and still
   suspend through the existing `start()` / `resume()` boundary
 - `new Promise(executor)` is available when `executor` is callable and
@@ -165,14 +167,16 @@ extensions are called out explicitly instead of being implied.
 - `with`
 - classes
 - generators and `yield`
-- `for await...of`
+- `var`, `using`, and `await using`
 - `for...of` declaration headers that do not declare exactly one `let` or
   `const` binding, declaration initializers in `for...of` / `for...in`
   headers, and destructuring assignment targets
 - `debugger`
 - labeled statements
 - object literal accessors
-- array spread and array holes
+- array spread, array holes, and spread arguments
+- update expressions
+- `instanceof`
 
 ## Explicit Deferrals
 

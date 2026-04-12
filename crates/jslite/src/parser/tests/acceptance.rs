@@ -100,6 +100,24 @@ fn parses_for_in_with_binding_and_assignment_targets() {
 }
 
 #[test]
+fn parses_for_await_of_inside_async_functions() {
+    compile(
+        r#"
+        async function run(values, boxRef) {
+          for await (const value of values) {
+            boxRef.total += value;
+          }
+          for await (boxRef.current of values) {
+            boxRef.total += boxRef.current;
+          }
+          return boxRef.total;
+        }
+        "#,
+    )
+    .expect("for await...of should compile inside async functions");
+}
+
+#[test]
 fn parses_sequence_and_exponentiation_expressions() {
     compile(
         r#"

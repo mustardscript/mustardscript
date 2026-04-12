@@ -1,5 +1,10 @@
 use crate::compile;
 
+fn assert_validation_reject(source: &str, message: &str) {
+    let error = compile(source).expect_err("source should fail validation");
+    assert!(error.to_string().contains(message));
+}
+
 #[test]
 fn rejects_forbidden_free_require() {
     let error = compile("require('fs');").expect_err("should reject forbidden global");
@@ -48,6 +53,24 @@ fn rejects_default_destructuring() {
 }
 
 #[test]
+fn rejects_array_spread() {
+    assert_validation_reject("[...value];", "array spread is not supported in v1");
+}
+
+#[test]
+fn rejects_array_holes() {
+    assert_validation_reject("[1, , 2];", "array holes are not supported in v1");
+}
+
+#[test]
+fn rejects_spread_arguments() {
+    assert_validation_reject(
+        "run(...values);",
+        "spread arguments are not supported in v1",
+    );
+}
+
+#[test]
 fn rejects_module_syntax() {
     let error = compile("export const x = 1;").expect_err("module syntax should fail");
     assert!(error.to_string().contains("module syntax"));
@@ -73,13 +96,10 @@ fn rejects_for_of_destructuring_assignment_targets() {
 }
 
 #[test]
-fn rejects_for_await_of() {
-    let error = compile("async function run() { for await (const value of [1]) { value; } }")
-        .expect_err("for await...of should fail closed");
-    assert!(
-        error
-            .to_string()
-            .contains("for await...of is not supported")
+fn rejects_destructuring_assignment() {
+    assert_validation_reject(
+        "[value] = [1];",
+        "destructuring assignment is not supported in v1",
     );
 }
 
@@ -95,13 +115,15 @@ fn rejects_for_in_destructuring_assignment_targets() {
 }
 
 #[test]
-fn rejects_exponent_assignment_operator() {
-    let error = compile("let value = 2; value **= 3;")
-        .expect_err("unsupported assignment operators should fail closed");
-    assert!(
-        error
-            .to_string()
-            .contains("unsupported assignment operator in v1")
+fn rejects_var_declarations() {
+    assert_validation_reject("var value = 1;", "only let and const are supported");
+}
+
+#[test]
+fn rejects_update_expressions() {
+    assert_validation_reject(
+        "let value = 1; value++;",
+        "update expressions are not supported in v1",
     );
 }
 
@@ -113,6 +135,24 @@ fn rejects_instanceof_operator() {
             .to_string()
             .contains("unsupported binary operator in v1")
     );
+}
+
+#[test]
+fn rejects_logical_assignment_operators() {
+    for source in ["let value = 1; value ||= 2;", "let value = 1; value &&= 2;"] {
+        assert_validation_reject(source, "unsupported assignment operator in v1");
+    }
+}
+
+#[test]
+fn rejects_additional_unsupported_assignment_operators() {
+    for source in [
+        "let value = 2; value %= 3;",
+        "let value = 2; value **= 3;",
+        "let value = 2; value &= 3;",
+    ] {
+        assert_validation_reject(source, "unsupported assignment operator in v1");
+    }
 }
 
 #[test]

@@ -30,9 +30,9 @@ The current implementation already supports:
 - parse -> validate -> IR -> bytecode -> VM execution for the supported subset
 - `let`/`const`, functions and closures, rest parameters, arrays, plain
   objects, loops, and basic control flow
-- `for...of` over arrays, strings, `Map`, `Set`, and supported iterator
-  objects, with `let` / `const` loop bindings, destructuring, and
-  snapshot-safe iterator state
+- `for...of` plus async `for await...of` over arrays, strings, `Map`, `Set`,
+  and supported iterator objects, with the documented loop-header surface,
+  destructuring bindings, and snapshot-safe iterator state
 - `Map` and `Set` with supported iterable constructors, SameValueZero key and
   membership semantics, insertion-order-preserving storage, and iterator
   helpers

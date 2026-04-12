@@ -3,6 +3,7 @@
 const OUTCOME = Object.freeze({
   NODE_PARITY: 'node_parity',
   VALIDATION_REJECT: 'validation_reject',
+  RUNTIME_REJECT: 'runtime_reject',
   KNOWN_DIVERGENCE: 'known_divergence',
 });
 
@@ -235,12 +236,10 @@ const FEATURE_CONTRACT = Object.freeze([
     messageIncludes: 'Object helpers currently only support plain objects and arrays',
   },
   {
-    id: 'validation.for-await-of',
-    title: 'for await...of is a validation reject',
-    outcome: OUTCOME.VALIDATION_REJECT,
-    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
-    source: 'async function run() { for await (const value of [1, 2]) { value; } }',
-    messageIncludes: 'for await...of is not supported',
+    id: 'language.for-await-of',
+    title: 'for await...of matches the documented async iteration subset',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.EXISTING],
   },
   {
     id: 'validation.classes',
