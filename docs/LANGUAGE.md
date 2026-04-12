@@ -545,10 +545,14 @@ extensions are called out explicitly instead of being implied.
   `groups` properties on that result array
 - `Date.now()` reads the host wall clock as integral epoch milliseconds,
   `new Date(value)` currently supports zero arguments or exactly one numeric,
-  string, or existing `Date` value, `Date.prototype.getTime()` returns the
-  stored integral epoch milliseconds, `toISOString()` and `toJSON()` render
-  UTC RFC3339 timestamps, and the documented `getUTC*` accessors expose UTC
-  year/month/day/hour/minute/second fields
+  string, or existing `Date` value, supported string inputs are currently
+  `YYYY-MM-DD` plus RFC3339 timestamps with `Z` or explicit numeric UTC
+  offsets, `Date.prototype.getTime()` returns the stored integral epoch
+  milliseconds, `toISOString()` and `toJSON()` render UTC RFC3339 timestamps
+  across the full ECMAScript time-clip range with signed six-digit years when
+  required, and the documented `getUTC*` accessors expose UTC
+  year/month/day/hour/minute/second fields while returning `NaN` for invalid
+  dates
 - `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`,
   `Number.isFinite`, `Number.isInteger`, and `Number.isSafeInteger` are
   available as conservative static helpers on `Number`; the corresponding
@@ -559,9 +563,11 @@ extensions are called out explicitly instead of being implied.
 - `Intl.DateTimeFormat` and `Intl.NumberFormat` are available in a narrow
   deterministic subset: locale support is currently limited to `en-US`,
   `DateTimeFormat` currently accepts only `UTC` time-zone formatting plus the
-  documented numeric / two-digit date-time fields, and `NumberFormat`
-  currently supports only `decimal`, `percent`, and `currency` formatting with
-  `USD` as the only supported currency code
+  documented numeric / two-digit date-time fields, formats hour-bearing output
+  with the default `en-US` 12-hour clock plus `AM` / `PM`, and rejects any
+  other option keys explicitly; `NumberFormat` currently supports only
+  `decimal`, `percent`, and `currency` formatting with `USD` as the only
+  supported currency code and rejects any other option keys explicitly
 - `Math.PI`, `E`, `LN2`, `LN10`, `LOG2E`, `LOG10E`, `SQRT2`, and `SQRT1_2`
   are available as numeric constants on `Math`
 - `Math.exp`, `log2`, `log10`, `sin`, `cos`, `atan2`, `hypot`, and `cbrt`
@@ -572,7 +578,8 @@ extensions are called out explicitly instead of being implied.
   cryptographically strong API contract
 - structured host arrays may be sparse; hole positions are preserved across the
   boundary in both directions
-- direct `Date()` calls, multi-argument `new Date(...)`, unsupported `Intl`
+- direct `Date()` calls, multi-argument `new Date(...)`, locale-specific date
+  strings outside the documented `Date` parsing surface, unsupported `Intl`
   locales or options, and returning `Date` values across the structured host
   boundary all fail closed
 - real `RegExp` instances support `source`, `flags`, `global`, `ignoreCase`,

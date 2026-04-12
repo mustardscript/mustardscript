@@ -110,12 +110,47 @@ impl Runtime {
         }
     }
 
+    fn intl_assert_supported_option_keys(
+        &self,
+        object: Option<ObjectKey>,
+        ctor: &str,
+        allowed: &[&str],
+    ) -> JsliteResult<()> {
+        let Some(object) = object else {
+            return Ok(());
+        };
+        for key in self
+            .objects
+            .get(object)
+            .ok_or_else(|| JsliteError::runtime("object missing"))?
+            .properties
+            .keys()
+        {
+            if !allowed
+                .iter()
+                .any(|allowed_key| allowed_key == &key.as_str())
+            {
+                return Err(JsliteError::runtime(format!(
+                    "TypeError: Intl.{ctor} does not support the `{key}` option",
+                )));
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn construct_intl_date_time_format(
         &mut self,
         args: &[Value],
     ) -> JsliteResult<Value> {
         let locale = self.normalize_intl_locale(args.first().cloned())?;
         let options = self.intl_options_object(args.get(1).cloned())?;
+        self.intl_assert_supported_option_keys(
+            options,
+            "DateTimeFormat",
+            &[
+                "timeZone", "year", "month", "day", "hour", "minute", "second",
+            ],
+        )?;
         let time_zone = match self.intl_option_string(options, "timeZone")? {
             None => "UTC".to_string(),
             Some(value) if value == "UTC" => value,
@@ -160,6 +195,17 @@ impl Runtime {
     pub(crate) fn construct_intl_number_format(&mut self, args: &[Value]) -> JsliteResult<Value> {
         let locale = self.normalize_intl_locale(args.first().cloned())?;
         let options = self.intl_options_object(args.get(1).cloned())?;
+        self.intl_assert_supported_option_keys(
+            options,
+            "NumberFormat",
+            &[
+                "style",
+                "currency",
+                "minimumFractionDigits",
+                "maximumFractionDigits",
+                "useGrouping",
+            ],
+        )?;
         let style = match self.intl_option_string(options, "style")? {
             None => IntlNumberStyle::Decimal,
             Some(value) if value == "decimal" => IntlNumberStyle::Decimal,
@@ -274,20 +320,20 @@ impl Runtime {
             Value::Undefined => current_time_millis(),
             value => self.date_timestamp_ms_from_value(value)?,
         };
-        let Some(datetime) = date_time_from_timestamp_ms(timestamp_ms) else {
-            return Ok(Value::String("Invalid Date".to_string()));
+        let Some(datetime) = date_time_fields_from_timestamp_ms(timestamp_ms) else {
+            return Err(JsliteError::runtime("RangeError: Invalid time value"));
         };
         let mut date_parts = Vec::new();
         if let Some(month) = formatter.month {
-            date_parts.push(Self::format_intl_field(datetime.month() as u8, month));
+            date_parts.push(Self::format_intl_field(datetime.month, month));
         }
         if let Some(day) = formatter.day {
-            date_parts.push(Self::format_intl_field(datetime.day(), day));
+            date_parts.push(Self::format_intl_field(datetime.day, day));
         }
         if let Some(year) = formatter.year {
             date_parts.push(match year {
-                IntlFieldStyle::Numeric => datetime.year().to_string(),
-                IntlFieldStyle::TwoDigit => format!("{:02}", datetime.year().rem_euclid(100)),
+                IntlFieldStyle::Numeric => datetime.year.to_string(),
+                IntlFieldStyle::TwoDigit => format!("{:02}", datetime.year.rem_euclid(100)),
             });
         }
         let mut rendered = if date_parts.is_empty() {
@@ -295,21 +341,42 @@ impl Runtime {
         } else {
             date_parts.join("/")
         };
-        let mut time_parts = Vec::new();
-        if let Some(hour) = formatter.hour {
-            time_parts.push(Self::format_intl_field(datetime.hour(), hour));
+        let mut rendered_time = None;
+        if let Some(hour_style) = formatter.hour {
+            let hour_24 = datetime.hour;
+            let meridiem = if hour_24 < 12 { "AM" } else { "PM" };
+            let hour_12 = match hour_24 % 12 {
+                0 => 12,
+                value => value,
+            };
+            let mut time_parts = vec![match hour_style {
+                IntlFieldStyle::Numeric => hour_12.to_string(),
+                IntlFieldStyle::TwoDigit => format!("{hour_12:02}"),
+            }];
+            if let Some(minute) = formatter.minute {
+                time_parts.push(Self::format_intl_field(datetime.minute, minute));
+            }
+            if let Some(second) = formatter.second {
+                time_parts.push(Self::format_intl_field(datetime.second, second));
+            }
+            rendered_time = Some(format!("{} {meridiem}", time_parts.join(":")));
+        } else {
+            let mut time_parts = Vec::new();
+            if let Some(minute) = formatter.minute {
+                time_parts.push(Self::format_intl_field(datetime.minute, minute));
+            }
+            if let Some(second) = formatter.second {
+                time_parts.push(Self::format_intl_field(datetime.second, second));
+            }
+            if !time_parts.is_empty() {
+                rendered_time = Some(time_parts.join(":"));
+            }
         }
-        if let Some(minute) = formatter.minute {
-            time_parts.push(Self::format_intl_field(datetime.minute(), minute));
-        }
-        if let Some(second) = formatter.second {
-            time_parts.push(Self::format_intl_field(datetime.second(), second));
-        }
-        if !time_parts.is_empty() {
+        if let Some(time) = rendered_time {
             if !rendered.is_empty() {
                 rendered.push_str(", ");
             }
-            rendered.push_str(&time_parts.join(":"));
+            rendered.push_str(&time);
         }
         Ok(Value::String(rendered))
     }
@@ -401,19 +468,35 @@ impl Runtime {
         if formatter.use_grouping {
             integer = format_en_us_number_grouped(&integer);
         }
-        let sign = if value.is_sign_negative() { "-" } else { "" };
-        let mut rendered = if fraction.is_empty() {
-            format!("{sign}{integer}")
+        let rendered = if fraction.is_empty() {
+            integer
         } else {
-            format!("{sign}{integer}.{fraction}")
+            format!("{integer}.{fraction}")
         };
         match formatter.style {
-            IntlNumberStyle::Decimal => rendered,
+            IntlNumberStyle::Decimal => {
+                if value.is_sign_negative() {
+                    format!("-{rendered}")
+                } else {
+                    rendered
+                }
+            }
             IntlNumberStyle::Percent => {
+                let mut rendered = if value.is_sign_negative() {
+                    format!("-{rendered}")
+                } else {
+                    rendered
+                };
                 rendered.push('%');
                 rendered
             }
-            IntlNumberStyle::Currency => format!("${rendered}"),
+            IntlNumberStyle::Currency => {
+                if value.is_sign_negative() {
+                    format!("-${rendered}")
+                } else {
+                    format!("${rendered}")
+                }
+            }
         }
     }
 

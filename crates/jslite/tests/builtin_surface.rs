@@ -1012,7 +1012,13 @@ fn intl_subset_covers_supported_surface() {
           date: dateFormatter.format(date),
           dateOptions: dateFormatter.resolvedOptions(),
           currency: numberFormatter.format(1234.5),
+          negativeCurrency: numberFormatter.format(-1.23),
           currencyOptions: numberFormatter.resolvedOptions(),
+          hourMinute: Intl.DateTimeFormat("en-US", {
+            timeZone: "UTC",
+            hour: "numeric",
+            minute: "2-digit",
+          }).format(date),
           decimal: Intl.NumberFormat("en-US", {
             useGrouping: false,
             minimumFractionDigits: 1,
@@ -1039,6 +1045,7 @@ fn intl_subset_covers_supported_surface() {
                 ])),
             ),
             ("currency".to_string(), "$1,234.50".into()),
+            ("negativeCurrency".to_string(), "-$1.23".into()),
             (
                 "currencyOptions".to_string(),
                 StructuredValue::Object(IndexMap::from([
@@ -1050,9 +1057,41 @@ fn intl_subset_covers_supported_surface() {
                     ("useGrouping".to_string(), StructuredValue::Bool(true)),
                 ])),
             ),
+            ("hourMinute".to_string(), "2:05 PM".into()),
             ("decimal".to_string(), "12.0".into()),
         ]))
     );
+}
+
+#[test]
+fn intl_rejects_unsupported_options_and_invalid_dates() {
+    let weekday_error = compile(r#"Intl.DateTimeFormat("en-US", { weekday: "long" });"#)
+        .expect("source should compile");
+    let error =
+        execute(&weekday_error, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Intl.DateTimeFormat does not support the `weekday` option")
+    );
+
+    let notation_error = compile(r#"Intl.NumberFormat("en-US", { notation: "scientific" });"#)
+        .expect("source should compile");
+    let error =
+        execute(&notation_error, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Intl.NumberFormat does not support the `notation` option")
+    );
+
+    let invalid_date = compile(
+        r#"Intl.DateTimeFormat("en-US", { timeZone: "UTC", year: "numeric" }).format(new Date(0 / 0));"#,
+    )
+    .expect("source should compile");
+    let error =
+        execute(&invalid_date, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(error.to_string().contains("RangeError: Invalid time value"));
 }
 
 #[test]
@@ -1104,9 +1143,17 @@ fn match_all_and_date_helpers_cover_supported_surface() {
         const bound = sum.bind({ base: 10 }, 1);
         const parsed = new Date("2026-04-10T14:00:00Z").getTime();
         const dateOnly = new Date("1970-01-01").getTime();
+        const extended = new Date("+010000-01-01T00:00:00.000Z").getTime();
         const cloned = new Date(new Date(5)).getTime();
         const invalid = new Date("not-a-date").getTime();
         const clipped = new Date(8640000000000001).getTime();
+        const invalidFullYear = new Date("not-a-date").getUTCFullYear();
+        const invalidMonth = new Date("not-a-date").getUTCMonth();
+        const negativeZeroIsClipped = new Date(-0.1).getTime() === 0;
+        const negativeZeroReciprocalPositive = (1 / new Date(-0.1).getTime()) > 0;
+        const maxIso = new Date(8640000000000000).toISOString();
+        const maxJson = new Date(8640000000000000).toJSON();
+        const negativeYearJson = new Date(-62198755200000).toJSON();
         const after = Date.now();
         [
           matches,
@@ -1119,11 +1166,19 @@ fn match_all_and_date_helpers_cover_supported_surface() {
           [typeof Date.prototype.getTime, typeof Date.prototype.valueOf],
           parsed,
           dateOnly,
+          extended,
           cloned,
           clipped !== clipped,
           new Date(5).valueOf(),
           Object("  hi  ").trim(),
-          invalid !== invalid
+          invalid !== invalid,
+          invalidFullYear !== invalidFullYear,
+          invalidMonth !== invalidMonth,
+          negativeZeroIsClipped,
+          negativeZeroReciprocalPositive,
+          maxIso,
+          maxJson,
+          negativeYearJson
         ];
         "#,
     )
@@ -1162,11 +1217,19 @@ fn match_all_and_date_helpers_cover_supported_surface() {
             StructuredValue::Array(vec!["function".into(), "function".into()]),
             number(1_775_829_600_000.0),
             number(0.0),
+            number(253_402_300_800_000.0),
             number(5.0),
             StructuredValue::Bool(true),
             number(5.0),
             "hi".into(),
             StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            "+275760-09-13T00:00:00.000Z".into(),
+            "+275760-09-13T00:00:00.000Z".into(),
+            "-000001-01-01T00:00:00.000Z".into(),
         ])
     );
 }

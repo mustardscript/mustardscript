@@ -5,7 +5,6 @@ use std::{
 
 use oxc_syntax::number::ToJsString;
 use rand::random;
-use time::OffsetDateTime;
 
 use super::*;
 
@@ -162,49 +161,55 @@ impl Runtime {
         })
     }
 
-    fn date_utc_component(&self, this_value: Value, method: &str) -> JsliteResult<OffsetDateTime> {
+    fn date_utc_fields(
+        &self,
+        this_value: Value,
+        method: &str,
+    ) -> JsliteResult<Option<DateTimeFields>> {
         let date = self.date_receiver(this_value, method)?;
         let timestamp_ms = self.date_object(date)?.timestamp_ms;
-        date_time_from_timestamp_ms(timestamp_ms)
-            .ok_or_else(|| JsliteError::runtime("RangeError: Invalid time value"))
+        Ok(date_time_fields_from_timestamp_ms(timestamp_ms))
     }
 
     pub(crate) fn call_date_get_utc_full_year(&self, this_value: Value) -> JsliteResult<Value> {
         Ok(Value::Number(
-            self.date_utc_component(this_value, "getUTCFullYear")?
-                .year() as f64,
+            self.date_utc_fields(this_value, "getUTCFullYear")?
+                .map_or(f64::NAN, |fields| fields.year as f64),
         ))
     }
 
     pub(crate) fn call_date_get_utc_month(&self, this_value: Value) -> JsliteResult<Value> {
         Ok(Value::Number(
-            (self.date_utc_component(this_value, "getUTCMonth")?.month() as u8 - 1) as f64,
+            self.date_utc_fields(this_value, "getUTCMonth")?
+                .map_or(f64::NAN, |fields| f64::from(fields.month - 1)),
         ))
     }
 
     pub(crate) fn call_date_get_utc_date(&self, this_value: Value) -> JsliteResult<Value> {
         Ok(Value::Number(
-            self.date_utc_component(this_value, "getUTCDate")?.day() as f64,
+            self.date_utc_fields(this_value, "getUTCDate")?
+                .map_or(f64::NAN, |fields| f64::from(fields.day)),
         ))
     }
 
     pub(crate) fn call_date_get_utc_hours(&self, this_value: Value) -> JsliteResult<Value> {
         Ok(Value::Number(
-            self.date_utc_component(this_value, "getUTCHours")?.hour() as f64,
+            self.date_utc_fields(this_value, "getUTCHours")?
+                .map_or(f64::NAN, |fields| f64::from(fields.hour)),
         ))
     }
 
     pub(crate) fn call_date_get_utc_minutes(&self, this_value: Value) -> JsliteResult<Value> {
         Ok(Value::Number(
-            self.date_utc_component(this_value, "getUTCMinutes")?
-                .minute() as f64,
+            self.date_utc_fields(this_value, "getUTCMinutes")?
+                .map_or(f64::NAN, |fields| f64::from(fields.minute)),
         ))
     }
 
     pub(crate) fn call_date_get_utc_seconds(&self, this_value: Value) -> JsliteResult<Value> {
         Ok(Value::Number(
-            self.date_utc_component(this_value, "getUTCSeconds")?
-                .second() as f64,
+            self.date_utc_fields(this_value, "getUTCSeconds")?
+                .map_or(f64::NAN, |fields| f64::from(fields.second)),
         ))
     }
 

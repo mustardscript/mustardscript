@@ -997,6 +997,32 @@ test('run truncates Date timestamps to integer milliseconds', async () => {
   });
 });
 
+test('run matches Date invalid and extended-year semantics', async () => {
+  const result = await runtime(`
+    ({
+      negativeZeroIsClipped: new Date(-0.1).getTime() === 0,
+      negativeZeroReciprocalPositive: (1 / new Date(-0.1).getTime()) > 0,
+      invalidYearIsNaN: Number.isNaN(new Date(0 / 0).getUTCFullYear()),
+      invalidMonthIsNaN: Number.isNaN(new Date(0 / 0).getUTCMonth()),
+      maxIso: new Date(8640000000000000).toISOString(),
+      maxJson: new Date(8640000000000000).toJSON(),
+      extendedYear: new Date("+010000-01-01T00:00:00.000Z").getTime(),
+      negativeYearJson: new Date(-62198755200000).toJSON(),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    negativeZeroIsClipped: true,
+    negativeZeroReciprocalPositive: true,
+    invalidYearIsNaN: true,
+    invalidMonthIsNaN: true,
+    maxIso: '+275760-09-13T00:00:00.000Z',
+    maxJson: '+275760-09-13T00:00:00.000Z',
+    extendedYear: 253402300800000,
+    negativeYearJson: '-000001-01-01T00:00:00.000Z',
+  });
+});
+
 test('run supports broader Date, Number, string-formatting, and reverse array helper surface', async () => {
   const result = await runtime(`
     const date = new Date("2026-04-10T14:05:06.789Z");
@@ -1155,7 +1181,13 @@ test('run supports a narrow Intl DateTimeFormat and NumberFormat subset', async 
       date: dateFormatter.format(date),
       dateOptions: dateFormatter.resolvedOptions(),
       currency: numberFormatter.format(1234.5),
+      negativeCurrency: numberFormatter.format(-1.23),
       currencyOptions: numberFormatter.resolvedOptions(),
+      hourMinute: Intl.DateTimeFormat("en-US", {
+        timeZone: "UTC",
+        hour: "numeric",
+        minute: "2-digit",
+      }).format(date),
       decimal: Intl.NumberFormat("en-US", {
         useGrouping: false,
         minimumFractionDigits: 1,
@@ -1174,6 +1206,7 @@ test('run supports a narrow Intl DateTimeFormat and NumberFormat subset', async 
       day: '2-digit',
     },
     currency: '$1,234.50',
+    negativeCurrency: '-$1.23',
     currencyOptions: {
       locale: 'en-US',
       style: 'currency',
@@ -1182,6 +1215,7 @@ test('run supports a narrow Intl DateTimeFormat and NumberFormat subset', async 
       maximumFractionDigits: 2,
       useGrouping: true,
     },
+    hourMinute: '2:05 PM',
     decimal: '12.0',
   });
 });
@@ -1210,6 +1244,36 @@ test('Intl and new helper additions fail closed for unsupported options and inva
     isJsliteError({
       kind: 'Runtime',
       message: 'Intl.NumberFormat currency style currently supports only `USD`',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('Intl.DateTimeFormat("en-US", { weekday: "long" });').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Intl.DateTimeFormat does not support the `weekday` option',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('Intl.NumberFormat("en-US", { notation: "scientific" });').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Intl.NumberFormat does not support the `notation` option',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      runtime(
+        'Intl.DateTimeFormat("en-US", { timeZone: "UTC", year: "numeric" }).format(new Date(0 / 0));',
+      ).run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'RangeError: Invalid time value',
       guestSafe: true,
     }),
   );

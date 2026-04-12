@@ -1,8 +1,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use time::{Date, Month, OffsetDateTime, format_description::well_known::Rfc3339};
-
 use super::*;
+
+const MAX_TIME_MS: f64 = 8_640_000_000_000_000.0;
+const MS_PER_SECOND: i64 = 1_000;
+const MS_PER_MINUTE: i64 = 60 * MS_PER_SECOND;
+const MS_PER_HOUR: i64 = 60 * MS_PER_MINUTE;
+const MS_PER_DAY: i64 = 24 * MS_PER_HOUR;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct RegExpFlagsState {
@@ -33,6 +37,17 @@ pub(super) enum StringSearchPattern {
     },
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct DateTimeFields {
+    pub(super) year: i64,
+    pub(super) month: u8,
+    pub(super) day: u8,
+    pub(super) hour: u8,
+    pub(super) minute: u8,
+    pub(super) second: u8,
+    pub(super) millisecond: u16,
+}
+
 pub(super) fn current_time_millis() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -41,67 +56,232 @@ pub(super) fn current_time_millis() -> f64 {
 }
 
 pub(super) fn parse_date_timestamp_ms(value: &str) -> f64 {
-    OffsetDateTime::parse(value, &Rfc3339).map_or_else(
-        |_| parse_date_only_timestamp_ms(value),
-        |datetime| (datetime.unix_timestamp_nanos() as f64 / 1_000_000.0).trunc(),
-    )
+    parse_iso_date_timestamp_ms(value).unwrap_or(f64::NAN)
 }
 
 pub(super) fn time_clip(timestamp_ms: f64) -> f64 {
-    if !timestamp_ms.is_finite() || timestamp_ms.abs() > 8_640_000_000_000_000.0 {
+    if !timestamp_ms.is_finite() || timestamp_ms.abs() > MAX_TIME_MS {
         f64::NAN
     } else {
-        timestamp_ms.trunc()
+        let clipped = timestamp_ms.trunc();
+        if clipped == 0.0 { 0.0 } else { clipped }
     }
 }
 
-fn parse_date_only_timestamp_ms(value: &str) -> f64 {
-    let mut parts = value.split('-');
-    let (Some(year), Some(month), Some(day), None) =
-        (parts.next(), parts.next(), parts.next(), parts.next())
-    else {
-        return f64::NAN;
+fn parse_iso_date_timestamp_ms(value: &str) -> Option<f64> {
+    let (year, mut index) = parse_iso_year(value)?;
+    index += 1;
+    let month = parse_two_digits(value, &mut index)?;
+    require_byte(value, &mut index, b'-')?;
+    let day = parse_two_digits(value, &mut index)?;
+    if !is_valid_date(year, month, day) {
+        return None;
+    }
+
+    let days = days_from_civil(year, month, day);
+    if index == value.len() {
+        return Some(days as f64 * MS_PER_DAY as f64);
+    }
+
+    require_byte(value, &mut index, b'T')?;
+    let hour = parse_two_digits(value, &mut index)?;
+    require_byte(value, &mut index, b':')?;
+    let minute = parse_two_digits(value, &mut index)?;
+    require_byte(value, &mut index, b':')?;
+    let second = parse_two_digits(value, &mut index)?;
+    if hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+
+    let mut millisecond = 0i64;
+    if matches!(value.as_bytes().get(index), Some(b'.')) {
+        index += 1;
+        let start = index;
+        while value.as_bytes().get(index).is_some_and(u8::is_ascii_digit) {
+            index += 1;
+        }
+        if index == start {
+            return None;
+        }
+        let digits = &value.as_bytes()[start..index];
+        let mut parsed = 0i64;
+        for digit in digits.iter().take(3) {
+            parsed = parsed * 10 + i64::from(digit - b'0');
+        }
+        for _ in digits.len().min(3)..3 {
+            parsed *= 10;
+        }
+        millisecond = parsed;
+    }
+
+    let offset_ms = match value.as_bytes().get(index).copied() {
+        Some(b'Z') if index + 1 == value.len() => 0i64,
+        Some(sign @ (b'+' | b'-')) => {
+            index += 1;
+            let offset_hours = parse_two_digits(value, &mut index)?;
+            require_byte(value, &mut index, b':')?;
+            let offset_minutes = parse_two_digits(value, &mut index)?;
+            if offset_hours > 23 || offset_minutes > 59 || index != value.len() {
+                return None;
+            }
+            let magnitude =
+                i64::from(offset_hours) * MS_PER_HOUR + i64::from(offset_minutes) * MS_PER_MINUTE;
+            if sign == b'+' { magnitude } else { -magnitude }
+        }
+        _ => return None,
     };
-    let (Ok(year), Ok(month), Ok(day)) =
-        (year.parse::<i32>(), month.parse::<u8>(), day.parse::<u8>())
-    else {
-        return f64::NAN;
-    };
-    let Ok(month) = Month::try_from(month) else {
-        return f64::NAN;
-    };
-    Date::from_calendar_date(year, month, day)
-        .ok()
-        .and_then(|date| date.with_hms(0, 0, 0).ok())
-        .map(|datetime| datetime.assume_utc().unix_timestamp() as f64 * 1_000.0)
-        .unwrap_or(f64::NAN)
+
+    let time_ms = i64::from(hour) * MS_PER_HOUR
+        + i64::from(minute) * MS_PER_MINUTE
+        + i64::from(second) * MS_PER_SECOND
+        + millisecond;
+    let timestamp_ms =
+        i128::from(days) * i128::from(MS_PER_DAY) + i128::from(time_ms) - i128::from(offset_ms);
+    if !(i128::from(i64::MIN)..=i128::from(i64::MAX)).contains(&timestamp_ms) {
+        return None;
+    }
+    Some(timestamp_ms as f64)
 }
 
-pub(super) fn date_time_from_timestamp_ms(timestamp_ms: f64) -> Option<OffsetDateTime> {
+pub(super) fn date_time_fields_from_timestamp_ms(timestamp_ms: f64) -> Option<DateTimeFields> {
     if !timestamp_ms.is_finite() {
         return None;
     }
-    let timestamp_ms = timestamp_ms.trunc();
-    if timestamp_ms < (i128::MIN / 1_000_000) as f64
-        || timestamp_ms > (i128::MAX / 1_000_000) as f64
-    {
+    let timestamp_ms = if timestamp_ms.trunc() == 0.0 {
+        0.0
+    } else {
+        timestamp_ms.trunc()
+    };
+    if timestamp_ms < i64::MIN as f64 || timestamp_ms > i64::MAX as f64 {
         return None;
     }
-    OffsetDateTime::from_unix_timestamp_nanos(timestamp_ms as i128 * 1_000_000).ok()
+    let timestamp_ms = timestamp_ms as i64;
+    let days = timestamp_ms.div_euclid(MS_PER_DAY);
+    let day_ms = timestamp_ms.rem_euclid(MS_PER_DAY);
+    let (year, month, day) = civil_from_days(days);
+    Some(DateTimeFields {
+        year,
+        month,
+        day,
+        hour: (day_ms / MS_PER_HOUR) as u8,
+        minute: ((day_ms % MS_PER_HOUR) / MS_PER_MINUTE) as u8,
+        second: ((day_ms % MS_PER_MINUTE) / MS_PER_SECOND) as u8,
+        millisecond: (day_ms % MS_PER_SECOND) as u16,
+    })
 }
 
 pub(super) fn format_iso_datetime(timestamp_ms: f64) -> Option<String> {
-    let datetime = date_time_from_timestamp_ms(timestamp_ms)?;
+    let datetime = date_time_fields_from_timestamp_ms(timestamp_ms)?;
     Some(format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
-        datetime.year(),
-        datetime.month() as u8,
-        datetime.day(),
-        datetime.hour(),
-        datetime.minute(),
-        datetime.second(),
-        datetime.millisecond(),
+        "{}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+        format_iso_year(datetime.year),
+        datetime.month,
+        datetime.day,
+        datetime.hour,
+        datetime.minute,
+        datetime.second,
+        datetime.millisecond,
     ))
+}
+
+fn parse_iso_year(value: &str) -> Option<(i64, usize)> {
+    let bytes = value.as_bytes();
+    let mut index = 0usize;
+    let signed = matches!(bytes.first(), Some(b'+' | b'-'));
+    if signed {
+        index += 1;
+    }
+    while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+        index += 1;
+    }
+    let digits = if signed {
+        index.saturating_sub(1)
+    } else {
+        index
+    };
+    if digits == 0 || bytes.get(index) != Some(&b'-') {
+        return None;
+    }
+    if (!signed && digits != 4) || (signed && digits != 6) {
+        return None;
+    }
+    Some((value[..index].parse::<i64>().ok()?, index))
+}
+
+fn parse_two_digits(value: &str, index: &mut usize) -> Option<u8> {
+    let bytes = value.as_bytes();
+    let tens = *bytes.get(*index)?;
+    let ones = *bytes.get(*index + 1)?;
+    if !tens.is_ascii_digit() || !ones.is_ascii_digit() {
+        return None;
+    }
+    *index += 2;
+    Some((tens - b'0') * 10 + (ones - b'0'))
+}
+
+fn require_byte(value: &str, index: &mut usize, expected: u8) -> Option<()> {
+    if value.as_bytes().get(*index) == Some(&expected) {
+        *index += 1;
+        Some(())
+    } else {
+        None
+    }
+}
+
+fn is_valid_date(year: i64, month: u8, day: u8) -> bool {
+    matches!(month, 1..=12) && (1..=days_in_month(year, month)).contains(&day)
+}
+
+fn is_leap_year(year: i64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+fn days_in_month(year: i64, month: u8) -> u8 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap_year(year) => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+fn days_from_civil(year: i64, month: u8, day: u8) -> i64 {
+    let year = year - i64::from(month <= 2);
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let year_of_era = year - era * 400;
+    let shifted_month = i64::from(month) + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153 * shifted_month + 2) / 5 + i64::from(day) - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
+fn civil_from_days(days: i64) -> (i64, u8, u8) {
+    let shifted = days + 719_468;
+    let era = if shifted >= 0 {
+        shifted
+    } else {
+        shifted - 146_096
+    } / 146_097;
+    let day_of_era = shifted - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    (year + i64::from(month <= 2), month as u8, day as u8)
+}
+
+fn format_iso_year(year: i64) -> String {
+    if (0..=9_999).contains(&year) {
+        format!("{year:04}")
+    } else if year < 0 {
+        format!("-{:06}", year.unsigned_abs())
+    } else {
+        format!("+{:06}", year as u64)
+    }
 }
 
 pub(super) fn format_en_us_number_grouped(integer: &str) -> String {
