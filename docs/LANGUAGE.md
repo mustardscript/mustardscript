@@ -255,6 +255,7 @@ extensions are called out explicitly instead of being implied.
 - `Array.prototype.push`
 - `Array.prototype.pop`
 - `Array.prototype.slice`
+- `Array.prototype.splice`
 - `Array.prototype.concat`
 - `Array.prototype.at`
 - `Array.prototype.join`
@@ -271,6 +272,8 @@ extensions are called out explicitly instead of being implied.
 - `Array.prototype.findIndex`
 - `Array.prototype.some`
 - `Array.prototype.every`
+- `Array.prototype.flat`
+- `Array.prototype.flatMap`
 - `Array.prototype.reduce`
 - `Object.keys`
 - `Object.values`
@@ -356,8 +359,16 @@ extensions are called out explicitly instead of being implied.
   guest array arguments, and appends every other value as a single element
 - `Array.prototype.at` truncates the requested index, supports negative offsets
   from the end, and returns `undefined` when the computed index is out of range
+- `Array.prototype.splice` mutates the original array in place, returns a fresh
+  guest array of removed elements, and preserves non-index array properties on
+  the mutated receiver
 - `Array.prototype.reduce` throws a runtime `TypeError` when called on an empty
   array without an explicit initial value
+- `Array.prototype.flat` defaults to depth `1` when the argument is omitted or
+  `undefined`, truncates other depth values to integers, and flattens only
+  actual guest arrays
+- `Array.prototype.flatMap` uses the same callback rules as the other array
+  callback helpers and flattens only one returned guest-array layer
 - `Array.prototype.sort` sorts in place, returns the original array value, and
   accepts either the default string ordering or a synchronous comparator
 - `Object.assign` mutates and returns the original target, copies enumerable

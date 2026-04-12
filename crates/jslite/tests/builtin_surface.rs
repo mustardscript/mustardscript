@@ -494,6 +494,70 @@ fn array_of_concat_at_and_log_cover_supported_surface() {
 }
 
 #[test]
+fn array_splice_flat_and_flat_map_cover_supported_surface() {
+    let program = compile(
+        r#"
+        const values = [1, 2, 3, 4];
+        values.label = "seed";
+        const removed = values.splice(-3, 2, 9, 10, 11);
+        const untouched = [7, 8];
+        const untouchedRemoved = untouched.splice();
+        [
+          Object.entries(values),
+          removed,
+          untouched,
+          untouchedRemoved,
+          [1, [2, [3]], 4].flat(undefined),
+          [1, [2, [3, [4]]], 5].flat(2),
+          [1, 2, 3].flatMap(function (value, index) {
+            return [value + this.offset, [index]];
+          }, { offset: 4 }),
+        ];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![
+                StructuredValue::Array(vec!["0".into(), number(1.0)]),
+                StructuredValue::Array(vec!["1".into(), number(9.0)]),
+                StructuredValue::Array(vec!["2".into(), number(10.0)]),
+                StructuredValue::Array(vec!["3".into(), number(11.0)]),
+                StructuredValue::Array(vec!["4".into(), number(4.0)]),
+                StructuredValue::Array(vec!["label".into(), "seed".into()]),
+            ]),
+            StructuredValue::Array(vec![number(2.0), number(3.0)]),
+            StructuredValue::Array(vec![number(7.0), number(8.0)]),
+            StructuredValue::Array(Vec::new()),
+            StructuredValue::Array(vec![
+                number(1.0),
+                number(2.0),
+                StructuredValue::Array(vec![number(3.0)]),
+                number(4.0),
+            ]),
+            StructuredValue::Array(vec![
+                number(1.0),
+                number(2.0),
+                number(3.0),
+                StructuredValue::Array(vec![number(4.0)]),
+                number(5.0),
+            ]),
+            StructuredValue::Array(vec![
+                number(5.0),
+                StructuredValue::Array(vec![number(0.0)]),
+                number(6.0),
+                StructuredValue::Array(vec![number(1.0)]),
+                number(7.0),
+                StructuredValue::Array(vec![number(2.0)]),
+            ]),
+        ])
+    );
+}
+
+#[test]
 fn iterable_conversion_helpers_cover_supported_iterables() {
     let program = compile(
         r#"
@@ -641,6 +705,59 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
         error
             .to_string()
             .contains("Array.prototype.at called on incompatible receiver")
+    );
+
+    let splice_receiver =
+        compile("const splice = [1].splice; splice(0, 1);").expect("source should compile");
+    let error =
+        execute(&splice_receiver, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Array.prototype.splice called on incompatible receiver")
+    );
+
+    let flat_receiver = compile("const flat = [1].flat; flat();").expect("source should compile");
+    let error =
+        execute(&flat_receiver, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Array.prototype.flat called on incompatible receiver")
+    );
+
+    let flat_map_receiver = compile("const flatMap = [1].flatMap; flatMap((value) => [value]);")
+        .expect("source should compile");
+    let error = execute(&flat_map_receiver, ExecutionOptions::default())
+        .expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Array.prototype.flatMap called on incompatible receiver")
+    );
+
+    let flat_map_callback = compile("([1]).flatMap(1);").expect("source should compile");
+    let error = execute(&flat_map_callback, ExecutionOptions::default())
+        .expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Array.prototype.flatMap expects a callable callback")
+    );
+
+    let flat_map_host = compile("[1].flatMap(fetch_data);").expect("source should compile");
+    let error = execute(
+        &flat_map_host,
+        ExecutionOptions {
+            capabilities: vec!["fetch_data".to_string()],
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("array callback helpers do not support synchronous host suspensions")
     );
 
     let match_all = compile(r#""abc".matchAll(/a/);"#).expect("source should compile");

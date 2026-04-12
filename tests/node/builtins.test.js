@@ -140,6 +140,37 @@ test('run supports Array.of, Array.prototype.concat, Array.prototype.at, and Mat
   });
 });
 
+test('run supports Array.prototype.splice, Array.prototype.flat, and Array.prototype.flatMap', async () => {
+  const result = await runtime(`
+    const values = [1, 2, 3, 4];
+    values.label = "seed";
+    const removed = values.splice(-3, 2, 9, 10, 11);
+    const untouched = [7, 8];
+    const untouchedRemoved = untouched.splice();
+    ({
+      valuesEntries: Object.entries(values),
+      removed,
+      untouched,
+      untouchedRemoved,
+      shallow: [1, [2, [3]], 4].flat(undefined),
+      deep: [1, [2, [3, [4]]], 5].flat(2),
+      flatMapped: [1, 2, 3].flatMap(function (value, index) {
+        return [value + this.offset, [index]];
+      }, { offset: 4 }),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    valuesEntries: [['0', 1], ['1', 9], ['2', 10], ['3', 11], ['4', 4], ['label', 'seed']],
+    removed: [2, 3],
+    untouched: [7, 8],
+    untouchedRemoved: [],
+    shallow: [1, 2, [3], 4],
+    deep: [1, 2, 3, [4], 5],
+    flatMapped: [5, [0], 6, [1], 7, [2]],
+  });
+});
+
 test('array callback helpers fail closed for invalid callbacks and synchronous host suspensions', async () => {
   await assert.rejects(
     () => runtime('([1]).map(1);').run(),
@@ -169,6 +200,60 @@ test('array callback helpers fail closed for invalid callbacks and synchronous h
     isJsliteError({
       kind: 'Runtime',
       message: 'Array.prototype.reduce requires an initial value for empty arrays',
+    }),
+  );
+});
+
+test('Array.prototype.splice, Array.prototype.flat, and Array.prototype.flatMap fail closed for incompatible receivers and invalid callbacks', async () => {
+  await assert.rejects(
+    () => runtime('const splice = [1].splice; splice(0, 1);').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Array.prototype.splice called on incompatible receiver',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('const flat = [1].flat; flat();').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Array.prototype.flat called on incompatible receiver',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('const flatMap = [1].flatMap; flatMap((value) => [value]);').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Array.prototype.flatMap called on incompatible receiver',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('([1]).flatMap(1);').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Array.prototype.flatMap expects a callable callback',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () =>
+      runtime('[1].flatMap(fetch_data);').run({
+        capabilities: {
+          fetch_data(value) {
+            return [value];
+          },
+        },
+      }),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'array callback helpers do not support synchronous host suspensions',
+      guestSafe: true,
     }),
   );
 });

@@ -129,6 +129,27 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'Array splice flat and flatMap helpers',
+    source: `
+      const values = [1, 2, 3, 4];
+      values.label = "seed";
+      const removed = values.splice(-3, 2, 9, 10, 11);
+      const untouched = [7, 8];
+      const untouchedRemoved = untouched.splice();
+      ({
+        valuesEntries: Object.entries(values),
+        removed,
+        untouched,
+        untouchedRemoved,
+        shallow: [1, [2, [3]], 4].flat(undefined),
+        deep: [1, [2, [3, [4]]], 5].flat(2),
+        flatMapped: [1, 2, 3].flatMap(function (value, index) {
+          return [value + this.offset, [index]];
+        }, { offset: 4 }),
+      });
+    `,
+  },
+  {
     name: 'string helpers',
     source: `
       const value = "  MiXeD Example  ";

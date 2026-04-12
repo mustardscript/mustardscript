@@ -384,6 +384,7 @@ impl Runtime {
                         "push" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPush)),
                         "pop" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPop)),
                         "slice" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySlice)),
+                        "splice" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySplice)),
                         "concat" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayConcat)),
                         "at" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayAt)),
                         "join" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayJoin)),
@@ -399,6 +400,8 @@ impl Runtime {
                         "findIndex" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFindIndex)),
                         "some" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySome)),
                         "every" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayEvery)),
+                        "flat" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFlat)),
+                        "flatMap" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFlatMap)),
                         "reduce" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayReduce)),
                         _ => Ok(Value::Undefined),
                     }

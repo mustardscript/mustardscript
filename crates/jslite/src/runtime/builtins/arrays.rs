@@ -155,6 +155,47 @@ impl Runtime {
         )?))
     }
 
+    pub(crate) fn call_array_splice(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "splice")?;
+        if args.is_empty() {
+            return Ok(Value::Array(
+                self.insert_array(Vec::new(), IndexMap::new())?,
+            ));
+        }
+
+        let length = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .len();
+        let start = normalize_relative_bound(
+            self.to_integer(args.first().cloned().unwrap_or(Value::Undefined))?,
+            length,
+        );
+        let delete_count = if args.len() == 1 {
+            length - start
+        } else {
+            clamp_index(self.to_integer(args[1].clone())?, length - start)
+        };
+        let removed = {
+            let array_ref = self
+                .arrays
+                .get_mut(array)
+                .ok_or_else(|| JsliteError::runtime("array missing"))?;
+            array_ref
+                .elements
+                .splice(start..start + delete_count, args[2..].iter().cloned())
+                .collect::<Vec<_>>()
+        };
+        self.refresh_array_accounting(array)?;
+        Ok(Value::Array(self.insert_array(removed, IndexMap::new())?))
+    }
+
     pub(crate) fn call_array_concat(
         &mut self,
         this_value: Value,
@@ -200,6 +241,57 @@ impl Runtime {
         } else {
             Ok(elements[index as usize].clone())
         }
+    }
+
+    fn normalized_flat_depth(&self, args: &[Value]) -> JsliteResult<i64> {
+        match args.first() {
+            None | Some(Value::Undefined) => Ok(1),
+            Some(value) => Ok(self.to_integer(value.clone())?.max(0)),
+        }
+    }
+
+    fn collect_flattened_value(
+        &self,
+        flattened: &mut Vec<Value>,
+        value: Value,
+        depth: i64,
+    ) -> JsliteResult<()> {
+        if depth > 0
+            && let Value::Array(array) = value
+        {
+            let elements = self
+                .arrays
+                .get(array)
+                .ok_or_else(|| JsliteError::runtime("array missing"))?
+                .elements
+                .clone();
+            for element in elements {
+                self.collect_flattened_value(flattened, element, depth - 1)?;
+            }
+            return Ok(());
+        }
+        flattened.push(value);
+        Ok(())
+    }
+
+    pub(crate) fn call_array_flat(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "flat")?;
+        let depth = self.normalized_flat_depth(args)?;
+        let elements = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .clone();
+        let mut flattened = Vec::new();
+        for element in elements {
+            self.collect_flattened_value(&mut flattened, element, depth)?;
+        }
+        Ok(Value::Array(self.insert_array(flattened, IndexMap::new())?))
     }
 
     pub(crate) fn call_array_join(
@@ -444,6 +536,33 @@ impl Runtime {
             .get(index)
             .cloned()
             .unwrap_or(Value::Undefined))
+    }
+
+    fn append_flat_map_value(&mut self, result: ArrayKey, value: Value) -> JsliteResult<()> {
+        match value {
+            Value::Array(array) => {
+                let elements = self
+                    .arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .clone();
+                self.arrays
+                    .get_mut(result)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .extend(elements);
+            }
+            other => {
+                self.arrays
+                    .get_mut(result)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .push(other);
+            }
+        }
+        self.refresh_array_accounting(result)?;
+        Ok(())
     }
 
     pub(crate) fn call_array_for_each(
@@ -703,6 +822,42 @@ impl Runtime {
             }
         }
         Ok(Value::Bool(true))
+    }
+
+    pub(crate) fn call_array_flat_map(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "flatMap")?;
+        let (callback, this_arg) = self.array_callback(args, "flatMap")?;
+        let length = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .len();
+        let result = self.insert_array(Vec::new(), IndexMap::new())?;
+        self.with_temporary_roots(
+            &[
+                Value::Array(array),
+                callback.clone(),
+                this_arg.clone(),
+                Value::Array(result),
+            ],
+            |runtime| {
+                for index in 0..length {
+                    let value = runtime.array_callback_value(array, index)?;
+                    let mapped = runtime.call_array_callback(
+                        callback.clone(),
+                        this_arg.clone(),
+                        &[value, Value::Number(index as f64), Value::Array(array)],
+                    )?;
+                    runtime.append_flat_map_value(result, mapped)?;
+                }
+                Ok(Value::Array(result))
+            },
+        )
     }
 
     pub(crate) fn call_array_reduce(

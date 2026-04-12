@@ -45,6 +45,8 @@ Audit sources:
   work.
 - [x] `Object.assign` already works for the supported plain-object and array
   helper surface.
+- [x] `Array.prototype.splice`, `Array.prototype.flat`, and
+  `Array.prototype.flatMap` already work for the supported array-only surface.
 - [x] Sequence expressions and binary `**` now work end to end.
 - [x] `Object.create`, `Object.freeze`, and `Object.seal` now fail closed with
   explicit guest-safe runtime errors.
@@ -66,7 +68,6 @@ Audit sources:
   `let` or `const` binding, and assignment-target headers stay rejected.
 - [ ] Array holes in literals are rejected during validation.
 - [ ] `instanceof` is rejected as an unsupported binary operator.
-- [ ] Array helper gaps remaining: `splice`, `flat`, and `flatMap`.
 - [ ] Math helper gaps remaining: `Math.random`.
 
 ### Missing but not in the original requested list
@@ -103,10 +104,10 @@ Audit sources:
 
 ### Phase 2: Mid-risk array and object helpers
 
-- [ ] Add `Array.prototype.splice` with correct in-place mutation and
+- [x] Add `Array.prototype.splice` with correct in-place mutation and
   return-array behavior.
-- [ ] Add `Array.prototype.flat` for the supported array-only surface.
-- [ ] Add `Array.prototype.flatMap` on top of the chosen `flat` depth rules.
+- [x] Add `Array.prototype.flat` for the supported array-only surface.
+- [x] Add `Array.prototype.flatMap` on top of the chosen `flat` depth rules.
 
 ### Phase 3: Syntax and compiler gaps
 

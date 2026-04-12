@@ -118,11 +118,9 @@ missing:
 ### Built-Ins And Standard Library Surface
 
 - Arrays are no longer bare. The current surface already includes `push`,
-  `pop`, `slice`, `join`, `includes`, `indexOf`, `sort`, `values`, `keys`,
-  `entries`, `forEach`, `map`, `filter`, `find`, `findIndex`, `some`, `every`,
-  `reduce`, and `Array.from`.
-- Array helpers still missing from the documented surface include `splice`,
-  `flat`, and `flatMap`.
+  `pop`, `slice`, `splice`, `join`, `includes`, `indexOf`, `sort`, `values`,
+  `keys`, `entries`, `forEach`, `map`, `filter`, `find`, `findIndex`, `some`,
+  `every`, `flat`, `flatMap`, `reduce`, and `Array.from`.
 - Strings are no longer bare. The current surface includes `trim`, `includes`,
   `startsWith`, `endsWith`, `slice`, `substring`, `toLowerCase`,
   `toUpperCase`, `split`, `replace`, `replaceAll`, `search`, `match`, and

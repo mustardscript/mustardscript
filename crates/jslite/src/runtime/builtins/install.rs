@@ -17,6 +17,7 @@ impl Runtime {
             BuiltinFunction::ArrayPush => self.call_array_push(this_value, args),
             BuiltinFunction::ArrayPop => self.call_array_pop(this_value),
             BuiltinFunction::ArraySlice => self.call_array_slice(this_value, args),
+            BuiltinFunction::ArraySplice => self.call_array_splice(this_value, args),
             BuiltinFunction::ArrayConcat => self.call_array_concat(this_value, args),
             BuiltinFunction::ArrayAt => self.call_array_at(this_value, args),
             BuiltinFunction::ArrayJoin => self.call_array_join(this_value, args),
@@ -33,6 +34,8 @@ impl Runtime {
             BuiltinFunction::ArrayFindIndex => self.call_array_find_index(this_value, args),
             BuiltinFunction::ArraySome => self.call_array_some(this_value, args),
             BuiltinFunction::ArrayEvery => self.call_array_every(this_value, args),
+            BuiltinFunction::ArrayFlat => self.call_array_flat(this_value, args),
+            BuiltinFunction::ArrayFlatMap => self.call_array_flat_map(this_value, args),
             BuiltinFunction::ArrayReduce => self.call_array_reduce(this_value, args),
             BuiltinFunction::ObjectCtor => {
                 if let Some(Value::Object(object)) = args.first() {
