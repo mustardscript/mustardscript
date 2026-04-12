@@ -55,6 +55,14 @@ function createTrapProxy(events, values) {
   );
 }
 
+function createDeepHostArray(depth) {
+  let value = 0;
+  for (let index = 0; index < depth; index += 1) {
+    value = [value];
+  }
+  return value;
+}
+
 test('guest-to-host decoding keeps __proto__ as plain data on completed results', async () => {
   const result = await new Jslite(`
     ({ ['__proto__']: { admin: true }, user: 'alice' });
@@ -300,5 +308,53 @@ test('resumeError rejects cyclic details with a typed boundary error', () => {
     (entry) =>
       entry instanceof TypeError &&
       entry.message.includes('cyclic values cannot cross the host boundary'),
+  );
+});
+
+test('host-to-guest encoding rejects excessively deep structured inputs with a typed boundary error', async () => {
+  await assert.rejects(
+    new Jslite('value;').run({
+      inputs: {
+        value: createDeepHostArray(1_100),
+      },
+    }),
+    (error) =>
+      error instanceof TypeError &&
+      error.message.includes('host boundary nesting limit exceeded'),
+  );
+});
+
+test('guest root results fail closed on structured boundary nesting exhaustion', async () => {
+  await assert.rejects(
+    new Jslite(`
+      let value = 0;
+      for (let index = 0; index < 1100; index = index + 1) {
+        value = [value];
+      }
+      value;
+    `).run(),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes('structured host boundary nesting limit exceeded'),
+  );
+});
+
+test('guest capability arguments fail closed on structured boundary nesting exhaustion', () => {
+  assert.throws(
+    () =>
+      new Jslite(`
+        let value = 0;
+        for (let index = 0; index < 1100; index = index + 1) {
+          value = [value];
+        }
+        send(value);
+      `).start({
+        capabilities: {
+          send() {},
+        },
+      }),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes('structured host boundary nesting limit exceeded'),
   );
 });

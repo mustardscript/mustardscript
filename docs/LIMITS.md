@@ -66,6 +66,10 @@ Cooperative cancellation is controlled separately through:
 - Native helper loops such as `Array.prototype.sort()` and `Object.keys()` now
   charge instruction budget explicitly instead of bypassing the guest budget
   inside opaque Rust work.
+- `JSON.parse()` and `JSON.stringify()` also meter native helper work, observe
+  cancellation during large helper runs, and fail direct top-level string
+  returns against the configured heap limit before those results cross the host
+  boundary.
 - Cancellation fails as a limit error with the guest-safe message
   `execution cancelled`.
 - In addon mode, same-thread `AbortSignal` delivery cannot interrupt a native

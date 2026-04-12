@@ -1,4 +1,7 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    io::{self, Read, Write},
+};
 
 use oxc_syntax::number::ToJsString;
 use rand::random;
@@ -6,10 +9,102 @@ use time::OffsetDateTime;
 
 use super::*;
 
+const JSON_HELPER_IO_CHUNK_BYTES: usize = 256;
+
 #[derive(Default)]
 struct JsonStringifyTraversalState {
     arrays: HashSet<ArrayKey>,
     objects: HashSet<ObjectKey>,
+}
+
+struct BudgetedJsonReader<'runtime, 'source> {
+    runtime: &'runtime mut Runtime,
+    source: &'source [u8],
+    offset: usize,
+    failure: Option<JsliteError>,
+}
+
+impl<'runtime, 'source> BudgetedJsonReader<'runtime, 'source> {
+    fn new(runtime: &'runtime mut Runtime, source: &'source [u8]) -> Self {
+        Self {
+            runtime,
+            source,
+            offset: 0,
+            failure: None,
+        }
+    }
+
+    fn into_failure(self) -> Option<JsliteError> {
+        self.failure
+    }
+}
+
+impl Read for BudgetedJsonReader<'_, '_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.offset >= self.source.len() {
+            return Ok(0);
+        }
+        let chunk_len = buf
+            .len()
+            .min(self.source.len() - self.offset)
+            .min(JSON_HELPER_IO_CHUNK_BYTES);
+        if let Err(error) = self.runtime.charge_native_helper_work(1) {
+            self.failure = Some(error);
+            return Err(io::Error::other("jslite-json-parse-aborted"));
+        }
+        buf[..chunk_len].copy_from_slice(&self.source[self.offset..self.offset + chunk_len]);
+        self.offset += chunk_len;
+        Ok(chunk_len)
+    }
+}
+
+struct JsonOutputWriter<'runtime, 'output> {
+    runtime: &'runtime mut Runtime,
+    output: &'output mut String,
+    failure: Option<JsliteError>,
+}
+
+impl<'runtime, 'output> JsonOutputWriter<'runtime, 'output> {
+    fn new(runtime: &'runtime mut Runtime, output: &'output mut String) -> Self {
+        Self {
+            runtime,
+            output,
+            failure: None,
+        }
+    }
+
+    fn into_failure(self) -> Option<JsliteError> {
+        self.failure
+    }
+}
+
+impl Write for JsonOutputWriter<'_, '_> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
+        let chunk_len = buf.len().min(JSON_HELPER_IO_CHUNK_BYTES);
+        let next_len = self
+            .output
+            .len()
+            .checked_add(chunk_len)
+            .ok_or_else(|| io::Error::other("json output overflow"))?;
+        if let Err(error) = self.runtime.ensure_heap_capacity(next_len) {
+            self.failure = Some(error);
+            return Err(io::Error::other("jslite-json-stringify-aborted"));
+        }
+        if let Err(error) = self.runtime.charge_native_helper_work(1) {
+            self.failure = Some(error);
+            return Err(io::Error::other("jslite-json-stringify-aborted"));
+        }
+        let chunk = std::str::from_utf8(&buf[..chunk_len]).map_err(io::Error::other)?;
+        self.output.push_str(chunk);
+        Ok(chunk_len)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 impl Runtime {
@@ -169,110 +264,142 @@ impl Runtime {
         Value::Number(random::<f64>())
     }
 
-    pub(crate) fn call_json_stringify(&self, args: &[Value]) -> JsliteResult<Value> {
+    pub(crate) fn call_json_stringify(&mut self, args: &[Value]) -> JsliteResult<Value> {
         let value = args.first().cloned().unwrap_or(Value::Undefined);
         let mut traversal = JsonStringifyTraversalState::default();
-        match self.json_stringify_value(&value, &mut traversal)? {
-            Some(json) => Ok(Value::String(json)),
-            None => Ok(Value::Undefined),
+        let mut output = String::new();
+        if self.json_stringify_value(&value, &mut traversal, &mut output)? {
+            Ok(Value::String(output))
+        } else {
+            Ok(Value::Undefined)
         }
     }
 
     pub(crate) fn call_json_parse(&mut self, args: &[Value]) -> JsliteResult<Value> {
         let source = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
-        let parsed: serde_json::Value = serde_json::from_str(&source)
-            .map_err(|error| JsliteError::runtime(error.to_string()))?;
+        let mut reader = BudgetedJsonReader::new(self, source.as_bytes());
+        let parsed: serde_json::Value = match serde_json::from_reader(&mut reader) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                if let Some(runtime_error) = reader.into_failure() {
+                    return Err(runtime_error);
+                }
+                return Err(JsliteError::runtime(error.to_string()));
+            }
+        };
+        drop(reader);
         self.value_from_json(parsed)
     }
 
     fn json_stringify_value(
-        &self,
+        &mut self,
         value: &Value,
         traversal: &mut JsonStringifyTraversalState,
-    ) -> JsliteResult<Option<String>> {
+        output: &mut String,
+    ) -> JsliteResult<bool> {
+        self.charge_native_helper_work(1)?;
         match value {
-            Value::Undefined => Ok(None),
-            Value::Null => Ok(Some("null".to_string())),
-            Value::Bool(value) => Ok(Some(value.to_string())),
-            Value::Number(value) => Ok(Some(json_number_to_string(*value))),
+            Value::Undefined => Ok(false),
+            Value::Null => {
+                self.push_json_fragment(output, "null")?;
+                Ok(true)
+            }
+            Value::Bool(value) => {
+                if *value {
+                    self.push_json_fragment(output, "true")?;
+                } else {
+                    self.push_json_fragment(output, "false")?;
+                }
+                Ok(true)
+            }
+            Value::Number(value) => {
+                self.push_json_fragment(output, &json_number_to_string(*value))?;
+                Ok(true)
+            }
             Value::BigInt(_) => Err(JsliteError::runtime(
                 "TypeError: Do not know how to serialize a BigInt",
             )),
-            Value::String(value) => serde_json::to_string(value)
-                .map(Some)
-                .map_err(|error| JsliteError::runtime(error.to_string())),
-            Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => Ok(None),
+            Value::String(value) => {
+                self.push_json_string(output, value)?;
+                Ok(true)
+            }
+            Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => Ok(false),
             Value::Array(array) => {
                 if !traversal.arrays.insert(*array) {
                     return Err(json_stringify_cycle_error());
                 }
+                let elements = self
+                    .arrays
+                    .get(*array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?
+                    .elements
+                    .clone();
                 let result = (|| {
-                    let mut serialized = Vec::new();
-                    for value in &self
-                        .arrays
-                        .get(*array)
-                        .ok_or_else(|| JsliteError::runtime("array missing"))?
-                        .elements
-                    {
-                        serialized.push(
-                            self.json_stringify_value(value, traversal)?
-                                .unwrap_or_else(|| "null".to_string()),
-                        );
+                    self.push_json_fragment(output, "[")?;
+                    for (index, value) in elements.iter().enumerate() {
+                        if index > 0 {
+                            self.push_json_fragment(output, ",")?;
+                        }
+                        if !self.json_stringify_value(value, traversal, output)? {
+                            self.push_json_fragment(output, "null")?;
+                        }
                     }
-                    Ok(Some(format!("[{}]", serialized.join(","))))
+                    self.push_json_fragment(output, "]")?;
+                    Ok(true)
                 })();
                 traversal.arrays.remove(array);
                 result
             }
-            Value::Object(object) => self.json_stringify_object(*object, traversal),
+            Value::Object(object) => self.json_stringify_object(*object, traversal, output),
             Value::Map(_) | Value::Set(_) | Value::Iterator(_) | Value::Promise(_) => {
-                Ok(Some("{}".to_string()))
+                self.push_json_fragment(output, "{}")?;
+                Ok(true)
             }
         }
     }
 
     fn json_stringify_object(
-        &self,
+        &mut self,
         object: ObjectKey,
         traversal: &mut JsonStringifyTraversalState,
-    ) -> JsliteResult<Option<String>> {
-        let object_ref = self
-            .objects
-            .get(object)
-            .ok_or_else(|| JsliteError::runtime("object missing"))?;
-        if let ObjectKind::Date(date) = &object_ref.kind {
-            return self.json_stringify_date(date.timestamp_ms).map(Some);
+        output: &mut String,
+    ) -> JsliteResult<bool> {
+        let date_timestamp_ms = {
+            let object_ref = self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?;
+            match &object_ref.kind {
+                ObjectKind::Date(date) => Some(date.timestamp_ms),
+                _ => None,
+            }
+        };
+        if let Some(timestamp_ms) = date_timestamp_ms {
+            self.push_json_fragment(output, &self.json_stringify_date(timestamp_ms)?)?;
+            return Ok(true);
         }
 
         if !traversal.objects.insert(object) {
             return Err(json_stringify_cycle_error());
         }
 
-        let result = (|| {
-            let keys = match &self
+        let keys = {
+            let object_ref = self
                 .objects
                 .get(object)
-                .ok_or_else(|| JsliteError::runtime("object missing"))?
-                .kind
-            {
-                ObjectKind::Error(_) => ordered_own_property_keys_filtered(
-                    &self
-                        .objects
-                        .get(object)
-                        .ok_or_else(|| JsliteError::runtime("object missing"))?
-                        .properties,
-                    |key, _| key != "name" && key != "message",
-                ),
-                _ => ordered_own_property_keys(
-                    &self
-                        .objects
-                        .get(object)
-                        .ok_or_else(|| JsliteError::runtime("object missing"))?
-                        .properties,
-                ),
-            };
-
-            let mut serialized = Vec::new();
+                .ok_or_else(|| JsliteError::runtime("object missing"))?;
+            match &object_ref.kind {
+                ObjectKind::Error(_) => {
+                    ordered_own_property_keys_filtered(&object_ref.properties, |key, _| {
+                        key != "name" && key != "message"
+                    })
+                }
+                _ => ordered_own_property_keys(&object_ref.properties),
+            }
+        };
+        let result = (|| {
+            self.push_json_fragment(output, "{")?;
+            let mut wrote_any = false;
             for key in keys {
                 let value = self
                     .objects
@@ -282,15 +409,20 @@ impl Runtime {
                     .get(&key)
                     .cloned()
                     .ok_or_else(|| JsliteError::runtime("object property missing"))?;
-                let Some(value) = self.json_stringify_value(&value, traversal)? else {
+                let rewind = output.len();
+                if wrote_any {
+                    self.push_json_fragment(output, ",")?;
+                }
+                self.push_json_string(output, &key)?;
+                self.push_json_fragment(output, ":")?;
+                if !self.json_stringify_value(&value, traversal, output)? {
+                    output.truncate(rewind);
                     continue;
-                };
-                let key = serde_json::to_string(&key)
-                    .map_err(|error| JsliteError::runtime(error.to_string()))?;
-                serialized.push(format!("{key}:{value}"));
+                }
+                wrote_any = true;
             }
-
-            Ok(Some(format!("{{{}}}", serialized.join(","))))
+            self.push_json_fragment(output, "}")?;
+            Ok(true)
         })();
 
         traversal.objects.remove(&object);
@@ -326,6 +458,39 @@ impl Runtime {
             datetime.millisecond(),
         );
         serde_json::to_string(&rendered).map_err(|error| JsliteError::runtime(error.to_string()))
+    }
+
+    fn push_json_fragment(&mut self, output: &mut String, fragment: &str) -> JsliteResult<()> {
+        let next_len = output
+            .len()
+            .checked_add(fragment.len())
+            .ok_or_else(|| limit_error("heap limit exceeded"))?;
+        self.ensure_heap_capacity(next_len)?;
+        let units = fragment.len().max(1).div_ceil(JSON_HELPER_IO_CHUNK_BYTES);
+        self.charge_native_helper_work(units)?;
+        output.push_str(fragment);
+        Ok(())
+    }
+
+    fn push_json_string(&mut self, output: &mut String, value: &str) -> JsliteResult<()> {
+        let mut writer = JsonOutputWriter::new(self, output);
+        let result = serde_json::to_writer(&mut writer, value);
+        match result {
+            Ok(()) => {
+                if let Some(runtime_error) = writer.into_failure() {
+                    Err(runtime_error)
+                } else {
+                    Ok(())
+                }
+            }
+            Err(error) => {
+                if let Some(runtime_error) = writer.into_failure() {
+                    Err(runtime_error)
+                } else {
+                    Err(JsliteError::runtime(error.to_string()))
+                }
+            }
+        }
     }
 }
 

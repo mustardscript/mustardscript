@@ -91,3 +91,57 @@ test('limit errors do not leak host internals', async () => {
     }),
   );
 });
+
+test('JSON.parse and JSON.stringify charge instruction budget inside native helper work', async () => {
+  const largeText = `[${'0,'.repeat(20_000)}0]`;
+  const largeValues = Array.from({ length: 20_001 }, () => 0);
+
+  await assert.rejects(
+    runtime('JSON.parse(text).length;').run({
+      inputs: {
+        text: largeText,
+      },
+      limits: {
+        instructionBudget: 8,
+      },
+    }),
+    isJsliteError({
+      kind: 'Limit',
+      message: /instruction budget exhausted/,
+    }),
+  );
+
+  await assert.rejects(
+    runtime('JSON.stringify(values).length;').run({
+      inputs: {
+        values: largeValues,
+      },
+      limits: {
+        instructionBudget: 8,
+      },
+    }),
+    isJsliteError({
+      kind: 'Limit',
+      message: /instruction budget exhausted/,
+    }),
+  );
+});
+
+test('direct JSON.stringify returns respect the heap limit before crossing the host boundary', async () => {
+  const text = 'x'.repeat(10_000);
+
+  await assert.rejects(
+    runtime('JSON.stringify(text);').run({
+      inputs: {
+        text,
+      },
+      limits: {
+        heapLimitBytes: 15_000,
+      },
+    }),
+    isJsliteError({
+      kind: 'Limit',
+      message: /heap limit exceeded/,
+    }),
+  );
+});

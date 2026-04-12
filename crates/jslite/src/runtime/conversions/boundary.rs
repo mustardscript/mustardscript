@@ -1,5 +1,7 @@
 use super::*;
 
+const STRUCTURED_BOUNDARY_MAX_DEPTH: usize = 128;
+
 #[derive(Default)]
 struct StructuredTraversalState {
     arrays: HashSet<ArrayKey>,
@@ -11,6 +13,15 @@ impl Runtime {
         &mut self,
         value: StructuredValue,
     ) -> JsliteResult<Value> {
+        self.value_from_structured_inner(value, 1)
+    }
+
+    fn value_from_structured_inner(
+        &mut self,
+        value: StructuredValue,
+        depth: usize,
+    ) -> JsliteResult<Value> {
+        ensure_nested_depth(depth, structured_boundary_depth_error)?;
         Ok(match value {
             StructuredValue::Undefined => Value::Undefined,
             StructuredValue::Null => Value::Null,
@@ -20,7 +31,7 @@ impl Runtime {
             StructuredValue::Array(items) => {
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {
-                    values.push(self.value_from_structured(item)?);
+                    values.push(self.value_from_structured_inner(item, depth + 1)?);
                 }
                 let array = self.insert_array(values, IndexMap::new())?;
                 Value::Array(array)
@@ -28,7 +39,7 @@ impl Runtime {
             StructuredValue::Object(object) => {
                 let mut properties = IndexMap::new();
                 for (key, value) in object {
-                    properties.insert(key, self.value_from_structured(value)?);
+                    properties.insert(key, self.value_from_structured_inner(value, depth + 1)?);
                 }
                 let object = self.insert_object(properties, ObjectKind::Plain)?;
                 Value::Object(object)
@@ -41,14 +52,16 @@ impl Runtime {
         value: Value,
     ) -> JsliteResult<StructuredValue> {
         let mut traversal = StructuredTraversalState::default();
-        self.value_to_structured_inner(value, &mut traversal)
+        self.value_to_structured_inner(value, &mut traversal, 1)
     }
 
     fn value_to_structured_inner(
         &self,
         value: Value,
         traversal: &mut StructuredTraversalState,
+        depth: usize,
     ) -> JsliteResult<StructuredValue> {
+        ensure_nested_depth(depth, structured_boundary_depth_error)?;
         Ok(match value {
             Value::Undefined => StructuredValue::Undefined,
             Value::Null => StructuredValue::Null,
@@ -72,7 +85,9 @@ impl Runtime {
                             .elements
                             .iter()
                             .cloned()
-                            .map(|value| self.value_to_structured_inner(value, traversal))
+                            .map(|value| {
+                                self.value_to_structured_inner(value, traversal, depth + 1)
+                            })
                             .collect::<JsliteResult<Vec<_>>>()?,
                     ))
                 })();
@@ -100,7 +115,11 @@ impl Runtime {
                             .map(|(key, value)| {
                                 Ok((
                                     key.clone(),
-                                    self.value_to_structured_inner(value.clone(), traversal)?,
+                                    self.value_to_structured_inner(
+                                        value.clone(),
+                                        traversal,
+                                        depth + 1,
+                                    )?,
                                 ))
                             })
                             .collect::<JsliteResult<IndexMap<_, _>>>()?,
@@ -130,6 +149,16 @@ impl Runtime {
         &mut self,
         value: serde_json::Value,
     ) -> JsliteResult<Value> {
+        self.value_from_json_inner(value, 1)
+    }
+
+    fn value_from_json_inner(
+        &mut self,
+        value: serde_json::Value,
+        depth: usize,
+    ) -> JsliteResult<Value> {
+        ensure_nested_depth(depth, json_value_depth_error)?;
+        self.charge_native_helper_work(1)?;
         match value {
             serde_json::Value::Null => Ok(Value::Null),
             serde_json::Value::Bool(value) => Ok(Value::Bool(value)),
@@ -138,7 +167,7 @@ impl Runtime {
             serde_json::Value::Array(items) => {
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {
-                    values.push(self.value_from_json(item)?);
+                    values.push(self.value_from_json_inner(item, depth + 1)?);
                 }
                 let array = self.insert_array(values, IndexMap::new())?;
                 Ok(Value::Array(array))
@@ -146,7 +175,7 @@ impl Runtime {
             serde_json::Value::Object(object) => {
                 let mut properties = IndexMap::new();
                 for (key, value) in object {
-                    properties.insert(key, self.value_from_json(value)?);
+                    properties.insert(key, self.value_from_json_inner(value, depth + 1)?);
                 }
                 let object = self.insert_object(properties, ObjectKind::Plain)?;
                 Ok(Value::Object(object))
@@ -190,4 +219,19 @@ pub(in crate::runtime) fn structured_to_json(
 
 fn structured_boundary_cycle_error() -> JsliteError {
     JsliteError::runtime("cyclic values cannot cross the structured host boundary")
+}
+
+fn structured_boundary_depth_error() -> JsliteError {
+    JsliteError::runtime("structured host boundary nesting limit exceeded")
+}
+
+fn json_value_depth_error() -> JsliteError {
+    JsliteError::runtime("JSON value nesting limit exceeded")
+}
+
+fn ensure_nested_depth(depth: usize, make_error: impl FnOnce() -> JsliteError) -> JsliteResult<()> {
+    if depth > STRUCTURED_BOUNDARY_MAX_DEPTH {
+        return Err(make_error());
+    }
+    Ok(())
 }

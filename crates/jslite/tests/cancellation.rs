@@ -37,6 +37,10 @@ fn object_with_keys(len: usize) -> StructuredValue {
     )
 }
 
+fn json_number_array(len: usize) -> String {
+    format!("[{}0]", "0,".repeat(len))
+}
+
 #[test]
 fn cooperative_cancellation_interrupts_running_guest_code() {
     let program = compile(
@@ -217,6 +221,120 @@ fn native_helper_object_keys_observes_cancellation() {
         },
     )
     .expect_err("native object helper should observe cancellation");
+
+    worker.join().expect("canceller thread should finish");
+    assert_cancelled_limit(&error);
+}
+
+#[test]
+fn json_parse_helper_observes_instruction_budget() {
+    let program = compile("JSON.parse(text).length;").expect("source should compile");
+    let error = execute(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([(
+                "text".to_string(),
+                StructuredValue::String(json_number_array(20_000)),
+            )]),
+            limits: RuntimeLimits {
+                instruction_budget: 8,
+                ..RuntimeLimits::default()
+            },
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("JSON.parse should consume instruction budget");
+
+    match error {
+        jslite::JsliteError::Message { kind, message, .. } => {
+            assert_eq!(kind, DiagnosticKind::Limit);
+            assert!(message.contains("instruction budget exhausted"));
+        }
+        other => panic!("expected limit error, got {other:?}"),
+    }
+}
+
+#[test]
+fn json_stringify_helper_observes_instruction_budget() {
+    let program = compile("JSON.stringify(values).length;").expect("source should compile");
+    let error = execute(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([("values".to_string(), descending_numbers(20_000))]),
+            limits: RuntimeLimits {
+                instruction_budget: 8,
+                ..RuntimeLimits::default()
+            },
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("JSON.stringify should consume instruction budget");
+
+    match error {
+        jslite::JsliteError::Message { kind, message, .. } => {
+            assert_eq!(kind, DiagnosticKind::Limit);
+            assert!(message.contains("instruction budget exhausted"));
+        }
+        other => panic!("expected limit error, got {other:?}"),
+    }
+}
+
+#[test]
+fn json_parse_helper_observes_cancellation() {
+    let program = compile("JSON.parse(text).length;").expect("source should compile");
+
+    let token = CancellationToken::new();
+    let canceller = token.clone();
+    let worker = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(1));
+        canceller.cancel();
+    });
+
+    let error = execute(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([(
+                "text".to_string(),
+                StructuredValue::String(json_number_array(200_000)),
+            )]),
+            limits: RuntimeLimits {
+                instruction_budget: usize::MAX,
+                ..RuntimeLimits::default()
+            },
+            cancellation_token: Some(token),
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("JSON.parse should observe cancellation");
+
+    worker.join().expect("canceller thread should finish");
+    assert_cancelled_limit(&error);
+}
+
+#[test]
+fn json_stringify_helper_observes_cancellation() {
+    let program = compile("JSON.stringify(values).length;").expect("source should compile");
+
+    let token = CancellationToken::new();
+    let canceller = token.clone();
+    let worker = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(1));
+        canceller.cancel();
+    });
+
+    let error = execute(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([("values".to_string(), descending_numbers(200_000))]),
+            limits: RuntimeLimits {
+                instruction_budget: usize::MAX,
+                ..RuntimeLimits::default()
+            },
+            cancellation_token: Some(token),
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("JSON.stringify should observe cancellation");
 
     worker.join().expect("canceller thread should finish");
     assert_cancelled_limit(&error);
