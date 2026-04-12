@@ -44,8 +44,12 @@ test('progress.cancel aborts suspended execution without guest catch interceptio
 
 test('run cancels while guest async code is awaiting a host promise', async () => {
   let resolveHost = () => {};
+  let hostStarted = () => {};
   const hostPromise = new Promise((resolve) => {
     resolveHost = resolve;
+  });
+  const started = new Promise((resolve) => {
+    hostStarted = resolve;
   });
   const controller = new AbortController();
 
@@ -63,14 +67,15 @@ test('run cancels while guest async code is awaiting a host promise', async () =
 
   const pending = runtime.run({
     signal: controller.signal,
-    capabilities: {
-      fetch_data() {
-        return hostPromise;
+      capabilities: {
+        fetch_data() {
+          hostStarted();
+          return hostPromise;
+        },
       },
-    },
   });
 
-  await new Promise((resolve) => setImmediate(resolve));
+  await started;
   controller.abort();
   resolveHost(1);
 

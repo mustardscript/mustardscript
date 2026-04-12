@@ -65,6 +65,23 @@ sequences through both same-process cached loads and explicit-policy restores,
 prints minimized action histories when a lifecycle invariant breaks, and keeps
 longer replay-sequence exploration in an opt-in out-of-band lane.
 
+The async surface also now has a deterministic schedule matrix in
+`tests/node/async-schedule.test.js`:
+
+- guest-only promise chains and two-input combinator schedules are enumerated
+  exhaustively in small bounded matrices and compared directly against Node
+- addon `run()` uses a deferred-capability harness so host settlement,
+  microtask checkpoints, and cancellation races are exercised without
+  wall-clock sleeps
+- the same bounded host schedules are replayed through
+  `start()` / `Progress.load()` / `resume()` to prove that queued async host
+  work survives suspend, dump/load, and later resume steps with matching
+  canonical traces
+
+Failures in that matrix render canonical host traces plus guest continuation
+traces, so async ordering regressions show up as reproducible diffs rather than
+timing flakes.
+
 ## Fixture Coverage
 
 The curated `test262` subset complements the generated layer:
