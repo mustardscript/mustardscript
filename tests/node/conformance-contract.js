@@ -338,6 +338,22 @@ const FEATURE_CONTRACT = Object.freeze([
     messageIncludes: 'update expressions are not supported in v1',
   },
   {
+    id: 'validation.logical-assignment-or',
+    title: 'logical assignment ||= is a validation reject',
+    outcome: OUTCOME.VALIDATION_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
+    source: 'let value = 1; value ||= 2;',
+    messageIncludes: 'unsupported assignment operator in v1',
+  },
+  {
+    id: 'validation.logical-assignment-and',
+    title: 'logical assignment &&= is a validation reject',
+    outcome: OUTCOME.VALIDATION_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
+    source: 'let value = 1; value &&= 2;',
+    messageIncludes: 'unsupported assignment operator in v1',
+  },
+  {
     id: 'validation.tagged-templates',
     title: 'tagged templates are a validation reject',
     outcome: OUTCOME.VALIDATION_REJECT,
