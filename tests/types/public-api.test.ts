@@ -28,6 +28,7 @@ const executionOptions: ExecutionOptions = {
     instructionBudget: 1000,
   },
   signal: new AbortController().signal,
+  snapshotKey: Buffer.from('snapshot-key'),
   capabilities: {
     fetch_data(value) {
       return value;
@@ -51,6 +52,7 @@ const resumeOptions: ResumeOptions = {
   signal: new AbortController().signal,
 };
 const progressLoadOptions: ProgressLoadOptions = {
+  snapshotKey: Buffer.from('snapshot-key'),
   capabilities: {
     fetch_data(value) {
       return value;

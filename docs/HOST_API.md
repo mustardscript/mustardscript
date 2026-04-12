@@ -21,6 +21,7 @@ Rejected values:
 - symbols
 - guest `BigInt` values and host bigints
 - `Map` and `Set`
+- proxies and other trap-bearing wrapper objects
 - cycles
 - class instances
 - accessors
@@ -50,13 +51,17 @@ payloads still reject them at the structured boundary.
   error payload.
 - `Progress.cancel()` injects an explicit cooperative cancellation failure into
   a suspended execution instead of resuming it with a host value.
-- The Node wrapper accepts sync or async JavaScript capability functions and
-  bridges both cases by awaiting the host result before calling `resume()`.
+- The Node wrapper accepts sync JavaScript capability functions and real
+  `Promise`-returning async handlers; it does not adopt arbitrary thenables or
+  proxy-backed handler registries.
 - `run()` and `start()` accept an optional `AbortSignal`, and
   `resume()` / `resumeError()` accept an optional `{ signal }` object for the
   resumed compute segment.
 - `limits.maxOutstandingHostCalls` bounds the combined number of queued and
   currently suspended host requests for async guest execution.
+- If hosts want dumped progress blobs to survive a fresh process boundary, they
+  must provide the same `snapshotKey` on `start()`/`run()` and on
+  `Progress.load(...)`.
 
 ## Error Sanitization
 
@@ -95,13 +100,14 @@ guest-only traceback with guest function names and source spans.
 - Execution is single-threaded and non-reentrant.
 - The Node `Progress` wrapper is single-use and rejects repeated
   `resume()`/`resumeError()` calls for the same suspended snapshot.
-- `Progress.dump()` / `Progress.load()` preserve that single-use identity within
-  one Node process using snapshot-derived identity, so cloned dumped progress
-  objects cannot both be resumed.
+- `Progress.dump()` includes a detached token authenticated by the configured
+  `snapshotKey`, and `Progress.load()` verifies that token before trusting the
+  dumped snapshot bytes.
 - In the Node wrapper, `Progress.load(...)` only reuses cached policy
-  automatically when the snapshot came from the same process. Fresh-process
-  restores must pass explicit `capabilities` and `limits` so the host reasserts
-  both authority and resource policy before dispatching on
+  automatically when the dumped token is still present in the same-process
+  cache. Fresh-process restores, or same-process restores after cache eviction,
+  must pass explicit `capabilities`, `limits`, and `snapshotKey` so the host
+  reasserts both authority and resource policy before dispatching on
   `progress.capability` / `progress.args`.
 - Hosts must not attempt to run nested guest execution on the same runtime
   state while another `run()`, `start()`, or `resume()` is active.
@@ -110,7 +116,8 @@ guest-only traceback with guest function names and source spans.
 
 - The Rust core now exposes a pollable cooperative cancellation token and checks
   it before each instruction dispatch, before idle microtask or queued-host-call
-  checkpoints, and on every `resume()` entry.
+  checkpoints, on every `resume()` entry, and inside long-running native helper
+  loops such as `Array.prototype.sort()` and `Object.keys()`.
 - Cancellation fails as a top-level guest-safe limit error with the message
   `execution cancelled`. It is host authority, not guest control flow, so guest
   `try` / `catch` does not intercept it.

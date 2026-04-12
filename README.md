@@ -83,8 +83,9 @@ The release package name is `@keppoai/jslite`. The default and fully verified
 path is still source-build installation from a clean checkout or packed source
 tarball, where `npm install` compiles the native addon locally. Optional
 prebuilt binaries now have a separate release flow for the documented target
-matrix, but source-build fallback remains the baseline path and still requires a
-Rust toolchain plus Node.js on the target machine.
+matrix, but the loader now only accepts validated `.node` artifacts from the
+expected optional package layout. Source-build fallback remains the baseline
+path and still requires a Rust toolchain plus Node.js on the target machine.
 
 From a clean checkout:
 
@@ -443,6 +444,8 @@ Current built-in helper support is intentionally conservative:
   unsupported
 - descriptor/prototype helpers and nondeterministic helpers such as
   `Math.random` remain unsupported
+- proxy-backed host values, accessor-backed handler registries, and cyclic host
+  values fail closed at the JavaScript wrapper boundary before guest execution
 
 Current function-call support is intentionally narrow:
 
@@ -705,9 +708,9 @@ Native failures are surfaced in Node as typed JavaScript errors:
 
 `Progress.load(...)` reuses the original host policy automatically only when the
 dumped progress object stays inside the same Node process. If a progress blob is
-restored in a fresh process, the host must pass explicit `capabilities` and
-`limits` so resume policy is rebound before any loaded capability metadata is
-trusted.
+restored in a fresh process, the host must pass explicit `capabilities`,
+`limits`, and the original `snapshotKey` so the dumped token authenticates the
+snapshot bytes before any loaded capability metadata is trusted.
 
 The common path should be easy. The advanced path should remain explicit.
 

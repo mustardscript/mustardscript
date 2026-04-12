@@ -51,29 +51,91 @@ const TARGETS_BY_RUNTIME = new Map(
   PREBUILT_TARGETS.map((target) => [`${target.platform}:${target.arch}`, target]),
 );
 
+function isExplicitFilePath(specifier) {
+  return (
+    path.isAbsolute(specifier) ||
+    specifier.startsWith(`.${path.sep}`) ||
+    specifier.startsWith(`..${path.sep}`) ||
+    specifier.startsWith('./') ||
+    specifier.startsWith('../')
+  );
+}
+
+function resolveNativeAddonPath(candidate, label, cwd = process.cwd()) {
+  if (typeof candidate !== 'string' || candidate.trim() === '') {
+    throw new Error(`${label} must be a non-empty file path to a native .node addon`);
+  }
+  if (!isExplicitFilePath(candidate)) {
+    throw new Error(
+      `${label} must be an explicit absolute or relative file path to a native .node addon`,
+    );
+  }
+  const resolved = path.resolve(cwd, candidate);
+  if (path.extname(resolved) !== '.node') {
+    throw new Error(`${label} must point to a native .node addon`);
+  }
+  const stats = fs.statSync(resolved, { throwIfNoEntry: false });
+  if (!stats?.isFile()) {
+    throw new Error(`${label} does not exist: ${resolved}`);
+  }
+  return resolved;
+}
+
 function getCurrentPrebuiltTarget() {
   return TARGETS_BY_RUNTIME.get(`${process.platform}:${process.arch}`) ?? null;
 }
 
-function resolvePrebuiltPackage() {
+function validatePrebuiltPackageManifest(manifest, target, packageJsonPath) {
+  if (manifest?.name !== target.packageName) {
+    throw new Error(
+      `optional prebuilt package at ${packageJsonPath} does not match ${target.packageName}`,
+    );
+  }
+  if (manifest?.main !== target.localFile) {
+    throw new Error(
+      `optional prebuilt package ${target.packageName} must expose its native addon as ${target.localFile}`,
+    );
+  }
+}
+
+function resolvePrebuiltPackage(searchRoot = __dirname) {
   const target = getCurrentPrebuiltTarget();
   if (!target) {
     return null;
   }
 
+  let packageJsonPath;
   try {
-    require.resolve(`${target.packageName}/package.json`, { paths: [__dirname] });
-    return target;
+    packageJsonPath = require.resolve(`${target.packageName}/package.json`, {
+      paths: [searchRoot],
+    });
   } catch {
     return null;
   }
+
+  const packageRoot = path.dirname(packageJsonPath);
+  const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  validatePrebuiltPackageManifest(manifest, target, packageJsonPath);
+
+  const binaryPath = path.join(packageRoot, target.localFile);
+  const stats = fs.statSync(binaryPath, { throwIfNoEntry: false });
+  if (!stats?.isFile()) {
+    throw new Error(`optional prebuilt package ${target.packageName} is missing ${target.localFile}`);
+  }
+
+  return {
+    ...target,
+    packageJsonPath,
+    packageRoot,
+    binaryPath,
+  };
 }
 
-function localBinaryCandidates() {
+function localBinaryCandidates(searchRoot = __dirname) {
   const target = getCurrentPrebuiltTarget();
   const roots = [
-    __dirname,
-    path.join(__dirname, 'crates', 'jslite-node'),
+    searchRoot,
+    path.join(searchRoot, 'crates', 'jslite-node'),
   ];
   const candidates = [];
   const seen = new Set();
@@ -107,19 +169,22 @@ function localBinaryCandidates() {
   return candidates;
 }
 
-function loadNative() {
+function loadNative(options = {}) {
+  const env = options.env ?? process.env;
+  const searchRoot = options.searchRoot ?? __dirname;
+  const overrideCwd = options.overrideCwd ?? process.cwd();
   const loadErrors = [];
   const overridePath =
-    process.env.JSLITE_NATIVE_LIBRARY_PATH ?? process.env.NAPI_RS_NATIVE_LIBRARY_PATH;
+    env.JSLITE_NATIVE_LIBRARY_PATH ?? env.NAPI_RS_NATIVE_LIBRARY_PATH;
   if (overridePath) {
     try {
-      return require(overridePath);
+      return require(resolveNativeAddonPath(overridePath, 'native library override', overrideCwd));
     } catch (error) {
       loadErrors.push(error);
     }
   }
 
-  for (const candidate of localBinaryCandidates()) {
+  for (const candidate of localBinaryCandidates(searchRoot)) {
     try {
       return require(candidate);
     } catch (error) {
@@ -127,13 +192,17 @@ function loadNative() {
     }
   }
 
-  const prebuilt = resolvePrebuiltPackage();
-  if (prebuilt) {
-    try {
-      return require(prebuilt.packageName);
-    } catch (error) {
-      loadErrors.push(error);
+  try {
+    const prebuilt = resolvePrebuiltPackage(searchRoot);
+    if (prebuilt) {
+      try {
+        return require(prebuilt.binaryPath);
+      } catch (error) {
+        loadErrors.push(error);
+      }
     }
+  } catch (error) {
+    loadErrors.push(error);
   }
 
   const target = getCurrentPrebuiltTarget();
@@ -149,6 +218,7 @@ function loadNative() {
 module.exports = {
   PREBUILT_TARGETS,
   getCurrentPrebuiltTarget,
+  resolveNativeAddonPath,
   resolvePrebuiltPackage,
   loadNative,
 };
