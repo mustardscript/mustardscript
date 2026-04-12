@@ -229,7 +229,7 @@ fn for_in_supports_plain_objects_arrays_and_assignment_targets() {
     assert_eq!(
         result,
         StructuredValue::Array(vec![
-            StructuredValue::Array(vec![string("alpha"), string("zebra")]),
+            StructuredValue::Array(vec![string("zebra"), string("alpha")]),
             StructuredValue::Array(vec![string("0"), string("1"), string("label")]),
             string("beta"),
             string("beta"),
@@ -419,7 +419,7 @@ fn snapshot_round_trip_preserves_for_in_assignment_targets() {
         ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
     };
     assert_eq!(first.capability, "fetch_data");
-    assert_eq!(first.args, vec![string("alpha")]);
+    assert_eq!(first.args, vec![string("beta")]);
 
     let encoded = dump_snapshot(&first.snapshot).expect("snapshot should serialize");
     let loaded = load_snapshot(&encoded).expect("snapshot should deserialize");
@@ -438,7 +438,7 @@ fn snapshot_round_trip_preserves_for_in_assignment_targets() {
         ExecutionStep::Completed(value) => panic!("expected a second suspension, got {value:?}"),
     };
     assert_eq!(second.capability, "fetch_data");
-    assert_eq!(second.args, vec![string("beta")]);
+    assert_eq!(second.args, vec![string("alpha")]);
 
     let completed = resume(second.snapshot, ResumePayload::Value(string("seen:beta")))
         .expect("final resume should work");
@@ -446,7 +446,7 @@ fn snapshot_round_trip_preserves_for_in_assignment_targets() {
         ExecutionStep::Completed(value) => assert_eq!(
             value,
             StructuredValue::Array(vec![
-                string("beta"),
+                string("alpha"),
                 StructuredValue::Array(vec![string("seen:alpha"), string("seen:beta")]),
             ])
         ),

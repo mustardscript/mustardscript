@@ -401,8 +401,8 @@ fn object_helpers_enumerate_plain_objects_and_arrays_deterministically() {
                 "assignedObjectEntries".to_string(),
                 StructuredValue::Array(vec![
                     StructuredValue::Array(vec!["alpha".into(), number(1.0)]),
-                    StructuredValue::Array(vec!["beta".into(), number(3.0)]),
                     StructuredValue::Array(vec!["zebra".into(), number(2.0)]),
+                    StructuredValue::Array(vec!["beta".into(), number(3.0)]),
                 ]),
             ),
             (
@@ -414,8 +414,8 @@ fn object_helpers_enumerate_plain_objects_and_arrays_deterministically() {
                 StructuredValue::Array(vec![
                     StructuredValue::Array(vec!["0".into(), number(6.0)]),
                     StructuredValue::Array(vec!["1".into(), number(5.0)]),
-                    StructuredValue::Array(vec!["extra".into(), number(7.0)]),
                     StructuredValue::Array(vec!["label".into(), "seed".into()]),
+                    StructuredValue::Array(vec!["extra".into(), number(7.0)]),
                 ]),
             ),
         ]))

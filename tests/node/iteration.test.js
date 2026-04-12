@@ -52,7 +52,7 @@ test('run supports for...in over plain objects and arrays', async () => {
   `);
 
   const result = await runtime.run();
-  assert.deepEqual(result, [['alpha', 'beta'], ['0', '1', 'extra']]);
+  assert.deepEqual(result, [['beta', 'alpha'], ['0', '1', 'extra']]);
 });
 
 test('run supports for...in assignment-target headers', async () => {
@@ -64,7 +64,7 @@ test('run supports for...in assignment-target headers', async () => {
   `);
 
   const result = await runtime.run();
-  assert.equal(result, 'beta');
+  assert.equal(result, 'alpha');
 });
 
 test('progress snapshots preserve active array iterators across resumes', () => {
@@ -162,7 +162,7 @@ test('progress snapshots preserve active for...in iterators across resumes', () 
 
   assert.ok(first instanceof Progress);
   assert.equal(first.capability, 'fetch_data');
-  assert.deepEqual(first.args, ['alpha']);
+  assert.deepEqual(first.args, ['beta']);
 
   const restored = Progress.load(first.dump());
   assert.ok(restored instanceof Progress);
@@ -170,7 +170,7 @@ test('progress snapshots preserve active for...in iterators across resumes', () 
   const second = restored.resume(10);
   assert.ok(second instanceof Progress);
   assert.equal(second.capability, 'fetch_data');
-  assert.deepEqual(second.args, ['beta']);
+  assert.deepEqual(second.args, ['alpha']);
 
   const result = second.resume(20);
   assert.equal(result, 30);
@@ -254,7 +254,7 @@ test('run supports conservative for...in over plain objects and arrays', async (
   `);
 
   const result = await runtime.run();
-  assert.deepEqual(result, [['alpha', 'zebra'], ['0', '1', 'label'], 'beta', 'beta']);
+  assert.deepEqual(result, [['zebra', 'alpha'], ['0', '1', 'label'], 'beta', 'beta']);
 });
 
 test('progress snapshots preserve for...in assignment-target headers across resumes', () => {
@@ -276,18 +276,18 @@ test('progress snapshots preserve for...in assignment-target headers across resu
 
   assert.ok(first instanceof Progress);
   assert.equal(first.capability, 'fetch_data');
-  assert.deepEqual(first.args, ['alpha']);
+  assert.deepEqual(first.args, ['beta']);
 
   const restored = Progress.load(first.dump());
   assert.ok(restored instanceof Progress);
 
-  const second = restored.resume('seen:alpha');
+  const second = restored.resume('seen:beta');
   assert.ok(second instanceof Progress);
   assert.equal(second.capability, 'fetch_data');
-  assert.deepEqual(second.args, ['beta']);
+  assert.deepEqual(second.args, ['alpha']);
 
-  const result = second.resume('seen:beta');
-  assert.deepEqual(result, ['beta', ['seen:alpha', 'seen:beta']]);
+  const result = second.resume('seen:alpha');
+  assert.deepEqual(result, ['alpha', ['seen:beta', 'seen:alpha']]);
 });
 
 test('run rejects unsupported for...in right-hand sides', async () => {

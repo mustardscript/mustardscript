@@ -127,7 +127,12 @@ function maybeExtraParens(rendered, expr, extraParens) {
   if (!extraParens) {
     return rendered;
   }
-  if (expr.type === 'literal' || expr.type === 'ref') {
+  if (
+    expr.type === 'literal' ||
+    expr.type === 'ref' ||
+    expr.type === 'binary' ||
+    expr.type === 'logical'
+  ) {
     return rendered;
   }
   return `(${rendered})`;

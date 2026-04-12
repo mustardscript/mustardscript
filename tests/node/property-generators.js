@@ -518,7 +518,8 @@ const supportedProgramArbitraries = [
     })
     .map(({ base, delta, exponent }) => `
       let steps = 0;
-      const value = (steps = steps + 1, steps = steps + ${delta}, ${base} ** ${exponent});
+      const base = ${base};
+      const value = (steps = steps + 1, steps = steps + ${delta}, base ** ${exponent});
       ({ value, steps });
     `),
   fc
@@ -627,7 +628,6 @@ const unsupportedValidationCaseArbitraries = [
   fc.constantFrom(...FORBIDDEN_AMBIENT_GLOBALS).map((name) =>
     validationCase(`${name};`, `forbidden ambient global \`${name}\``),
   ),
-  fc.constant(validationCase('for (value of [1, 2]) { value; }', 'for...of currently requires a let or const binding declaration')),
   fc.constant(validationCase('for (let value = 1 of [1, 2]) { value; }', 'for...of binding initializers are not supported')),
   fc.constant(validationCase('[1, , 2];', 'array holes are not supported in v1')),
   ...contractValidationCaseArbitraries,

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use rand::random;
 use oxc_syntax::number::ToJsString;
+use rand::random;
 
 use super::*;
 
