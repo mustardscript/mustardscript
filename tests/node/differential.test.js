@@ -447,6 +447,28 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'for...of assignment-target headers reuse existing bindings',
+    source: `
+      let value = 0;
+      const fns = [];
+      for (value of [1, 2]) {
+        fns[fns.length] = () => value;
+      }
+      [fns[0](), fns[1](), value];
+    `,
+  },
+  {
+    name: 'for...of assignment-target member headers reevaluate each iteration',
+    source: `
+      const boxes = [{ current: 0 }, { current: 0 }];
+      let index = 0;
+      for (boxes[index].current of [3, 4]) {
+        index += 1;
+      }
+      [boxes[0].current, boxes[1].current, index];
+    `,
+  },
+  {
     name: 'Map lookup and SameValueZero semantics',
     source: `
       const shared = {};

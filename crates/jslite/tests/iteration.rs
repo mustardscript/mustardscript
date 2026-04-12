@@ -65,6 +65,48 @@ fn for_of_supports_destructuring_and_fresh_iteration_bindings() {
 }
 
 #[test]
+fn for_of_supports_identifier_assignment_targets() {
+    let program = compile(
+        r#"
+        let value = 0;
+        const fns = [];
+        for (value of [1, 2]) {
+          fns[fns.length] = () => value;
+        }
+        [fns[0](), fns[1](), value];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![number(2.0), number(2.0), number(2.0)])
+    );
+}
+
+#[test]
+fn for_of_supports_member_assignment_targets() {
+    let program = compile(
+        r#"
+        const boxes = [{ current: 0 }, { current: 0 }];
+        let index = 0;
+        for (boxes[index].current of [3, 4]) {
+          index += 1;
+        }
+        [boxes[0].current, boxes[1].current, index];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![number(3.0), number(4.0), number(2.0)])
+    );
+}
+
+#[test]
 fn for_of_runs_finally_blocks_on_continue_and_break() {
     let program = compile(
         r#"
@@ -220,6 +262,75 @@ fn snapshot_round_trip_preserves_active_array_iterators() {
         .expect("final resume should work");
     match completed {
         ExecutionStep::Completed(value) => assert_eq!(value, number(60.0)),
+        ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
+    }
+}
+
+#[test]
+fn snapshot_round_trip_preserves_assignment_target_for_of_headers() {
+    let program = compile(
+        r#"
+        const state = { current: 0, total: 0 };
+        for (state.current of [1, 2, 3]) {
+          state.total += fetch_data(state.current);
+        }
+        [state.current, state.total];
+        "#,
+    )
+    .expect("source should compile");
+
+    let first = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+    assert_eq!(first.capability, "fetch_data");
+    assert_eq!(first.args, vec![number(1.0)]);
+
+    let encoded = dump_snapshot(&first.snapshot).expect("snapshot should serialize");
+    let loaded = load_snapshot(&encoded).expect("snapshot should deserialize");
+
+    let second = match resume_with_options(
+        loaded,
+        ResumePayload::Value(number(10.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(snapshot_policy(&["fetch_data"], RuntimeLimits::default())),
+        },
+    )
+    .expect("resume should work")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected a second suspension, got {value:?}"),
+    };
+    assert_eq!(second.capability, "fetch_data");
+    assert_eq!(second.args, vec![number(2.0)]);
+
+    let third = match resume(second.snapshot, ResumePayload::Value(number(20.0)))
+        .expect("second resume should work")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected a third suspension, got {value:?}"),
+    };
+    assert_eq!(third.capability, "fetch_data");
+    assert_eq!(third.args, vec![number(3.0)]);
+
+    let completed = resume(third.snapshot, ResumePayload::Value(number(30.0)))
+        .expect("final resume should work");
+    match completed {
+        ExecutionStep::Completed(value) => assert_eq!(
+            value,
+            StructuredValue::Array(vec![number(3.0), number(60.0)])
+        ),
         ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
     }
 }

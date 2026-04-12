@@ -62,13 +62,13 @@ fn rejects_delete_operator() {
 }
 
 #[test]
-fn rejects_for_of_without_binding_declaration() {
-    let error = compile("let value = 0; for (value of [1, 2]) { value; }")
-        .expect_err("assignment-target for...of should fail closed");
+fn rejects_for_of_destructuring_assignment_targets() {
+    let error = compile("let value = 0; for ([value] of [[1], [2]]) { value; }")
+        .expect_err("destructuring assignment-target for...of should fail closed");
     assert!(
         error
             .to_string()
-            .contains("for...of currently requires a let or const binding declaration")
+            .contains("destructuring assignment is not supported in v1")
     );
 }
 

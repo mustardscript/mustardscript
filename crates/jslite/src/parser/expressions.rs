@@ -491,4 +491,60 @@ impl<'a> Lowerer<'a> {
             }
         }
     }
+
+    pub(super) fn lower_for_of_assignment_target(
+        &mut self,
+        target: &ForStatementLeft<'a>,
+    ) -> Option<AssignTarget> {
+        match target {
+            ForStatementLeft::AssignmentTargetIdentifier(identifier) => {
+                Some(AssignTarget::Identifier {
+                    span: identifier.span.into(),
+                    name: identifier.name.as_str().to_string(),
+                })
+            }
+            ForStatementLeft::ComputedMemberExpression(member) => Some(AssignTarget::Member {
+                span: member.span.into(),
+                object: Box::new(self.lower_expr(&member.object)?),
+                property: MemberProperty::Computed(Box::new(self.lower_expr(&member.expression)?)),
+                optional: member.optional,
+            }),
+            ForStatementLeft::StaticMemberExpression(member) => Some(AssignTarget::Member {
+                span: member.span.into(),
+                object: Box::new(self.lower_expr(&member.object)?),
+                property: MemberProperty::Static(PropertyName::Identifier(
+                    member.property.name.as_str().to_string(),
+                )),
+                optional: member.optional,
+            }),
+            ForStatementLeft::PrivateFieldExpression(expression) => {
+                self.unsupported(
+                    "private fields are not supported in v1",
+                    Some(expression.span.into()),
+                );
+                None
+            }
+            ForStatementLeft::ArrayAssignmentTarget(target) => {
+                self.unsupported(
+                    "destructuring assignment is not supported in v1",
+                    Some(target.span.into()),
+                );
+                None
+            }
+            ForStatementLeft::ObjectAssignmentTarget(target) => {
+                self.unsupported(
+                    "destructuring assignment is not supported in v1",
+                    Some(target.span.into()),
+                );
+                None
+            }
+            _ => {
+                self.unsupported(
+                    "unsupported assignment target in v1",
+                    Some(target.span().into()),
+                );
+                None
+            }
+        }
+    }
 }

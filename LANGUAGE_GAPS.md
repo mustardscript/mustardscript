@@ -91,11 +91,11 @@ missing:
 - `with` is unsupported.
 - `for...in` is unsupported.
 - `for await...of` is unsupported.
-- `for...of` is broader than arrays-only now, but it still supports only
-  headers that declare exactly one `let` or `const` binding.
+- `for...of` supports the documented iterable surface plus single-binding
+  `let` / `const` declaration headers and identifier/member assignment-target
+  headers, but destructuring assignment targets remain unsupported.
 - Generators and `yield` are unsupported.
 - Tagged template literals are unsupported.
-- Sequence expressions are unsupported.
 - Array holes in literals are unsupported.
 - Labeled statements are unsupported.
 - `debugger` statements are unsupported.
@@ -210,9 +210,9 @@ missing:
 - Default parameters and default destructuring now fail closed at validation.
   The older runtime-only fallback path is no longer reachable from validated
   source code.
-- `for...of` is narrower than full JavaScript: the header must declare exactly
-  one `let` or `const` binding, assignment-target headers are rejected, and
-  `for await...of` remains unsupported.
+- `for...of` is narrower than full JavaScript: declaration headers still must
+  declare exactly one `let` or `const` binding, destructuring assignment
+  targets remain unsupported, and `for await...of` remains unsupported.
 - `in` intentionally checks only the runtime's currently exposed property
   surface. It does not introduce full prototype walking, descriptor semantics,
   or a reflective `globalThis` mirror of every global binding.

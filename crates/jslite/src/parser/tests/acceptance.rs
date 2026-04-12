@@ -56,6 +56,28 @@ fn parses_array_for_of_with_const_binding() {
 }
 
 #[test]
+fn parses_for_of_with_assignment_targets() {
+    let program = compile(
+        r#"
+        let value = 0;
+        const boxes = [{ current: 0 }, { current: 0 }];
+        let index = 0;
+        for (value of [1, 2]) {
+          index += value;
+        }
+        for (boxes[index - 3].current of [3, 4]) {
+          index += 1;
+        }
+        value + boxes[0].current + boxes[1].current + index;
+        "#,
+    )
+    .expect("for...of assignment-target headers should compile");
+
+    assert!(matches!(program.script.body[3], Stmt::ForOf { .. }));
+    assert!(matches!(program.script.body[4], Stmt::ForOf { .. }));
+}
+
+#[test]
 fn parses_sequence_and_exponentiation_expressions() {
     compile(
         r#"

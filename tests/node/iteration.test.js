@@ -16,6 +16,25 @@ test('run supports array for...of with fresh iteration bindings', async () => {
   assert.deepEqual(result, [1, 2]);
 });
 
+test('run supports for...of assignment-target headers', async () => {
+  const runtime = new Jslite(`
+    let value = 0;
+    const fns = [];
+    for (value of [1, 2]) {
+      fns[fns.length] = () => value;
+    }
+    const boxes = [{ current: 0 }, { current: 0 }];
+    let index = 0;
+    for (boxes[index].current of [3, 4]) {
+      index += 1;
+    }
+    [fns[0](), fns[1](), value, boxes[0].current, boxes[1].current, index];
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, [2, 2, 2, 3, 4, 2]);
+});
+
 test('progress snapshots preserve active array iterators across resumes', () => {
   const runtime = new Jslite(`
     let total = 0;
@@ -52,6 +71,44 @@ test('progress snapshots preserve active array iterators across resumes', () => 
 
   const result = third.resume(30);
   assert.equal(result, 60);
+});
+
+test('progress snapshots preserve assignment-target for...of headers across resumes', () => {
+  const runtime = new Jslite(`
+    const state = { current: 0, total: 0 };
+    for (state.current of [1, 2, 3]) {
+      state.total += fetch_data(state.current);
+    }
+    [state.current, state.total];
+  `);
+
+  const first = runtime.start({
+    capabilities: {
+      fetch_data(value) {
+        return value * 10;
+      },
+    },
+  });
+
+  assert.ok(first instanceof Progress);
+  assert.equal(first.capability, 'fetch_data');
+  assert.deepEqual(first.args, [1]);
+
+  const restored = Progress.load(first.dump());
+  assert.ok(restored instanceof Progress);
+
+  const second = restored.resume(10);
+  assert.ok(second instanceof Progress);
+  assert.equal(second.capability, 'fetch_data');
+  assert.deepEqual(second.args, [2]);
+
+  const third = second.resume(20);
+  assert.ok(third instanceof Progress);
+  assert.equal(third.capability, 'fetch_data');
+  assert.deepEqual(third.args, [3]);
+
+  const result = third.resume(30);
+  assert.deepEqual(result, [3, 60]);
 });
 
 test('run supports strings, keyed collections, and iterator helper objects', async () => {

@@ -25,6 +25,8 @@ Audit sources:
   arrow functions.
 - [x] `for...of` already works over arrays, strings, `Map`, `Set`, and the
   supported iterator helper objects.
+- [x] `for...of` now accepts identifier and member assignment-target headers in
+  addition to the existing single-binding `let` / `const` declaration surface.
 - [x] Array helpers already implemented: `push`, `pop`, `map`, `filter`,
   `reduce`, `find`, `some`, `every`, `slice`, `join`, `sort`, `includes`, and
   `Array.from`.
@@ -64,8 +66,6 @@ Audit sources:
 - [ ] `delete` is rejected during validation.
 - [ ] `for...in` is rejected during validation.
 - [ ] `for await...of` is rejected during validation.
-- [ ] `for...of` header forms remain narrow: the header must declare exactly one
-  `let` or `const` binding, and assignment-target headers stay rejected.
 - [ ] Array holes in literals are rejected during validation.
 - [ ] `instanceof` is rejected as an unsupported binary operator.
 - [ ] Math helper gaps remaining: `Math.random`.
@@ -136,8 +136,8 @@ Audit sources:
 
 ### Phase 4: Iteration and control-flow expansion
 
-- [ ] Broaden `for...of` headers beyond exactly one declared `let` / `const`
-  binding if that compatibility win is still desired.
+- [x] Broaden `for...of` headers beyond exactly one declared `let` / `const`
+  binding by supporting identifier and member assignment-target headers.
 - [ ] Decide the supported `for...in` surface for plain objects and arrays,
   including enumeration order and inherited-property behavior.
 - [ ] Decide the minimum `for await...of` surface: async arrays and guest

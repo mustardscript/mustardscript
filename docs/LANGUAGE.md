@@ -102,14 +102,17 @@ extensions are called out explicitly instead of being implied.
 
 ## Supported Iteration Surface
 
-- `for...of` is currently supported only when the header declares exactly one
-  `let` or `const` binding pattern
+- `for...of` supports either exactly one `let` / `const` binding declaration
+  or an identifier/member assignment target in the loop header
 - arrays, strings, `Map`, `Set`, and guest iterator objects from the supported
   helper surface are iterable in the current surface
-- header patterns can use the same identifier, array, and object destructuring
-  forms already supported elsewhere in the runtime
-- each `for...of` iteration gets a fresh lexical binding environment for the
-  loop header bindings
+- declaration headers can use the same identifier, array, and object
+  destructuring forms already supported elsewhere in the runtime
+- assignment-target headers support identifier and member targets only because
+  destructuring assignment remains unsupported
+- each `for...of` iteration gets a fresh lexical binding environment for
+  declaration headers; assignment-target headers reuse the existing binding or
+  member reference each iteration
 - array iteration yields values in ascending numeric index order and ignores
   non-index properties
 - active array iterators observe the live backing array length, so elements
@@ -161,7 +164,9 @@ extensions are called out explicitly instead of being implied.
 - generators and `yield`
 - `for...in`
 - `for await...of`
-- `for...of` forms that do not declare exactly one `let` or `const` binding
+- `for...of` declaration headers that do not declare exactly one `let` or
+  `const` binding, declaration initializers in `for...of` headers, and
+  destructuring assignment targets
 - `debugger`
 - labeled statements
 - object spread and object-literal methods

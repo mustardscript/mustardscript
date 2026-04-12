@@ -70,7 +70,7 @@ impl<'a> Lowerer<'a> {
                     return None;
                 }
 
-                let (kind, pattern, pattern_source) = match &statement.left {
+                let head = match &statement.left {
                     ForStatementLeft::VariableDeclaration(decl) => {
                         if decl.declarations.len() != 1 {
                             self.unsupported(
@@ -87,32 +87,33 @@ impl<'a> Lowerer<'a> {
                             );
                             return None;
                         }
-                        (
-                            self.lower_binding_kind(decl.kind, decl.span)?,
-                            self.lower_pattern(&declarator.id)?,
-                            &declarator.id,
-                        )
+                        crate::ir::ForOfHead::Binding {
+                            kind: self.lower_binding_kind(decl.kind, decl.span)?,
+                            pattern: self.lower_pattern(&declarator.id)?,
+                        }
                     }
-                    _ => {
-                        self.unsupported(
-                            "for...of currently requires a let or const binding declaration",
-                            Some(statement.left.span().into()),
-                        );
-                        return None;
-                    }
+                    _ => crate::ir::ForOfHead::Assignment {
+                        target: self.lower_for_of_assignment_target(&statement.left)?,
+                    },
                 };
 
                 let iterable = self.lower_expr(&statement.right)?;
-                self.push_scope();
-                self.collect_pattern_bindings(pattern_source);
-                let body = self.lower_stmt(&statement.body);
-                self.pop_scope();
-                let body = Box::new(body?);
+                let body = match &head {
+                    crate::ir::ForOfHead::Binding { pattern, .. } => {
+                        self.push_scope();
+                        self.collect_ir_pattern_bindings(pattern);
+                        let body = self.lower_stmt(&statement.body);
+                        self.pop_scope();
+                        Box::new(body?)
+                    }
+                    crate::ir::ForOfHead::Assignment { .. } => {
+                        Box::new(self.lower_stmt(&statement.body)?)
+                    }
+                };
 
                 Some(Stmt::ForOf {
                     span: statement.span.into(),
-                    kind,
-                    pattern,
+                    head,
                     iterable,
                     body,
                 })

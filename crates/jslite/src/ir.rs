@@ -58,8 +58,7 @@ pub enum Stmt {
     },
     ForOf {
         span: SourceSpan,
-        kind: BindingKind,
-        pattern: Pattern,
+        head: ForOfHead,
         iterable: Expr,
         body: Box<Stmt>,
     },
@@ -100,6 +99,12 @@ pub enum ForInit {
         declarators: Vec<Declarator>,
     },
     Expression(Expr),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ForOfHead {
+    Binding { kind: BindingKind, pattern: Pattern },
+    Assignment { target: AssignTarget },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     diagnostic::{JsliteError, JsliteResult},
-    ir::{BinaryOp, BindingKind, ForInit, Pattern, Stmt},
+    ir::{AssignOp, BinaryOp, BindingKind, Expr, ForInit, ForOfHead, Pattern, Stmt},
 };
 
 impl Compiler {
@@ -197,8 +197,7 @@ impl Compiler {
             }
             Stmt::ForOf {
                 span,
-                kind,
-                pattern,
+                head,
                 iterable,
                 body,
             } => {
@@ -206,10 +205,29 @@ impl Compiler {
                 context.scope_depth += 1;
                 let loop_scope_depth = context.scope_depth;
                 let iterator_binding = self.fresh_internal_name(context, "iter");
+                let assignment_value_binding = match head {
+                    ForOfHead::Binding { .. } => None,
+                    ForOfHead::Assignment { .. } => {
+                        Some(self.fresh_internal_name(context, "for_of_value"))
+                    }
+                };
                 context.code.push(Instruction::DeclareName {
                     name: iterator_binding.clone(),
                     mutable: false,
                 });
+                if let Some(binding) = &assignment_value_binding {
+                    context.code.push(Instruction::DeclareName {
+                        name: binding.clone(),
+                        mutable: true,
+                    });
+                    context.code.push(Instruction::PushUndefined);
+                    context
+                        .code
+                        .push(Instruction::InitializePattern(Pattern::Identifier {
+                            span: *span,
+                            name: binding.clone(),
+                        }));
+                }
                 self.compile_expr(context, iterable)?;
                 context.code.push(Instruction::CreateIterator);
                 context
@@ -227,25 +245,52 @@ impl Compiler {
                 let exit_jump = self.emit_jump(context, Instruction::JumpIfTrue(usize::MAX));
                 context.code.push(Instruction::Pop);
 
-                context.code.push(Instruction::PushEnv);
-                context.scope_depth += 1;
-                for (name, _) in pattern_bindings(pattern) {
-                    context.code.push(Instruction::DeclareName {
-                        name,
-                        mutable: *kind == BindingKind::Let,
-                    });
+                match head {
+                    ForOfHead::Binding { kind, pattern } => {
+                        context.code.push(Instruction::PushEnv);
+                        context.scope_depth += 1;
+                        for (name, _) in pattern_bindings(pattern) {
+                            context.code.push(Instruction::DeclareName {
+                                name,
+                                mutable: *kind == BindingKind::Let,
+                            });
+                        }
+                        context
+                            .code
+                            .push(Instruction::InitializePattern(pattern.clone()));
+                    }
+                    ForOfHead::Assignment { target } => {
+                        let binding = assignment_value_binding
+                            .as_ref()
+                            .expect("assignment-target for...of should have a temp binding");
+                        context
+                            .code
+                            .push(Instruction::InitializePattern(Pattern::Identifier {
+                                span: *span,
+                                name: binding.clone(),
+                            }));
+                        self.compile_assignment(
+                            context,
+                            target,
+                            AssignOp::Assign,
+                            &Expr::Identifier {
+                                span: *span,
+                                name: binding.clone(),
+                            },
+                        )?;
+                        context.code.push(Instruction::Pop);
+                    }
                 }
-                context
-                    .code
-                    .push(Instruction::InitializePattern(pattern.clone()));
                 context.loop_stack.push(LoopContext {
                     handler_depth: context.active_handlers.len(),
                     scope_depth: loop_scope_depth,
                     ..LoopContext::default()
                 });
                 self.compile_stmt(context, body)?;
-                context.scope_depth -= 1;
-                context.code.push(Instruction::PopEnv);
+                if matches!(head, ForOfHead::Binding { .. }) {
+                    context.scope_depth -= 1;
+                    context.code.push(Instruction::PopEnv);
+                }
                 let continue_target = context.code.len();
                 context.code.push(Instruction::Jump(loop_start));
 
