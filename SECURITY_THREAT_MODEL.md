@@ -1,441 +1,612 @@
 # Security Threat Model
 
-This document is the project-level threat model for `jslite`. It complements
-the normative security contract in [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md)
-and the hostile-input verification notes in [docs/HARDENING.md](docs/HARDENING.md).
+This document is the project-level threat model for `jslite`. It complements:
 
-The goal here is to describe what `jslite` is trying to protect, what it does
-not protect, where the trust boundaries are, and which concrete attacks the
-current design is meant to resist.
+- [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) for the short normative
+  contract
+- [docs/HOST_API.md](docs/HOST_API.md) for the host boundary
+- [docs/SERIALIZATION.md](docs/SERIALIZATION.md) for compiled-program and
+  snapshot rules
+- [docs/LIMITS.md](docs/LIMITS.md) for runtime budgets and cancellation
+- [docs/SIDECAR_PROTOCOL.md](docs/SIDECAR_PROTOCOL.md) for the current
+  sidecar wire contract
+- [docs/HARDENING.md](docs/HARDENING.md) for hostile-input and fuzzing evidence
+- [SECURITY.md](SECURITY.md) for disclosure and reporting
 
-## System Summary
+The purpose of this file is not to restate every API detail. It is to make the
+security posture explicit: what `jslite` is defending, what it is not
+defending, which inputs are untrusted, where the trust boundaries are, and what
+failure classes count as security issues.
 
-`jslite` has four security-relevant components:
+## Executive Summary
 
-- `crates/jslite`: the Rust parser, validator, compiler, VM, heap, serializer,
-  and runtime limits.
-- `crates/jslite-node`: the Node-API addon that exposes compile/start/resume
-  primitives to JavaScript.
-- `index.js` plus `native-loader.js`: the thin JavaScript wrapper that validates
-  host values, normalizes errors, manages cancellation tokens, and loads the
-  native addon.
-- `crates/jslite-sidecar`: the separate-process runner that exposes the same
-  Rust core over newline-delimited JSON on stdio.
+- `jslite` is a language-level containment runtime, not a general-purpose OS
+  sandbox.
+- Addon mode is a low-latency embedding path, not a hard isolation boundary.
+- Sidecar mode adds a process boundary and better killability, but it is still
+  not an OS sandbox and it does not provide transport authentication,
+  confidentiality, or replay protection by itself.
+- Guest source, compiled-program blobs, snapshots, progress dumps, sidecar
+  request lines, host-provided structured values, and sanitized host errors are
+  all treated as potentially hostile input.
+- Authority is supposed to enter guest execution only through explicit named
+  host capabilities and a narrow structured-value contract.
+- Restore and resume are fail-closed operations: loaded snapshots are inert
+  until current host policy is applied, except for same-process `Progress.load`
+  where the Node wrapper may reuse cached policy derived from the exact same
+  snapshot bytes.
+- Resource limits and cancellation are real runtime controls, but they are
+  cooperative. Hard availability guarantees for adversarial workloads still
+  require sidecar mode plus host-managed OS controls.
+
+## Security Objectives
+
+`jslite` is trying to preserve these properties:
+
+1. Guest code does not receive ambient authority by default.
+2. Unsupported syntax, unsupported runtime features, unsupported host values,
+   malformed serialized state, and malformed sidecar protocol messages fail
+   closed.
+3. Capability authority is explicit, name-based, and host-provided.
+4. Loaded snapshots cannot silently widen capability authority or runtime
+   limits relative to the host policy applied at inspection or resume time.
+5. Guest-visible diagnostics do not leak host file paths, Rust module details,
+   raw native handles, or other host-only internals.
+6. The structured host boundary does not execute host getters, mutate host
+   prototypes, or smuggle opaque host identities into guest execution.
+7. Runtime budgets and cancellation produce predictable guest-safe failures at
+   documented checkpoints.
+8. Hosts can move execution into a sidecar process for stronger crash
+   containment and operational kill control.
+
+## Explicit Non-Goals
+
+`jslite` does not claim any of the following:
+
+- Addon mode is not a hard boundary against memory-safety bugs, native crashes,
+  or same-process denial of service.
+- Sidecar mode is not a complete sandbox. It does not by itself provide
+  syscall filtering, filesystem restrictions, network restrictions, uid
+  separation, memory cgroups, CPU quotas, wall-clock deadlines, transport
+  authentication, or encrypted IPC.
+- Host capability implementations are not sandboxed by `jslite`.
+- `AbortSignal`, `Progress.cancel()`, or sidecar process termination do not
+  roll back host side effects that already happened.
+- The project does not provide cryptographic replay protection for snapshots,
+  progress dumps, or sidecar requests.
+- The project does not defend against a compromised package supply chain,
+  malicious optional prebuilt package, malicious Rust toolchain, or malicious
+  native library selected through trusted-environment override paths.
+
+## Adversaries And Trust Assumptions
+
+### Adversary classes
+
+The design explicitly considers these attacker shapes:
+
+- a hostile guest author or model that can supply arbitrary JavaScript source
+- an attacker who can supply compiled-program blobs or suspended snapshots
+- an attacker who can write malformed or semantically hostile sidecar requests
+- an attacker who can influence host input values, capability results, or
+  sanitized host error payloads
+- a careless or over-privileged host integrator who exposes too much authority,
+  trusts the wrong metadata, or deploys addon mode where sidecar mode is
+  required
+- a local attacker who can influence package resolution, optional prebuilt
+  resolution, or native-loader override environment variables
+
+### Trust assumptions
+
+The current design assumes:
+
+- the embedding host and its capability code are trusted computing base
+  components, even if they may be buggy
+- the install/build/runtime environment used to resolve and load native code is
+  trusted
+- production isolation for hostile workloads comes from host-managed OS
+  controls layered around sidecar mode
+- hosts decide which capability names are exposed, which values are safe to
+  hand to guest code, and which side effects are acceptable
+- persisted snapshots and compiled blobs may be tampered with after creation
+  and must be treated as untrusted on every load
+
+## System Context
+
+`jslite` has four security-relevant implementation components:
+
+- `crates/jslite`: parser, validator, compiler, VM, heap, serializer, limits,
+  snapshot inspection, and resume policy enforcement
+- `crates/jslite-node`: the Node-API addon
+- `index.js` plus `native-loader.js`: the JavaScript wrapper for capability
+  registration, structured-value encoding/decoding, cancellation plumbing, and
+  progress helpers
+- `crates/jslite-sidecar`: the separate-process request/response runner over
+  newline-delimited JSON on stdio
 
 Security-sensitive data that crosses those components includes:
 
 - guest source text
-- compiled-program blobs
-- suspended execution snapshots
+- compiled-program bytes
+- suspension snapshot bytes
 - capability names and structured arguments
-- structured host return values and sanitized host errors
-- cancellation and kill signals
+- structured host return values
+- sanitized host errors, including optional structured `details`
+- cancellation signals
+- progress dumps and sidecar request/response metadata
 
-## Security Goals
+## Deployment Modes And What They Mean
 
-`jslite` is trying to provide these properties:
+### Addon mode
 
-1. Untrusted guest code does not get ambient host authority by default.
-2. Unsupported syntax, values, and serialized state fail closed.
-3. Guest-visible errors and tracebacks do not expose host paths, native
-   handles, or Rust internals.
-4. Resource usage is bounded by default and over-budget execution fails
-   predictably.
-5. Hosts can choose a stronger deployment boundary by moving execution into the
-   sidecar process.
+- Runs in the Node process through the native addon.
+- Gives the lowest latency and simplest embedding shape.
+- Does not isolate the host process from native memory corruption, logic bugs,
+  stack exhaustion, or same-process starvation.
+- Best treated as best-effort containment for trusted or semi-trusted guest
+  workloads.
 
-## Non-Goals
+### Sidecar mode
 
-`jslite` does not claim the following:
+- Runs the same Rust core in a separate process.
+- Improves crash containment and gives the host an external kill primitive.
+- Helps when the host needs to terminate runtime execution without killing the
+  embedding process.
+- Still does not prevent resource abuse at the OS level unless the host adds
+  sandboxing, quotas, and supervision around the sidecar.
 
-- Addon mode is not a hard isolation boundary.
-- Sidecar mode is not an OS sandbox by itself.
-- Host capability implementations are not sandboxed by `jslite`.
-- The project does not authenticate or encrypt sidecar transport traffic.
-  Today the supported transport is local stdio, so confidentiality and peer
-  authentication depend on the embedding host.
-- The project does not defend against a compromised package supply chain,
-  malicious Rust toolchain, or malicious native addon selected via privileged
-  environment variables such as `JSLITE_NATIVE_LIBRARY_PATH` or
-  `NAPI_RS_NATIVE_LIBRARY_PATH`.
+### Hardened sidecar mode
 
-## Assets And What Matters
+- Sidecar mode plus host-managed CPU, memory, filesystem, network, identity,
+  and process controls.
+- This is the intended deployment posture for hostile guest workloads.
+- Examples include cgroups, job objects, seccomp, containers, jail
+  mechanisms, low-privilege service users, restricted mounts, and explicit
+  request deadlines.
 
-The highest-value assets in this repository are:
+## Assets And Security-Relevant Invariants
 
-- Host process integrity and availability.
-- The explicit capability surface exposed by the embedding application.
-- Host data intentionally passed into guest code.
-- Serialized programs and snapshots that may be stored and resumed later.
-- The sidecar process boundary when hosts use it for stronger containment.
-- Guest-safe diagnostics, which must not leak deployment details.
+The most important assets and invariants are:
 
-## Trust Assumptions
+- host process integrity and availability
+- the explicit capability surface exposed by the embedding host
+- host data intentionally passed to guest code
+- same-version compiled-program and snapshot state
+- authoritative host policy for capability allowlists and runtime limits
+- guest-safe diagnostics
+- process-local single-use progress identity in the Node wrapper
 
-The current design assumes:
+The core invariants are:
 
-- Guest source, compiled blobs, snapshots, and sidecar request lines may be
-  malformed or hostile.
-- The embedding host is trusted to choose deployment mode, provide capability
-  implementations, and decide which inputs are safe to expose.
-- Capability implementations may fail, but their failures must be sanitized
-  before they become guest-visible.
-- Strong process isolation, syscall restrictions, filesystem restrictions,
-  network restrictions, and hard kill guarantees are host responsibilities.
-- The environment used to install or load the addon is trusted. If an attacker
-  controls native-loader override environment variables or the package
-  resolution path, they can redirect the process to arbitrary native code.
-
-## Deployment Modes
-
-### Addon Mode
-
-- The guest runs in the Node process through the native addon.
-- This gives the lowest latency and the smallest integration surface.
-- It does not protect the host from memory-safety bugs, native crashes, or
-  same-process denial of service.
-
-### Sidecar Mode
-
-- The same Rust core runs in a separate process.
-- This improves crash containment and gives the host an external kill
-  primitive.
-- It does not remove the need for OS-level sandboxing if the workload is
-  adversarial.
-
-### Hardened Sidecar Mode
-
-- Sidecar mode plus host-managed OS controls such as cgroups, job objects,
-  containers, seccomp, jail mechanisms, uid separation, filesystem restrictions,
-  and network restrictions.
-- This is the intended deployment shape for hostile guest workloads.
+- there is no ambient filesystem, network, environment, module, or subprocess
+  authority in guest code
+- unsupported features fail closed instead of falling back to accidental host
+  behavior
+- structured host values are plain data, not executable host objects
+- restore policy comes from the current host, not from serialized snapshots
 
 ## Trust Boundaries
 
-### 1. Guest Source Boundary
+### 1. Source Text And Parse/Validate/Lower Boundary
 
-Untrusted source enters through the parser and validator in `crates/jslite`.
+Untrusted source enters through the parser, validator, and lowering pipeline in
+`crates/jslite`.
 
-Main risks:
+Main threats:
 
-- parser crashes or panics
+- parser crashes, panics, stack exhaustion, or denial of service
 - unsupported syntax executing accidentally instead of being rejected
-- guest access to implicit authority through language features or ambient names
+- forbidden forms such as `import`, `export`, dynamic `import()`, `eval`, or
+  `Function` gaining authority
 
 Current controls:
 
-- explicit parse -> validate -> IR -> bytecode pipeline
-- supported-subset validation before execution
-- documented forbidden forms and explicit non-goals in `README.md` and
-  `docs/LANGUAGE.md`
-- hostile-source tests and parser/lowering fuzz targets
+- explicit parse -> validate -> lower -> bytecode pipeline
+- documented supported subset and forbidden forms in [docs/LANGUAGE.md](docs/LANGUAGE.md)
+- hostile-source tests and fuzz targets for parser and IR lowering
 
 Residual risk:
 
-- the parser/lowering path is still recursive, so sidecar mode remains the
-  recommended boundary for adversarial inputs
+- parse/lower behavior is still a hostile-input surface
+- the pipeline is still recursive in places, so sidecar mode remains the safer
+  boundary for adversarial source inputs
 
-### 2. Structured Host Boundary
+### 2. Structured Host-Value Boundary
 
-The host boundary is intentionally narrower than JavaScript itself.
+The structured host boundary is intentionally narrower than JavaScript.
 
-Main risks:
+Allowed values:
+
+- `undefined`
+- `null`
+- booleans
+- strings
+- numbers, including `NaN`, `Infinity`, and `-0`
+- arrays of allowed values
+- plain objects with string keys and allowed values
+
+Rejected values and shapes:
+
+- functions
+- symbols
+- bigint
+- `Map` and `Set`
+- cycles
+- accessors
+- custom prototypes and class instances
+- array holes
+- opaque host objects and native identities
+
+Important boundary rules:
+
+- `__proto__` is treated as plain data, not as a prototype mutator
+- getters and setters must be rejected without executing them
+- the same structured encoding rules apply to host inputs, capability results,
+  progress arguments, sidecar payloads, and sanitized host `error.details`
+
+Main threats:
 
 - host objects or callbacks crossing into guest code
-- guest values exposing runtime-internal handles back to the host
-- prototype, accessor, cycle, or collection edge cases bypassing the value
-  contract
+- guest values exposing runtime-internal identities back to the host
+- prototype-pollution or accessor-triggering attacks at the boundary
+- cycles or unexpected object shapes causing crashes instead of typed failures
 
 Current controls:
 
-- `StructuredValue` only permits `undefined`, `null`, booleans, strings,
-  numbers, arrays, and plain objects
-- the JavaScript wrapper rejects non-plain host objects before they enter the
-  addon
-- the Rust core rejects guest functions and guest `Map`/`Set` values at the
-  boundary
-- boundary behavior is covered by Node property tests and keyed-collection
-  tests
+- JavaScript wrapper checks plain-object and array constraints before crossing
+  into the addon
+- Rust-side conversion and serialization validation reject unsupported boundary
+  values
+- dedicated Node tests cover `__proto__`, accessors, array holes, unsupported
+  host values, and progress round trips
 
 Residual risk:
 
-- capability handlers remain trusted code and can reintroduce authority or leak
-  secrets if they return more than intended
-- cyclic host inputs are outside the intended contract and currently fail in
-  the JavaScript wrapper via recursion overflow rather than a dedicated
-  structured-boundary diagnostic
+- capability handlers remain trusted code and can still leak secrets if they
+  choose to return them
+- exotic capability-registration objects are outside the structured-value
+  contract; hosts should treat `options.capabilities` and `options.console` as
+  trusted plain configuration, not as attacker-controlled proxy objects
 
-### 3. Serialization Boundary
+### 3. Capability Registration, Suspension, And Resume Boundary
+
+Capabilities are the only intended authority-bearing bridge from guest code to
+host behavior.
+
+Main threats:
+
+- guest code invoking capability names that were not intentionally exposed
+- the host dispatching on stale or forged progress metadata
+- replaying a suspended execution in a way that duplicates side effects
+- treating guest cancellation as transactional rollback of host work
+
+Current controls:
+
+- capability lookup is explicit and name-based
+- host calls suspend guest execution rather than moving host callbacks into the
+  runtime core
+- same-process `Progress.load(...)` derives authoritative `capability` and
+  `args` from snapshot inspection, not caller-supplied dump metadata
+- fresh-process `Progress.load(...)` requires explicit host `capabilities` and
+  `limits` before restore metadata is trusted
+- `Progress` single-use within one Node process is keyed to the snapshot hash,
+  not to the caller-supplied `token`
+
+Residual risk:
+
+- the single-use guarantee is process-local and in-memory; it is not
+  cryptographic replay protection and does not survive process restarts
+- hosts that need one-shot approvals or externally visible idempotency must
+  enforce that themselves
+- `AbortSignal` and `Progress.cancel()` stop guest execution, but they do not
+  force-stop already-running host callbacks or undo side effects that already
+  happened
+
+### 4. Compiled-Program And Snapshot Serialization Boundary
 
 Compiled programs and snapshots are attacker-controlled input once they are
-stored or transmitted.
+stored, transmitted, or reloaded.
 
-Main risks:
+Main threats:
 
-- deserialization crashes or unsafe state restoration
+- malformed bytecode or snapshots causing crashes, panics, or invalid restore
+- snapshots widening capability authority or runtime limits
 - cross-version confusion
-- corrupted snapshots resuming with invalid frame, heap, iterator, or promise
-  state
+- replay or tampering of serialized state
 
 Current controls:
 
-- explicit format versioning
-- validation on load before execution or resume
-- rejection of cross-version loads
-- snapshots only created at explicit suspension points
-- native handles, host futures, and callback identities are excluded from the
-  serialized form
-- hostile-input tests mutate valid program and snapshot blobs
-- dedicated fuzz targets cover snapshot loading and bytecode validation/execution
+- explicit serialization versioning
+- bytecode and snapshot validation on load
+- loaded snapshots remain inert until current host policy is applied
+- snapshot inspection and resume reassert allowed capability names and current
+  authoritative runtime limits
+- cross-version loads are rejected
+- snapshots are created only at explicit suspension points
+- native handles, unresolved host futures, and host callback identities are
+  excluded from serialized state
+
+Important nuance:
+
+- same-process `Progress.load(...)` may reuse cached policy for the exact same
+  snapshot bytes
+- fresh-process restore still requires explicit host policy before inspection
+  or resume
+- validated snapshots may contain runtime-internal `Map`, `Set`, iterator, and
+  promise state, but those values are still not part of the structured host
+  boundary
 
 Residual risk:
 
-- serialized blobs should still be treated as untrusted content and stored with
-  ordinary host integrity controls
+- serialized bytes should still be stored and transported with ordinary host
+  integrity controls
+- snapshot bytes are not authenticated, encrypted, or anti-replay protected by
+  `jslite`
 
-### 4. Native Addon Boundary
+### 5. Runtime Limits And Cancellation Boundary
 
-The Node process crosses from JavaScript into Rust through `crates/jslite-node`
-and the dynamic loader in `native-loader.js`.
+Resource controls are part of the runtime contract, but they are scoped to
+guest execution semantics, not whole-process containment.
 
-Main risks:
+Main threats:
 
-- in-process native memory-safety or logic bugs affecting the host
-- arbitrary native library loading through privileged environment overrides
-- host starvation because same-thread compute is cooperative rather than
-  preemptive
+- unbounded compute, deep recursion, or excessive allocation
+- async fan-out across too many host calls
+- guest-controlled workloads bypassing metering or cancellation checkpoints
 
 Current controls:
 
-- the Node layer stays thin and leaves guest semantics in Rust
-- cancellation tokens exist for cooperative stop points
-- typed error normalization avoids exposing raw native details to callers
-- the package includes source-build and package-smoke verification
+- instruction budget
+- heap-byte budget
+- allocation-count budget
+- call-depth budget
+- outstanding-host-call budget
+- cooperative cancellation checks before each instruction, at resume entry, and
+  at async runtime checkpoints
+- sidecar process termination for stronger operational stop semantics
 
 Residual risk:
 
-- any successful exploit in the native addon runs in the host process
-- if the host allows attacker control of the native loader override path, addon
-  loading is equivalent to arbitrary native code execution
+- these controls do not provide an RSS cap, CPU quota, wall-clock timeout, or
+  kernel-enforced preemption
+- addon-mode compute on the Node main thread is still cooperative
+- sidecar kill terminates the runtime process, but it does not roll back host
+  side effects or stop already-started host work running in the embedding host
 
-### 5. Sidecar Protocol Boundary
+### 6. Native Addon, Package, And Build Boundary
 
-`crates/jslite-sidecar` accepts newline-delimited JSON requests on stdio.
+The native loading path is part of the trust model.
 
-Main risks:
+Loader precedence today is:
+
+1. `JSLITE_NATIVE_LIBRARY_PATH` or `NAPI_RS_NATIVE_LIBRARY_PATH`
+2. any local `.node` file under the installed package tree
+3. the matching optional prebuilt package, when present
+
+Main threats:
+
+- attacker-controlled environment variables redirecting the process to arbitrary
+  native code
+- unexpected `.node` artifacts in the installed package tree
+- malicious or substituted optional prebuilt packages
+- compromised build environments during source-build installation
+
+Current controls:
+
+- the root package is intended to stay source-build-first
+- release verification checks the published package shape and the prebuilt
+  matrix
+- package-smoke tests and release verification assert the expected install/load
+  flow
+
+Residual risk:
+
+- native-loader override variables are full native-code execution overrides, not
+  just a soft preference
+- a stray `.node` file in the installed package tree is equivalent to shipping
+  arbitrary native code
+- source builds are not a provenance guarantee if the operator does not trust
+  the npm environment, build toolchain, and local Rust toolchain
+
+### 7. Sidecar Protocol Boundary
+
+`crates/jslite-sidecar` exposes a narrow request/response protocol over local
+stdio.
+
+Main threats:
 
 - malformed or hostile protocol messages
-- confused-deputy behavior if sidecar were to execute capabilities directly
-- denial of service through stuck executions or protocol corruption
+- replay or request confusion
+- a hostile peer driving work within the permissions of the sidecar process
+- operators assuming the process boundary implies transport security
 
 Current controls:
 
-- structured `compile`, `start`, and `resume` request shapes only
-- the sidecar never executes host capabilities itself; it only returns
-  suspension metadata
+- narrow `compile`, `start`, and `resume` request shapes
+- guest-capability execution stays in the embedding host, not in the sidecar
 - invalid lines fail closed
-- hostile-protocol tests mutate requests and assert host-safe failures
-- separate-process lifecycle allows host-enforced termination
+- hostile-protocol tests and dedicated fuzz targets cover malformed input
 
 Residual risk:
 
-- protocol traffic has no built-in auth, replay protection, or confidentiality
-- a hostile client that can write to the sidecar stdio stream can still drive
-  sidecar work within the permissions of that process
+- stdio traffic is not authenticated, encrypted, or replay protected
+- sidecar request `id` values are correlation metadata only, not security
+  tokens
+- any peer that can write to the sidecar input stream can request work within
+  that process's permissions
+- killing the sidecar is not a rollback mechanism for host work already
+  dispatched outside the sidecar
 
-### 6. Diagnostics Boundary
+### 8. Diagnostics Boundary
 
-Errors cross from Rust to Node and sometimes back into guest execution.
+Errors cross between guest execution, Rust, Node, and host capability code.
 
-Main risks:
+Main threats:
 
-- leaking host file paths, Rust module names, or internal state in diagnostics
-- letting host cancellation appear as ordinary guest control flow
+- leaking host paths, Rust source details, or deployment internals
+- exposing raw host exception objects or native details to guest code
+- capability handlers accidentally placing secrets into sanitized host errors
 
 Current controls:
 
-- host failures are sanitized into `name`, `message`, optional `code`, and
+- host failures are normalized to `name`, `message`, optional `code`, and
   optional structured `details`
 - guest tracebacks use guest function names and source spans
-- cancellation is treated as host authority and is not catchable by guest
-  `try` / `catch`
-- hostile-input and Node tests assert that messages stay guest-safe
+- hostile-input and Node tests assert host-safe message behavior
 
 Residual risk:
 
-- capability implementations still control the sanitized message content they
-  provide, so the embedding host must avoid placing secrets in host error
-  messages or `details`
+- capability implementations still control the strings and structured details
+  they choose to expose
+- hosts must avoid putting secrets, credentials, internal URLs, or raw upstream
+  objects into sanitized error payloads
 
-## Threat Scenarios
+## Representative Threat Scenarios
 
-### Guest Escape To Host Authority
-
-Scenario:
-
-- guest code tries to use `eval`, `Function`, imports, unsupported ambient
-  globals, or unsupported runtime features to escape the language contract
-
-Mitigations:
-
-- validation rejects forbidden forms
-- the built-in surface is explicit and intentionally small
-- capability access is opt-in and name-based
-
-Failure condition considered security-relevant:
-
-- guest code reaches host authority that was not intentionally exposed
-
-### Boundary Smuggling
+### Ambient-authority escape
 
 Scenario:
 
-- the host passes functions, class instances, accessors, cycles, or native
-  handles into guest execution
-- guest code tries to return runtime-internal values such as guest functions or
-  keyed collections through the structured boundary
+- guest code attempts to use unsupported syntax, forbidden globals, or runtime
+  gaps to reach host authority that was not intentionally exposed
 
-Mitigations:
+Expected outcome:
 
-- wrapper-side value shape checks
-- Rust-side structured conversion checks
-- tests for unsupported boundary values and keyed-collection rejection
+- reject at parse/validation/lowering time, or fail as a guest-safe runtime
+  error
 
-Failure condition considered security-relevant:
-
-- unsupported values cross the boundary in a way that changes authority or
-  exposes host internals
-
-### Deserialization Bugs
+### Boundary smuggling and prototype/accessor attacks
 
 Scenario:
 
-- an attacker supplies a malformed compiled-program blob or snapshot to trigger
-  a panic, invalid state restore, or execution of unvalidated bytecode
+- the host passes functions, class instances, proxies, getters, cycles, array
+  holes, or prototype-sensitive objects across the boundary
+- guest code returns structured data intended to poison host object handling
 
-Mitigations:
+Expected outcome:
 
-- versioned formats
-- load-time validation
-- fuzzing and mutation-based hostile-input tests
+- reject unsupported shapes without executing host getters or mutating host
+  prototypes
 
-Failure condition considered security-relevant:
-
-- malformed serialized input bypasses validation or restores unsafe runtime
-  state
-
-### Resource-Exhaustion Attacks
+### Snapshot forgery or policy widening
 
 Scenario:
 
-- guest code loops forever, recurses deeply, allocates aggressively, or fans out
-  across many host calls
+- an attacker tampers with a compiled program or snapshot so that restore
+  changes capability names, queued host work, or runtime limits
 
-Mitigations:
+Expected outcome:
 
-- default instruction, heap, allocation, call-depth, and outstanding-host-call
-  limits
-- cooperative cancellation checks at defined runtime checkpoints
-- sidecar kill semantics for hard stops
+- validation or snapshot-policy application rejects the restore before resume
 
-Current default limits:
-
-- instruction budget: `1_000_000`
-- heap limit: `8 MiB`
-- allocation budget: `250_000`
-- call-depth limit: `256`
-- max outstanding host calls: `128`
-
-Residual risk:
-
-- addon-mode compute on the Node main thread is still cooperative, so a hard
-  preemptive stop requires sidecar mode
-
-### Diagnostic And Data Leakage
+### Replay or stale progress metadata
 
 Scenario:
 
-- runtime, parser, or host failures leak local paths, Rust source details, or
-  sensitive capability data into guest-visible errors
+- a host stores `Progress.dump()` output and later trusts the stored
+  `capability`, `args`, or `token` fields as authorization-bearing metadata
 
-Mitigations:
+Expected outcome:
 
-- typed guest-safe errors
-- guest-only tracebacks
-- tests that reject host path fragments in error output
+- hosts must treat the dump as an untrusted storage envelope and derive current
+  authoritative metadata from `Progress.load(...)` or snapshot inspection under
+  current policy
 
-Failure condition considered security-relevant:
-
-- guest-visible diagnostics expose deployment details or host-only state that
-  are outside the documented contract
-
-### Sidecar Abuse
+### Resource-exhaustion attack
 
 Scenario:
 
-- a caller sends malformed protocol input, drives repeated expensive work, or
-  relies on protocol confusion to gain direct access to host capabilities
+- guest code consumes too many instructions, allocations, stack frames, or
+  outstanding host-call slots, or tries to exploit an unmetered runtime path
 
-Mitigations:
+Expected outcome:
 
-- narrow protocol surface
-- no direct capability execution inside the sidecar
-- host-controlled process lifecycle
+- guest-safe limit failure at the documented checkpoint, or sidecar termination
+  when the host chooses an external hard stop
 
-Residual risk:
+### Diagnostic leakage
 
-- if the sidecar is exposed to an untrusted peer without an outer transport or
-  process boundary, that peer can still consume resources or invoke any work
-  the embedding host permits
+Scenario:
+
+- parser failures, runtime errors, or host capability failures accidentally
+  expose host filesystem paths, internal Rust details, or sensitive service
+  data
+
+Expected outcome:
+
+- guest-safe diagnostic rendering without host-only internals
 
 ## Operational Guidance
 
-For low-latency trusted or semi-trusted workloads:
+### For trusted or semi-trusted workloads
 
-- addon mode is acceptable if the host is willing to accept same-process risk
-- keep the capability surface minimal
+- addon mode is acceptable when low latency matters more than hard isolation
+- keep the capability surface minimal and auditable
 - keep limits enabled
+- treat capability handlers as part of the trusted computing base
 
-For untrusted workloads:
+### For hostile workloads
 
 - prefer sidecar mode
-- run the sidecar with OS-level CPU, memory, filesystem, and network controls
+- place the sidecar under OS-level CPU, memory, filesystem, network, and
+  identity controls
 - run the sidecar under a dedicated low-privilege identity
-- treat snapshots and compiled blobs as untrusted data
-- normalize or reject cyclic host input objects before passing them to `jslite`
-- keep capability implementations small and auditable
-- avoid propagating sensitive host exception data into sanitized guest errors
-- do not allow attacker control over native-loader override environment
-  variables
+- treat all compiled-program blobs, snapshots, progress dumps, and sidecar
+  messages as untrusted data
+- reassert capabilities and limits on every fresh-process restore
+- enforce host-level idempotency or single-use semantics when capability calls
+  can trigger side effects
+
+### For packaging and install security
+
+- clear or tightly control `JSLITE_NATIVE_LIBRARY_PATH` and
+  `NAPI_RS_NATIVE_LIBRARY_PATH` in production
+- treat optional prebuilt packages as a trust decision, not just a performance
+  convenience
+- treat the root npm package shape as security-sensitive: unexpected `.node`
+  artifacts are security-relevant
+- run `npm run verify:release` as part of release integrity, not only release
+  hygiene
 
 ## Evidence In This Repository
 
-The current security story is backed by concrete tests and fuzz targets:
+The current security story is backed by tests, fuzz targets, and hardening
+documentation:
 
 - [docs/HARDENING.md](docs/HARDENING.md)
 - [crates/jslite/tests/security_hostile_inputs.rs](crates/jslite/tests/security_hostile_inputs.rs)
+- [crates/jslite/tests/snapshot_policy_security.rs](crates/jslite/tests/snapshot_policy_security.rs)
 - [crates/jslite-sidecar/tests/hostile_protocol.rs](crates/jslite-sidecar/tests/hostile_protocol.rs)
-- [crates/jslite-sidecar/tests/protocol.rs](crates/jslite-sidecar/tests/protocol.rs)
+- [tests/node/security-host-boundary.test.js](tests/node/security-host-boundary.test.js)
+- [tests/node/security-progress-load.test.js](tests/node/security-progress-load.test.js)
 - [tests/node/property-boundary.test.js](tests/node/property-boundary.test.js)
 - [tests/node/cancellation.test.js](tests/node/cancellation.test.js)
-- [tests/node/keyed-collections.test.js](tests/node/keyed-collections.test.js)
-- `fuzz/parser`
-- `fuzz/ir_lowering`
-- `fuzz/bytecode_validation`
-- `fuzz/bytecode_execution`
-- `fuzz/snapshot_load`
-- `fuzz/sidecar_protocol`
+- `fuzz/fuzz_targets/parser.rs`
+- `fuzz/fuzz_targets/ir_lowering.rs`
+- `fuzz/fuzz_targets/bytecode_validation.rs`
+- `fuzz/fuzz_targets/bytecode_execution.rs`
+- `fuzz/fuzz_targets/snapshot_load.rs`
+- `fuzz/fuzz_targets/sidecar_protocol.rs`
+
+The historical record of fixed security findings also lives in
+[SECURITY_ISSUES.md](SECURITY_ISSUES.md). That file is not the normative
+contract, but it documents the attack classes the project already considers
+security-relevant, including boundary smuggling, unmetered runtime paths, and
+snapshot/policy forgery.
 
 ## What Counts As A Security Issue
 
-The following should be treated as security bugs for this project:
+The following are security bugs for this project:
 
 - guest access to forbidden ambient authority
-- unsafe boundary crossings that expose host objects, native handles, or raw
-  runtime identities
+- unsafe host-boundary crossings that execute accessors, mutate prototypes,
+  expose host objects, or leak runtime-internal identities
 - deserialization bugs in compiled-program or snapshot loading
-- failures of limits, cancellation, or sidecar termination guarantees relative
-  to the documented contract
+- snapshot restores that widen capability authority or runtime limits relative
+  to the applied host policy
+- failures of documented limit, cancellation, or process-termination behavior
+  that materially weaken the published contract
 - guest-visible diagnostics that leak host-only internals
+- security-relevant package or native-loader behavior that causes the project to
+  load unexpected native code contrary to the documented package contract
 
-Report those issues using the process in [SECURITY.md](SECURITY.md).
+Report those issues using [SECURITY.md](SECURITY.md).
