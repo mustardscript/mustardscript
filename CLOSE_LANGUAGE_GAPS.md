@@ -180,23 +180,23 @@ Audit sources:
 
 ## Verification Matrix
 
-- [ ] Parser-facing syntax work adds positive coverage plus rejection snapshots
+- [x] Parser-facing syntax work adds positive coverage plus rejection snapshots
   for nearby unsupported forms.
 - [ ] Runtime built-in work adds direct Node tests for success paths.
 - [ ] Runtime built-in work adds guest-safe failure tests for wrong receivers,
   wrong arity, wrong callback types, and unsupported host-suspension cases.
-- [ ] Semantics-sensitive work adds differential tests against Node for the
+- [x] Semantics-sensitive work adds differential tests against Node for the
   supported subset.
 - [x] Loop and iterator work adds snapshot and resume coverage when suspension
   can occur mid-iteration.
-- [ ] Any new unsupported decision is documented in `docs/LANGUAGE.md` and
+- [x] Any new unsupported decision is documented in `docs/LANGUAGE.md` and
   reflected in `LANGUAGE_GAPS.md`.
 
 ## Explicit Deferrals / Non-Goals For This Plan
 
-- [ ] Full prototype semantics remain out of scope.
-- [ ] Descriptor-level object semantics remain out of scope.
-- [ ] Symbol-based iterable protocol support remains out of scope.
+- [x] Full prototype semantics remain out of scope.
+- [x] Descriptor-level object semantics remain out of scope.
+- [x] Symbol-based iterable protocol support remains out of scope.
 - [x] `Object.create`, `Object.freeze`, and `Object.seal` are treated as
   explicit rejections, not implementation targets, in the current plan.
 
