@@ -443,3 +443,8 @@ Checklist:
 That is the path to a materially stronger `jslite` test suite: sharper
 contracts, better generators, stronger stateful checks, and tighter alignment
 between docs, runtime promises, and executed verification.
+
+## Iteration Log
+
+| Iteration | UTC Timestamp | Summary | Commit | Errors / Blockers |
+| --- | --- | --- | --- | --- |
