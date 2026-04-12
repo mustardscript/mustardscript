@@ -237,3 +237,54 @@ fn in_operator_fails_closed_for_primitive_right_hand_sides() {
             .contains("right-hand side of 'in' must be an object in the supported surface")
     );
 }
+
+#[test]
+fn sparse_array_find_helpers_match_documented_hole_visitation() {
+    let program = compile(
+        r#"
+        const values = [1, , 3];
+        ({
+          found: values.find((value, index) => index === 1),
+          foundIndex: values.findIndex((value) => value === undefined),
+          visited: (() => {
+            const seen = [];
+            values.find((value, index) => {
+              seen[seen.length] = [index, value === undefined, index in values];
+              return false;
+            });
+            return seen;
+          })(),
+        });
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Object(indexmap::IndexMap::from([
+            ("found".to_string(), StructuredValue::Undefined),
+            ("foundIndex".to_string(), number(1.0)),
+            (
+                "visited".to_string(),
+                StructuredValue::Array(vec![
+                    StructuredValue::Array(vec![
+                        number(0.0),
+                        StructuredValue::Bool(false),
+                        StructuredValue::Bool(true),
+                    ]),
+                    StructuredValue::Array(vec![
+                        number(1.0),
+                        StructuredValue::Bool(true),
+                        StructuredValue::Bool(false),
+                    ]),
+                    StructuredValue::Array(vec![
+                        number(2.0),
+                        StructuredValue::Bool(false),
+                        StructuredValue::Bool(true),
+                    ]),
+                ]),
+            ),
+        ]))
+    );
+}

@@ -214,8 +214,18 @@ test('run preserves sparse array holes across helpers, enumeration, and JSON', a
   const result = await runtime(`
     const values = [1, , undefined, 4];
     const callbackIndexes = [];
+    const findVisits = [];
+    const findIndexVisits = [];
     values.forEach((value, index) => {
       callbackIndexes[callbackIndexes.length] = index;
+    });
+    const foundHole = values.find((value, index) => {
+      findVisits[findVisits.length] = [index, value, index in values];
+      return index === 1;
+    });
+    const foundHoleIndex = values.findIndex((value, index) => {
+      findIndexVisits[findIndexVisits.length] = [index, value, index in values];
+      return value === undefined && index === 1;
     });
     const sliced = values.slice(0, 4);
     const mapped = values.map((value, index) => value ?? (index + 10));
@@ -233,6 +243,10 @@ test('run preserves sparse array holes across helpers, enumeration, and JSON', a
       joined: values.join("-"),
       json: JSON.stringify(values),
       callbackIndexes,
+      foundHole,
+      foundHoleIndex,
+      findVisits,
+      findIndexVisits,
       slicedKeys: Object.keys(sliced),
       mappedKeys: Object.keys(mapped),
       mappedHasHole: 1 in mapped,
@@ -254,6 +268,16 @@ test('run preserves sparse array holes across helpers, enumeration, and JSON', a
     joined: '1---4',
     json: '[1,null,null,4]',
     callbackIndexes: [0, 2, 3],
+    foundHole: undefined,
+    foundHoleIndex: 1,
+    findVisits: [
+      [0, 1, true],
+      [1, undefined, false],
+    ],
+    findIndexVisits: [
+      [0, 1, true],
+      [1, undefined, false],
+    ],
     slicedKeys: ['0', '2', '3'],
     mappedKeys: ['0', '2', '3'],
     mappedHasHole: false,

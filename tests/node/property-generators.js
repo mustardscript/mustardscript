@@ -520,6 +520,31 @@ const objectsArraysParityCaseArbitraries = [
     }),
   fc
     .record({
+      left: finiteIntegerArbitrary,
+      right: finiteIntegerArbitrary,
+      tail: finiteIntegerArbitrary,
+    })
+    .map(({ left, right, tail }) =>
+      parityCase(`
+        const values = [${left}, , ${right}, ${tail}];
+        const findVisits = [];
+        const findIndexVisits = [];
+        ({
+          foundHole: values.find((value, index) => {
+            findVisits[findVisits.length] = [index, value, index in values];
+            return index === 1;
+          }),
+          foundHoleIndex: values.findIndex((value, index) => {
+            findIndexVisits[findIndexVisits.length] = [index, value, index in values];
+            return value === undefined && index === 1;
+          }),
+          findVisits,
+          findIndexVisits,
+        });
+      `),
+    ),
+  fc
+    .record({
       values: smallIntegerArrayArbitrary,
       offset: finiteIntegerArbitrary,
     })

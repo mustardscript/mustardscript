@@ -154,6 +154,10 @@ const DOCUMENTED_BUILTIN_COVERAGE = Object.freeze({
     },
     {
       file: 'tests/node/differential.test.js',
+      pattern: 'sparse array holes across helpers and JSON',
+    },
+    {
+      file: 'tests/node/differential.test.js',
       pattern: 'array spread and spread arguments over supported iterables',
     },
   ],

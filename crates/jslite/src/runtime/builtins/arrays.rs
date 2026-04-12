@@ -717,9 +717,6 @@ impl Runtime {
             .len();
         for index in 0..length {
             self.charge_native_helper_work(1)?;
-            if !self.array_has_index(array, index)? {
-                continue;
-            }
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -757,9 +754,6 @@ impl Runtime {
             .len();
         for index in 0..length {
             self.charge_native_helper_work(1)?;
-            if !self.array_has_index(array, index)? {
-                continue;
-            }
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],

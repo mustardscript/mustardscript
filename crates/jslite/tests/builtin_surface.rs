@@ -87,6 +87,55 @@ fn array_callback_helpers_cover_transform_search_and_reduction() {
 }
 
 #[test]
+fn array_find_helpers_visit_sparse_holes_as_undefined() {
+    let program = compile(
+        r#"
+        const values = [1, , 3];
+        const visits = [];
+        const found = values.find((value, index) => {
+          visits[visits.length] = [index, value, index in values];
+          return index === 1;
+        });
+        const foundIndex = values.findIndex((value, index) => {
+          visits[visits.length] = [index + 10, value, index in values];
+          return value === undefined;
+        });
+        [found, foundIndex, visits];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Undefined,
+            number(1.0),
+            StructuredValue::Array(vec![
+                StructuredValue::Array(
+                    vec![number(0.0), number(1.0), StructuredValue::Bool(true),]
+                ),
+                StructuredValue::Array(vec![
+                    number(1.0),
+                    StructuredValue::Undefined,
+                    StructuredValue::Bool(false),
+                ]),
+                StructuredValue::Array(vec![
+                    number(10.0),
+                    number(1.0),
+                    StructuredValue::Bool(true),
+                ]),
+                StructuredValue::Array(vec![
+                    number(11.0),
+                    StructuredValue::Undefined,
+                    StructuredValue::Bool(false),
+                ]),
+            ]),
+        ])
+    );
+}
+
+#[test]
 fn array_callback_helpers_fail_closed_for_invalid_callbacks_and_empty_reduce() {
     let map_error = compile("([1]).map(1);").expect("source should compile");
     let error =

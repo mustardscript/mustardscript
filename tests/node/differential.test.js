@@ -232,8 +232,18 @@ const DIFFERENTIAL_CASES = [
     source: `
       const values = [1, , undefined, 4];
       const callbackIndexes = [];
+      const findVisits = [];
+      const findIndexVisits = [];
       values.forEach((value, index) => {
         callbackIndexes[callbackIndexes.length] = index;
+      });
+      const foundHole = values.find((value, index) => {
+        findVisits[findVisits.length] = [index, value, index in values];
+        return index === 1;
+      });
+      const foundHoleIndex = values.findIndex((value, index) => {
+        findIndexVisits[findIndexVisits.length] = [index, value, index in values];
+        return value === undefined && index === 1;
       });
       const sliced = values.slice(0, 4);
       const mapped = values.map((value, index) => value ?? (index + 10));
@@ -251,6 +261,10 @@ const DIFFERENTIAL_CASES = [
         joined: values.join('-'),
         json: JSON.stringify(values),
         callbackIndexes,
+        foundHole,
+        foundHoleIndex,
+        findVisits,
+        findIndexVisits,
         slicedKeys: Object.keys(sliced),
         mappedKeys: Object.keys(mapped),
         mappedHasHole: 1 in mapped,
