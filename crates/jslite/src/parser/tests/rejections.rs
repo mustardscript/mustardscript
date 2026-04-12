@@ -93,3 +93,13 @@ fn rejects_exponent_assignment_operator() {
             .contains("unsupported assignment operator in v1")
     );
 }
+
+#[test]
+fn rejects_instanceof_operator() {
+    let error = compile("1 instanceof Number;").expect_err("instanceof should stay unsupported");
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported binary operator in v1")
+    );
+}

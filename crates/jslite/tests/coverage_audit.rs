@@ -278,6 +278,29 @@ fn ir_covers_sequence_and_exponentiation_expressions() {
 }
 
 #[test]
+fn ir_covers_in_operator_expressions() {
+    let program = compile(
+        r#"
+        const object = { alpha: undefined };
+        const array = [1, 2];
+        ["alpha" in object, 1 in array, "push" in array];
+        "#,
+    )
+    .expect("source should compile");
+
+    assert!(stmt_contains_expr(
+        &program.script.body[2],
+        &|expr| matches!(
+            expr,
+            Expr::Binary {
+                operator: jslite::ir::BinaryOp::In,
+                ..
+            }
+        )
+    ));
+}
+
+#[test]
 fn bytecode_and_snapshot_round_trips_preserve_resume_behavior() {
     let source = compile("const value = fetch_data(4); value + 2;").expect("source should compile");
     let bytecode = lower_to_bytecode(&source).expect("lowering should succeed");

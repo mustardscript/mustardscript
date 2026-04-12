@@ -91,6 +91,9 @@ impl Runtime {
             BinaryOp::Pow => Ok(Value::Number(
                 self.to_number(left)?.powf(self.to_number(right)?),
             )),
+            BinaryOp::In => Ok(Value::Bool(
+                self.has_property_in_supported_surface(right, left)?,
+            )),
             BinaryOp::Eq | BinaryOp::StrictEq => Ok(Value::Bool(strict_equal(&left, &right))),
             BinaryOp::NotEq | BinaryOp::StrictNotEq => {
                 Ok(Value::Bool(!strict_equal(&left, &right)))

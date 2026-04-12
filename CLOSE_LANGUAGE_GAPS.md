@@ -73,7 +73,8 @@ Audit sources:
 
 - [ ] Computed object literal keys are rejected during validation.
 - [ ] Object literal methods are rejected during validation.
-- [ ] `in` is rejected as an unsupported binary operator.
+- [x] Conservative `in` support exists for the runtime's currently exposed
+  property surface without widening prototype or descriptor semantics.
 - [ ] Logical assignment operators `||=` and `&&=` are unsupported.
 - [ ] Additional unsupported compound assignments worth auditing for priority:
   `%=`, `**=`, and bitwise assignment operators.
@@ -110,7 +111,7 @@ Audit sources:
 ### Phase 3: Syntax and compiler gaps
 
 - [x] Add IR, compiler, and runtime support for `**`.
-- [ ] Add IR, compiler, and runtime support for `in` if it stays in scope for
+- [x] Add IR, compiler, and runtime support for `in` if it stays in scope for
   the compatibility target.
 - [x] Add IR, compiler, and runtime support for sequence expressions.
 - [ ] Decide and implement sparse-array semantics so array holes can exist

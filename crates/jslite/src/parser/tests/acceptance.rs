@@ -66,3 +66,15 @@ fn parses_sequence_and_exponentiation_expressions() {
     )
     .expect("sequence expressions and exponentiation should compile");
 }
+
+#[test]
+fn parses_in_operator_expressions() {
+    compile(
+        r#"
+        const object = { alpha: undefined };
+        const array = [1, 2];
+        ["alpha" in object, 1 in array, "push" in array];
+        "#,
+    )
+    .expect("in operator expressions should compile");
+}

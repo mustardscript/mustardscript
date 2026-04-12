@@ -327,6 +327,7 @@ pub enum BinaryOp {
     Div,
     Rem,
     Pow,
+    In,
     Eq,
     NotEq,
     StrictEq,

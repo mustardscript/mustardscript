@@ -130,3 +130,76 @@ fn sequence_expressions_preserve_left_to_right_side_effects_and_last_value() {
         StructuredValue::Array(vec![number(512.0), number(3.0)])
     );
 }
+
+#[test]
+fn in_operator_checks_the_supported_property_surface() {
+    let program = compile(
+        r#"
+        const object = { alpha: undefined };
+        const array = [4];
+        array.extra = 5;
+        const map = new Map();
+        const set = new Set();
+        const promise = Promise.resolve(1);
+        const regex = /a/g;
+        const date = new Date(5);
+        [
+          "alpha" in object,
+          "missing" in object,
+          0 in array,
+          1 in array,
+          "length" in array,
+          "push" in array,
+          "extra" in array,
+          "log" in Math,
+          "parse" in JSON,
+          "then" in promise,
+          "exec" in regex,
+          "getTime" in date,
+          "size" in map,
+          "add" in set,
+          "from" in Array,
+          "assign" in Object,
+          "now" in Date,
+          "resolve" in Promise,
+        ];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(false),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(false),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+        ])
+    );
+}
+
+#[test]
+fn in_operator_fails_closed_for_primitive_right_hand_sides() {
+    let program = compile(r#""length" in "abc";"#).expect("source should compile");
+    let error = execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("right-hand side of 'in' must be an object in the supported surface")
+    );
+}

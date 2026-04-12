@@ -107,9 +107,9 @@ missing:
 
 ### Operators And Expression Surface
 
-- Binary operators are still limited. `**` is now supported, but common
-  generated operators such as `instanceof`, `in`, bitwise operators, and shift
-  operators are unsupported.
+- Binary operators are still limited. `**` and conservative `in` support now
+  exist, but common generated operators such as `instanceof`, bitwise
+  operators, and shift operators are unsupported.
 - Assignment operators are limited. Only `=`, `+=`, `-=`, `*=`, `/=`, and `??=`
   are implemented. Generated `||=`, `&&=`, `%=`, `**=`, and bitwise assignment
   forms are unsupported.
@@ -215,6 +215,9 @@ missing:
 - `for...of` is narrower than full JavaScript: the header must declare exactly
   one `let` or `const` binding, assignment-target headers are rejected, and
   `for await...of` remains unsupported.
+- `in` intentionally checks only the runtime's currently exposed property
+  surface. It does not introduce full prototype walking, descriptor semantics,
+  or a reflective `globalThis` mirror of every global binding.
 - Array callback helpers and `Array.from` mapping fail closed when a callback
   would cause a synchronous host suspension.
 - `JSON.stringify` does not match normal JavaScript plain-object key order. The

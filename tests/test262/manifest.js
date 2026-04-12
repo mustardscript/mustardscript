@@ -33,6 +33,20 @@ module.exports = {
       expected: [8, 512, -8],
     },
     {
+      id: 'language/expressions/binary/in-basic.js',
+      file: 'cases/pass/language/expressions/binary/in-basic.js',
+      expected: [
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+      ],
+    },
+    {
       id: 'language/statements/variable/dstr/array-object-basic.js',
       file: 'cases/pass/language/statements/variable/dstr/array-object-basic.js',
       expected: 14,

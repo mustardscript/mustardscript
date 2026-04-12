@@ -45,7 +45,7 @@ extensions are called out explicitly instead of being implied.
 - template literals
 - optional chaining
 - nullish coalescing
-- binary `**`
+- binary `**` and `in`
 - named host capability calls
 
 ## Supported Function Call Surface
@@ -365,6 +365,18 @@ extensions are called out explicitly instead of being implied.
   documented helper enumeration order, and skips `null` / `undefined` sources
 - `Object.fromEntries` accepts the supported iterable surface and expects each
   produced item to be a guest array pair
+- binary `in` checks the runtime's currently exposed property surface without
+  introducing user-defined prototype lookup or descriptor semantics
+- for plain objects and built-in object records, `in` sees stored string-keyed
+  properties plus the explicitly documented virtual members already exposed by
+  the runtime
+- for arrays, `in` recognizes in-bounds numeric indices, `length`, custom
+  string properties, and the documented helper methods
+- for `Map`, `Set`, guest iterators, promises, and the supported constructor
+  functions, `in` recognizes only the members that the runtime already exposes
+  directly on those values
+- primitive right-hand sides for `in` fail closed with a guest-safe runtime
+  `TypeError`
 - `Object.create` is exposed only as an explicit runtime `TypeError` because
   full prototype semantics remain deferred
 - `Object.freeze` and `Object.seal` are exposed only as explicit runtime

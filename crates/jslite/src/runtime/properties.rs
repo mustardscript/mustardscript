@@ -1,6 +1,153 @@
 use super::*;
 
 impl Runtime {
+    pub(super) fn has_property_in_supported_surface(
+        &self,
+        object: Value,
+        property: Value,
+    ) -> JsliteResult<bool> {
+        let key = self.to_property_key(property)?;
+        match object {
+            Value::Object(object) => {
+                let object = self
+                    .objects
+                    .get(object)
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?;
+                if object.properties.contains_key(&key) {
+                    return Ok(true);
+                }
+                Ok(match &object.kind {
+                    ObjectKind::Date(_) => matches!(key.as_str(), "getTime" | "valueOf"),
+                    ObjectKind::RegExp(_) => matches!(
+                        key.as_str(),
+                        "source"
+                            | "flags"
+                            | "global"
+                            | "ignoreCase"
+                            | "multiline"
+                            | "dotAll"
+                            | "unicode"
+                            | "sticky"
+                            | "lastIndex"
+                            | "exec"
+                            | "test"
+                    ),
+                    ObjectKind::Console => self.console_method(&key).is_some(),
+                    _ => false,
+                })
+            }
+            Value::Array(array) => {
+                let array = self
+                    .arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                Ok(key == "length"
+                    || key
+                        .parse::<usize>()
+                        .ok()
+                        .is_some_and(|index| index < array.elements.len())
+                    || array.properties.contains_key(&key)
+                    || matches!(
+                        key.as_str(),
+                        "sort"
+                            | "push"
+                            | "pop"
+                            | "slice"
+                            | "concat"
+                            | "at"
+                            | "join"
+                            | "includes"
+                            | "indexOf"
+                            | "values"
+                            | "keys"
+                            | "entries"
+                            | "forEach"
+                            | "map"
+                            | "filter"
+                            | "find"
+                            | "findIndex"
+                            | "some"
+                            | "every"
+                            | "reduce"
+                    ))
+            }
+            Value::Map(map) => {
+                self.maps
+                    .get(map)
+                    .ok_or_else(|| JsliteError::runtime("map missing"))?;
+                Ok(matches!(
+                    key.as_str(),
+                    "size"
+                        | "get"
+                        | "set"
+                        | "has"
+                        | "delete"
+                        | "clear"
+                        | "entries"
+                        | "keys"
+                        | "values"
+                ))
+            }
+            Value::Set(set) => {
+                self.sets
+                    .get(set)
+                    .ok_or_else(|| JsliteError::runtime("set missing"))?;
+                Ok(matches!(
+                    key.as_str(),
+                    "size" | "add" | "has" | "delete" | "clear" | "entries" | "keys" | "values"
+                ))
+            }
+            Value::Iterator(iterator) => {
+                self.iterators
+                    .get(iterator)
+                    .ok_or_else(|| JsliteError::runtime("iterator missing"))?;
+                Ok(key == "next")
+            }
+            Value::Promise(promise) => {
+                self.promises
+                    .get(promise)
+                    .ok_or_else(|| JsliteError::runtime("promise missing"))?;
+                Ok(matches!(key.as_str(), "then" | "catch" | "finally"))
+            }
+            Value::BuiltinFunction(function) => Ok(match function {
+                BuiltinFunction::ArrayCtor => matches!(key.as_str(), "isArray" | "from" | "of"),
+                BuiltinFunction::ObjectCtor => matches!(
+                    key.as_str(),
+                    "assign"
+                        | "create"
+                        | "freeze"
+                        | "seal"
+                        | "fromEntries"
+                        | "keys"
+                        | "values"
+                        | "entries"
+                        | "hasOwn"
+                ),
+                BuiltinFunction::DateCtor => key == "now",
+                BuiltinFunction::PromiseCtor => matches!(
+                    key.as_str(),
+                    "resolve" | "reject" | "all" | "race" | "any" | "allSettled"
+                ),
+                _ => false,
+            }),
+            Value::Closure(closure) => {
+                self.closures
+                    .get(closure)
+                    .ok_or_else(|| JsliteError::runtime("closure missing"))?;
+                Ok(false)
+            }
+            Value::HostFunction(_) => Ok(false),
+            Value::Undefined
+            | Value::Null
+            | Value::Bool(_)
+            | Value::Number(_)
+            | Value::String(_)
+            | Value::BigInt(_) => Err(JsliteError::runtime(
+                "TypeError: right-hand side of 'in' must be an object in the supported surface",
+            )),
+        }
+    }
+
     pub(super) fn create_iterator(&mut self, iterable: Value) -> JsliteResult<Value> {
         let iterator = match iterable {
             Value::Array(array) => {
