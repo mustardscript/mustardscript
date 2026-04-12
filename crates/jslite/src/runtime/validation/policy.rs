@@ -81,7 +81,9 @@ fn validate_pending_host_call_capability(
 }
 
 fn validate_frame_host_capabilities(frame: &Frame, allowed: &HashSet<String>) -> JsliteResult<()> {
-    walk::walk_frame_values(frame, &mut |value| validate_runtime_host_capability(value, allowed))
+    walk::walk_frame_values(frame, &mut |value| {
+        validate_runtime_host_capability(value, allowed)
+    })
 }
 
 fn validate_promise_rejection_host_capabilities(

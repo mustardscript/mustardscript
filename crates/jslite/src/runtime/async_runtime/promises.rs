@@ -24,7 +24,10 @@ impl Runtime {
         })
     }
 
-    pub(in crate::runtime) fn coerce_to_promise(&mut self, value: Value) -> JsliteResult<PromiseKey> {
+    pub(in crate::runtime) fn coerce_to_promise(
+        &mut self,
+        value: Value,
+    ) -> JsliteResult<PromiseKey> {
         match value {
             Value::Promise(promise) => Ok(promise),
             other => {

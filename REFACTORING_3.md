@@ -134,16 +134,16 @@ traversal.
 
 Checklist:
 
-- [ ] Convert `crates/jslite/src/runtime/validation.rs` into
+- [x] Convert `crates/jslite/src/runtime/validation.rs` into
   `runtime/validation/mod.rs`
-- [ ] Move bytecode validation into `runtime/validation/bytecode.rs`
-- [ ] Introduce `runtime/validation/walk.rs` for shared runtime-graph traversal
-- [ ] Move snapshot integrity checks into `runtime/validation/snapshot.rs`
-- [ ] Move snapshot-policy capability enforcement into
+- [x] Move bytecode validation into `runtime/validation/bytecode.rs`
+- [x] Introduce `runtime/validation/walk.rs` for shared runtime-graph traversal
+- [x] Move snapshot integrity checks into `runtime/validation/snapshot.rs`
+- [x] Move snapshot-policy capability enforcement into
   `runtime/validation/policy.rs`
-- [ ] Keep `validate_bytecode_program`, `validate_snapshot`, and
+- [x] Keep `validate_bytecode_program`, `validate_snapshot`, and
   `validate_snapshot_policy` re-exported unchanged
-- [ ] Preserve current validation diagnostics and fail-closed behavior
+- [x] Preserve current validation diagnostics and fail-closed behavior
 
 Exit criteria:
 
@@ -158,17 +158,17 @@ Purpose: separate promise primitives from scheduling and host-resume flow.
 
 Checklist:
 
-- [ ] Convert `crates/jslite/src/runtime/async_runtime.rs` into
+- [x] Convert `crates/jslite/src/runtime/async_runtime.rs` into
   `runtime/async_runtime/mod.rs`
-- [ ] Move promise state helpers and settlement primitives into
+- [x] Move promise state helpers and settlement primitives into
   `runtime/async_runtime/promises.rs`
-- [ ] Move promise-reaction and combinator logic into
+- [x] Move promise-reaction and combinator logic into
   `runtime/async_runtime/reactions.rs`
-- [ ] Move microtask activation, idle-state progression, suspended host-call
+- [x] Move microtask activation, idle-state progression, suspended host-call
   handling, and `Runtime::resume` into `runtime/async_runtime/scheduler.rs`
-- [ ] Keep current async guest semantics, thenable adoption rules, and
+- [x] Keep current async guest semantics, thenable adoption rules, and
   outstanding-host-call enforcement unchanged
-- [ ] Preserve the existing `start()` / `resume()` / async root behavior
+- [x] Preserve the existing `start()` / `resume()` / async root behavior
 
 Exit criteria:
 
@@ -183,18 +183,18 @@ guest-safe error rendering.
 
 Checklist:
 
-- [ ] Convert `crates/jslite/src/runtime/conversions.rs` into
+- [x] Convert `crates/jslite/src/runtime/conversions.rs` into
   `runtime/conversions/mod.rs`
-- [ ] Move unary/binary operator helpers and BigInt arithmetic into
+- [x] Move unary/binary operator helpers and BigInt arithmetic into
   `runtime/conversions/operators.rs`
-- [ ] Move numeric, string, integer, and property-key coercions into
+- [x] Move numeric, string, integer, and property-key coercions into
   `runtime/conversions/coercions.rs`
-- [ ] Move guest-safe error-object creation and rendering into
+- [x] Move guest-safe error-object creation and rendering into
   `runtime/conversions/errors.rs`
-- [ ] Move structured-value conversion and JSON conversion into
+- [x] Move structured-value conversion and JSON conversion into
   `runtime/conversions/boundary.rs`
-- [ ] Keep `structured_to_json` re-exported unchanged
-- [ ] Preserve current structured-boundary rejection rules and error messages
+- [x] Keep `structured_to_json` re-exported unchanged
+- [x] Preserve current structured-boundary rejection rules and error messages
 
 Exit criteria:
 
@@ -208,14 +208,14 @@ Purpose: finish the builtin facade cleanup left over from the prior waves.
 
 Checklist:
 
-- [ ] Move shared builtin helper functions out of `runtime/builtins/mod.rs`
-- [ ] Create a dedicated shared helper module such as
+- [x] Move shared builtin helper functions out of `runtime/builtins/mod.rs`
+- [x] Create a dedicated shared helper module such as
   `runtime/builtins/support.rs`
-- [ ] Move string-search, replacement-template, index-normalization, and date
+- [x] Move string-search, replacement-template, index-normalization, and date
   helper code into that support module
-- [ ] Keep shared types only where they genuinely span multiple builtin
+- [x] Keep shared types only where they genuinely span multiple builtin
   families
-- [ ] Preserve current `String`, `RegExp`, and `Date` behavior exactly
+- [x] Preserve current `String`, `RegExp`, and `Date` behavior exactly
 
 Exit criteria:
 
@@ -230,13 +230,13 @@ drifting back together.
 
 Checklist:
 
-- [ ] Add small shared test helpers for constructing snapshots, promise states,
+- [x] Add small shared test helpers for constructing snapshots, promise states,
   and async resume scenarios where that reduces duplication
-- [ ] Keep unit tests aligned with the new module boundaries, especially for
+- [x] Keep unit tests aligned with the new module boundaries, especially for
   validation, async runtime behavior, and structured-boundary conversion
-- [ ] Preserve the current integration-test surface in `crates/jslite/tests/`
+- [x] Preserve the current integration-test surface in `crates/jslite/tests/`
   and `tests/node/`
-- [ ] Avoid moving broad behavioral coverage into production modules
+- [x] Avoid moving broad behavioral coverage into production modules
 
 Exit criteria:
 

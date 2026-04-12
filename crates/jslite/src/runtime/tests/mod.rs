@@ -9,14 +9,6 @@ mod execution;
 mod gc;
 mod serialization;
 
-mod async_host;
-mod collections;
-mod diagnostics;
-mod exceptions;
-mod execution;
-mod gc;
-mod serialization;
-
 fn test_function(code: Vec<Instruction>) -> FunctionPrototype {
     FunctionPrototype {
         name: None,
@@ -33,6 +25,26 @@ fn invalid_program(code: Vec<Instruction>) -> BytecodeProgram {
     BytecodeProgram {
         functions: vec![test_function(code)],
         root: 0,
+    }
+}
+
+fn number(value: f64) -> StructuredValue {
+    StructuredValue::Number(StructuredNumber::Finite(value))
+}
+
+fn options_with_capabilities(capabilities: &[&str]) -> ExecutionOptions {
+    ExecutionOptions {
+        capabilities: capabilities.iter().map(|value| (*value).to_string()).collect(),
+        ..ExecutionOptions::default()
+    }
+}
+
+fn suspend(source: &str, capabilities: &[&str]) -> Suspension {
+    let program = compile(source).expect("source should compile");
+    match start(&program, options_with_capabilities(capabilities)).expect("execution should suspend")
+    {
+        ExecutionStep::Suspended(suspension) => *suspension,
+        other => panic!("expected suspension, got {other:?}"),
     }
 }
 

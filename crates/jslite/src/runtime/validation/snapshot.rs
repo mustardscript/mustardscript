@@ -142,7 +142,8 @@ fn validate_frame(runtime: &Runtime, frame: &Frame) -> JsliteResult<()> {
                 handler.env
             )));
         }
-        if handler.scope_stack_len > frame.scope_stack.len() || handler.stack_len > frame.stack.len()
+        if handler.scope_stack_len > frame.scope_stack.len()
+            || handler.stack_len > frame.stack.len()
         {
             return Err(snapshot_error(
                 "frame handler restore state exceeds the current frame state",
@@ -257,21 +258,23 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> JsliteResult<()> 
         Value::Array(array) if runtime.arrays.get(*array).is_none() => Err(snapshot_error(
             format!("value references missing array {:?}", array),
         )),
-        Value::Map(map) if runtime.maps.get(*map).is_none() => Err(snapshot_error(
-            format!("value references missing map {:?}", map),
-        )),
-        Value::Set(set) if runtime.sets.get(*set).is_none() => Err(snapshot_error(
-            format!("value references missing set {:?}", set),
-        )),
+        Value::Map(map) if runtime.maps.get(*map).is_none() => Err(snapshot_error(format!(
+            "value references missing map {:?}",
+            map
+        ))),
+        Value::Set(set) if runtime.sets.get(*set).is_none() => Err(snapshot_error(format!(
+            "value references missing set {:?}",
+            set
+        ))),
         Value::Iterator(iterator) if runtime.iterators.get(*iterator).is_none() => Err(
             snapshot_error(format!("value references missing iterator {:?}", iterator)),
         ),
-        Value::Closure(closure) if runtime.closures.get(*closure).is_none() => Err(
-            snapshot_error(format!("value references missing closure {:?}", closure)),
-        ),
-        Value::Promise(promise) if runtime.promises.get(*promise).is_none() => Err(
-            snapshot_error(format!("value references missing promise {:?}", promise)),
-        ),
+        Value::Closure(closure) if runtime.closures.get(*closure).is_none() => Err(snapshot_error(
+            format!("value references missing closure {:?}", closure),
+        )),
+        Value::Promise(promise) if runtime.promises.get(*promise).is_none() => Err(snapshot_error(
+            format!("value references missing promise {:?}", promise),
+        )),
         _ => Ok(()),
     }
 }

@@ -109,7 +109,10 @@ impl Runtime {
         Err(JsliteError::runtime("vm lost all frames"))
     }
 
-    pub(in crate::runtime) fn resume(&mut self, payload: ResumePayload) -> JsliteResult<ExecutionStep> {
+    pub(in crate::runtime) fn resume(
+        &mut self,
+        payload: ResumePayload,
+    ) -> JsliteResult<ExecutionStep> {
         if let Err(error) = self.check_cancellation() {
             if let Some(request) = self.suspended_host_call.as_ref() {
                 return Err(error.with_traceback(self.compose_traceback(&request.traceback)));

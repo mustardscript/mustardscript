@@ -36,7 +36,10 @@ impl Runtime {
         })
     }
 
-    pub(in crate::runtime) fn value_to_structured(&self, value: Value) -> JsliteResult<StructuredValue> {
+    pub(in crate::runtime) fn value_to_structured(
+        &self,
+        value: Value,
+    ) -> JsliteResult<StructuredValue> {
         let mut traversal = StructuredTraversalState::default();
         self.value_to_structured_inner(value, &mut traversal)
     }
