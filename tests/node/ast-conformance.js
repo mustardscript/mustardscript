@@ -480,6 +480,20 @@ function astProgramArbitrary() {
   );
 }
 
+function astTraceProgramArbitrary() {
+  return fc.oneof(
+    fc
+      .tuple(simpleExpressionArbitrary(1), simpleExpressionArbitrary(1), expressionArbitrary(2))
+      .map(([first, second, result]) => consoleTraceProgram(first, second, result)),
+    fc
+      .tuple(simpleExpressionArbitrary(1), simpleExpressionArbitrary(1), simpleExpressionArbitrary(1))
+      .map(([first, second, result]) => capabilityTraceProgram(first, second, result)),
+    fc
+      .tuple(simpleExpressionArbitrary(1), simpleExpressionArbitrary(1), simpleExpressionArbitrary(1), expressionArbitrary(2))
+      .map(([test, consequent, alternate, result]) => branchTraceProgram(test, consequent, alternate, result)),
+  );
+}
+
 const EXHAUSTIVE_LEAVES = Object.freeze([
   literal(0),
   literal(1),
@@ -582,6 +596,90 @@ function enumerateExhaustivePrograms() {
   return [...seen.values()];
 }
 
+function rewriteStaticMembersToComputedExpression(expr) {
+  switch (expr.type) {
+    case 'literal':
+    case 'ref':
+      return expr;
+    case 'unary':
+      return unary(expr.op, rewriteStaticMembersToComputedExpression(expr.argument));
+    case 'binary':
+      return binary(
+        expr.op,
+        rewriteStaticMembersToComputedExpression(expr.left),
+        rewriteStaticMembersToComputedExpression(expr.right),
+      );
+    case 'logical':
+      return logical(
+        expr.op,
+        rewriteStaticMembersToComputedExpression(expr.left),
+        rewriteStaticMembersToComputedExpression(expr.right),
+      );
+    case 'array':
+      return arrayLiteral(
+        expr.elements.map((element) => rewriteStaticMembersToComputedExpression(element)),
+      );
+    case 'object':
+      return objectLiteral(
+        expr.properties.map(({ key, value }) => ({
+          key,
+          value: rewriteStaticMembersToComputedExpression(value),
+        })),
+      );
+    case 'member':
+      return member(
+        rewriteStaticMembersToComputedExpression(expr.object),
+        expr.computed
+          ? rewriteStaticMembersToComputedExpression(expr.property)
+          : literal(expr.property),
+        true,
+      );
+    case 'optional-member':
+      return optionalMember(
+        rewriteStaticMembersToComputedExpression(expr.object),
+        expr.computed
+          ? rewriteStaticMembersToComputedExpression(expr.property)
+          : literal(expr.property),
+        true,
+      );
+    case 'call':
+      return call(
+        rewriteStaticMembersToComputedExpression(expr.callee),
+        expr.args.map((arg) => rewriteStaticMembersToComputedExpression(arg)),
+      );
+    default:
+      throw new TypeError(`Unsupported AST expression type: ${expr.type}`);
+  }
+}
+
+function rewriteStaticMembersToComputedProgram(program) {
+  switch (program.kind) {
+    case 'pure':
+      return pureProgram(rewriteStaticMembersToComputedExpression(program.result));
+    case 'console-trace':
+      return consoleTraceProgram(
+        rewriteStaticMembersToComputedExpression(program.first),
+        rewriteStaticMembersToComputedExpression(program.second),
+        rewriteStaticMembersToComputedExpression(program.result),
+      );
+    case 'capability-trace':
+      return capabilityTraceProgram(
+        rewriteStaticMembersToComputedExpression(program.first),
+        rewriteStaticMembersToComputedExpression(program.second),
+        rewriteStaticMembersToComputedExpression(program.result),
+      );
+    case 'branch-trace':
+      return branchTraceProgram(
+        rewriteStaticMembersToComputedExpression(program.test),
+        rewriteStaticMembersToComputedExpression(program.consequent),
+        rewriteStaticMembersToComputedExpression(program.alternate),
+        rewriteStaticMembersToComputedExpression(program.result),
+      );
+    default:
+      throw new TypeError(`Unsupported AST program kind: ${program.kind}`);
+  }
+}
+
 function metamorphicVariants(program) {
   return [
     {
@@ -598,6 +696,11 @@ function metamorphicVariants(program) {
       id: 'dead-branch',
       featureId: 'metamorphic.dead-branch-insertion',
       source: renderProgram(program, { deadBranch: true }),
+    },
+    {
+      id: 'computed-members',
+      featureId: 'metamorphic.computed-member-normalization',
+      source: renderProgram(rewriteStaticMembersToComputedProgram(program)),
     },
   ];
 }
@@ -631,6 +734,7 @@ function contractCoverageExpectations() {
 module.exports = {
   AST_PROPERTY_RUNS,
   astProgramArbitrary,
+  astTraceProgramArbitrary,
   collectProgramFeatures,
   contractCoverageExpectations,
   coveredFeatureIds,

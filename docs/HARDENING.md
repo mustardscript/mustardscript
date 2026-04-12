@@ -54,6 +54,18 @@ The maintained corpus seeds are generated into `fuzz/corpus/` by
 The repository ignores the generated corpus directory so local and CI fuzzing
 can grow it over time without polluting commits.
 
+Mutation-style guard checks now live in `tests/hardening/mutation-guards.test.js`
+and run through:
+
+```bash
+npm run test:mutation-guards
+```
+
+That suite mutates a small set of validator inputs, serialized progress blobs,
+limit thresholds, and structured-boundary values to ensure the fail-closed
+guards stay wired up without putting the checks in the default fast Node test
+lane.
+
 ## CI And Scheduled Jobs
 
 - `.github/workflows/ci.yml` now runs `scripts/run-hardening.sh` in the PR lane
@@ -61,8 +73,9 @@ can grow it over time without polluting commits.
   `parser`, `snapshot_load`, and `sidecar_protocol`.
 - `.github/workflows/fuzz.yml` runs nightly and on manual dispatch. It restores
   the cached `fuzz/corpus/` directory, refreshes baseline seeds, runs longer
-  sanitizer-backed fuzzing across all current targets, and uploads both the
-  grown corpus and any crash artifacts from `fuzz/artifacts/`.
+  sanitizer-backed fuzzing across all current targets, runs the mutation-style
+  guard suite outside the default PR path, and uploads both the grown corpus
+  and any crash artifacts from `fuzz/artifacts/`.
 
 For local tuning, `scripts/run-hardening.sh` accepts:
 

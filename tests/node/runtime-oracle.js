@@ -262,6 +262,7 @@ function createTraceHarness(options = {}) {
     ]),
   );
   Object.assign(progressHandlers, capabilities);
+  const snapshotKey = options.snapshotKey ?? 'runtime-oracle-trace-snapshot-key';
 
   return {
     events,
@@ -270,6 +271,14 @@ function createTraceHarness(options = {}) {
       capabilities,
       console,
       inputs: options.inputs,
+      limits: options.limits ?? {},
+      snapshotKey,
+    },
+    progressLoadOptions: {
+      capabilities,
+      console,
+      limits: options.limits ?? {},
+      snapshotKey,
     },
     nodeContext: {
       console,
@@ -300,9 +309,13 @@ async function runNodeWithTrace(source, options = {}) {
   );
 }
 
-async function executeProgressLoop(runtime, harness) {
+async function executeProgressLoop(runtime, harness, options = {}) {
+  const { reloadSnapshots = false } = options;
   let step = runtime.start(harness.jsliteOptions);
   while (step instanceof Progress) {
+    if (reloadSnapshots) {
+      step = Progress.load(step.dump(), harness.progressLoadOptions);
+    }
     const handler = harness.progressHandlers[step.capability];
     if (typeof handler !== 'function') {
       throw new Error(`Missing capability: ${step.capability}`);
@@ -321,6 +334,21 @@ async function runJsliteWithProgressTrace(source, options = {}) {
   const runtime = new Jslite(source);
   const harness = createTraceHarness(options);
   return captureTraceOutcome(() => executeProgressLoop(runtime, harness), harness.events);
+}
+
+async function runJsliteWithSerializedProgressTrace(source, options = {}) {
+  const runtime = new Jslite(source);
+  const harness = createTraceHarness(options);
+  return captureTraceOutcome(
+    () => executeProgressLoop(runtime, harness, { reloadSnapshots: true }),
+    harness.events,
+  );
+}
+
+async function runJsliteWithLoadedProgramTrace(source, options = {}) {
+  const harness = createTraceHarness(options);
+  const runtime = Jslite.load(new Jslite(source).dump());
+  return captureTraceOutcome(() => runtime.run(harness.jsliteOptions), harness.events);
 }
 
 function renderCanonical(value) {
@@ -462,7 +490,9 @@ module.exports = {
   isValidationError,
   normalizeValue,
   runJslite,
+  runJsliteWithLoadedProgramTrace,
   runJsliteWithProgressTrace,
+  runJsliteWithSerializedProgressTrace,
   runJsliteWithTrace,
   runNode,
   runNodeWithTrace,

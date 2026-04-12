@@ -7,6 +7,7 @@ const fc = require('fast-check');
 const {
   AST_PROPERTY_RUNS,
   astProgramArbitrary,
+  astTraceProgramArbitrary,
   contractCoverageExpectations,
   coveredFeatureIds,
   enumerateExhaustivePrograms,
@@ -17,6 +18,11 @@ const { FEATURE_CONTRACT, OUTCOME } = require('./conformance-contract.js');
 const {
   assertMetamorphicDifferential,
   assertTraceDifferential,
+  runJsliteWithLoadedProgramTrace,
+  runJsliteWithProgressTrace,
+  runJsliteWithTrace,
+  runJsliteWithSerializedProgressTrace,
+  runNodeWithTrace,
 } = require('./runtime-oracle.js');
 
 test('machine-readable conformance contract stays internally consistent', () => {
@@ -77,6 +83,44 @@ test('property: AST metamorphic rewrites preserve semantics and traces', async (
       for (const variant of metamorphicVariants(program)) {
         await assertMetamorphicDifferential(original, variant.source);
       }
+    }),
+    {
+      numRuns: Math.max(20, Math.floor(AST_PROPERTY_RUNS / 2)),
+      interruptAfterTimeLimit: 20_000,
+    },
+  );
+});
+
+test('property: AST-generated programs preserve traces through compiled-program round-trips', async () => {
+  await fc.assert(
+    fc.asyncProperty(astProgramArbitrary(), async (program) => {
+      const source = renderProgram(program);
+      const [direct, loaded, expected] = await Promise.all([
+        runJsliteWithTrace(source),
+        runJsliteWithLoadedProgramTrace(source),
+        runNodeWithTrace(source),
+      ]);
+      assert.deepEqual(loaded, direct);
+      assert.deepEqual(loaded, expected);
+    }),
+    {
+      numRuns: Math.max(20, Math.floor(AST_PROPERTY_RUNS / 2)),
+      interruptAfterTimeLimit: 20_000,
+    },
+  );
+});
+
+test('property: AST trace programs preserve semantics through explicit snapshot round-trips', async () => {
+  await fc.assert(
+    fc.asyncProperty(astTraceProgramArbitrary(), async (program) => {
+      const source = renderProgram(program);
+      const [direct, serialized, expected] = await Promise.all([
+        runJsliteWithProgressTrace(source),
+        runJsliteWithSerializedProgressTrace(source),
+        runNodeWithTrace(source),
+      ]);
+      assert.deepEqual(serialized, direct);
+      assert.deepEqual(serialized, expected);
     }),
     {
       numRuns: Math.max(20, Math.floor(AST_PROPERTY_RUNS / 2)),

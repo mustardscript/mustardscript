@@ -67,6 +67,10 @@ test('property: unsupported host values fail closed across boundary inputs and r
         error instanceof TypeError && error.message.includes(messageIncludes);
 
       await assert.rejects(new Jslite('value;').run({ inputs: { value } }), isBoundaryTypeError);
+      assert.throws(
+        () => new Jslite('value;').start({ inputs: { value } }),
+        isBoundaryTypeError,
+      );
 
       await assert.rejects(
         new Jslite('fetch_data();').run({

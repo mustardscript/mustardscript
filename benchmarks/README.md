@@ -3,10 +3,11 @@
 These benchmarks are intentionally small and repeatable. They are meant to give
 maintainers a quick signal on regressions in:
 
-- startup and compile-and-run latency
+- cold startup and compile-and-run latency
 - steady-state synchronous execution cost
-- suspension and resume overhead
-- retained Node heap after repeated guest runs
+- host-call overhead relative to an equivalent guest-only baseline
+- snapshot dump/load overhead relative to direct suspend/resume
+- retained Node heap after repeated snapshot-heavy runs
 
 Run them with:
 
@@ -14,8 +15,10 @@ Run them with:
 npm run bench:smoke
 ```
 
-The thresholds live in `budgets.json` and are intentionally broad enough for a
-source-build development workflow while still catching major regressions.
+The thresholds live in `budgets.json`. Cold start and retained heap still use
+broad absolute ceilings, while the host-call and snapshot contracts use ratios
+against a direct in-process baseline so they stay meaningful across different
+development machines.
 
 ## Comparative Benchmark Plan: `jslite` vs V8 Isolates
 

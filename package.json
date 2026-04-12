@@ -51,6 +51,7 @@
     "test:types": "tsc --noEmit -p tsconfig.typecheck.json",
     "test:rust": "cargo test --workspace",
     "test:hardening": "scripts/run-hardening.sh",
+    "test:mutation-guards": "npm run build && node --test tests/hardening/**/*.test.js",
     "seed:fuzz-corpus": "node scripts/seed-fuzz-corpus.js",
     "bench:smoke": "npm run build && node --expose-gc benchmarks/smoke.js",
     "prebuilt:dirs": "napi create-npm-dirs",

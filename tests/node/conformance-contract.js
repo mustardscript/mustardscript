@@ -196,6 +196,12 @@ const FEATURE_CONTRACT = Object.freeze([
     coverage: [COVERAGE.METAMORPHIC],
   },
   {
+    id: 'metamorphic.computed-member-normalization',
+    title: 'rewriting static member access into computed-string access preserves meaning',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.METAMORPHIC],
+  },
+  {
     id: 'validation.default-parameters',
     title: 'default parameters are validation rejects',
     outcome: OUTCOME.VALIDATION_REJECT,

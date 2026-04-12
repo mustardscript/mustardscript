@@ -9,10 +9,15 @@
     "warmup": 2,
     "averageMsMax": 25
   },
-  "suspension": {
+  "hostCall": {
+    "iterations": 10,
+    "warmup": 2,
+    "ratioMax": 80
+  },
+  "snapshot": {
     "iterations": 20,
     "warmup": 3,
-    "averageMsMax": 15
+    "ratioMax": 20
   },
   "memory": {
     "runs": 40,

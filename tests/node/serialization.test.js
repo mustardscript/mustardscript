@@ -57,3 +57,14 @@ test('dump and load preserve compiled programs', async () => {
   const result = await copy.run();
   assert.equal(result, 8);
 });
+
+test('Jslite.load surfaces invalid compiled-program blobs as typed errors', async () => {
+  const copy = Jslite.load(Buffer.from('not-a-valid-program'));
+  await assert.rejects(
+    () => copy.run(),
+    isJsliteError({
+      kind: 'Serialization',
+      guestSafe: true,
+    }),
+  );
+});
