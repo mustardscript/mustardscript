@@ -848,11 +848,36 @@ fn match_all_and_date_helpers_cover_supported_surface() {
           matches.push([match[0], match[1], match[2], match.index, match.input]);
         }
         const before = Date.now();
+        function declared() {
+          return "ok";
+        }
+        function sum(left, right) {
+          return this.base + left + right;
+        }
+        const bound = sum.bind({ base: 10 }, 1);
         const parsed = new Date("2026-04-10T14:00:00Z").getTime();
+        const dateOnly = new Date("1970-01-01").getTime();
         const cloned = new Date(new Date(5)).getTime();
         const invalid = new Date("not-a-date").getTime();
+        const clipped = new Date(8640000000000001).getTime();
         const after = Date.now();
-        [matches, before <= after, parsed, cloned, invalid !== invalid];
+        [
+          matches,
+          before <= after,
+          globalThis.declared === declared,
+          [typeof sum.call, typeof sum.apply, typeof sum.bind],
+          sum.call({ base: 4 }, 5, 6),
+          sum.apply({ base: 7 }, [8, 9]),
+          [typeof bound, bound(2)],
+          [typeof Date.prototype.getTime, typeof Date.prototype.valueOf],
+          parsed,
+          dateOnly,
+          cloned,
+          clipped !== clipped,
+          new Date(5).valueOf(),
+          Object("  hi  ").trim(),
+          invalid !== invalid
+        ];
         "#,
     )
     .expect("source should compile");
@@ -878,9 +903,62 @@ fn match_all_and_date_helpers_cover_supported_surface() {
                 ]),
             ]),
             StructuredValue::Bool(true),
+            StructuredValue::Bool(true),
+            StructuredValue::Array(vec![
+                "function".into(),
+                "function".into(),
+                "function".into(),
+            ]),
+            number(15.0),
+            number(24.0),
+            StructuredValue::Array(vec!["function".into(), number(13.0)]),
+            StructuredValue::Array(vec!["function".into(), "function".into()]),
             number(1_775_829_600_000.0),
+            number(0.0),
             number(5.0),
             StructuredValue::Bool(true),
+            number(5.0),
+            "hi".into(),
+            StructuredValue::Bool(true),
+        ])
+    );
+}
+
+#[test]
+fn error_constructor_options_match_supported_surface() {
+    let program = compile(
+        r#"
+        const empty = new Error(undefined);
+        const caused = new Error("boom", { cause: 1 });
+        let unsupported;
+        try {
+          new Error("boom", 1);
+        } catch (error) {
+          unsupported = [error.name, error.message];
+        }
+        [
+          empty.message,
+          caused.message,
+          caused.cause,
+          caused.constructor === Error,
+          unsupported
+        ];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            "".into(),
+            "boom".into(),
+            number(1.0),
+            StructuredValue::Bool(true),
+            StructuredValue::Array(vec![
+                "TypeError".into(),
+                "Error options must be an object in the supported surface".into(),
+            ]),
         ])
     );
 }

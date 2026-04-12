@@ -729,9 +729,35 @@ impl Runtime {
                     Ok(RunState::PushedFrame)
                 }
             }
-            Value::BuiltinFunction(function) => Ok(RunState::Completed(
-                self.call_builtin(function, this_value, args)?,
-            )),
+            Value::BuiltinFunction(function) => match function {
+                BuiltinFunction::FunctionCall => self.call_function_call(this_value, args),
+                BuiltinFunction::FunctionApply => self.call_function_apply(this_value, args),
+                BuiltinFunction::FunctionBind => Ok(RunState::Completed(
+                    self.call_function_bind(this_value, args)?,
+                )),
+                _ => Ok(RunState::Completed(
+                    self.call_builtin(function, this_value, args)?,
+                )),
+            },
+            Value::Object(object)
+                if self
+                    .objects
+                    .get(object)
+                    .is_some_and(|object| matches!(object.kind, ObjectKind::BoundFunction(_))) =>
+            {
+                let bound = match &self
+                    .objects
+                    .get(object)
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?
+                    .kind
+                {
+                    ObjectKind::BoundFunction(bound) => bound.clone(),
+                    _ => unreachable!(),
+                };
+                let mut combined = bound.args;
+                combined.extend(args.iter().cloned());
+                self.call_callable(bound.target, bound.this_value, &combined)
+            }
             Value::HostFunction(capability) => {
                 let resume_behavior = resume_behavior_for_capability(&capability);
                 let args = args
@@ -764,6 +790,67 @@ impl Runtime {
             }
             _ => Err(JsliteError::runtime("value is not callable")),
         }
+    }
+
+    fn call_function_call(&mut self, target: Value, args: &[Value]) -> JsliteResult<RunState> {
+        if !self.is_callable_value(&target)? {
+            return Err(JsliteError::runtime(
+                "TypeError: Function.prototype.call called on incompatible receiver",
+            ));
+        }
+        let this_arg = args.first().cloned().unwrap_or(Value::Undefined);
+        self.call_callable(target, this_arg, &args[1..])
+    }
+
+    fn call_function_apply(&mut self, target: Value, args: &[Value]) -> JsliteResult<RunState> {
+        if !self.is_callable_value(&target)? {
+            return Err(JsliteError::runtime(
+                "TypeError: Function.prototype.apply called on incompatible receiver",
+            ));
+        }
+        let this_arg = args.first().cloned().unwrap_or(Value::Undefined);
+        let arg_list = match args.get(1).cloned().unwrap_or(Value::Undefined) {
+            Value::Undefined | Value::Null => Vec::new(),
+            Value::Array(array) => self.array_argument_values(Value::Array(array))?,
+            _ => {
+                return Err(JsliteError::runtime(
+                    "TypeError: Function.prototype.apply expects an array or undefined argument list in the supported surface",
+                ));
+            }
+        };
+        self.call_callable(target, this_arg, &arg_list)
+    }
+
+    fn call_function_bind(&mut self, target: Value, args: &[Value]) -> JsliteResult<Value> {
+        if !self.is_callable_value(&target)? {
+            return Err(JsliteError::runtime(
+                "TypeError: Function.prototype.bind called on incompatible receiver",
+            ));
+        }
+        let bound_this = args.first().cloned().unwrap_or(Value::Undefined);
+        let bound_args = args.iter().skip(1).cloned().collect();
+        Ok(Value::Object(self.insert_object(
+            IndexMap::new(),
+            ObjectKind::BoundFunction(BoundFunctionData {
+                target,
+                this_value: bound_this,
+                args: bound_args,
+            }),
+        )?))
+    }
+
+    fn is_callable_value(&self, value: &Value) -> JsliteResult<bool> {
+        Ok(match value {
+            Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => true,
+            Value::Object(object) => matches!(
+                self.objects
+                    .get(*object)
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?
+                    .kind,
+                ObjectKind::BoundFunction(_)
+            ),
+            _ => false,
+        })
     }
 
     pub(super) fn construct(&mut self, callee: Value, args: &[Value]) -> JsliteResult<Value> {

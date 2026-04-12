@@ -19,7 +19,7 @@ impl Compiler {
             Stmt::Block { body, .. } => {
                 context.code.push(Instruction::PushEnv);
                 context.scope_depth += 1;
-                self.emit_block_prologue(context, body)?;
+                self.emit_block_prologue(context, body, false)?;
                 for statement in body {
                     self.compile_stmt(context, statement)?;
                 }

@@ -48,8 +48,16 @@ impl Runtime {
                     Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => {
                         "function"
                     }
-                    Value::Object(_)
-                    | Value::Array(_)
+                    Value::Object(object) => {
+                        if self.objects.get(object).is_some_and(|object| {
+                            matches!(object.kind, ObjectKind::BoundFunction(_))
+                        }) {
+                            "function"
+                        } else {
+                            "object"
+                        }
+                    }
+                    Value::Array(_)
                     | Value::Map(_)
                     | Value::Set(_)
                     | Value::Iterator(_)

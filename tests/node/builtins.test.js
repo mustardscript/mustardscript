@@ -595,6 +595,9 @@ test('run binds member-call receivers for guest functions', async () => {
 test('run aligns globalThis, top-level this, and arrow lexical this with the real global object', async () => {
   const result = await runtime(`
     globalThis.answer = 7;
+    function declared() {
+      return 'ok';
+    }
     const box = {
       value: 3,
       method() {
@@ -606,6 +609,7 @@ test('run aligns globalThis, top-level this, and arrow lexical this with the rea
       objectCtor: globalThis.Object === Object,
       hasObject: "Object" in globalThis,
       lookup: answer,
+      declaredOnGlobal: globalThis.declared === declared,
       topLevelThis: this === globalThis,
       arrowThis: box.method(),
     });
@@ -616,6 +620,7 @@ test('run aligns globalThis, top-level this, and arrow lexical this with the rea
     objectCtor: true,
     hasObject: true,
     lookup: 7,
+    declaredOnGlobal: true,
     topLevelThis: true,
     arrowThis: 3,
   });
@@ -694,6 +699,34 @@ test('run exposes callable metadata and constructor links for supported callable
       date: true,
       regexp: true,
     },
+  });
+});
+
+test('run exposes callable helper methods and boxed string wrapper methods on the supported surface', async () => {
+  const result = await runtime(`
+    function sum(left, right) {
+      return this.base + left + right;
+    }
+    const bound = sum.bind({ base: 10 }, 1);
+    ({
+      helperTypes: [typeof sum.call, typeof sum.apply, typeof sum.bind],
+      viaCall: sum.call({ base: 4 }, 5, 6),
+      viaApply: sum.apply({ base: 7 }, [8, 9]),
+      boundType: typeof bound,
+      boundResult: bound(2),
+      boxedTrim: Object("  MiXeD  ").trim(),
+      boxedTrimViaCall: "".trim.call(Object("  spaced  ")),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    helperTypes: ['function', 'function', 'function'],
+    viaCall: 15,
+    viaApply: 24,
+    boundType: 'function',
+    boundResult: 13,
+    boxedTrim: 'MiXeD',
+    boxedTrimViaCall: 'spaced',
   });
 });
 
@@ -816,22 +849,34 @@ test('run truncates Date timestamps to integer milliseconds', async () => {
     const current = new Date().getTime();
     const positive = new Date(1.9).getTime();
     const negative = new Date(-1.9).getTime();
+    const dateOnly = new Date("1970-01-01").getTime();
     const parsed = new Date("2026-04-10T14:00:00.123456789Z").getTime();
+    const clipped = new Date(8640000000000001).getTime();
     ({
       nowIsInteger: now === Math.trunc(now),
       currentIsInteger: current === Math.trunc(current),
+      prototypeGetTime: typeof Date.prototype.getTime,
+      prototypeValueOf: typeof Date.prototype.valueOf,
       positive,
       negative,
+      dateOnly,
       parsed,
+      clippedIsNaN: clipped !== clipped,
+      valueOf: new Date(5).valueOf(),
     });
   `).run();
 
   assert.deepEqual(result, {
     nowIsInteger: true,
     currentIsInteger: true,
+    prototypeGetTime: 'function',
+    prototypeValueOf: 'function',
     positive: 1,
     negative: -1,
+    dateOnly: 0,
     parsed: expectedParsed,
+    clippedIsNaN: true,
+    valueOf: 5,
   });
 });
 

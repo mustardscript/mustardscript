@@ -4,6 +4,19 @@ impl Runtime {
     fn string_receiver(&self, value: Value, method: &str) -> JsliteResult<String> {
         match value {
             Value::String(value) => Ok(value),
+            Value::Object(object) => match &self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::StringObject(value) => Ok(value.clone()),
+                ObjectKind::NumberObject(value) => self.to_string(Value::Number(*value)),
+                ObjectKind::BooleanObject(value) => self.to_string(Value::Bool(*value)),
+                _ => Err(JsliteError::runtime(format!(
+                    "TypeError: String.prototype.{method} called on incompatible receiver",
+                ))),
+            },
             _ => Err(JsliteError::runtime(format!(
                 "TypeError: String.prototype.{method} called on incompatible receiver",
             ))),

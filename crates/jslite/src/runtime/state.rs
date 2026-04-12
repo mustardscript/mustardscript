@@ -44,6 +44,9 @@ pub(super) enum Value {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub(super) enum BuiltinFunction {
+    FunctionCall,
+    FunctionApply,
+    FunctionBind,
     ArrayCtor,
     ArrayFrom,
     ArrayOf,
@@ -129,6 +132,7 @@ pub(super) enum BuiltinFunction {
     DateCtor,
     DateNow,
     DateGetTime,
+    DateValueOf,
     DateToISOString,
     DateToJSON,
     DateGetUTCFullYear,
@@ -213,6 +217,7 @@ pub(super) enum ObjectKind {
     Console,
     Intl,
     FunctionPrototype(Value),
+    BoundFunction(BoundFunctionData),
     Error(String),
     Date(DateObject),
     RegExp(RegExpObject),
@@ -221,6 +226,13 @@ pub(super) enum ObjectKind {
     BooleanObject(bool),
     IntlDateTimeFormat(IntlDateTimeFormatObject),
     IntlNumberFormat(IntlNumberFormatObject),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct BoundFunctionData {
+    pub(super) target: Value,
+    pub(super) this_value: Value,
+    pub(super) args: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

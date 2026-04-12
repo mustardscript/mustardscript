@@ -480,6 +480,11 @@ fn measure_object_bytes(object: &PlainObject) -> usize {
         + measure_properties_bytes(&object.properties)
         + match &object.kind {
             ObjectKind::FunctionPrototype(constructor) => extra_value_bytes(constructor),
+            ObjectKind::BoundFunction(bound) => {
+                extra_value_bytes(&bound.target)
+                    + extra_value_bytes(&bound.this_value)
+                    + bound.args.iter().map(extra_value_bytes).sum::<usize>()
+            }
             ObjectKind::Error(name) => name.len(),
             ObjectKind::RegExp(regex) => regex.pattern.len() + regex.flags.len(),
             ObjectKind::StringObject(value) => value.len(),

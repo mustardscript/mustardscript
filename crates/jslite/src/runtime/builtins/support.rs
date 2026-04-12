@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
+use time::{Date, Month, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::*;
 
@@ -41,8 +41,39 @@ pub(super) fn current_time_millis() -> f64 {
 }
 
 pub(super) fn parse_date_timestamp_ms(value: &str) -> f64 {
-    OffsetDateTime::parse(value, &Rfc3339)
-        .map(|datetime| (datetime.unix_timestamp_nanos() as f64 / 1_000_000.0).trunc())
+    OffsetDateTime::parse(value, &Rfc3339).map_or_else(
+        |_| parse_date_only_timestamp_ms(value),
+        |datetime| (datetime.unix_timestamp_nanos() as f64 / 1_000_000.0).trunc(),
+    )
+}
+
+pub(super) fn time_clip(timestamp_ms: f64) -> f64 {
+    if !timestamp_ms.is_finite() || timestamp_ms.abs() > 8_640_000_000_000_000.0 {
+        f64::NAN
+    } else {
+        timestamp_ms.trunc()
+    }
+}
+
+fn parse_date_only_timestamp_ms(value: &str) -> f64 {
+    let mut parts = value.split('-');
+    let (Some(year), Some(month), Some(day), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return f64::NAN;
+    };
+    let (Ok(year), Ok(month), Ok(day)) =
+        (year.parse::<i32>(), month.parse::<u8>(), day.parse::<u8>())
+    else {
+        return f64::NAN;
+    };
+    let Ok(month) = Month::try_from(month) else {
+        return f64::NAN;
+    };
+    Date::from_calendar_date(year, month, day)
+        .ok()
+        .and_then(|date| date.with_hms(0, 0, 0).ok())
+        .map(|datetime| datetime.assume_utc().unix_timestamp() as f64 * 1_000.0)
         .unwrap_or(f64::NAN)
 }
 

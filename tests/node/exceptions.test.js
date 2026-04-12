@@ -67,6 +67,37 @@ test('run catches resumed host capability errors inside guest try/catch', async 
   ]);
 });
 
+test('run matches supported Error constructor message, cause, and fail-closed option semantics', async () => {
+  const result = await runtime(`
+    const empty = new Error(undefined);
+    const caused = new Error('boom', { cause: 1 });
+    let unsupported;
+    try {
+      new Error('boom', 1);
+    } catch (error) {
+      unsupported = [error.name, error.message];
+    }
+    ({
+      emptyMessage: empty.message,
+      causedMessage: caused.message,
+      causedValue: caused.cause,
+      causedCtor: caused.constructor === Error,
+      unsupported,
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    emptyMessage: '',
+    causedMessage: 'boom',
+    causedValue: 1,
+    causedCtor: true,
+    unsupported: [
+      'TypeError',
+      'Error options must be an object in the supported surface',
+    ],
+  });
+});
+
 test('finally runs for return, break, and continue completions', async () => {
   const result = await runtime(`
     let events = [];

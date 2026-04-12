@@ -115,11 +115,10 @@ impl Runtime {
             ));
         }
         let timestamp_ms = match args {
-            [] => current_time_millis(),
+            [] => time_clip(current_time_millis()),
             [value] => self.date_timestamp_ms_from_value(value.clone())?,
             _ => unreachable!(),
-        }
-        .trunc();
+        };
         Ok(Value::Object(self.insert_object(
             IndexMap::new(),
             ObjectKind::Date(DateObject { timestamp_ms }),
@@ -137,6 +136,11 @@ impl Runtime {
 
     pub(crate) fn call_date_get_time(&self, this_value: Value) -> JsliteResult<Value> {
         let date = self.date_receiver(this_value, "getTime")?;
+        Ok(Value::Number(self.date_object(date)?.timestamp_ms))
+    }
+
+    pub(crate) fn call_date_value_of(&self, this_value: Value) -> JsliteResult<Value> {
+        let date = self.date_receiver(this_value, "valueOf")?;
         Ok(Value::Number(self.date_object(date)?.timestamp_ms))
     }
 
@@ -205,21 +209,26 @@ impl Runtime {
     }
 
     pub(crate) fn date_timestamp_ms_from_value(&self, value: Value) -> JsliteResult<f64> {
-        match value {
-            Value::Number(value) => Ok(value.trunc()),
-            Value::String(value) => Ok(parse_date_timestamp_ms(&value).trunc()),
+        let timestamp_ms = match value {
+            Value::Number(value) => value,
+            Value::String(value) => parse_date_timestamp_ms(&value),
             Value::Object(object) if self.is_date_object(object) => {
-                Ok(self.date_object(object)?.timestamp_ms)
+                self.date_object(object)?.timestamp_ms
             }
-            Value::Undefined => Ok(f64::NAN),
-            _ => Err(JsliteError::runtime(
-                "TypeError: Date currently supports only numeric, string, or Date arguments",
-            )),
-        }
+            Value::Undefined => f64::NAN,
+            _ => {
+                return Err(JsliteError::runtime(
+                    "TypeError: Date currently supports only numeric, string, or Date arguments",
+                ));
+            }
+        };
+        Ok(time_clip(timestamp_ms))
     }
 
     pub(crate) fn call_error_ctor(&mut self, args: &[Value], name: &str) -> JsliteResult<Value> {
-        self.make_error_object(name, args, None, None)
+        let options = args.get(1).cloned().unwrap_or(Value::Undefined);
+        let cause = self.error_options_cause(options)?;
+        self.make_error_object(name, args, None, None, cause)
     }
 
     pub(crate) fn call_number_ctor(&self, args: &[Value]) -> JsliteResult<Value> {
@@ -662,6 +671,32 @@ impl Runtime {
                     Err(JsliteError::runtime(error.to_string()))
                 }
             }
+        }
+    }
+}
+
+impl Runtime {
+    fn error_options_cause(&self, options: Value) -> JsliteResult<Option<Option<Value>>> {
+        match options {
+            Value::Undefined | Value::Null => Ok(None),
+            Value::Object(object) => {
+                let object = self
+                    .objects
+                    .get(object)
+                    .ok_or_else(|| JsliteError::runtime("object missing"))?;
+                let cause = object.properties.get("cause").cloned();
+                Ok(Some(cause))
+            }
+            Value::Array(array) => {
+                let array = self
+                    .arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                Ok(Some(array.properties.get("cause").cloned()))
+            }
+            _ => Err(JsliteError::runtime(
+                "TypeError: Error options must be an object in the supported surface",
+            )),
         }
     }
 }

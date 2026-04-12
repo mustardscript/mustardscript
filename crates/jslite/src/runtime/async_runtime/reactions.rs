@@ -63,9 +63,51 @@ impl Runtime {
                 }
                 Ok(())
             }
+            Value::BuiltinFunction(function)
+                if matches!(
+                    function,
+                    BuiltinFunction::FunctionCall
+                        | BuiltinFunction::FunctionApply
+                        | BuiltinFunction::FunctionBind
+                ) =>
+            {
+                match self.call_callable(
+                    Value::BuiltinFunction(function),
+                    Value::Undefined,
+                    args,
+                )? {
+                    RunState::Completed(value) => self.resolve_promise(target, value),
+                    RunState::PushedFrame => Ok(()),
+                    RunState::StartedAsync(value) => {
+                        let promise = self.coerce_to_promise(value)?;
+                        self.attach_dependent(promise, target)
+                    }
+                    RunState::Suspended { .. } => Err(JsliteError::runtime(
+                        "promise reactions do not support synchronous host suspensions",
+                    )),
+                }
+            }
             Value::BuiltinFunction(function) => {
                 let value = self.call_builtin(function, Value::Undefined, args)?;
                 self.resolve_promise(target, value)
+            }
+            Value::Object(object)
+                if self
+                    .objects
+                    .get(object)
+                    .is_some_and(|object| matches!(object.kind, ObjectKind::BoundFunction(_))) =>
+            {
+                match self.call_callable(Value::Object(object), Value::Undefined, args)? {
+                    RunState::Completed(value) => self.resolve_promise(target, value),
+                    RunState::PushedFrame => Ok(()),
+                    RunState::StartedAsync(value) => {
+                        let promise = self.coerce_to_promise(value)?;
+                        self.attach_dependent(promise, target)
+                    }
+                    RunState::Suspended { .. } => Err(JsliteError::runtime(
+                        "promise reactions do not support synchronous host suspensions",
+                    )),
+                }
             }
             Value::HostFunction(capability) => {
                 let outstanding =
@@ -119,6 +161,7 @@ impl Runtime {
         let error = self.make_error_object(
             "AggregateError",
             &[Value::String("All promises were rejected".to_string())],
+            None,
             None,
             None,
         )?;

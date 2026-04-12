@@ -8,6 +8,11 @@ impl Runtime {
         args: &[Value],
     ) -> JsliteResult<Value> {
         match function {
+            BuiltinFunction::FunctionCall
+            | BuiltinFunction::FunctionApply
+            | BuiltinFunction::FunctionBind => Err(JsliteError::runtime(
+                "internal function helper should be dispatched through call semantics",
+            )),
             BuiltinFunction::ArrayCtor => self.call_array_ctor(args),
             BuiltinFunction::ArrayFrom => self.call_array_from(args),
             BuiltinFunction::ArrayOf => self.call_array_of(args),
@@ -132,6 +137,7 @@ impl Runtime {
             )),
             BuiltinFunction::DateNow => Ok(Value::Number(current_time_millis())),
             BuiltinFunction::DateGetTime => self.call_date_get_time(this_value),
+            BuiltinFunction::DateValueOf => self.call_date_value_of(this_value),
             BuiltinFunction::DateToISOString => self.call_date_to_iso_string(this_value),
             BuiltinFunction::DateToJSON => self.call_date_to_json(this_value),
             BuiltinFunction::DateGetUTCFullYear => self.call_date_get_utc_full_year(this_value),

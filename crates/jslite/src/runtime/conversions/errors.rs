@@ -7,11 +7,11 @@ impl Runtime {
         args: &[Value],
         code: Option<String>,
         details: Option<Value>,
+        cause: Option<Option<Value>>,
     ) -> JsliteResult<Value> {
-        let message = if let Some(value) = args.first() {
-            self.to_string(value.clone())?
-        } else {
-            String::new()
+        let message = match args.first() {
+            Some(Value::Undefined) | None => String::new(),
+            Some(value) => self.to_string(value.clone())?,
         };
         let mut properties = IndexMap::from([
             ("name".to_string(), Value::String(name.to_string())),
@@ -22,6 +22,9 @@ impl Runtime {
         }
         if let Some(details) = details {
             properties.insert("details".to_string(), details);
+        }
+        if let Some(cause) = cause {
+            properties.insert("cause".to_string(), cause.unwrap_or(Value::Undefined));
         }
         let object = self.insert_object(properties, ObjectKind::Error(name.to_string()))?;
         Ok(Value::Object(object))
@@ -37,7 +40,7 @@ impl Runtime {
             }
             _ => ("Error".to_string(), message.to_string()),
         };
-        self.make_error_object(&name, &[Value::String(detail)], None, None)
+        self.make_error_object(&name, &[Value::String(detail)], None, None, None)
     }
 
     pub(in crate::runtime) fn value_from_host_error(
@@ -53,6 +56,7 @@ impl Runtime {
             &[Value::String(error.message)],
             error.code,
             details,
+            None,
         )
     }
 

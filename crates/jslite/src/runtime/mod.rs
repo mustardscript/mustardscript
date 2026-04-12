@@ -213,7 +213,53 @@ impl Runtime {
                     }
                 }
             }
+            Value::BuiltinFunction(function)
+                if matches!(
+                    function,
+                    BuiltinFunction::FunctionCall
+                        | BuiltinFunction::FunctionApply
+                        | BuiltinFunction::FunctionBind
+                ) =>
+            {
+                let base_depth = self.frames.len();
+                match self.call_callable(Value::BuiltinFunction(function), this_arg, args)? {
+                    RunState::Completed(value) => Ok(value),
+                    RunState::PushedFrame => {
+                        self.run_until_frame_depth(base_depth, options.host_suspension_message)?;
+                        self.frames
+                            .last_mut()
+                            .and_then(|frame| frame.stack.pop())
+                            .ok_or_else(|| JsliteError::runtime("missing callback result"))
+                    }
+                    RunState::StartedAsync(value) => Ok(value),
+                    RunState::Suspended { .. } => {
+                        Err(JsliteError::runtime(options.host_suspension_message))
+                    }
+                }
+            }
             Value::BuiltinFunction(function) => self.call_builtin(function, this_arg, args),
+            Value::Object(object)
+                if self
+                    .objects
+                    .get(object)
+                    .is_some_and(|object| matches!(object.kind, ObjectKind::BoundFunction(_))) =>
+            {
+                let base_depth = self.frames.len();
+                match self.call_callable(Value::Object(object), this_arg, args)? {
+                    RunState::Completed(value) => Ok(value),
+                    RunState::PushedFrame => {
+                        self.run_until_frame_depth(base_depth, options.host_suspension_message)?;
+                        self.frames
+                            .last_mut()
+                            .and_then(|frame| frame.stack.pop())
+                            .ok_or_else(|| JsliteError::runtime("missing callback result"))
+                    }
+                    RunState::StartedAsync(value) => Ok(value),
+                    RunState::Suspended { .. } => {
+                        Err(JsliteError::runtime(options.host_suspension_message))
+                    }
+                }
+            }
             Value::HostFunction(capability) => {
                 if !options.allow_host_suspension || self.current_async_boundary_index().is_none() {
                     return Err(JsliteError::runtime(options.host_suspension_message));

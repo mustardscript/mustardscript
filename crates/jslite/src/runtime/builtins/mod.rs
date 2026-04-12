@@ -19,7 +19,7 @@ use self::support::{
     date_time_from_timestamp_ms, expand_regexp_replacement_template, find_string_pattern,
     format_en_us_number_grouped, format_iso_datetime, normalize_relative_bound,
     normalize_search_index, parse_date_timestamp_ms, replace_all_string_matches,
-    replace_first_string_match, split_string_by_pattern,
+    replace_first_string_match, split_string_by_pattern, time_clip,
 };
 pub(crate) use promises::PromiseSetupPolicy;
 pub(crate) use support::RegExpMatchData;

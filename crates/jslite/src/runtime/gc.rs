@@ -167,6 +167,13 @@ impl Runtime {
                 if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
                     self.mark_value(constructor, &mut marks, &mut worklist);
                 }
+                if let ObjectKind::BoundFunction(bound) = &object.kind {
+                    self.mark_value(&bound.target, &mut marks, &mut worklist);
+                    self.mark_value(&bound.this_value, &mut marks, &mut worklist);
+                    for value in &bound.args {
+                        self.mark_value(value, &mut marks, &mut worklist);
+                    }
+                }
                 for value in object.properties.values() {
                     self.mark_value(value, &mut marks, &mut worklist);
                 }

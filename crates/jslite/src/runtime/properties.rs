@@ -1,6 +1,15 @@
 use super::*;
 
 impl Runtime {
+    fn function_helper_method(key: &str) -> Option<Value> {
+        match key {
+            "call" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionCall)),
+            "apply" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionApply)),
+            "bind" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionBind)),
+            _ => None,
+        }
+    }
+
     pub(super) fn array_length(&self, array: ArrayKey) -> JsliteResult<usize> {
         Ok(self
             .arrays
@@ -67,7 +76,8 @@ impl Runtime {
             )),
             "length" => Some(Value::Number(Self::function_length(&function.params) as f64)),
             "prototype" => closure_ref.prototype.map(Value::Object),
-            _ => closure_ref.properties.get(key).cloned(),
+            _ => Self::function_helper_method(key)
+                .or_else(|| closure_ref.properties.get(key).cloned()),
         })
     }
 
@@ -101,6 +111,9 @@ impl Runtime {
 
     fn builtin_function_name(function: BuiltinFunction) -> &'static str {
         match function {
+            BuiltinFunction::FunctionCall => "call",
+            BuiltinFunction::FunctionApply => "apply",
+            BuiltinFunction::FunctionBind => "bind",
             BuiltinFunction::ArrayCtor => "Array",
             BuiltinFunction::ArrayFrom => "from",
             BuiltinFunction::ArrayOf => "of",
@@ -186,6 +199,7 @@ impl Runtime {
             BuiltinFunction::DateCtor => "Date",
             BuiltinFunction::DateNow => "now",
             BuiltinFunction::DateGetTime => "getTime",
+            BuiltinFunction::DateValueOf => "valueOf",
             BuiltinFunction::DateToISOString => "toISOString",
             BuiltinFunction::DateToJSON => "toJSON",
             BuiltinFunction::DateGetUTCFullYear => "getUTCFullYear",
@@ -239,6 +253,9 @@ impl Runtime {
 
     fn builtin_function_length(function: BuiltinFunction) -> usize {
         match function {
+            BuiltinFunction::FunctionCall => 1,
+            BuiltinFunction::FunctionApply => 2,
+            BuiltinFunction::FunctionBind => 1,
             BuiltinFunction::ArrayCtor => 1,
             BuiltinFunction::ArrayFrom => 1,
             BuiltinFunction::ArrayOf => 0,
@@ -324,6 +341,7 @@ impl Runtime {
             BuiltinFunction::DateCtor => 7,
             BuiltinFunction::DateNow => 0,
             BuiltinFunction::DateGetTime => 0,
+            BuiltinFunction::DateValueOf => 0,
             BuiltinFunction::DateToISOString => 0,
             BuiltinFunction::DateToJSON => 0,
             BuiltinFunction::DateGetUTCFullYear => 0,
@@ -434,7 +452,7 @@ impl Runtime {
                 },
                 BuiltinFunction::IntlDateTimeFormatCtor if key == "supportedLocalesOf" => None,
                 BuiltinFunction::IntlNumberFormatCtor if key == "supportedLocalesOf" => None,
-                _ => None,
+                _ => Self::function_helper_method(key),
             },
         }
     }
@@ -455,7 +473,30 @@ impl Runtime {
                     return Ok(true);
                 }
                 Ok(match &object.kind {
-                    ObjectKind::FunctionPrototype(_) => key == "constructor",
+                    ObjectKind::FunctionPrototype(constructor) => {
+                        key == "constructor"
+                            || matches!(
+                                (constructor, key.as_str()),
+                                (
+                                    Value::BuiltinFunction(BuiltinFunction::DateCtor),
+                                    "getTime"
+                                        | "valueOf"
+                                        | "toISOString"
+                                        | "toJSON"
+                                        | "getUTCFullYear"
+                                        | "getUTCMonth"
+                                        | "getUTCDate"
+                                        | "getUTCHours"
+                                        | "getUTCMinutes"
+                                        | "getUTCSeconds"
+                                )
+                            )
+                    }
+                    ObjectKind::BoundFunction(_) => {
+                        key == "name"
+                            || key == "length"
+                            || matches!(key.as_str(), "call" | "apply" | "bind")
+                    }
                     ObjectKind::Date(_) => matches!(
                         key.as_str(),
                         "getTime"
@@ -493,6 +534,23 @@ impl Runtime {
                     ObjectKind::StringObject(value) => {
                         key == "constructor"
                             || key == "length"
+                            || matches!(
+                                key.as_str(),
+                                "trim"
+                                    | "includes"
+                                    | "startsWith"
+                                    | "endsWith"
+                                    | "slice"
+                                    | "substring"
+                                    | "toLowerCase"
+                                    | "toUpperCase"
+                                    | "split"
+                                    | "replace"
+                                    | "replaceAll"
+                                    | "search"
+                                    | "match"
+                                    | "matchAll"
+                            )
                             || array_index_from_property_key(&key)
                                 .is_some_and(|index| value.chars().nth(index).is_some())
                     }
@@ -602,7 +660,10 @@ impl Runtime {
                 Ok(self.builtin_function_own_property(function, &key).is_some())
             }
             Value::Closure(closure) => self.closure_has_own_property(closure, &key),
-            Value::HostFunction(_) => Ok(false),
+            Value::HostFunction(_) => Ok(matches!(
+                key.as_str(),
+                "name" | "length" | "call" | "apply" | "bind"
+            )),
             Value::Undefined
             | Value::Null
             | Value::Bool(_)
@@ -790,10 +851,10 @@ impl Runtime {
                     .objects
                     .get(object)
                     .ok_or_else(|| JsliteError::runtime("object missing"))?;
-                if let ObjectKind::Date(date) = &object.kind {
+                if let ObjectKind::Date(_) = &object.kind {
                     let built_in = match key.as_str() {
                         "getTime" => Some(Value::BuiltinFunction(BuiltinFunction::DateGetTime)),
-                        "valueOf" => Some(Value::Number(date.timestamp_ms)),
+                        "valueOf" => Some(Value::BuiltinFunction(BuiltinFunction::DateValueOf)),
                         "toISOString" => {
                             Some(Value::BuiltinFunction(BuiltinFunction::DateToISOString))
                         }
@@ -852,6 +913,35 @@ impl Runtime {
                     {
                         return Ok(Value::String(ch.to_string()));
                     }
+                    if let Some(method) = match key.as_str() {
+                        "trim" => Some(Value::BuiltinFunction(BuiltinFunction::StringTrim)),
+                        "includes" => Some(Value::BuiltinFunction(BuiltinFunction::StringIncludes)),
+                        "startsWith" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::StringStartsWith))
+                        }
+                        "endsWith" => Some(Value::BuiltinFunction(BuiltinFunction::StringEndsWith)),
+                        "slice" => Some(Value::BuiltinFunction(BuiltinFunction::StringSlice)),
+                        "substring" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::StringSubstring))
+                        }
+                        "toLowerCase" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::StringToLowerCase))
+                        }
+                        "toUpperCase" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::StringToUpperCase))
+                        }
+                        "split" => Some(Value::BuiltinFunction(BuiltinFunction::StringSplit)),
+                        "replace" => Some(Value::BuiltinFunction(BuiltinFunction::StringReplace)),
+                        "replaceAll" => {
+                            Some(Value::BuiltinFunction(BuiltinFunction::StringReplaceAll))
+                        }
+                        "search" => Some(Value::BuiltinFunction(BuiltinFunction::StringSearch)),
+                        "match" => Some(Value::BuiltinFunction(BuiltinFunction::StringMatch)),
+                        "matchAll" => Some(Value::BuiltinFunction(BuiltinFunction::StringMatchAll)),
+                        _ => None,
+                    } {
+                        return Ok(method);
+                    }
                 }
                 if matches!(object.kind, ObjectKind::Intl) {
                     let built_in = match key.as_str() {
@@ -905,10 +995,81 @@ impl Runtime {
                 if let Some(value) = object.properties.get(&key) {
                     return Ok(value.clone());
                 }
-                if let ObjectKind::FunctionPrototype(constructor) = &object.kind
-                    && key == "constructor"
-                {
-                    return Ok(constructor.clone());
+                if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
+                    if key == "constructor" {
+                        return Ok(constructor.clone());
+                    }
+                    if matches!(
+                        constructor,
+                        Value::BuiltinFunction(BuiltinFunction::DateCtor)
+                    ) {
+                        match key.as_str() {
+                            "getTime" => {
+                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateGetTime));
+                            }
+                            "valueOf" => {
+                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateValueOf));
+                            }
+                            "toISOString" => {
+                                return Ok(Value::BuiltinFunction(
+                                    BuiltinFunction::DateToISOString,
+                                ));
+                            }
+                            "toJSON" => {
+                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateToJSON));
+                            }
+                            "getUTCFullYear" => {
+                                return Ok(Value::BuiltinFunction(
+                                    BuiltinFunction::DateGetUTCFullYear,
+                                ));
+                            }
+                            "getUTCMonth" => {
+                                return Ok(Value::BuiltinFunction(
+                                    BuiltinFunction::DateGetUTCMonth,
+                                ));
+                            }
+                            "getUTCDate" => {
+                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateGetUTCDate));
+                            }
+                            "getUTCHours" => {
+                                return Ok(Value::BuiltinFunction(
+                                    BuiltinFunction::DateGetUTCHours,
+                                ));
+                            }
+                            "getUTCMinutes" => {
+                                return Ok(Value::BuiltinFunction(
+                                    BuiltinFunction::DateGetUTCMinutes,
+                                ));
+                            }
+                            "getUTCSeconds" => {
+                                return Ok(Value::BuiltinFunction(
+                                    BuiltinFunction::DateGetUTCSeconds,
+                                ));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                if let ObjectKind::BoundFunction(bound) = &object.kind {
+                    match key.as_str() {
+                        "name" => {
+                            return Ok(Value::String(format!(
+                                "bound {}",
+                                self.callable_name(&bound.target)?
+                            )));
+                        }
+                        "length" => {
+                            let length = self
+                                .callable_length(&bound.target)?
+                                .saturating_sub(bound.args.len());
+                            return Ok(Value::Number(length as f64));
+                        }
+                        _ => {
+                            if let Some(method) = Self::function_helper_method(&key) {
+                                return Ok(method);
+                            }
+                        }
+                    }
                 }
                 if let ObjectKind::StringObject(_) = &object.kind
                     && key == "constructor"
@@ -930,17 +1091,28 @@ impl Runtime {
                 {
                     return Ok(value);
                 }
-                if matches!(
-                    object.kind,
-                    ObjectKind::Plain
+                if key == "constructor" {
+                    match &object.kind {
+                        ObjectKind::Plain
                         | ObjectKind::Global
                         | ObjectKind::Math
                         | ObjectKind::Json
                         | ObjectKind::Intl
-                        | ObjectKind::Error(_)
-                ) && key == "constructor"
-                {
-                    return Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCtor));
+                        | ObjectKind::Intl
+                        | ObjectKind::BoundFunction(_) => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCtor));
+                        }
+                        ObjectKind::Error(name) => {
+                            let ctor = match name.as_str() {
+                                "TypeError" => BuiltinFunction::TypeErrorCtor,
+                                "ReferenceError" => BuiltinFunction::ReferenceErrorCtor,
+                                "RangeError" => BuiltinFunction::RangeErrorCtor,
+                                _ => BuiltinFunction::ErrorCtor,
+                            };
+                            return Ok(Value::BuiltinFunction(ctor));
+                        }
+                        _ => {}
+                    }
                 }
                 Ok(Value::Undefined)
             }
@@ -1055,6 +1227,11 @@ impl Runtime {
             Value::Closure(closure) => Ok(self
                 .closure_own_property(closure, &key)?
                 .unwrap_or(Value::Undefined)),
+            Value::HostFunction(capability) => match key.as_str() {
+                "name" => Ok(Value::String(capability)),
+                "length" => Ok(Value::Number(0.0)),
+                _ => Ok(Self::function_helper_method(&key).unwrap_or(Value::Undefined)),
+            },
             Value::String(value) => match key.as_str() {
                 "length" => Ok(Value::Number(value.chars().count() as f64)),
                 "trim" => Ok(Value::BuiltinFunction(BuiltinFunction::StringTrim)),
@@ -1085,6 +1262,52 @@ impl Runtime {
             )),
             _ => Ok(Value::Undefined),
         }
+    }
+
+    fn callable_name(&self, value: &Value) -> JsliteResult<String> {
+        Ok(match value {
+            Value::Closure(closure) => match self.closure_own_property(*closure, "name")? {
+                Some(Value::String(name)) => name,
+                _ => String::new(),
+            },
+            Value::BuiltinFunction(function) => Self::builtin_function_name(*function).to_string(),
+            Value::HostFunction(capability) => capability.clone(),
+            Value::Object(object) => match &self
+                .objects
+                .get(*object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::BoundFunction(bound) => {
+                    format!("bound {}", self.callable_name(&bound.target)?)
+                }
+                _ => String::new(),
+            },
+            _ => String::new(),
+        })
+    }
+
+    fn callable_length(&self, value: &Value) -> JsliteResult<usize> {
+        Ok(match value {
+            Value::Closure(closure) => match self.closure_own_property(*closure, "length")? {
+                Some(Value::Number(length)) => length.max(0.0) as usize,
+                _ => 0,
+            },
+            Value::BuiltinFunction(function) => Self::builtin_function_length(*function),
+            Value::HostFunction(_) => 0,
+            Value::Object(object) => match &self
+                .objects
+                .get(*object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::BoundFunction(bound) => self
+                    .callable_length(&bound.target)?
+                    .saturating_sub(bound.args.len()),
+                _ => 0,
+            },
+            _ => 0,
+        })
     }
 
     pub(super) fn set_property(

@@ -124,6 +124,7 @@ impl Runtime {
                 }
                 ObjectKind::StringObject(value) => value.clone(),
                 ObjectKind::BooleanObject(value) => value.to_string(),
+                ObjectKind::BoundFunction(_) => "[Function]".to_string(),
                 _ => self
                     .error_summary(object)?
                     .unwrap_or_else(|| "[object Object]".to_string()),

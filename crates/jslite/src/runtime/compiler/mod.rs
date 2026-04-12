@@ -44,7 +44,7 @@ struct Compiler {
 impl Compiler {
     fn compile_root(&mut self, statements: &[Stmt], span: SourceSpan) -> JsliteResult<usize> {
         let mut context = CompileContext::default();
-        self.emit_block_prologue(&mut context, statements)?;
+        self.emit_block_prologue(&mut context, statements, true)?;
         let mut produced_result = false;
         for (index, statement) in statements.iter().enumerate() {
             let is_last = index + 1 == statements.len();
@@ -96,7 +96,7 @@ impl Compiler {
                 }
             }
         }
-        self.emit_block_prologue(&mut context, &function.body)?;
+        self.emit_block_prologue(&mut context, &function.body, false)?;
         for statement in &function.body {
             self.compile_stmt(&mut context, statement)?;
         }
@@ -119,6 +119,7 @@ impl Compiler {
         &mut self,
         context: &mut CompileContext,
         statements: &[Stmt],
+        root_scope: bool,
     ) -> JsliteResult<()> {
         let mut declared = HashSet::new();
         let bindings = collect_block_bindings(statements);
@@ -130,9 +131,10 @@ impl Compiler {
             }
         }
         for function in bindings.functions {
-            if declared.insert(function.name.clone()) {
+            let function_name = function.name.clone();
+            if declared.insert(function_name.clone()) {
                 context.code.push(Instruction::DeclareName {
-                    name: function.name.clone(),
+                    name: function_name.clone(),
                     mutable: false,
                 });
             }
@@ -143,8 +145,20 @@ impl Compiler {
                 .code
                 .push(Instruction::InitializePattern(Pattern::Identifier {
                     span: function.expr.span,
-                    name: function.name,
+                    name: function_name.clone(),
                 }));
+            if root_scope {
+                context
+                    .code
+                    .push(Instruction::LoadName("globalThis".to_string()));
+                context
+                    .code
+                    .push(Instruction::LoadName(function_name.clone()));
+                context.code.push(Instruction::SetPropStatic {
+                    name: function_name,
+                });
+                context.code.push(Instruction::Pop);
+            }
         }
         Ok(())
     }
