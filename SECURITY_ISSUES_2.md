@@ -4,9 +4,13 @@ This file records confirmed findings from the second threat-model review.
 Entries below were validated with focused local repros on the current checkout
 as of 2026-04-11 and are believed to still be present on `main`.
 
+Update on `codex/security-issues-2`: every finding below remains confirmed on
+`main` at `aa61959`, and each item is fixed in this worktree branch with
+targeted tests.
+
 ## Critical: `JSLITE_NATIVE_LIBRARY_PATH` and `NAPI_RS_NATIVE_LIBRARY_PATH` allow arbitrary JavaScript execution at import time
 
-**Status:** confirmed on `main`
+**Status:** confirmed on `main`; fixed on `codex/security-issues-2`
 
 **Affected files**
 
@@ -47,7 +51,7 @@ JavaScript/module resolution.
 
 ## Critical: a fake optional prebuilt package can hijack addon loading and skip the source build
 
-**Status:** confirmed on `main`
+**Status:** confirmed on `main`; fixed on `codex/security-issues-2`
 
 **Affected files**
 
@@ -99,7 +103,7 @@ module lookup. Refuse JavaScript fallbacks for prebuilt package loading.
 
 ## High: proxy-backed host values bypass the plain-data boundary and execute traps during serialization
 
-**Status:** confirmed on `main`
+**Status:** confirmed on `main`; fixed on `codex/security-issues-2`
 
 **Affected files**
 
@@ -151,7 +155,7 @@ proxy traps.
 
 ## High: cyclic host values still recurse to raw `RangeError` instead of a fail-closed boundary error
 
-**Status:** confirmed on `main`
+**Status:** confirmed on `main`; fixed on `codex/security-issues-2`
 
 **Affected files**
 
@@ -196,7 +200,7 @@ cycles into a typed boundary rejection.
 
 ## Critical: the `Progress` single-use replay guard can be bypassed by mutating serialized snapshot nonce bytes
 
-**Status:** confirmed on `main`
+**Status:** confirmed on `main`; fixed on `codex/security-issues-2`
 
 **Affected files**
 
@@ -247,7 +251,7 @@ remove non-semantic serialized fields from the replay identity calculation.
 
 ## Critical: forged snapshots can lower the serialized instruction counter and bypass post-load budget enforcement
 
-**Status:** confirmed on `main`
+**Status:** confirmed on `main`; fixed on `codex/security-issues-2`
 
 **Affected files**
 
@@ -301,7 +305,7 @@ trusting the stored value.
 
 ## High: native helper loops bypass instruction budgeting and cancellation
 
-**Status:** confirmed on `main`
+**Status:** confirmed on `main`; fixed on `codex/security-issues-2`
 
 **Affected files**
 
@@ -357,7 +361,7 @@ move these helpers onto execution paths that cannot monopolize the process.
 
 ## Medium: process-global `Progress` caches leak host memory outside guest limits
 
-**Status:** confirmed on `main`
+**Status:** confirmed on `main`; fixed on `codex/security-issues-2`
 
 **Affected files**
 
