@@ -2,39 +2,25 @@ use super::*;
 
 #[test]
 fn round_trips_program_and_snapshot() {
-    let program =
-        compile("const value = fetch_data(1); value + 2;").expect("compile should succeed");
+    let source = "const value = fetch_data(1); value + 2;";
+    let program = compile(source).expect("compile should succeed");
     let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
     let program_bytes = dump_program(&bytecode).expect("program dump should succeed");
     let loaded_program = load_program(&program_bytes).expect("program load should succeed");
     assert_eq!(loaded_program.root, bytecode.root);
     assert_eq!(loaded_program.functions.len(), bytecode.functions.len());
 
-    let step = start(
-        &program,
-        ExecutionOptions {
-            capabilities: vec!["fetch_data".to_string()],
-            ..ExecutionOptions::default()
-        },
-    )
-    .expect("execution should suspend");
-    let suspension = match step {
-        ExecutionStep::Suspended(suspension) => suspension,
-        other => panic!("expected suspension, got {other:?}"),
-    };
+    let suspension = suspend(source, &["fetch_data"]);
     let snapshot_bytes = dump_snapshot(&suspension.snapshot).expect("snapshot dump should succeed");
     let loaded_snapshot = load_snapshot(&snapshot_bytes).expect("snapshot load should succeed");
     let resumed = resume(
         loaded_snapshot,
-        ResumePayload::Value(StructuredValue::Number(StructuredNumber::Finite(1.0))),
+        ResumePayload::Value(number(1.0)),
     )
     .expect("resume should succeed");
     match resumed {
         ExecutionStep::Completed(value) => {
-            assert_eq!(
-                value,
-                StructuredValue::Number(StructuredNumber::Finite(3.0))
-            );
+            assert_eq!(value, number(3.0));
         }
         other => panic!("expected completion, got {other:?}"),
     }
@@ -82,20 +68,7 @@ fn rejects_cross_version_serialized_programs() {
 
 #[test]
 fn rejects_invalid_snapshot_frame_state() {
-    let program =
-        compile("const value = fetch_data(1); value + 2;").expect("compile should succeed");
-    let step = start(
-        &program,
-        ExecutionOptions {
-            capabilities: vec!["fetch_data".to_string()],
-            ..ExecutionOptions::default()
-        },
-    )
-    .expect("execution should suspend");
-    let mut suspension = match step {
-        ExecutionStep::Suspended(suspension) => *suspension,
-        other => panic!("expected suspension, got {other:?}"),
-    };
+    let mut suspension = suspend("const value = fetch_data(1); value + 2;", &["fetch_data"]);
     suspension.snapshot.runtime.frames[0].ip = 999;
     let bytes = dump_snapshot(&suspension.snapshot).expect("snapshot should serialize");
     let error = load_snapshot(&bytes).expect_err("invalid snapshot should fail validation");
@@ -108,20 +81,7 @@ fn rejects_invalid_snapshot_frame_state() {
 
 #[test]
 fn rejects_cross_version_snapshots() {
-    let program =
-        compile("const value = fetch_data(1); value + 2;").expect("compile should succeed");
-    let step = start(
-        &program,
-        ExecutionOptions {
-            capabilities: vec!["fetch_data".to_string()],
-            ..ExecutionOptions::default()
-        },
-    )
-    .expect("execution should suspend");
-    let suspension = match step {
-        ExecutionStep::Suspended(suspension) => suspension,
-        other => panic!("expected suspension, got {other:?}"),
-    };
+    let suspension = suspend("const value = fetch_data(1); value + 2;", &["fetch_data"]);
 
     let mut bytes = dump_snapshot(&suspension.snapshot).expect("snapshot should serialize");
     bytes[0] = bytes[0].saturating_add(1);

@@ -2,45 +2,28 @@ use super::*;
 
 #[test]
 fn suspends_and_resumes_host_capability_calls() {
-    let program = compile(
+    let suspension = suspend(
         r#"
             const value = fetch_data(41);
             value + 1;
             "#,
-    )
-    .expect("source should compile");
-
-    let step = start(
-        &program,
-        ExecutionOptions {
-            capabilities: vec!["fetch_data".to_string()],
-            ..ExecutionOptions::default()
-        },
-    )
-    .expect("execution should start");
-
-    let suspension = match step {
-        ExecutionStep::Suspended(suspension) => suspension,
-        other => panic!("expected suspension, got {other:?}"),
-    };
+        &["fetch_data"],
+    );
     assert_eq!(suspension.capability, "fetch_data");
     assert_eq!(
         suspension.args,
-        vec![StructuredValue::Number(StructuredNumber::Finite(41.0))]
+        vec![number(41.0)]
     );
 
     let resumed = resume(
         suspension.snapshot,
-        ResumePayload::Value(StructuredValue::Number(StructuredNumber::Finite(41.0))),
+        ResumePayload::Value(number(41.0)),
     )
     .expect("resume should succeed");
 
     match resumed {
         ExecutionStep::Completed(value) => {
-            assert_eq!(
-                value,
-                StructuredValue::Number(StructuredNumber::Finite(42.0))
-            );
+            assert_eq!(value, number(42.0));
         }
         other => panic!("expected completion, got {other:?}"),
     }
@@ -48,31 +31,17 @@ fn suspends_and_resumes_host_capability_calls() {
 
 #[test]
 fn console_callbacks_resume_with_undefined_guest_results() {
-    let program = compile(
+    let suspension = suspend(
         r#"
             const logged = console.log(41);
             logged === undefined ? 2 : 0;
             "#,
-    )
-    .expect("source should compile");
-
-    let step = start(
-        &program,
-        ExecutionOptions {
-            capabilities: vec!["console.log".to_string()],
-            ..ExecutionOptions::default()
-        },
-    )
-    .expect("execution should suspend on console.log");
-
-    let suspension = match step {
-        ExecutionStep::Suspended(suspension) => suspension,
-        other => panic!("expected suspension, got {other:?}"),
-    };
+        &["console.log"],
+    );
     assert_eq!(suspension.capability, "console.log");
     assert_eq!(
         suspension.args,
-        vec![StructuredValue::Number(StructuredNumber::Finite(41.0))]
+        vec![number(41.0)]
     );
 
     let resumed = resume(
@@ -83,10 +52,7 @@ fn console_callbacks_resume_with_undefined_guest_results() {
 
     match resumed {
         ExecutionStep::Completed(value) => {
-            assert_eq!(
-                value,
-                StructuredValue::Number(StructuredNumber::Finite(2.0))
-            );
+            assert_eq!(value, number(2.0));
         }
         other => panic!("expected completion, got {other:?}"),
     }
@@ -94,7 +60,7 @@ fn console_callbacks_resume_with_undefined_guest_results() {
 
 #[test]
 fn catches_host_errors_after_resume() {
-    let program = compile(
+    let suspension = suspend(
         r#"
             let captured;
             try {
@@ -104,22 +70,8 @@ fn catches_host_errors_after_resume() {
             }
             captured;
             "#,
-    )
-    .expect("source should compile");
-
-    let step = start(
-        &program,
-        ExecutionOptions {
-            capabilities: vec!["fetch_data".to_string()],
-            ..ExecutionOptions::default()
-        },
-    )
-    .expect("execution should suspend");
-
-    let suspension = match step {
-        ExecutionStep::Suspended(suspension) => suspension,
-        other => panic!("expected suspension, got {other:?}"),
-    };
+        &["fetch_data"],
+    );
 
     let resumed = resume(
         suspension.snapshot,
@@ -129,7 +81,7 @@ fn catches_host_errors_after_resume() {
             code: Some("E_UPSTREAM".to_string()),
             details: Some(StructuredValue::Object(IndexMap::from([(
                 "status".to_string(),
-                StructuredValue::Number(StructuredNumber::Finite(503.0)),
+                number(503.0),
             )]))),
         }),
     )
@@ -143,7 +95,7 @@ fn catches_host_errors_after_resume() {
                     StructuredValue::String("CapabilityError".to_string()),
                     StructuredValue::String("upstream failed".to_string()),
                     StructuredValue::String("E_UPSTREAM".to_string()),
-                    StructuredValue::Number(StructuredNumber::Finite(503.0)),
+                    number(503.0),
                 ])
             );
         }
