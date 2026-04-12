@@ -12,6 +12,12 @@ impl Runtime {
         }
     }
 
+    pub(crate) fn call_array_of(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        Ok(Value::Array(
+            self.insert_array(args.to_vec(), IndexMap::new())?,
+        ))
+    }
+
     pub(crate) fn call_array_from(&mut self, args: &[Value]) -> JsliteResult<Value> {
         let iterable = args.first().cloned().unwrap_or(Value::Undefined);
         let map_fn = match args.get(1).cloned() {
@@ -146,6 +152,53 @@ impl Runtime {
             elements[start..end].to_vec(),
             IndexMap::new(),
         )?))
+    }
+
+    pub(crate) fn call_array_concat(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "concat")?;
+        let mut elements = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements
+            .clone();
+        for value in args {
+            match value {
+                Value::Array(other) => {
+                    let other = self
+                        .arrays
+                        .get(*other)
+                        .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                    elements.extend(other.elements.iter().cloned());
+                }
+                other => elements.push(other.clone()),
+            }
+        }
+        Ok(Value::Array(self.insert_array(elements, IndexMap::new())?))
+    }
+
+    pub(crate) fn call_array_at(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+        let array = self.array_receiver(this_value, "at")?;
+        let elements = &self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements;
+        let index = self.to_integer(args.first().cloned().unwrap_or(Value::Undefined))?;
+        let index = if index < 0 {
+            elements.len() as i64 + index
+        } else {
+            index
+        };
+        if index < 0 || index >= elements.len() as i64 {
+            Ok(Value::Undefined)
+        } else {
+            Ok(elements[index as usize].clone())
+        }
     }
 
     pub(crate) fn call_array_join(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {

@@ -50,6 +50,7 @@ impl<'a> Lowerer<'a> {
             BinaryOperator::Multiplication => Some(BinaryOp::Mul),
             BinaryOperator::Division => Some(BinaryOp::Div),
             BinaryOperator::Remainder => Some(BinaryOp::Rem),
+            BinaryOperator::Exponential => Some(BinaryOp::Pow),
             BinaryOperator::Equality => Some(BinaryOp::Eq),
             BinaryOperator::Inequality => Some(BinaryOp::NotEq),
             BinaryOperator::StrictEquality => Some(BinaryOp::StrictEq),

@@ -115,6 +115,20 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'additional Array and Math helpers',
+    source: `
+      const merged = Array.of(1, 2, 3).concat([4, 5], 6);
+      ({
+        merged,
+        atFront: merged.at(0),
+        atFromEnd: merged.at(-2),
+        atMissing: merged.at(99),
+        logOne: Math.log(1),
+        logZero: Math.log(0),
+      });
+    `,
+  },
+  {
     name: 'string helpers',
     source: `
       const value = "  MiXeD Example  ";
@@ -182,15 +196,56 @@ const DIFFERENTIAL_CASES = [
       const object = { alpha: 2, zebra: 1 };
       const array = [4, 5];
       array.extra = 6;
+      const assignedTarget = { alpha: 2 };
+      const assigned = Object.assign(
+        assignedTarget,
+        { zebra: 1 },
+        undefined,
+        { beta: 3 },
+      );
+      const assignedArrayTarget = [4];
+      assignedArrayTarget.label = 7;
+      const assignedArray = Object.assign(
+        assignedArrayTarget,
+        { 1: 5 },
+        [6],
+        null,
+        { extra: 8 },
+      );
       ({
         keys: Object.keys(object),
         values: Object.values(object),
         entries: Object.entries(array),
         hasOwn: Object.hasOwn(object, "alpha"),
+        assignObject: [
+          assigned === assignedTarget,
+          assigned.alpha,
+          assigned.beta,
+          assigned.zebra,
+        ],
+        assignArray: [
+          assignedArray === assignedArrayTarget,
+          assignedArray[0],
+          assignedArray[1],
+          assignedArray.extra,
+          assignedArray.label,
+        ],
         pow: Math.pow(2, 5),
         sqrt: Math.sqrt(81),
         trunc: Math.trunc(-3.9),
         sign: Math.sign(-12),
+      });
+    `,
+  },
+  {
+    name: 'sequence expressions and exponentiation',
+    source: `
+      let steps = 0;
+      const number = (steps = steps + 1, steps = steps + 2, 2 ** 3 ** 2);
+      ({
+        number,
+        steps,
+        bigint: String(2n ** 5n),
       });
     `,
   },

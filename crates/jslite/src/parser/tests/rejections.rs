@@ -82,3 +82,14 @@ fn rejects_for_await_of() {
             .contains("for await...of is not supported")
     );
 }
+
+#[test]
+fn rejects_exponent_assignment_operator() {
+    let error = compile("let value = 2; value **= 3;")
+        .expect_err("unsupported assignment operators should fail closed");
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported assignment operator in v1")
+    );
+}

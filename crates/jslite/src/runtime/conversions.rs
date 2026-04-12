@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use num_bigint::BigInt;
-use num_traits::Zero;
+use num_traits::{ToPrimitive, Zero};
 
 use super::*;
 
@@ -71,7 +71,7 @@ impl Runtime {
                     ))
                 }
             }
-            BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem
+            BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem | BinaryOp::Pow
                 if matches!(left, Value::BigInt(_)) || matches!(right, Value::BigInt(_)) =>
             {
                 self.apply_bigint_binary(operator, left, right)
@@ -87,6 +87,9 @@ impl Runtime {
             )),
             BinaryOp::Rem => Ok(Value::Number(
                 self.to_number(left)? % self.to_number(right)?,
+            )),
+            BinaryOp::Pow => Ok(Value::Number(
+                self.to_number(left)?.powf(self.to_number(right)?),
             )),
             BinaryOp::Eq | BinaryOp::StrictEq => Ok(Value::Bool(strict_equal(&left, &right))),
             BinaryOp::NotEq | BinaryOp::StrictNotEq => {
@@ -519,6 +522,17 @@ impl Runtime {
                 } else {
                     Ok(Value::BigInt(left % right))
                 }
+            }
+            BinaryOp::Pow => {
+                if right < BigInt::zero() {
+                    return Err(JsliteError::runtime(
+                        "RangeError: BigInt exponent must be non-negative",
+                    ));
+                }
+                let exponent = right.to_u32().ok_or_else(|| {
+                    JsliteError::runtime("RangeError: BigInt exponent is too large")
+                })?;
+                Ok(Value::BigInt(left.pow(exponent)))
             }
             _ => unreachable!(),
         }

@@ -1,6 +1,33 @@
 use super::*;
 
 impl Runtime {
+    fn object_helper_type_error() -> JsliteError {
+        JsliteError::runtime(
+            "TypeError: Object helpers currently only support plain objects and arrays",
+        )
+    }
+
+    fn ensure_assign_target(&self, value: Value) -> JsliteResult<()> {
+        match value {
+            Value::Object(object) => match self
+                .objects
+                .get(object)
+                .ok_or_else(|| JsliteError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::Plain => Ok(()),
+                _ => Err(Self::object_helper_type_error()),
+            },
+            Value::Array(array) => {
+                self.arrays
+                    .get(array)
+                    .ok_or_else(|| JsliteError::runtime("array missing"))?;
+                Ok(())
+            }
+            _ => Err(Self::object_helper_type_error()),
+        }
+    }
+
     fn enumerable_keys(&self, value: Value) -> JsliteResult<Vec<String>> {
         match value {
             Value::Object(object) => {
@@ -28,9 +55,7 @@ impl Runtime {
                 keys.extend(extra);
                 Ok(keys)
             }
-            _ => Err(JsliteError::runtime(
-                "TypeError: Object helpers currently only support plain objects and arrays",
-            )),
+            _ => Err(Self::object_helper_type_error()),
         }
     }
 
@@ -61,10 +86,45 @@ impl Runtime {
                         .ok_or_else(|| JsliteError::runtime("array property missing"))
                 }
             }
-            _ => Err(JsliteError::runtime(
-                "TypeError: Object helpers currently only support plain objects and arrays",
-            )),
+            _ => Err(Self::object_helper_type_error()),
         }
+    }
+
+    pub(crate) fn call_object_assign(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let target = args.first().cloned().unwrap_or(Value::Undefined);
+        self.ensure_assign_target(target.clone())?;
+
+        for source in args.iter().skip(1).cloned() {
+            if matches!(source, Value::Null | Value::Undefined) {
+                continue;
+            }
+            self.ensure_assign_target(source.clone())?;
+            let keys = self.enumerable_keys(source.clone())?;
+            for key in keys {
+                let value = self.enumerable_value(source.clone(), &key)?;
+                self.set_property(target.clone(), Value::String(key), value)?;
+            }
+        }
+
+        Ok(target)
+    }
+
+    pub(crate) fn reject_object_create(&self) -> JsliteResult<Value> {
+        Err(JsliteError::runtime(
+            "TypeError: Object.create is unsupported because prototype semantics are deferred",
+        ))
+    }
+
+    pub(crate) fn reject_object_freeze(&self) -> JsliteResult<Value> {
+        Err(JsliteError::runtime(
+            "TypeError: Object.freeze is unsupported because property descriptor semantics are deferred",
+        ))
+    }
+
+    pub(crate) fn reject_object_seal(&self) -> JsliteResult<Value> {
+        Err(JsliteError::runtime(
+            "TypeError: Object.seal is unsupported because property descriptor semantics are deferred",
+        ))
     }
 
     pub(crate) fn call_object_keys(&mut self, args: &[Value]) -> JsliteResult<Value> {
@@ -165,11 +225,7 @@ impl Runtime {
                     .is_some_and(|index| index < array.elements.len())
                     || array.properties.contains_key(&key)
             }
-            _ => {
-                return Err(JsliteError::runtime(
-                    "TypeError: Object helpers currently only support plain objects and arrays",
-                ));
-            }
+            _ => return Err(Self::object_helper_type_error()),
         };
         Ok(Value::Bool(has_key))
     }

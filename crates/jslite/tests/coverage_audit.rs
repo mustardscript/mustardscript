@@ -133,6 +133,9 @@ fn expr_contains(expr: &Expr, predicate: &impl Fn(&Expr) -> bool) -> bool {
             .iter()
             .any(|entry| stmt_contains_expr(entry, predicate)),
         Expr::Unary { argument, .. } => expr_contains(argument, predicate),
+        Expr::Sequence { expressions, .. } => expressions
+            .iter()
+            .any(|entry| expr_contains(entry, predicate)),
         Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => {
             expr_contains(left, predicate) || expr_contains(right, predicate)
         }
@@ -243,6 +246,33 @@ fn ir_covers_regexp_literals() {
                 flags,
                 ..
             } if pattern == "(?<word>[a-z]+)\\d+" && flags == "gi"
+        )
+    ));
+}
+
+#[test]
+fn ir_covers_sequence_and_exponentiation_expressions() {
+    let program = compile(
+        r#"
+        let total = 0;
+        const value = (total = total + 1, total = total + 2, 2 ** 3 ** 2);
+        [value, total];
+        "#,
+    )
+    .expect("source should compile");
+
+    assert!(stmt_contains_expr(
+        &program.script.body[1],
+        &|expr| matches!(expr, Expr::Sequence { .. })
+    ));
+    assert!(stmt_contains_expr(
+        &program.script.body[1],
+        &|expr| matches!(
+            expr,
+            Expr::Binary {
+                operator: jslite::ir::BinaryOp::Pow,
+                ..
+            }
         )
     ));
 }

@@ -8,17 +8,17 @@ impl Runtime {
         args: &[Value],
     ) -> JsliteResult<Value> {
         match function {
-            BuiltinFunction::ArrayCtor => {
-                let array = self.insert_array(args.to_vec(), IndexMap::new())?;
-                Ok(Value::Array(array))
-            }
+            BuiltinFunction::ArrayCtor => self.call_array_of(args),
             BuiltinFunction::ArrayFrom => self.call_array_from(args),
+            BuiltinFunction::ArrayOf => self.call_array_of(args),
             BuiltinFunction::ArrayIsArray => {
                 Ok(Value::Bool(matches!(args.first(), Some(Value::Array(_)))))
             }
             BuiltinFunction::ArrayPush => self.call_array_push(this_value, args),
             BuiltinFunction::ArrayPop => self.call_array_pop(this_value),
             BuiltinFunction::ArraySlice => self.call_array_slice(this_value, args),
+            BuiltinFunction::ArrayConcat => self.call_array_concat(this_value, args),
+            BuiltinFunction::ArrayAt => self.call_array_at(this_value, args),
             BuiltinFunction::ArrayJoin => self.call_array_join(this_value, args),
             BuiltinFunction::ArrayIncludes => self.call_array_includes(this_value, args),
             BuiltinFunction::ArrayIndexOf => self.call_array_index_of(this_value, args),
@@ -42,6 +42,10 @@ impl Runtime {
                     Ok(Value::Object(object))
                 }
             }
+            BuiltinFunction::ObjectAssign => self.call_object_assign(args),
+            BuiltinFunction::ObjectCreate => self.reject_object_create(),
+            BuiltinFunction::ObjectFreeze => self.reject_object_freeze(),
+            BuiltinFunction::ObjectSeal => self.reject_object_seal(),
             BuiltinFunction::ObjectFromEntries => self.call_object_from_entries(args),
             BuiltinFunction::ObjectKeys => self.call_object_keys(args),
             BuiltinFunction::ObjectValues => self.call_object_values(args),
@@ -149,6 +153,7 @@ impl Runtime {
             BuiltinFunction::MathSqrt => self.call_math_sqrt(args),
             BuiltinFunction::MathTrunc => self.call_math_trunc(args),
             BuiltinFunction::MathSign => self.call_math_sign(args),
+            BuiltinFunction::MathLog => self.call_math_log(args),
             BuiltinFunction::JsonStringify => self.call_json_stringify(args),
             BuiltinFunction::JsonParse => self.call_json_parse(args),
         }
@@ -273,6 +278,10 @@ impl Runtime {
                 (
                     "sign".to_string(),
                     Value::BuiltinFunction(BuiltinFunction::MathSign),
+                ),
+                (
+                    "log".to_string(),
+                    Value::BuiltinFunction(BuiltinFunction::MathLog),
                 ),
             ]),
             ObjectKind::Math,

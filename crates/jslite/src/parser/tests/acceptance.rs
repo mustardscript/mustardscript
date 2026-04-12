@@ -54,3 +54,15 @@ fn parses_array_for_of_with_const_binding() {
 
     assert!(matches!(program.script.body[1], Stmt::ForOf { .. }));
 }
+
+#[test]
+fn parses_sequence_and_exponentiation_expressions() {
+    compile(
+        r#"
+        let total = 0;
+        const value = (total = total + 1, total = total + 2, 2 ** 3 ** 2);
+        [value, total];
+        "#,
+    )
+    .expect("sequence expressions and exponentiation should compile");
+}

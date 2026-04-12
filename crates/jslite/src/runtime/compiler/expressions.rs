@@ -62,6 +62,18 @@ impl Compiler {
                 self.compile_expr(context, right)?;
                 context.code.push(Instruction::Binary(*operator));
             }
+            Expr::Sequence { expressions, .. } => {
+                if expressions.is_empty() {
+                    context.code.push(Instruction::PushUndefined);
+                } else {
+                    for (index, expression) in expressions.iter().enumerate() {
+                        self.compile_expr(context, expression)?;
+                        if index + 1 != expressions.len() {
+                            context.code.push(Instruction::Pop);
+                        }
+                    }
+                }
+            }
             Expr::Logical {
                 operator,
                 left,

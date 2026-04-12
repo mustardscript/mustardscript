@@ -130,6 +130,13 @@ fn bigint_mixed_number_edges_fail_closed() {
               return error.message;
             }
           })(),
+          (() => {
+            try {
+              return 2n ** 2;
+            } catch (error) {
+              return error.message;
+            }
+          })(),
         ];
         "#,
     )
@@ -143,6 +150,37 @@ fn bigint_mixed_number_edges_fail_closed() {
             "cannot compare BigInt and Number values".into(),
             "cannot coerce BigInt values to numbers".into(),
             "unary plus is not supported for BigInt values".into(),
+            "cannot mix BigInt and Number values in arithmetic".into(),
+        ])
+    );
+}
+
+#[test]
+fn bigint_exponentiation_supports_non_negative_bigint_exponents_only() {
+    let program = compile(
+        r#"
+        [
+          String(2n ** 5n),
+          String((-3n) ** 3n),
+          (() => {
+            try {
+              return String(2n ** (-1n));
+            } catch (error) {
+              return error.message;
+            }
+          })(),
+        ];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            "32".into(),
+            "-27".into(),
+            "BigInt exponent must be non-negative".into(),
         ])
     );
 }

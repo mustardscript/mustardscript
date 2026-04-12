@@ -156,6 +156,13 @@ impl Runtime {
         }))
     }
 
+    pub(crate) fn call_math_log(&self, args: &[Value]) -> JsliteResult<Value> {
+        Ok(Value::Number(
+            self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?
+                .ln(),
+        ))
+    }
+
     pub(crate) fn call_json_stringify(&self, args: &[Value]) -> JsliteResult<Value> {
         let value = args.first().cloned().unwrap_or(Value::Undefined);
         let mut traversal = JsonBigIntTraversalState::default();

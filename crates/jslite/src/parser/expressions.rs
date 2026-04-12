@@ -246,6 +246,16 @@ impl<'a> Lowerer<'a> {
                 left: Box::new(self.lower_expr(&expression.left)?),
                 right: Box::new(self.lower_expr(&expression.right)?),
             }),
+            Expression::SequenceExpression(expression) => {
+                let mut expressions = Vec::with_capacity(expression.expressions.len());
+                for entry in &expression.expressions {
+                    expressions.push(self.lower_expr(entry)?);
+                }
+                Some(Expr::Sequence {
+                    span: expression.span.into(),
+                    expressions,
+                })
+            }
             Expression::LogicalExpression(expression) => Some(Expr::Logical {
                 span: expression.span.into(),
                 operator: self.lower_logical_op(expression.operator, expression.span)?,
@@ -349,13 +359,6 @@ impl<'a> Lowerer<'a> {
                 pattern: expression.regex.pattern.text.as_str().to_string(),
                 flags: expression.regex.flags.to_inline_string().to_string(),
             }),
-            Expression::SequenceExpression(expression) => {
-                self.unsupported(
-                    "sequence expressions are not supported in v1",
-                    Some(expression.span.into()),
-                );
-                None
-            }
             Expression::Super(expression) => {
                 self.unsupported("super is not supported in v1", Some(expression.span.into()));
                 None

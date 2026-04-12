@@ -1,0 +1,198 @@
+# Close Language Gaps
+
+This plan audits the requested language-gap list against the current
+repository state and turns only the verified remaining gaps into implementation
+work.
+
+Audit sources:
+
+- `README.md`
+- `docs/LANGUAGE.md`
+- `crates/jslite/src/parser.rs`
+- `crates/jslite/src/runtime/compiler`
+- `crates/jslite/src/runtime/env.rs`
+- `crates/jslite/src/runtime/builtins`
+- `tests/node/basic.test.js`
+- `tests/node/async-runtime.test.js`
+- `tests/node/iteration.test.js`
+- targeted runtime probes run on 2026-04-11
+
+## Requested Items: Audit Status
+
+### Already implemented
+
+- [x] Rest parameters work for function declarations, function expressions, and
+  arrow functions.
+- [x] `for...of` already works over arrays, strings, `Map`, `Set`, and the
+  supported iterator helper objects.
+- [x] Array helpers already implemented: `push`, `pop`, `map`, `filter`,
+  `reduce`, `find`, `some`, `every`, `slice`, `join`, `sort`, `includes`, and
+  `Array.from`.
+- [x] String helpers already implemented: `split`, `trim`, `includes`,
+  `startsWith`, `endsWith`, `slice`, `substring`, `replace`, `match`,
+  `toLowerCase`, and `toUpperCase`.
+- [x] Object helpers already implemented: `Object.keys`, `Object.values`,
+  `Object.entries`, `Object.fromEntries`, and `Object.hasOwn`.
+- [x] Promise instance methods `.then(...)`, `.catch(...)`, and
+  `.finally(...)` already work.
+- [x] Iterable constructor inputs like `new Set(values)` and `new Map(entries)`
+  already work for the supported iterable surface.
+- [x] `Math.pow`, `Math.sqrt`, `Math.trunc`, and `Math.sign` already work.
+- [x] `Math.log` already works.
+- [x] `Promise.all`, `Promise.race`, `Promise.any`, and
+  `Promise.allSettled` already work.
+- [x] `Array.of`, `Array.prototype.concat`, and `Array.prototype.at` already
+  work.
+- [x] `Object.assign` already works for the supported plain-object and array
+  helper surface.
+- [x] Sequence expressions and binary `**` now work end to end.
+- [x] `Object.create`, `Object.freeze`, and `Object.seal` now fail closed with
+  explicit guest-safe runtime errors.
+
+### Still missing or narrower than requested
+
+- [ ] Object spread is rejected during validation.
+- [ ] Array spread is rejected during validation.
+- [ ] Spread arguments are rejected during validation.
+- [ ] Default parameters are rejected during validation.
+- [ ] Default destructuring is rejected during validation.
+- [ ] Destructuring assignment is rejected during validation.
+- [ ] `var` is rejected; only `let` and `const` are supported.
+- [ ] Update expressions are rejected during validation.
+- [ ] `delete` is rejected during validation.
+- [ ] `for...in` is rejected during validation.
+- [ ] `for await...of` is rejected during validation.
+- [ ] `for...of` header forms remain narrow: the header must declare exactly one
+  `let` or `const` binding, and assignment-target headers stay rejected.
+- [ ] Array holes in literals are rejected during validation.
+- [ ] `instanceof` is rejected as an unsupported binary operator.
+- [ ] Array helper gaps remaining: `splice`, `flat`, and `flatMap`.
+- [ ] Math helper gaps remaining: `Math.random`.
+
+### Missing but not in the original requested list
+
+- [ ] Computed object literal keys are rejected during validation.
+- [ ] Object literal methods are rejected during validation.
+- [ ] `in` is rejected as an unsupported binary operator.
+- [ ] Logical assignment operators `||=` and `&&=` are unsupported.
+- [ ] Additional unsupported compound assignments worth auditing for priority:
+  `%=`, `**=`, and bitwise assignment operators.
+
+### Stale assumptions corrected by this audit
+
+- [x] Default parameters and default destructuring no longer parse and then
+  fail later at runtime; they now fail closed at validation.
+- [x] Rest parameters are no longer a runtime hole.
+- [x] `for...of` is no longer arrays-only.
+
+## Execution Order
+
+### Phase 1: Low-risk library additions
+
+- [x] Add `Array.of`, `Array.prototype.concat`, `Array.prototype.at`, and
+  `Math.log`.
+- [ ] Add `Math.random` with an explicit documented nondeterminism policy.
+- [x] Add `Object.assign` without widening the host boundary or prototype
+  surface.
+- [x] Decide whether unsupported static `Object` helpers should fail with an
+  explicit guest-safe runtime error instead of surfacing as missing properties.
+- [x] Add differential tests and guest-safe failure tests for each new helper.
+- [x] Update `docs/LANGUAGE.md` and `LANGUAGE_GAPS.md` after each helper
+  cluster lands.
+
+### Phase 2: Mid-risk array and object helpers
+
+- [ ] Add `Array.prototype.splice` with correct in-place mutation and
+  return-array behavior.
+- [ ] Add `Array.prototype.flat` for the supported array-only surface.
+- [ ] Add `Array.prototype.flatMap` on top of the chosen `flat` depth rules.
+
+### Phase 3: Syntax and compiler gaps
+
+- [x] Add IR, compiler, and runtime support for `**`.
+- [ ] Add IR, compiler, and runtime support for `in` if it stays in scope for
+  the compatibility target.
+- [x] Add IR, compiler, and runtime support for sequence expressions.
+- [ ] Decide and implement sparse-array semantics so array holes can exist
+  consistently across literals, property access, helper methods, JSON, and the
+  host boundary.
+- [ ] Add lowering and runtime expansion for array spread and spread arguments
+  using the currently supported iterable surface.
+- [ ] Add lowering and runtime expansion for object spread using the documented
+  plain-object enumeration rules.
+- [ ] Add lowering for computed object literal keys and object literal methods
+  if they stay in scope for the compatibility target.
+- [ ] Add destructuring assignment lowering for identifier and member targets.
+- [ ] Add default parameter and default destructuring evaluation in
+  function-parameter scope.
+- [ ] Add update-expression lowering and semantics for prefix and postfix
+  `++` / `--`.
+- [ ] Add logical assignment operators `||=` and `&&=` if they stay in scope
+  for the compatibility target.
+- [ ] Add validation, diagnostics, and differential tests for the full syntax
+  cluster above.
+
+### Phase 4: Iteration and control-flow expansion
+
+- [ ] Broaden `for...of` headers beyond exactly one declared `let` / `const`
+  binding if that compatibility win is still desired.
+- [ ] Decide the supported `for...in` surface for plain objects and arrays,
+  including enumeration order and inherited-property behavior.
+- [ ] Decide the minimum `for await...of` surface: async arrays and guest
+  promises only, or a broader async-iterator protocol.
+- [ ] Implement the chosen `for...in` and `for await...of` surface with
+  snapshot and resume coverage where suspension is possible.
+
+### Phase 5: Hard semantic gaps that need design first
+
+- [ ] Decide whether `var` is being added at all. If yes, implement function
+  and global hoisting, redeclaration, and loop-scoping rules.
+- [ ] Decide conservative `delete` semantics for plain objects and arrays, and
+  document whether descriptor-level configurability remains deferred.
+- [ ] Decide the minimum prototype and constructor model needed for
+  `instanceof`.
+- [ ] Implement `instanceof` only after the prototype model is explicit and
+  tested.
+
+### Phase 6: Explicit rejections and non-goals
+
+- [x] Explicitly reject `Object.create` with a guest-safe runtime error instead
+  of leaving it absent as an undefined property.
+- [x] Explicitly reject `Object.freeze` with a guest-safe runtime error instead
+  of leaving it absent as an undefined property.
+- [x] Explicitly reject `Object.seal` with a guest-safe runtime error instead
+  of leaving it absent as an undefined property.
+- [x] Document these three helpers as intentional non-goals for the current
+  contract until prototype and descriptor semantics are deliberately expanded.
+- [x] Add tests that assert the rejection message for each helper.
+
+## Verification Matrix
+
+- [ ] Parser-facing syntax work adds positive coverage plus rejection snapshots
+  for nearby unsupported forms.
+- [ ] Runtime built-in work adds direct Node tests for success paths.
+- [ ] Runtime built-in work adds guest-safe failure tests for wrong receivers,
+  wrong arity, wrong callback types, and unsupported host-suspension cases.
+- [ ] Semantics-sensitive work adds differential tests against Node for the
+  supported subset.
+- [ ] Loop and iterator work adds snapshot and resume coverage when suspension
+  can occur mid-iteration.
+- [ ] Any new unsupported decision is documented in `docs/LANGUAGE.md` and
+  reflected in `LANGUAGE_GAPS.md`.
+
+## Explicit Deferrals / Non-Goals For This Plan
+
+- [ ] Full prototype semantics remain out of scope.
+- [ ] Descriptor-level object semantics remain out of scope.
+- [ ] Symbol-based iterable protocol support remains out of scope.
+- [x] `Object.create`, `Object.freeze`, and `Object.seal` are treated as
+  explicit rejections, not implementation targets, in the current plan.
+
+## Done Criteria For Each Checklist Item
+
+- [ ] Parser and validator behavior is explicit and fail-closed for unsupported
+  edge cases.
+- [ ] IR, compiler, and runtime support exists end to end.
+- [ ] Rust and Node tests cover success paths plus guest-safe failure behavior.
+- [ ] `docs/LANGUAGE.md` and `LANGUAGE_GAPS.md` are updated.
+- [ ] The gap is removed from this file only after verification.

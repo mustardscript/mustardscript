@@ -237,6 +237,8 @@ impl Runtime {
                         "push" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPush)),
                         "pop" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPop)),
                         "slice" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySlice)),
+                        "concat" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayConcat)),
+                        "at" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayAt)),
                         "join" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayJoin)),
                         "includes" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIncludes)),
                         "indexOf" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIndexOf)),
@@ -306,7 +308,14 @@ impl Runtime {
             Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "from" => {
                 Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFrom))
             }
+            Value::BuiltinFunction(BuiltinFunction::ArrayCtor) if key == "of" => {
+                Ok(Value::BuiltinFunction(BuiltinFunction::ArrayOf))
+            }
             Value::BuiltinFunction(BuiltinFunction::ObjectCtor) => match key.as_str() {
+                "assign" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectAssign)),
+                "create" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCreate)),
+                "freeze" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectFreeze)),
+                "seal" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectSeal)),
                 "fromEntries" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectFromEntries)),
                 "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectKeys)),
                 "values" => Ok(Value::BuiltinFunction(BuiltinFunction::ObjectValues)),

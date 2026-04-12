@@ -91,6 +91,12 @@ const FEATURE_CONTRACT = Object.freeze([
     coverage: [COVERAGE.GENERATED_AST, COVERAGE.EXHAUSTIVE_AST, COVERAGE.METAMORPHIC],
   },
   {
+    id: 'language.sequence-expressions',
+    title: 'sequence expressions',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.EXISTING],
+  },
+  {
     id: 'language.variable-declarations',
     title: 'let and const declarations',
     outcome: OUTCOME.NODE_PARITY,
@@ -273,14 +279,6 @@ const FEATURE_CONTRACT = Object.freeze([
     coverage: [COVERAGE.PROPERTY_NEGATIVE],
     source: '[1, , 2];',
     messageIncludes: 'array holes are not supported in v1',
-  },
-  {
-    id: 'validation.sequence-expressions',
-    title: 'sequence expressions are a validation reject',
-    outcome: OUTCOME.VALIDATION_REJECT,
-    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
-    source: '(1, 2);',
-    messageIncludes: 'sequence expressions are not supported in v1',
   },
   {
     id: 'validation.debugger',

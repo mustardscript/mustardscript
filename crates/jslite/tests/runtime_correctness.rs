@@ -112,3 +112,21 @@ fn conditional_expressions_do_not_corrupt_enclosing_object_literals() {
         ])
     );
 }
+
+#[test]
+fn sequence_expressions_preserve_left_to_right_side_effects_and_last_value() {
+    let program = compile(
+        r#"
+        let steps = 0;
+        const result = (steps = steps + 1, steps = steps + 2, 2 ** 3 ** 2);
+        [result, steps];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![number(512.0), number(3.0)])
+    );
+}

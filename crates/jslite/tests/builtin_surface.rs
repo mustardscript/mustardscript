@@ -322,6 +322,22 @@ fn object_helpers_enumerate_plain_objects_and_arrays_deterministically() {
         const object = { zebra: 1, alpha: 2 };
         const array = [4, 5];
         array.extra = 6;
+        const assignedObjectTarget = { alpha: 1 };
+        const assignedObject = Object.assign(
+          assignedObjectTarget,
+          { zebra: 2 },
+          undefined,
+          { beta: 3 },
+        );
+        const assignedArrayTarget = [4];
+        assignedArrayTarget.label = "seed";
+        const assignedArray = Object.assign(
+          assignedArrayTarget,
+          { 1: 5 },
+          [6],
+          null,
+          { extra: 7 },
+        );
         ({
           objectKeys: Object.keys(object),
           objectValues: Object.values(object),
@@ -331,6 +347,10 @@ fn object_helpers_enumerate_plain_objects_and_arrays_deterministically() {
           arrayEntries: Object.entries(array),
           hasOwnAlpha: Object.hasOwn(object, "alpha"),
           hasOwnMissing: Object.hasOwn(object, "missing"),
+          assignedObjectIdentity: assignedObject === assignedObjectTarget,
+          assignedObjectEntries: Object.entries(assignedObject),
+          assignedArrayIdentity: assignedArray === assignedArrayTarget,
+          assignedArrayEntries: Object.entries(assignedArray),
         });
         "#,
     )
@@ -373,6 +393,31 @@ fn object_helpers_enumerate_plain_objects_and_arrays_deterministically() {
             ),
             ("hasOwnAlpha".to_string(), StructuredValue::Bool(true)),
             ("hasOwnMissing".to_string(), StructuredValue::Bool(false)),
+            (
+                "assignedObjectIdentity".to_string(),
+                StructuredValue::Bool(true),
+            ),
+            (
+                "assignedObjectEntries".to_string(),
+                StructuredValue::Array(vec![
+                    StructuredValue::Array(vec!["alpha".into(), number(1.0)]),
+                    StructuredValue::Array(vec!["beta".into(), number(3.0)]),
+                    StructuredValue::Array(vec!["zebra".into(), number(2.0)]),
+                ]),
+            ),
+            (
+                "assignedArrayIdentity".to_string(),
+                StructuredValue::Bool(true),
+            ),
+            (
+                "assignedArrayEntries".to_string(),
+                StructuredValue::Array(vec![
+                    StructuredValue::Array(vec!["0".into(), number(6.0)]),
+                    StructuredValue::Array(vec!["1".into(), number(5.0)]),
+                    StructuredValue::Array(vec!["extra".into(), number(7.0)]),
+                    StructuredValue::Array(vec!["label".into(), "seed".into()]),
+                ]),
+            ),
         ]))
     );
 }
@@ -403,6 +448,49 @@ fn math_helpers_cover_numeric_transforms() {
         }
         other => panic!("expected array result, got {other:?}"),
     }
+}
+
+#[test]
+fn array_of_concat_at_and_log_cover_supported_surface() {
+    let program = compile(
+        r#"
+        const single = Array.of(7);
+        const merged = Array.of(1, 2, 3).concat([4, 5], 6);
+        [
+          single.length,
+          single[0],
+          merged,
+          merged.at(0),
+          merged.at(-2),
+          merged.at(99),
+          Math.log(1),
+          Math.round(Math.log(8) / Math.log(2)),
+        ];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            number(1.0),
+            number(7.0),
+            StructuredValue::Array(vec![
+                number(1.0),
+                number(2.0),
+                number(3.0),
+                number(4.0),
+                number(5.0),
+                number(6.0),
+            ]),
+            number(1.0),
+            number(5.0),
+            StructuredValue::Undefined,
+            number(0.0),
+            number(3.0),
+        ])
+    );
 }
 
 #[test]
@@ -484,6 +572,15 @@ fn match_all_and_date_helpers_cover_supported_surface() {
 
 #[test]
 fn new_builtins_fail_closed_for_unsupported_inputs() {
+    let object_assign = compile("Object.assign(1, { alpha: 1 });").expect("source should compile");
+    let error =
+        execute(&object_assign, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Object helpers currently only support plain objects and arrays")
+    );
+
     let array_from = compile("Array.from({ length: 1, 0: 'a' });").expect("source should compile");
     let error =
         execute(&array_from, ExecutionOptions::default()).expect_err("execution should fail");
@@ -500,6 +597,50 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
         error
             .to_string()
             .contains("Object.fromEntries expects an iterable of [key, value] pairs")
+    );
+
+    let object_create = compile("Object.create(null);").expect("source should compile");
+    let error =
+        execute(&object_create, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Object.create is unsupported because prototype semantics are deferred")
+    );
+
+    let object_freeze = compile("Object.freeze({ alpha: 1 });").expect("source should compile");
+    let error =
+        execute(&object_freeze, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(error.to_string().contains(
+        "Object.freeze is unsupported because property descriptor semantics are deferred"
+    ));
+
+    let object_seal = compile("Object.seal({ alpha: 1 });").expect("source should compile");
+    let error =
+        execute(&object_seal, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error.to_string().contains(
+            "Object.seal is unsupported because property descriptor semantics are deferred"
+        )
+    );
+
+    let concat_receiver =
+        compile("const concat = [1].concat; concat([2]);").expect("source should compile");
+    let error =
+        execute(&concat_receiver, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Array.prototype.concat called on incompatible receiver")
+    );
+
+    let at_receiver = compile("const at = [1].at; at(0);").expect("source should compile");
+    let error =
+        execute(&at_receiver, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Array.prototype.at called on incompatible receiver")
     );
 
     let match_all = compile(r#""abc".matchAll(/a/);"#).expect("source should compile");

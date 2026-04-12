@@ -233,6 +233,10 @@ pub enum Expr {
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    Sequence {
+        span: SourceSpan,
+        expressions: Vec<Expr>,
+    },
     Logical {
         span: SourceSpan,
         operator: LogicalOp,
@@ -322,6 +326,7 @@ pub enum BinaryOp {
     Mul,
     Div,
     Rem,
+    Pow,
     Eq,
     NotEq,
     StrictEq,

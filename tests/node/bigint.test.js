@@ -102,6 +102,13 @@ test('BigInt mixed edges and JSON.stringify fail closed with explicit errors', a
       })(),
       (() => {
         try {
+          return 2n ** 2;
+        } catch (error) {
+          return error.message;
+        }
+      })(),
+      (() => {
+        try {
           return JSON.stringify({ amount: 1n });
         } catch (error) {
           return error.message;
@@ -116,8 +123,42 @@ test('BigInt mixed edges and JSON.stringify fail closed with explicit errors', a
     'cannot compare BigInt and Number values',
     'cannot coerce BigInt values to numbers',
     'unary plus is not supported for BigInt values',
+    'cannot mix BigInt and Number values in arithmetic',
     'JSON.stringify does not support BigInt values',
   ]);
+});
+
+test('BigInt exponentiation supports non-negative BigInt exponents only', async () => {
+  const runtime = new Jslite(`
+    [
+      String(2n ** 5n),
+      String((-3n) ** 3n),
+      (() => {
+        try {
+          return String(2n ** (-1n));
+        } catch (error) {
+          return error.message;
+        }
+      })(),
+    ];
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, [
+    '32',
+    '-27',
+    'BigInt exponent must be non-negative',
+  ]);
+});
+
+test('unsupported exponent assignment still fails closed during validation', () => {
+  assert.throws(
+    () => new Jslite('let value = 2; value **= 3; value;'),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Validation' &&
+      error.message.includes('unsupported assignment operator in v1'),
+  );
 });
 
 test('BigInt values still fail closed at the structured host boundary', async () => {

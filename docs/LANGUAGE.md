@@ -40,10 +40,12 @@ extensions are called out explicitly instead of being implied.
 - `throw`, `try`, `catch`, and `finally`
 - common destructuring
 - assignment to identifiers and member expressions
+- sequence expressions
 - member access, calls, and `new` for supported built-ins
 - template literals
 - optional chaining
 - nullish coalescing
+- binary `**`
 - named host capability calls
 
 ## Supported Function Call Surface
@@ -86,6 +88,8 @@ extensions are called out explicitly instead of being implied.
 - guest code supports `BigInt` literals such as `123n`
 - exact-integer `+`, `-`, `*`, `/`, and `%` are supported when both operands
   are `BigInt`
+- exact-integer `**` is supported when both operands are `BigInt` and the
+  exponent is a non-negative `BigInt`
 - `typeof value` reports `"bigint"` for guest `BigInt` values
 - `BigInt` truthiness, string coercion, and property-key coercion are
   supported
@@ -162,12 +166,13 @@ extensions are called out explicitly instead of being implied.
 - labeled statements
 - object spread and object-literal methods
 - array spread and array holes
-- sequence expressions
 
 ## Explicit Deferrals
 
 - fully general Promise constructor and thenable-adoption edge cases,
   including hostile thenable cycles
+- unsupported assignment operators such as `**=`, `||=`, `&&=`, and the
+  bitwise and shift assignment families
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
 - default parameter evaluation
@@ -246,9 +251,12 @@ extensions are called out explicitly instead of being implied.
 
 - `Array.isArray`
 - `Array.from`
+- `Array.of`
 - `Array.prototype.push`
 - `Array.prototype.pop`
 - `Array.prototype.slice`
+- `Array.prototype.concat`
+- `Array.prototype.at`
 - `Array.prototype.join`
 - `Array.prototype.includes`
 - `Array.prototype.indexOf`
@@ -267,6 +275,7 @@ extensions are called out explicitly instead of being implied.
 - `Object.keys`
 - `Object.values`
 - `Object.entries`
+- `Object.assign`
 - `Object.fromEntries`
 - `Object.hasOwn`
 - `Map.prototype.get`
@@ -323,6 +332,7 @@ extensions are called out explicitly instead of being implied.
 - `Math.sqrt`
 - `Math.trunc`
 - `Math.sign`
+- `Math.log`
 - `JSON.stringify`
 - `JSON.parse`
 - `console.log` when the host provides a `console.log` callback
@@ -340,12 +350,25 @@ extensions are called out explicitly instead of being implied.
 - `Array.from` accepts the supported iterable surface and an optional
   synchronous map function plus `thisArg`; inside async guest flows, guest map
   callbacks may yield promise values for downstream helpers such as `Promise.all`
+- `Array.of` always creates a fresh guest array from its arguments and does not
+  expose the special single-length constructor behavior from full JavaScript
+- `Array.prototype.concat` returns a fresh guest array, spreads only actual
+  guest array arguments, and appends every other value as a single element
+- `Array.prototype.at` truncates the requested index, supports negative offsets
+  from the end, and returns `undefined` when the computed index is out of range
 - `Array.prototype.reduce` throws a runtime `TypeError` when called on an empty
   array without an explicit initial value
 - `Array.prototype.sort` sorts in place, returns the original array value, and
   accepts either the default string ordering or a synchronous comparator
+- `Object.assign` mutates and returns the original target, copies enumerable
+  properties from later plain-object or array sources in the runtime's
+  documented helper enumeration order, and skips `null` / `undefined` sources
 - `Object.fromEntries` accepts the supported iterable surface and expects each
   produced item to be a guest array pair
+- `Object.create` is exposed only as an explicit runtime `TypeError` because
+  full prototype semantics remain deferred
+- `Object.freeze` and `Object.seal` are exposed only as explicit runtime
+  `TypeError`s because property descriptor semantics remain deferred
 - `String.prototype.split`, `replace`, `replaceAll`, `search`, and `match`
   accept string-coercible patterns and real `RegExp` instances
 - `String.prototype.matchAll` returns a guest iterator over match-result arrays;

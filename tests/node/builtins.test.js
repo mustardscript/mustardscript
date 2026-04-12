@@ -17,6 +17,22 @@ test('run supports conservative array, string, object, and Math helper surface',
     values.push(3);
     const object = { zebra: 1, alpha: 2 };
     const arrayEntries = Object.entries(values);
+    const assignedObjectTarget = { alpha: 1 };
+    const assignedObject = Object.assign(
+      assignedObjectTarget,
+      { zebra: 2 },
+      undefined,
+      { beta: 3 },
+    );
+    const assignedArrayTarget = [4];
+    assignedArrayTarget.label = "seed";
+    const assignedArray = Object.assign(
+      assignedArrayTarget,
+      { 1: 5 },
+      [6],
+      null,
+      { extra: 7 },
+    );
     const csv = "alpha,beta,gamma";
     ({
       slice: values.slice(1).join('-'),
@@ -33,6 +49,10 @@ test('run supports conservative array, string, object, and Math helper surface',
       objectKeys: Object.keys(object),
       objectValues: Object.values(object),
       hasOwn: Object.hasOwn(object, "alpha"),
+      assignedObjectIdentity: assignedObject === assignedObjectTarget,
+      assignedObjectEntries: Object.entries(assignedObject),
+      assignedArrayIdentity: assignedArray === assignedArrayTarget,
+      assignedArrayEntries: Object.entries(assignedArray),
       arrayEntries: arrayEntries,
       pow: Math.pow(2, 5),
       sqrt: Math.sqrt(81),
@@ -56,6 +76,10 @@ test('run supports conservative array, string, object, and Math helper surface',
     objectKeys: ['alpha', 'zebra'],
     objectValues: [2, 1],
     hasOwn: true,
+    assignedObjectIdentity: true,
+    assignedObjectEntries: [['alpha', 1], ['beta', 3], ['zebra', 2]],
+    assignedArrayIdentity: true,
+    assignedArrayEntries: [['0', 6], ['1', 5], ['extra', 7], ['label', 'seed']],
     arrayEntries: [['0', 1], ['1', 2], ['2', 3]],
     pow: 32,
     sqrt: 9,
@@ -88,6 +112,34 @@ test('run supports callback-heavy array helpers and thisArg for supported callba
   assert.deepEqual(result, [[5, 7, 9], [1, 3], 3, 2, true, true, 11, 36]);
 });
 
+test('run supports Array.of, Array.prototype.concat, Array.prototype.at, and Math.log', async () => {
+  const result = await runtime(`
+    const single = Array.of(7);
+    const merged = Array.of(1, 2, 3).concat([4, 5], 6);
+    ({
+      singleLength: single.length,
+      singleValue: single[0],
+      merged: merged,
+      atFront: merged.at(0),
+      atFromEnd: merged.at(-2),
+      atMissing: merged.at(99),
+      logOne: Math.log(1),
+      logBase2: Math.round(Math.log(8) / Math.log(2)),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    singleLength: 1,
+    singleValue: 7,
+    merged: [1, 2, 3, 4, 5, 6],
+    atFront: 1,
+    atFromEnd: 5,
+    atMissing: undefined,
+    logOne: 0,
+    logBase2: 3,
+  });
+});
+
 test('array callback helpers fail closed for invalid callbacks and synchronous host suspensions', async () => {
   await assert.rejects(
     () => runtime('([1]).map(1);').run(),
@@ -117,6 +169,64 @@ test('array callback helpers fail closed for invalid callbacks and synchronous h
     isJsliteError({
       kind: 'Runtime',
       message: 'Array.prototype.reduce requires an initial value for empty arrays',
+    }),
+  );
+});
+
+test('Array.prototype.concat and Array.prototype.at fail closed for incompatible receivers', async () => {
+  await assert.rejects(
+    () => runtime('const concat = [1].concat; concat([2]);').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Array.prototype.concat called on incompatible receiver',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('const at = [1].at; at(0);').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Array.prototype.at called on incompatible receiver',
+      guestSafe: true,
+    }),
+  );
+});
+
+test('Object.assign copies supported enumerable properties and unsupported object helpers fail closed', async () => {
+  await assert.rejects(
+    () => runtime('Object.assign(1, { alpha: 1 });').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Object helpers currently only support plain objects and arrays',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('Object.create(null);').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Object.create is unsupported because prototype semantics are deferred',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('Object.freeze({ alpha: 1 });').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Object.freeze is unsupported because property descriptor semantics are deferred',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('Object.seal({ alpha: 1 });').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'Object.seal is unsupported because property descriptor semantics are deferred',
+      guestSafe: true,
     }),
   );
 });
