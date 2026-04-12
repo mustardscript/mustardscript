@@ -18,6 +18,20 @@ const COVERAGE = Object.freeze({
   AUDIT: 'audit',
 });
 
+const REJECT_PHASE = Object.freeze({
+  CONSTRUCTOR: 'constructor',
+  RUNTIME: 'runtime',
+});
+
+const DIAGNOSTIC_CATEGORY = Object.freeze({
+  AMBIENT_GLOBAL: 'ambient_global',
+  UNSUPPORTED_SYNTAX: 'unsupported_syntax',
+  UNSUPPORTED_BINDING: 'unsupported_binding',
+  UNSUPPORTED_OPERATOR: 'unsupported_operator',
+  UNSUPPORTED_RUNTIME_SURFACE: 'unsupported_runtime_surface',
+  UNSUPPORTED_GLOBAL_BUILTIN: 'unsupported_global_builtin',
+});
+
 const FORBIDDEN_AMBIENT_GLOBALS = Object.freeze([
   'process',
   'module',
@@ -296,7 +310,7 @@ const FEATURE_CONTRACT = Object.freeze([
     title: 'array spread rejects unsupported iterable inputs at runtime',
     outcome: OUTCOME.RUNTIME_REJECT,
     coverage: [COVERAGE.PROPERTY_NEGATIVE],
-    source: '[...value];',
+    source: 'const value = {}; [...value];',
     messageIncludes: 'value is not iterable in the supported surface',
   },
   {
@@ -372,7 +386,7 @@ const FEATURE_CONTRACT = Object.freeze([
     title: 'spread arguments reject unsupported iterable inputs at runtime',
     outcome: OUTCOME.RUNTIME_REJECT,
     coverage: [COVERAGE.PROPERTY_NEGATIVE],
-    source: 'run(...values);',
+    source: 'function run() {} const values = {}; run(...values);',
     messageIncludes: 'value is not iterable in the supported surface',
   },
   {
@@ -440,6 +454,78 @@ const FEATURE_CONTRACT = Object.freeze([
     messageIncludes: 'only let and const are supported',
   },
   {
+    id: 'validation.ambient-globals',
+    title: 'documented ambient host globals are validation rejects',
+    outcome: OUTCOME.VALIDATION_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
+    source: 'process;',
+    messageIncludes: 'forbidden ambient global `process`',
+  },
+  {
+    id: 'validation.using-declarations',
+    title: 'using and await using declarations stay rejected with lexical-only bindings',
+    outcome: OUTCOME.VALIDATION_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE],
+    source: 'using value = resource;',
+    messageIncludes: 'only let and const are supported',
+  },
+  {
+    id: 'runtime.symbol',
+    title: 'Symbol remains unavailable in the supported guest surface',
+    outcome: OUTCOME.RUNTIME_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE],
+    source: 'Symbol("x");',
+    messageIncludes: 'ReferenceError: `Symbol` is not defined',
+  },
+  {
+    id: 'runtime.typed-arrays',
+    title: 'typed array constructors remain unavailable in the supported guest surface',
+    outcome: OUTCOME.RUNTIME_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE],
+    source: 'new Uint8Array(2);',
+    messageIncludes: 'ReferenceError: `Uint8Array` is not defined',
+  },
+  {
+    id: 'runtime.intl',
+    title: 'Intl remains unavailable in the supported guest surface',
+    outcome: OUTCOME.RUNTIME_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE],
+    source: 'Intl.DateTimeFormat();',
+    messageIncludes: 'ReferenceError: `Intl` is not defined',
+  },
+  {
+    id: 'runtime.proxy',
+    title: 'Proxy remains unavailable in the supported guest surface',
+    outcome: OUTCOME.RUNTIME_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE],
+    source: 'new Proxy({}, {});',
+    messageIncludes: 'ReferenceError: `Proxy` is not defined',
+  },
+  {
+    id: 'runtime.object-create',
+    title: 'Object.create remains unavailable while prototype semantics stay deferred',
+    outcome: OUTCOME.RUNTIME_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.EXISTING],
+    source: 'Object.create(null);',
+    messageIncludes: 'Object.create is unsupported because prototype semantics are deferred',
+  },
+  {
+    id: 'runtime.object-freeze',
+    title: 'Object.freeze remains unavailable while property descriptor semantics stay deferred',
+    outcome: OUTCOME.RUNTIME_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.EXISTING],
+    source: 'Object.freeze({ alpha: 1 });',
+    messageIncludes: 'Object.freeze is unsupported because property descriptor semantics are deferred',
+  },
+  {
+    id: 'runtime.object-seal',
+    title: 'Object.seal remains unavailable while property descriptor semantics stay deferred',
+    outcome: OUTCOME.RUNTIME_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.EXISTING],
+    source: 'Object.seal({ alpha: 1 });',
+    messageIncludes: 'Object.seal is unsupported because property descriptor semantics are deferred',
+  },
+  {
     id: 'observable.sorted-object-enumeration',
     title: 'plain object key enumeration matches JavaScript own-property order',
     outcome: OUTCOME.NODE_PARITY,
@@ -453,9 +539,218 @@ const FEATURE_CONTRACT = Object.freeze([
   },
 ]);
 
+const REJECT_EXPECTATIONS = Object.freeze({
+  'validation.default-parameters': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.default-destructuring': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.free-arguments': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL,
+  },
+  'validation.free-eval': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL,
+  },
+  'validation.free-function-constructor': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL,
+  },
+  'validation.module-syntax': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.dynamic-import': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.delete': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
+  },
+  'validation.delete-array-element': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
+  },
+  'validation.for-in': {
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE,
+  },
+  'validation.classes': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.generators': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.with': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.array-spread-surface': {
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE,
+  },
+  'validation.debugger': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.labeled-statements': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.private-fields': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.meta-properties': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.super': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.update-expressions': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.tagged-templates': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.spread-arguments-surface': {
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE,
+  },
+  'validation.destructuring-assignment': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.unsupported-unary': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
+  },
+  'validation.unsupported-binary': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
+  },
+  'validation.instanceof-guest-function': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
+  },
+  'validation.unsupported-assignment': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
+  },
+  'validation.object-accessors': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+  },
+  'validation.var': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_BINDING,
+  },
+  'validation.var-function-scope': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_BINDING,
+  },
+  'validation.ambient-globals': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL,
+  },
+  'validation.using-declarations': {
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_BINDING,
+  },
+  'runtime.symbol': {
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN,
+  },
+  'runtime.typed-arrays': {
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN,
+  },
+  'runtime.intl': {
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN,
+  },
+  'runtime.proxy': {
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN,
+  },
+  'runtime.object-create': {
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE,
+  },
+  'runtime.object-freeze': {
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE,
+  },
+  'runtime.object-seal': {
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE,
+  },
+});
+
+for (const entry of FEATURE_CONTRACT) {
+  const expectation = REJECT_EXPECTATIONS[entry.id];
+  if (expectation !== undefined) {
+    entry.phase = expectation.phase;
+    entry.category = expectation.category;
+  }
+}
+
 const VALIDATION_REJECT_CASES = Object.freeze(
   FEATURE_CONTRACT.filter((entry) => entry.outcome === OUTCOME.VALIDATION_REJECT)
-    .map(({ id, source, messageIncludes }) => ({ id, source, messageIncludes })),
+    .map(({ id, source, messageIncludes, phase, category }) => ({
+      id,
+      source,
+      messageIncludes,
+      phase,
+      category,
+    })),
+);
+
+const RUNTIME_REJECT_CASES = Object.freeze(
+  FEATURE_CONTRACT.filter((entry) => entry.outcome === OUTCOME.RUNTIME_REJECT)
+    .map(({ id, source, messageIncludes, phase, category }) => ({
+      id,
+      source,
+      messageIncludes,
+      phase,
+      category,
+    })),
+);
+
+const CURATED_REJECTION_REGRESSION_IDS = Object.freeze([
+  'validation.module-syntax',
+  'validation.free-eval',
+  'validation.var',
+  'validation.delete',
+  'validation.object-accessors',
+  'validation.instanceof-guest-function',
+  'runtime.symbol',
+  'validation.array-spread-surface',
+  'runtime.object-create',
+  'runtime.object-freeze',
+  'runtime.object-seal',
+]);
+
+const CURATED_REJECTION_REGRESSION_CASES = Object.freeze(
+  CURATED_REJECTION_REGRESSION_IDS.map((id) => {
+    const entry = FEATURE_CONTRACT.find((feature) => feature.id === id);
+    if (entry === undefined) {
+      throw new Error(`missing curated rejection contract entry: ${id}`);
+    }
+    const { source, messageIncludes, phase, category } = entry;
+    return { id, source, messageIncludes, phase, category };
+  }),
 );
 
 function featuresForCoverage(coverage) {
@@ -464,9 +759,13 @@ function featuresForCoverage(coverage) {
 
 module.exports = {
   COVERAGE,
+  CURATED_REJECTION_REGRESSION_CASES,
+  DIAGNOSTIC_CATEGORY,
   FEATURE_CONTRACT,
   FORBIDDEN_AMBIENT_GLOBALS,
   OUTCOME,
+  REJECT_PHASE,
+  RUNTIME_REJECT_CASES,
   VALIDATION_REJECT_CASES,
   featuresForCoverage,
 };

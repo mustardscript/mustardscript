@@ -1,8 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const { Jslite } = require('../../index.js');
+const { COVERAGE, FEATURE_CONTRACT, OUTCOME } = require('./conformance-contract.js');
 const { assertDifferential } = require('./runtime-oracle.js');
+
+const LANGUAGE_CONTRACT = fs.readFileSync(path.join(__dirname, '../../docs/LANGUAGE.md'), 'utf8');
 
 test('JSON.stringify matches Node for property order, number rendering, and omission rules', async () => {
   await assertDifferential(`
@@ -150,4 +155,72 @@ test('deferring await does not inject a guest-visible cancellation signal', asyn
   assert.equal(calls, 1);
   assert.equal(completed, 1);
   assert.equal(await pending, 3);
+});
+
+test('documented unsupported classes map to conformance reject entries with phase and category', () => {
+  const contractById = new Map(FEATURE_CONTRACT.map((entry) => [entry.id, entry]));
+  const requiredMappings = [
+    {
+      snippet: '- `import`, `export`, and dynamic `import()`',
+      ids: ['validation.module-syntax', 'validation.dynamic-import'],
+    },
+    {
+      snippet:
+        '- free references to `process`, `module`, `exports`, `global`, `require`,\n  `setTimeout`, `setInterval`, `queueMicrotask`, and `fetch`',
+      ids: ['validation.ambient-globals'],
+    },
+    {
+      snippet: '- `var`, `using`, and `await using`',
+      ids: ['validation.var', 'validation.using-declarations'],
+    },
+    {
+      snippet: '- symbols',
+      ids: ['runtime.symbol'],
+    },
+    {
+      snippet: '- typed arrays',
+      ids: ['runtime.typed-arrays'],
+    },
+    {
+      snippet: '- `Intl`',
+      ids: ['runtime.intl'],
+    },
+    {
+      snippet: '- `Proxy`',
+      ids: ['runtime.proxy'],
+    },
+    {
+      snippet: '- accessors',
+      ids: ['validation.object-accessors'],
+    },
+    {
+      snippet: '- property descriptor semantics',
+      ids: ['runtime.object-freeze', 'runtime.object-seal'],
+    },
+    {
+      snippet: '- full prototype semantics',
+      ids: ['runtime.object-create'],
+    },
+  ];
+
+  for (const mapping of requiredMappings) {
+    assert.ok(LANGUAGE_CONTRACT.includes(mapping.snippet), `missing docs snippet: ${mapping.snippet}`);
+    for (const id of mapping.ids) {
+      const entry = contractById.get(id);
+      assert.ok(entry, `missing conformance contract entry for ${id}`);
+      assert.notEqual(entry.outcome, OUTCOME.NODE_PARITY);
+      assert.match(entry.phase, /\S/);
+      assert.match(entry.category, /\S/);
+      assert.ok(
+        entry.coverage.some((coverage) =>
+          [
+            COVERAGE.EXISTING,
+            COVERAGE.PROPERTY_NEGATIVE,
+            COVERAGE.TEST262_UNSUPPORTED,
+          ].includes(coverage),
+        ),
+        `missing executable coverage mapping for ${id}`,
+      );
+    }
+  }
 });

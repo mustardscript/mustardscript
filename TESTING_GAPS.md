@@ -129,44 +129,44 @@ in Tier 1, not as a late follow-up.
 
 Checklist:
 
-- [ ] Extend `tests/node/conformance-contract.js` so unsupported entries record
+- [x] Extend `tests/node/conformance-contract.js` so unsupported entries record
       expected phase and expected diagnostic category.
-- [ ] Audit `docs/LANGUAGE.md` against the conformance contract and add missing
+- [x] Audit `docs/LANGUAGE.md` against the conformance contract and add missing
       unsupported classes to the machine-readable contract.
-- [ ] Add generated rejection families for unsupported syntax and validator-only
+- [x] Add generated rejection families for unsupported syntax and validator-only
       exclusions that are currently only sampled.
-- [ ] Add curated regressions where exact failure class or phase is especially
+- [x] Add curated regressions where exact failure class or phase is especially
       important.
-- [ ] Add contract-audit coverage that fails when a documented unsupported class
+- [x] Add contract-audit coverage that fails when a documented unsupported class
       has no mapped test coverage.
-- [ ] Assert phase and category rather than brittle full-message equality,
+- [x] Assert phase and category rather than brittle full-message equality,
       except where the exact wording is itself part of the contract.
 
 Priority unsupported buckets:
 
-- [ ] Modules and dynamic import
-- [ ] `eval` and `Function`
-- [ ] Classes
-- [ ] Generators and `yield`
-- [ ] `var`
-- [ ] Default parameters and default destructuring
-- [ ] Free `arguments`
-- [ ] `delete`
-- [ ] `instanceof`
-- [ ] Ambient host globals such as `process`, `require`, `module`, timers, and
+- [x] Modules and dynamic import
+- [x] `eval` and `Function`
+- [x] Classes
+- [x] Generators and `yield`
+- [x] `var`
+- [x] Default parameters and default destructuring
+- [x] Free `arguments`
+- [x] `delete`
+- [x] `instanceof`
+- [x] Ambient host globals such as `process`, `require`, `module`, timers, and
       `fetch`
-- [ ] Symbols and symbol-based protocols
-- [ ] Typed arrays and related binary surfaces
-- [ ] `Intl`
-- [ ] `Proxy`
-- [ ] Accessors and descriptor-dependent behavior
+- [x] Symbols and symbol-based protocols
+- [x] Typed arrays and related binary surfaces
+- [x] `Intl`
+- [x] `Proxy`
+- [x] Accessors and descriptor-dependent behavior
 
 Done when:
 
-- [ ] Every documented unsupported class has a contract entry.
-- [ ] Every contract entry maps to generated or curated coverage, and to a phase
+- [x] Every documented unsupported class has a contract entry.
+- [x] Every contract entry maps to generated or curated coverage, and to a phase
       and category expectation.
-- [ ] The audit suite fails when docs and rejection coverage drift apart.
+- [x] The audit suite fails when docs and rejection coverage drift apart.
 
 ### 3. Snapshot and Progress Lifecycle Model
 
@@ -428,7 +428,7 @@ Checklist:
 ## Success Criteria
 
 - [ ] Every supported semantic family has generated parity coverage.
-- [ ] Every documented unsupported class has mapped rejection coverage with
+- [x] Every documented unsupported class has mapped rejection coverage with
       expected phase and category.
 - [ ] Snapshot and progress bugs are found by lifecycle/stateful tests, not by
       ad hoc regressions alone.

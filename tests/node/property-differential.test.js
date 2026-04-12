@@ -3,19 +3,18 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError } = require('../../index.js');
 const {
   PROPERTY_RUNS,
+  REJECTION_FAMILIES,
   SUPPORTED_PARITY_FAMILIES,
   conformanceCaseArbitrary,
   fc,
-  unsupportedValidationCaseArbitrary,
 } = require('./property-generators.js');
 const {
+  assertContractReject,
   assertDifferential,
   assertMatchesNodeOrValidation,
   assertProgressTraceDifferential,
-  isValidationError,
 } = require('./runtime-oracle.js');
 
 async function assertSupportedFamilyEntry(family, entry) {
@@ -30,10 +29,10 @@ async function assertSupportedFamilyEntry(family, entry) {
   throw new Error(`unsupported parity family mode: ${family.mode}`);
 }
 
-async function assertParityFamily(family) {
+async function assertPropertyFamily(family, assertion) {
   const details = await fc.check(
     fc.asyncProperty(family.arbitrary, async (entry) => {
-      await assertSupportedFamilyEntry(family, entry);
+      await assertion(entry);
     }),
     {
       numRuns: family.numRuns,
@@ -65,23 +64,15 @@ async function assertParityFamily(family) {
 
 for (const family of SUPPORTED_PARITY_FAMILIES) {
   test(`property: supported parity family ${family.id} runs independently with canonical failure output`, async () => {
-    await assertParityFamily(family);
+    await assertPropertyFamily(family, (entry) => assertSupportedFamilyEntry(family, entry));
   });
 }
 
-test('property: documented unsupported generated forms fail with constructor-time validation', async () => {
-  await fc.assert(
-    fc.property(unsupportedValidationCaseArbitrary, ({ source, messageIncludes }) => {
-      assert.throws(
-        () => new Jslite(source),
-        (error) => isValidationError(error, messageIncludes),
-      );
-    }),
-    {
-      numRuns: PROPERTY_RUNS,
-    },
-  );
-});
+for (const family of REJECTION_FAMILIES) {
+  test(`property: rejection family ${family.id} enforces phase and category independently`, async () => {
+    await assertPropertyFamily(family, (entry) => assertContractReject(entry.source, entry));
+  });
+}
 
 test('property: generated conformance cases either match Node or fail in validation', async () => {
   await fc.assert(

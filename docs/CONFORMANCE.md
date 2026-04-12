@@ -20,12 +20,20 @@ are no current documented divergence entries in the machine-readable contract.
 The machine-readable source of truth for these outcomes lives in
 `tests/node/conformance-contract.js`.
 
+Unsupported contract entries now record both the expected phase
+(`constructor`/validation or `runtime`) and a diagnostic category, so the
+negative suites can assert fail-closed behavior without depending on full
+message equality.
+
 The property-based conformance generator is split intentionally:
 
 - `SUPPORTED_PARITY_FAMILIES` splits Node-parity generation into independent
   semantic families such as control flow, exceptions, objects/arrays,
   keyed collections, async promises, and capability traces. Each family runs
   as its own property test with isolated shrinking.
+- `REJECTION_FAMILIES` does the same for fail-closed coverage, so unsupported
+  syntax, ambient globals, binding errors, operator rejects, runtime surface
+  rejects, and missing global built-ins all shrink independently.
 - `supportedProgramArbitrary` remains the mixed Node-parity source used by the
   broader mixed conformance property. Those programs must compile and
   differentially match Node.
@@ -44,6 +52,11 @@ diff instead of a raw object mismatch.
 
 This is more useful than a naive source fuzzer because the generated programs
 stay inside deliberate semantic buckets and produce canonicalizable outputs.
+
+The contract also carries a curated rejection-regression slice for phase- and
+category-sensitive cases such as ambient globals, unsupported operators, and
+deferred object-model built-ins like `Object.create`, `Object.freeze`, and
+`Object.seal`.
 
 ## Fixture Coverage
 

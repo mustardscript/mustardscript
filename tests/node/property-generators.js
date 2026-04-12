@@ -2,7 +2,10 @@
 
 const fc = require('fast-check');
 const {
+  DIAGNOSTIC_CATEGORY,
   FORBIDDEN_AMBIENT_GLOBALS,
+  REJECT_PHASE,
+  RUNTIME_REJECT_CASES,
   VALIDATION_REJECT_CASES,
 } = require('./conformance-contract.js');
 
@@ -108,8 +111,13 @@ function renderLiteral(value) {
     .join(', ')} }`;
 }
 
-function validationCase(source, messageIncludes) {
-  return { source, messageIncludes };
+function validationCase(source, messageIncludes, category = DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX) {
+  return {
+    source,
+    messageIncludes,
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category,
+  };
 }
 
 function parityCase(source, options = undefined) {
@@ -773,10 +781,13 @@ const keyedCollectionsParityCaseArbitraries = [
     ),
   fc
     .record({
-      first: wordStringArbitrary,
-      second: wordStringArbitrary,
+      keys: fc.uniqueArray(wordStringArbitrary, {
+        selector: (value) => value,
+        minLength: 2,
+        maxLength: 2,
+      }),
     })
-    .map(({ first, second }) =>
+    .map(({ keys: [first, second] }) =>
       parityCase(`
         const functions = [];
         const seen = [];
@@ -1082,30 +1093,148 @@ const supportedProgramArbitrary = fc.oneof(
   ),
 );
 
-const contractValidationCaseArbitraries = VALIDATION_REJECT_CASES.map(({ source, messageIncludes }) =>
-  fc.constant({ source, messageIncludes }),
-);
+const contractRuntimeCaseArbitraries = RUNTIME_REJECT_CASES.map((entry) => fc.constant(entry));
 
-const unsupportedValidationCaseArbitraries = [
+function contractCaseArbitrariesFor(cases, category) {
+  return cases
+    .filter((entry) => entry.category === category)
+    .map((entry) => fc.constant(entry));
+}
+
+const unsupportedSyntaxValidationCaseArbitraries = [
   identifierArbitrary.map((name) => ({
     source: `function ${name}(value = 1) { return value; }`,
     messageIncludes: 'default parameters are not supported in v1',
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
   })),
   identifierArbitrary.map((name) => ({
     source: `const { ${name} = 1 } = {};`,
     messageIncludes: 'default destructuring is not supported in v1',
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
   })),
-  fc.constant(validationCase('function wrap() { return arguments[0]; }', 'forbidden ambient global `arguments`')),
-  fc.constant(validationCase('eval("1");', 'forbidden ambient global `eval`')),
-  fc.constant(validationCase('Function("return 1");', 'forbidden ambient global `Function`')),
-  fc.constantFrom(...FORBIDDEN_AMBIENT_GLOBALS).map((name) =>
-    validationCase(`${name};`, `forbidden ambient global \`${name}\``),
-  ),
-  fc.constant(validationCase('for (let value = 1 of [1, 2]) { value; }', 'for...of binding initializers are not supported')),
-  ...contractValidationCaseArbitraries,
+  ...contractCaseArbitrariesFor(VALIDATION_REJECT_CASES, DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX),
 ];
 
+const ambientGlobalValidationCaseArbitraries = [
+  fc.constant(
+    validationCase(
+      'function wrap() { return arguments[0]; }',
+      'forbidden ambient global `arguments`',
+      DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL,
+    ),
+  ),
+  fc.constant(
+    validationCase(
+      'eval("1");',
+      'forbidden ambient global `eval`',
+      DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL,
+    ),
+  ),
+  fc.constant(
+    validationCase(
+      'Function("return 1");',
+      'forbidden ambient global `Function`',
+      DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL,
+    ),
+  ),
+  fc.constantFrom(...FORBIDDEN_AMBIENT_GLOBALS).map((name) =>
+    validationCase(
+      `${name};`,
+      `forbidden ambient global \`${name}\``,
+      DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL,
+    ),
+  ),
+  ...contractCaseArbitrariesFor(VALIDATION_REJECT_CASES, DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL),
+];
+
+const unsupportedBindingValidationCaseArbitraries = [
+  fc.constant(
+    validationCase(
+      'for (let value = 1 of [1, 2]) { value; }',
+      'for...of binding initializers are not supported',
+      DIAGNOSTIC_CATEGORY.UNSUPPORTED_BINDING,
+    ),
+  ),
+  ...contractCaseArbitrariesFor(VALIDATION_REJECT_CASES, DIAGNOSTIC_CATEGORY.UNSUPPORTED_BINDING),
+];
+
+const unsupportedOperatorValidationCaseArbitraries = contractCaseArbitrariesFor(
+  VALIDATION_REJECT_CASES,
+  DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
+);
+
+const unsupportedValidationCaseArbitraries = [
+  ...unsupportedSyntaxValidationCaseArbitraries,
+  ...ambientGlobalValidationCaseArbitraries,
+  ...unsupportedBindingValidationCaseArbitraries,
+  ...unsupportedOperatorValidationCaseArbitraries,
+];
+
+const REJECTION_FAMILIES = Object.freeze([
+  {
+    id: 'constructor-unsupported-syntax',
+    title: 'constructor-time unsupported syntax',
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
+    numRuns: process.env.CI ? 40 : 20,
+    arbitrary: fc.oneof(...unsupportedSyntaxValidationCaseArbitraries),
+  },
+  {
+    id: 'constructor-ambient-globals',
+    title: 'constructor-time ambient globals',
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL,
+    numRuns: process.env.CI ? 32 : 16,
+    arbitrary: fc.oneof(...ambientGlobalValidationCaseArbitraries),
+  },
+  {
+    id: 'constructor-unsupported-bindings',
+    title: 'constructor-time unsupported bindings',
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_BINDING,
+    numRuns: process.env.CI ? 24 : 12,
+    arbitrary: fc.oneof(...unsupportedBindingValidationCaseArbitraries),
+  },
+  {
+    id: 'constructor-unsupported-operators',
+    title: 'constructor-time unsupported operators',
+    phase: REJECT_PHASE.CONSTRUCTOR,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
+    numRuns: process.env.CI ? 24 : 12,
+    arbitrary: fc.oneof(...unsupportedOperatorValidationCaseArbitraries),
+  },
+  {
+    id: 'runtime-unsupported-surface',
+    title: 'runtime unsupported surface',
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE,
+    numRuns: process.env.CI ? 24 : 12,
+    arbitrary: fc.oneof(
+      ...contractCaseArbitrariesFor(
+        RUNTIME_REJECT_CASES,
+        DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE,
+      ),
+    ),
+  },
+  {
+    id: 'runtime-unsupported-global-builtin',
+    title: 'runtime unsupported global builtins',
+    phase: REJECT_PHASE.RUNTIME,
+    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN,
+    numRuns: process.env.CI ? 24 : 12,
+    arbitrary: fc.oneof(
+      ...contractCaseArbitrariesFor(
+        RUNTIME_REJECT_CASES,
+        DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN,
+      ),
+    ),
+  },
+]);
+
 const unsupportedValidationCaseArbitrary = fc.oneof(...unsupportedValidationCaseArbitraries);
+const unsupportedRuntimeCaseArbitrary = fc.oneof(...contractRuntimeCaseArbitraries);
 const conformanceCaseArbitrary = fc.oneof(
   supportedProgramArbitrary.map((source) => ({ source })),
   unsupportedValidationCaseArbitrary,
@@ -1179,6 +1308,7 @@ const progressActionArbitrary = fc.constantFrom('resume', 'resumeError', 'cancel
 
 module.exports = {
   PROPERTY_RUNS,
+  REJECTION_FAMILIES,
   SUPPORTED_PARITY_FAMILIES,
   conformanceCaseArbitrary,
   fc,
@@ -1186,5 +1316,6 @@ module.exports = {
   structuredValueArbitrary,
   supportedProgramArbitrary,
   unsupportedHostValueCaseArbitrary,
+  unsupportedRuntimeCaseArbitrary,
   unsupportedValidationCaseArbitrary,
 };

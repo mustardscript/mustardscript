@@ -4,6 +4,20 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
 const { Jslite, JsliteError, Progress } = require('../../index.js');
+const { DIAGNOSTIC_CATEGORY, REJECT_PHASE } = require('./conformance-contract.js');
+
+const DIAGNOSTIC_CATEGORY_MATCHERS = Object.freeze({
+  [DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL]: /forbidden ambient global/,
+  [DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX]:
+    /(not supported|classes are not supported|generators are not supported|module syntax is not supported|dynamic import\(\) is not supported|with is not supported|tagged templates are not supported|private fields are not supported|meta properties are not supported|debugger statements are not supported|labeled statements are not supported|destructuring assignment is not supported|object literal accessors are not supported|update expressions are not supported|super is not supported)/,
+  [DIAGNOSTIC_CATEGORY.UNSUPPORTED_BINDING]:
+    /(only let and const are supported|for\.\.\.of binding initializers are not supported)/,
+  [DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR]:
+    /(unsupported (unary|binary|assignment) operator in v1|delete is not supported in v1)/,
+  [DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE]:
+    /(supported surface|Object helpers currently only support plain objects and arrays|prototype semantics are deferred|property descriptor semantics are deferred)/,
+  [DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN]: /ReferenceError: `[^`]+` is not defined/,
+});
 
 async function runJslite(source) {
   const runtime = new Jslite(source);
@@ -371,6 +385,32 @@ function isValidationError(error, messageIncludes) {
   );
 }
 
+function matchesDiagnosticCategory(error, category) {
+  const matcher = DIAGNOSTIC_CATEGORY_MATCHERS[category];
+  return matcher instanceof RegExp ? matcher.test(error.message) : false;
+}
+
+function isContractReject(error, contractCase) {
+  const expectedKind =
+    contractCase.phase === REJECT_PHASE.CONSTRUCTOR ? 'Validation' : 'Runtime';
+  return (
+    error instanceof JsliteError &&
+    error.kind === expectedKind &&
+    matchesDiagnosticCategory(error, contractCase.category) &&
+    (contractCase.messageIncludes === undefined || error.message.includes(contractCase.messageIncludes))
+  );
+}
+
+async function assertContractReject(source, contractCase) {
+  if (contractCase.phase === REJECT_PHASE.CONSTRUCTOR) {
+    assert.throws(() => new Jslite(source), (error) => isContractReject(error, contractCase));
+    return;
+  }
+
+  const runtime = new Jslite(source);
+  await assert.rejects(runtime.run(), (error) => isContractReject(error, contractCase));
+}
+
 function assertJsliteFailure(source, { kind, messageIncludes }) {
   assert.throws(
     () => new Jslite(source),
@@ -412,6 +452,7 @@ async function assertMetamorphicDifferential(originalSource, rewrittenSource, op
 module.exports = {
   assertDifferential,
   assertMetamorphicDifferential,
+  assertContractReject,
   assertMatchesNodeOrValidation,
   assertProgressTraceDifferential,
   assertTraceDifferential,

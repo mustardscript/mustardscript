@@ -28,6 +28,17 @@ test('machine-readable conformance contract stays internally consistent', () => 
   for (const entry of validationEntries) {
     assert.match(entry.source, /\S/);
     assert.match(entry.messageIncludes, /\S/);
+    assert.match(entry.phase, /\S/);
+    assert.match(entry.category, /\S/);
+  }
+
+  const runtimeRejectEntries = FEATURE_CONTRACT.filter((entry) => entry.outcome === OUTCOME.RUNTIME_REJECT);
+  assert.ok(runtimeRejectEntries.length > 0);
+  for (const entry of runtimeRejectEntries) {
+    assert.match(entry.source, /\S/);
+    assert.match(entry.messageIncludes, /\S/);
+    assert.match(entry.phase, /\S/);
+    assert.match(entry.category, /\S/);
   }
 
   const divergenceEntries = FEATURE_CONTRACT.filter((entry) => entry.outcome === OUTCOME.KNOWN_DIVERGENCE);
