@@ -1,5 +1,5 @@
 use super::*;
-use crate::compile;
+use crate::{compile, limits::RuntimeLimits};
 
 fn test_function(code: Vec<Instruction>) -> FunctionPrototype {
     FunctionPrototype {
