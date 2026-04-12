@@ -148,9 +148,7 @@ impl Compiler {
                     name: function_name.clone(),
                 }));
             if root_scope {
-                context
-                    .code
-                    .push(Instruction::LoadName("globalThis".to_string()));
+                context.code.push(Instruction::LoadGlobalObject);
                 context
                     .code
                     .push(Instruction::LoadName(function_name.clone()));

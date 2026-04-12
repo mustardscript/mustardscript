@@ -64,6 +64,13 @@ impl Runtime {
                 let value = self.lookup_name(env, &name)?;
                 self.frames[frame_index].stack.push(value);
             }
+            Instruction::LoadGlobalObject => {
+                let value =
+                    Value::Object(self.global_object_key().ok_or_else(|| {
+                        JsliteError::runtime("missing global object")
+                    })?);
+                self.frames[frame_index].stack.push(value);
+            }
             Instruction::StoreName(name) => {
                 let value = self.frames[frame_index]
                     .stack

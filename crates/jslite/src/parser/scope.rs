@@ -1,18 +1,23 @@
 use super::*;
 
 impl<'a> Lowerer<'a> {
+    fn declare_name_in_current_scope(&mut self, name: &str, span: SourceSpan) {
+        if let Some(scope) = self.scopes.last_mut()
+            && !scope.insert(name.to_string())
+        {
+            self.unsupported(
+                format!("SyntaxError: Identifier `{name}` has already been declared"),
+                Some(span),
+            );
+        }
+    }
+
     pub(super) fn push_scope(&mut self) {
         self.scopes.push(HashSet::new());
     }
 
     pub(super) fn pop_scope(&mut self) {
         self.scopes.pop();
-    }
-
-    pub(super) fn bind_name(&mut self, name: &str) {
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name.to_string());
-        }
     }
 
     pub(super) fn is_bound(&self, name: &str) -> bool {
@@ -29,7 +34,7 @@ impl<'a> Lowerer<'a> {
         match statement {
             Statement::FunctionDeclaration(function) => {
                 if let Some(id) = &function.id {
-                    self.bind_name(id.name.as_str());
+                    self.declare_name_in_current_scope(id.name.as_str(), id.span.into());
                 }
             }
             Statement::VariableDeclaration(decl) => {
@@ -50,9 +55,8 @@ impl<'a> Lowerer<'a> {
 
     pub(super) fn collect_pattern_bindings(&mut self, pattern: &BindingPattern<'a>) {
         match pattern {
-            BindingPattern::BindingIdentifier(identifier) => {
-                self.bind_name(identifier.name.as_str())
-            }
+            BindingPattern::BindingIdentifier(identifier) => self
+                .declare_name_in_current_scope(identifier.name.as_str(), identifier.span.into()),
             BindingPattern::ObjectPattern(pattern) => {
                 for property in &pattern.properties {
                     self.collect_pattern_bindings(&property.value);
@@ -77,7 +81,7 @@ impl<'a> Lowerer<'a> {
 
     pub(super) fn collect_ir_pattern_bindings(&mut self, pattern: &Pattern) {
         match pattern {
-            Pattern::Identifier { name, .. } => self.bind_name(name),
+            Pattern::Identifier { name, span } => self.declare_name_in_current_scope(name, *span),
             Pattern::Object {
                 properties, rest, ..
             } => {

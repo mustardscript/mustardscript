@@ -626,6 +626,38 @@ test('run aligns globalThis, top-level this, and arrow lexical this with the rea
   });
 });
 
+test('run installs root function declarations on the real global object even when globalThis is shadowed', async () => {
+  const result = await runtime(`
+    const globalThis = { note: 1 };
+    function declared() {}
+    ({
+      declaredType: typeof declared,
+      localNote: globalThis.note,
+      globalBinding: this.declared === declared,
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    declaredType: 'function',
+    localNote: 1,
+    globalBinding: true,
+  });
+});
+
+test('run rejects duplicate lexical bindings during validation', async () => {
+  assert.throws(
+    () => runtime(`
+      let value = 1;
+      let value = 2;
+      value;
+    `),
+    isJsliteError({
+      kind: 'Validation',
+      message: 'already been declared',
+    }),
+  );
+});
+
 test('run exposes callable metadata and constructor links for supported callables', async () => {
   const result = await runtime(`
     function declared(alpha, beta) {}

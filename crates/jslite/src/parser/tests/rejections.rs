@@ -69,6 +69,22 @@ fn rejects_var_declarations() {
 }
 
 #[test]
+fn rejects_duplicate_lexical_declarations() {
+    assert_validation_reject(
+        "let value = 1; let value = 2;",
+        "already been declared",
+    );
+}
+
+#[test]
+fn rejects_duplicate_function_and_lexical_bindings_in_the_same_scope() {
+    assert_validation_reject(
+        "function value() {} const value = 1;",
+        "already been declared",
+    );
+}
+
+#[test]
 fn rejects_function_scoped_var_declarations() {
     assert_validation_reject(
         "function wrap() { var value = 1; return value; }",

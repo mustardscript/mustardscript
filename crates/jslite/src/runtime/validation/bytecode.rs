@@ -191,6 +191,7 @@ fn apply_validation_effect(
         | Instruction::PushString(_)
         | Instruction::PushRegExp { .. }
         | Instruction::LoadName(_)
+        | Instruction::LoadGlobalObject
         | Instruction::MakeClosure { .. }
         | Instruction::BeginCatch => ValidationState {
             stack_depth: state.stack_depth + 1,

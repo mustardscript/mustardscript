@@ -34,6 +34,7 @@ pub enum Instruction {
         flags: String,
     },
     LoadName(String),
+    LoadGlobalObject,
     StoreName(String),
     InitializePattern(Pattern),
     PushEnv,
