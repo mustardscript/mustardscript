@@ -181,8 +181,8 @@ extensions are called out explicitly instead of being implied.
 
 - fully general Promise constructor and thenable-adoption edge cases,
   including hostile thenable cycles
-- unsupported assignment operators such as `**=`, `||=`, `&&=`, and the
-  bitwise and shift assignment families
+- unsupported assignment operators such as `**=`, `%=`, and the bitwise and
+  shift assignment families
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
 - default parameter evaluation

@@ -84,8 +84,7 @@ Audit sources:
   plain-object and array source surface.
 - [x] Conservative `in` support exists for the runtime's currently exposed
   property surface without widening prototype or descriptor semantics.
-- [x] Logical assignment operators `||=` and `&&=` are rejected during
-  validation.
+- [x] Logical assignment operators `||=` and `&&=` are supported end to end.
 - [x] Additional unsupported compound assignments `%=`, `**=`, and bitwise
   assignment operators are rejected during validation.
 
@@ -138,7 +137,7 @@ Audit sources:
   function-parameter scope.
 - [ ] Add update-expression lowering and semantics for prefix and postfix
   `++` / `--`.
-- [ ] Add logical assignment operators `||=` and `&&=` if they stay in scope
+- [x] Add logical assignment operators `||=` and `&&=` if they stay in scope
   for the compatibility target.
 - [x] Add validation, diagnostics, and differential tests for the full syntax
   cluster above.

@@ -8,6 +8,16 @@ module.exports = {
       expected: [3, 7, 9],
     },
     {
+      id: 'language/expressions/assignment/logical-or.js',
+      file: 'cases/unsupported/language/expressions/assignment/logical-or.js',
+      expected: 1,
+    },
+    {
+      id: 'language/expressions/assignment/logical-and.js',
+      file: 'cases/unsupported/language/expressions/assignment/logical-and.js',
+      expected: 2,
+    },
+    {
       id: 'language/expressions/optional-chaining/member-chain.js',
       file: 'cases/pass/language/expressions/optional-chaining/member-chain.js',
       expected: [5, undefined, 4],
@@ -282,20 +292,6 @@ module.exports = {
       errorKind: 'Validation',
       messageIncludes: 'unsupported assignment operator in v1',
       reason: 'Exponent assignment remains outside the supported assignment surface.',
-    },
-    {
-      id: 'language/expressions/assignment/logical-or.js',
-      file: 'cases/unsupported/language/expressions/assignment/logical-or.js',
-      errorKind: 'Validation',
-      messageIncludes: 'unsupported assignment operator in v1',
-      reason: 'Logical assignment remains outside the supported assignment surface.',
-    },
-    {
-      id: 'language/expressions/assignment/logical-and.js',
-      file: 'cases/unsupported/language/expressions/assignment/logical-and.js',
-      errorKind: 'Validation',
-      messageIncludes: 'unsupported assignment operator in v1',
-      reason: 'Logical assignment remains outside the supported assignment surface.',
     },
     {
       id: 'language/expressions/assignment/remainder.js',

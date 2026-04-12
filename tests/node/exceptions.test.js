@@ -177,16 +177,16 @@ test('constructor rejects unsupported default params, destructuring defaults, an
   );
 });
 
-test('constructor rejects logical assignment before execution', () => {
-  for (const source of ['let value = 1; value ||= 2;', 'let value = 1; value &&= 2;']) {
-    assert.throws(
-      () => runtime(source),
-      isJsliteError({
-        kind: 'Validation',
-        message: /unsupported assignment operator in v1/,
-      }),
-    );
-  }
+test('logical assignment executes with short-circuit semantics', async () => {
+  const result = await runtime(`
+    let orValue = 0;
+    let andValue = 1;
+    let keptOr = 3;
+    let keptAnd = 0;
+    [orValue ||= 2, andValue &&= 4, keptOr ||= 9, keptAnd &&= 8, orValue, andValue, keptOr, keptAnd];
+  `).run();
+
+  assert.deepEqual(result, [2, 4, 3, 0, 2, 4, 3, 0]);
 });
 
 test('runtime errors do not leak host internals in guest tracebacks', async () => {

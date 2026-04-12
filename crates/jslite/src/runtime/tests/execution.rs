@@ -14,6 +14,85 @@ fn runs_arithmetic_and_locals() {
 }
 
 #[test]
+fn runs_logical_assignment_with_short_circuit_semantics() {
+    let value = run(
+        r#"
+            let orAssign = 0;
+            const orAssignResult = (orAssign ||= 4);
+            let orKeep = 7;
+            const orKeepResult = (orKeep ||= 9);
+            let andAssign = 3;
+            const andAssignResult = (andAssign &&= 5);
+            let andKeep = 0;
+            const andKeepResult = (andKeep &&= 9);
+
+            const counts = { object: 0, key: 0, rhs: 0 };
+            const record = { slot: 0, gate: 2 };
+            function object() {
+              counts.object += 1;
+              return record;
+            }
+            function key() {
+              counts.key += 1;
+              return "slot";
+            }
+            function rhs(value) {
+              counts.rhs += 1;
+              return value;
+            }
+
+            const computedOrAssign = (object()[key()] ||= rhs(6));
+            const computedOrKeep = (object()[key()] ||= rhs(7));
+            const staticAndAssign = (object().gate &&= rhs(8));
+            record.gate = 0;
+            const staticAndKeep = (object().gate &&= rhs(9));
+
+            [
+              orAssign,
+              orAssignResult,
+              orKeep,
+              orKeepResult,
+              andAssign,
+              andAssignResult,
+              andKeep,
+              andKeepResult,
+              computedOrAssign,
+              computedOrKeep,
+              staticAndAssign,
+              staticAndKeep,
+              counts.object,
+              counts.key,
+              counts.rhs,
+              record.slot,
+              record.gate,
+            ];
+            "#,
+    );
+    assert_eq!(
+        value,
+        StructuredValue::Array(vec![
+            StructuredValue::Number(StructuredNumber::Finite(4.0)),
+            StructuredValue::Number(StructuredNumber::Finite(4.0)),
+            StructuredValue::Number(StructuredNumber::Finite(7.0)),
+            StructuredValue::Number(StructuredNumber::Finite(7.0)),
+            StructuredValue::Number(StructuredNumber::Finite(5.0)),
+            StructuredValue::Number(StructuredNumber::Finite(5.0)),
+            StructuredValue::Number(StructuredNumber::Finite(0.0)),
+            StructuredValue::Number(StructuredNumber::Finite(0.0)),
+            StructuredValue::Number(StructuredNumber::Finite(6.0)),
+            StructuredValue::Number(StructuredNumber::Finite(6.0)),
+            StructuredValue::Number(StructuredNumber::Finite(8.0)),
+            StructuredValue::Number(StructuredNumber::Finite(0.0)),
+            StructuredValue::Number(StructuredNumber::Finite(4.0)),
+            StructuredValue::Number(StructuredNumber::Finite(2.0)),
+            StructuredValue::Number(StructuredNumber::Finite(3.0)),
+            StructuredValue::Number(StructuredNumber::Finite(6.0)),
+            StructuredValue::Number(StructuredNumber::Finite(0.0)),
+        ])
+    );
+}
+
+#[test]
 fn runs_functions_and_closures() {
     let value = run(r#"
             function makeAdder(x) {

@@ -77,6 +77,41 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'logical assignment short-circuits and evaluates member targets once',
+    source: `
+      let orAssign = 0;
+      let orKeep = 7;
+      let andAssign = 3;
+      let andKeep = 0;
+      const counts = { object: 0, key: 0, rhs: 0 };
+      const record = { slot: 0, gate: 2 };
+      function object() {
+        counts.object += 1;
+        return record;
+      }
+      function key() {
+        counts.key += 1;
+        return "slot";
+      }
+      function rhs(value) {
+        counts.rhs += 1;
+        return value;
+      }
+      ({
+        orAssign: (orAssign ||= 4),
+        orKeep: (orKeep ||= 9),
+        andAssign: (andAssign &&= 5),
+        andKeep: (andKeep &&= 9),
+        computedOrAssign: (object()[key()] ||= rhs(6)),
+        computedOrKeep: (object()[key()] ||= rhs(7)),
+        staticAndAssign: (object().gate &&= rhs(8)),
+        staticAndKeep: ((record.gate = 0), object().gate &&= rhs(9)),
+        final: { orAssign, orKeep, andAssign, andKeep, slot: record.slot, gate: record.gate },
+        counts,
+      });
+    `,
+  },
+  {
     name: 'array helpers',
     source: `
       const values = [1, 2];

@@ -123,9 +123,9 @@ missing:
 - `instanceof` is not blocked on a missing opcode alone. It remains deferred
   until the runtime has explicit prototype-parent links and constructor
   `.prototype` identities for the values that participate in the check.
-- Assignment operators are limited. Only `=`, `+=`, `-=`, `*=`, `/=`, and `??=`
-  are implemented. Generated `||=`, `&&=`, `%=`, `**=`, and bitwise assignment
-  forms are rejected during validation.
+- Assignment operators are limited. Only `=`, `+=`, `-=`, `*=`, `/=`, `||=`,
+  `&&=`, and `??=` are implemented. Generated `%=`, `**=`, and bitwise
+  assignment forms are still rejected during validation.
 - Unary operators are limited. Generated code using `~value` is unsupported.
 
 ### Built-Ins And Standard Library Surface

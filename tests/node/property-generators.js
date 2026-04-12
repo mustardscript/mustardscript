@@ -650,6 +650,11 @@ const supportedProgramArbitraries = [
       const payload = JSON.parse(${JSON.stringify(`{"alpha":${alpha},"beta":[${beta}]}`)});
       \`payload=\${payload.alpha}-\${payload.beta[0]}\`;
     `),
+  fc.constant(`
+    let value = 0;
+    let other = 3;
+    [value ||= 4, other &&= 5, value, other];
+  `),
 ];
 
 const supportedProgramArbitrary = fc.oneof(...supportedProgramArbitraries);
@@ -674,8 +679,6 @@ const unsupportedValidationCaseArbitraries = [
     validationCase(`${name};`, `forbidden ambient global \`${name}\``),
   ),
   fc.constant(validationCase('for (let value = 1 of [1, 2]) { value; }', 'for...of binding initializers are not supported')),
-  fc.constant(validationCase('let value = 1; value ||= 2;', 'unsupported assignment operator in v1')),
-  fc.constant(validationCase('let value = 1; value &&= 2;', 'unsupported assignment operator in v1')),
   ...contractValidationCaseArbitraries,
 ];
 
