@@ -221,10 +221,18 @@ const FEATURE_CONTRACT = Object.freeze([
   },
   {
     id: 'validation.delete',
-    title: 'delete is a validation reject',
+    title: 'delete is a validation reject until object and array deletion semantics exist',
     outcome: OUTCOME.VALIDATION_REJECT,
     coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
     source: 'delete value.prop;',
+    messageIncludes: 'delete is not supported in v1',
+  },
+  {
+    id: 'validation.delete-array-element',
+    title: 'delete stays rejected for array element removal semantics',
+    outcome: OUTCOME.VALIDATION_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE],
+    source: 'delete values[0];',
     messageIncludes: 'delete is not supported in v1',
   },
   {
@@ -363,10 +371,18 @@ const FEATURE_CONTRACT = Object.freeze([
   },
   {
     id: 'validation.unsupported-binary',
-    title: 'unsupported binary operators are validation rejects',
+    title: 'instanceof stays rejected until the prototype model is explicit',
     outcome: OUTCOME.VALIDATION_REJECT,
     coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
     source: '1 instanceof Number;',
+    messageIncludes: 'unsupported binary operator in v1',
+  },
+  {
+    id: 'validation.instanceof-guest-function',
+    title: 'instanceof stays rejected even with a guest function constructor',
+    outcome: OUTCOME.VALIDATION_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE],
+    source: 'function Box() {} const value = {}; value instanceof Box;',
     messageIncludes: 'unsupported binary operator in v1',
   },
   {
@@ -387,10 +403,18 @@ const FEATURE_CONTRACT = Object.freeze([
   },
   {
     id: 'validation.var',
-    title: 'var is a validation reject',
+    title: 'var is a validation reject because v1 keeps lexical bindings only',
     outcome: OUTCOME.VALIDATION_REJECT,
     coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
     source: 'var value = 1;',
+    messageIncludes: 'only let and const are supported',
+  },
+  {
+    id: 'validation.var-function-scope',
+    title: 'var stays rejected inside function scope as well as top level',
+    outcome: OUTCOME.VALIDATION_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE],
+    source: 'function wrap() { var value = 1; return value; }',
     messageIncludes: 'only let and const are supported',
   },
   {

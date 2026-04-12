@@ -157,11 +157,11 @@ Audit sources:
 
 ### Phase 5: Hard semantic gaps that need design first
 
-- [ ] Decide whether `var` is being added at all. If yes, implement function
+- [x] Decide whether `var` is being added at all. If yes, implement function
   and global hoisting, redeclaration, and loop-scoping rules.
-- [ ] Decide conservative `delete` semantics for plain objects and arrays, and
+- [x] Decide conservative `delete` semantics for plain objects and arrays, and
   document whether descriptor-level configurability remains deferred.
-- [ ] Decide the minimum prototype and constructor model needed for
+- [x] Decide the minimum prototype and constructor model needed for
   `instanceof`.
 - [ ] Implement `instanceof` only after the prototype model is explicit and
   tested.

@@ -228,7 +228,7 @@ module.exports = {
       file: 'cases/unsupported/language/expressions/delete/basic.js',
       errorKind: 'Validation',
       messageIncludes: 'delete is not supported in v1',
-      reason: 'Property deletion is intentionally not part of the v1 surface.',
+      reason: 'Plain-object and array deletion stay out of scope until absence, sparse-array, and descriptor semantics are explicit.',
     },
     {
       id: 'language/statements/with/basic.js',
@@ -312,7 +312,7 @@ module.exports = {
       file: 'cases/unsupported/language/expressions/binary/instanceof-basic.js',
       errorKind: 'Validation',
       messageIncludes: 'unsupported binary operator in v1',
-      reason: 'instanceof remains deferred until the prototype model is explicit.',
+      reason: 'instanceof remains deferred until participating values have explicit prototype links and constructor .prototype identities.',
     },
     {
       id: 'language/expressions/call/spread-args.js',
@@ -375,7 +375,7 @@ module.exports = {
       file: 'cases/unsupported/language/statements/variable/var-basic.js',
       errorKind: 'Validation',
       messageIncludes: 'only let and const are supported',
-      reason: 'var remains outside the supported binding surface.',
+      reason: 'v1 deliberately keeps only lexical let/const bindings and does not emulate var hoisting or redeclaration.',
     },
   ],
 };
