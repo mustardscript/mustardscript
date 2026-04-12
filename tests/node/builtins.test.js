@@ -242,7 +242,7 @@ test('run supports computed object literal keys, method shorthand, and object sp
     label: 'ok',
     total: 8,
     methodType: 'function',
-    keys: ['0', 'alpha', 'beta', 'label', 'total', 'value'],
+    keys: ['0', 'alpha', 'value', 'total', 'label', 'beta'],
   });
 });
 
