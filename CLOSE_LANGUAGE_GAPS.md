@@ -47,6 +47,8 @@ Audit sources:
   work.
 - [x] `Object.assign` already works for the supported plain-object and array
   helper surface.
+- [x] Object literals already support computed keys, method shorthand, and
+  spread over the documented plain-object and array source surface.
 - [x] `Array.prototype.splice`, `Array.prototype.flat`, and
   `Array.prototype.flatMap` already work for the supported array-only surface.
 - [x] Sequence expressions and binary `**` now work end to end.
@@ -55,7 +57,8 @@ Audit sources:
 
 ### Still missing or narrower than requested
 
-- [ ] Object spread is rejected during validation.
+- [x] Object spread now works for plain-object and array sources, skips
+  `null` / `undefined`, and fails closed for other source values.
 - [ ] Array spread is rejected during validation.
 - [ ] Spread arguments are rejected during validation.
 - [ ] Default parameters are rejected during validation.
@@ -73,8 +76,10 @@ Audit sources:
 
 ### Missing but not in the original requested list
 
-- [ ] Computed object literal keys are rejected during validation.
-- [ ] Object literal methods are rejected during validation.
+- [x] Computed object literal keys are supported end to end.
+- [x] Object literal methods are supported end to end.
+- [x] Object literal spread is supported end to end for the documented
+  plain-object and array source surface.
 - [x] Conservative `in` support exists for the runtime's currently exposed
   property surface without widening prototype or descriptor semantics.
 - [ ] Logical assignment operators `||=` and `&&=` are unsupported.
@@ -121,9 +126,9 @@ Audit sources:
   host boundary.
 - [ ] Add lowering and runtime expansion for array spread and spread arguments
   using the currently supported iterable surface.
-- [ ] Add lowering and runtime expansion for object spread using the documented
+- [x] Add lowering and runtime expansion for object spread using the documented
   plain-object enumeration rules.
-- [ ] Add lowering for computed object literal keys and object literal methods
+- [x] Add lowering for computed object literal keys and object literal methods
   if they stay in scope for the compatibility target.
 - [ ] Add destructuring assignment lowering for identifier and member targets.
 - [ ] Add default parameter and default destructuring evaluation in

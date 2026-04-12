@@ -108,6 +108,18 @@ impl Runtime {
                 let object = self.insert_object(properties, ObjectKind::Plain)?;
                 self.frames[frame_index].stack.push(Value::Object(object));
             }
+            Instruction::CopyDataProperties => {
+                let source = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let target = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                self.copy_data_properties(target.clone(), source)?;
+                self.frames[frame_index].stack.push(target);
+            }
             Instruction::CreateIterator => {
                 let iterable = self.frames[frame_index]
                     .stack

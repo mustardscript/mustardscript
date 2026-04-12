@@ -53,6 +53,12 @@
           }
         },
         {
+          "MakeObject": {
+            "keys": []
+          }
+        },
+        "Dup",
+        {
           "LoadName": "pair"
         },
         {
@@ -78,14 +84,11 @@
           "Binary": "Add"
         },
         {
-          "MakeObject": {
-            "keys": [
-              {
-                "Identifier": "total"
-              }
-            ]
+          "SetPropStatic": {
+            "name": "total"
           }
         },
+        "Pop",
         "Return",
         "PushUndefined",
         "Return"

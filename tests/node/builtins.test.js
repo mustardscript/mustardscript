@@ -210,6 +210,42 @@ test('run supports Array.prototype.splice, Array.prototype.flat, and Array.proto
   });
 });
 
+test('run supports computed object literal keys, method shorthand, and object spread for plain objects and arrays', async () => {
+  const result = await runtime(`
+    const key = "value";
+    const extra = [3];
+    extra.label = "ok";
+    const record = {
+      alpha: 1,
+      [key]: 2,
+      total(step) {
+        return this.alpha + this[key] + step;
+      },
+      ...null,
+      ...undefined,
+      ...extra,
+      ...{ beta: 4 },
+    };
+    ({
+      value: record.value,
+      zero: record[0],
+      label: record.label,
+      total: record.total(5),
+      methodType: typeof record.total,
+      keys: Object.keys(record),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    value: 2,
+    zero: 3,
+    label: 'ok',
+    total: 8,
+    methodType: 'function',
+    keys: ['0', 'alpha', 'value', 'total', 'label', 'beta'],
+  });
+});
+
 test('array callback helpers fail closed for invalid callbacks and synchronous host suspensions', async () => {
   await assert.rejects(
     () => runtime('([1]).map(1);').run(),
@@ -350,6 +386,15 @@ test('Object.assign copies supported enumerable properties and unsupported objec
     isJsliteError({
       kind: 'Runtime',
       message: 'Object.seal is unsupported because property descriptor semantics are deferred',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('({ ...1 });').run(),
+    isJsliteError({
+      kind: 'Runtime',
+      message: 'object spread currently only supports plain objects and arrays',
       guestSafe: true,
     }),
   );

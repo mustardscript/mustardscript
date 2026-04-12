@@ -33,7 +33,8 @@ extensions are called out explicitly instead of being implied.
 - `async` function declarations and expressions
 - arrow functions
 - `await` inside async functions
-- literals, arrays, and objects
+- literals, arrays, and plain-object literals with static keys, computed keys,
+  method shorthand, and spread from plain objects or arrays
 - `if`, `switch`, `while`, `do...while`, `for`, array `for...of`, `break`,
   and `continue`
 - `return`
@@ -170,7 +171,7 @@ extensions are called out explicitly instead of being implied.
   headers, and destructuring assignment targets
 - `debugger`
 - labeled statements
-- object spread and object-literal methods
+- object literal accessors
 - array spread and array holes
 
 ## Explicit Deferrals
@@ -393,6 +394,10 @@ extensions are called out explicitly instead of being implied.
 - `Object.assign` mutates and returns the original target, copies enumerable
   properties from later plain-object or array sources in the runtime's
   documented helper enumeration order, and skips `null` / `undefined` sources
+- object literal spread uses the same plain-object and array source surface as
+  `Object.assign`, always targets a fresh plain object, skips `null` /
+  `undefined` sources, and throws a runtime `TypeError` for other source
+  values
 - `Object.fromEntries` accepts the supported iterable surface and expects each
   produced item to be a guest array pair
 - binary `in` checks the runtime's currently exposed property surface without

@@ -76,9 +76,7 @@ missing:
   `new Foo()` fails closed unless `Foo` is one of the conservative built-in
   constructors.
 - Private fields are unsupported.
-- Object literal methods are unsupported.
-- Computed object literal keys are unsupported.
-- Object spread is unsupported.
+- Object literal accessors are unsupported.
 - Array spread is unsupported.
 - Spread arguments are unsupported.
 - Default parameters are rejected during validation.
@@ -218,6 +216,9 @@ missing:
   declare exactly one `let` or `const` binding, destructuring assignment
   targets remain unsupported, `for...in` is still limited to plain objects and
   arrays, and `for await...of` remains unsupported.
+- Object spread is narrower than full JavaScript: plain-object and array
+  sources work, `null` / `undefined` are skipped, and other source values fail
+  closed instead of following full boxing and coercion rules.
 - `in` intentionally checks only the runtime's currently exposed property
   surface. It does not introduce full prototype walking, descriptor semantics,
   or a reflective `globalThis` mirror of every global binding.
