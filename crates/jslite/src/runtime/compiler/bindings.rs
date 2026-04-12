@@ -79,7 +79,7 @@ fn collect_pattern_bindings(pattern: &Pattern, bindings: &mut Vec<(String, bool)
 
 pub(super) fn assign_op_to_binary(operator: AssignOp) -> JsliteResult<BinaryOp> {
     match operator {
-        AssignOp::Assign | AssignOp::NullishAssign => {
+        AssignOp::Assign | AssignOp::OrAssign | AssignOp::AndAssign | AssignOp::NullishAssign => {
             Err(JsliteError::runtime("invalid compound assignment"))
         }
         AssignOp::AddAssign => Ok(BinaryOp::Add),

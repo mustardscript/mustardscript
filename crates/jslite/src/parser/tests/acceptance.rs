@@ -1,6 +1,6 @@
 use crate::{
     compile,
-    ir::{ArrayElement, CallArgument, Expr, Stmt},
+    ir::{ArrayElement, AssignOp, CallArgument, Expr, Stmt},
 };
 
 #[test]
@@ -244,4 +244,41 @@ fn lowers_spread_optional_call_arguments_into_ir() {
     assert!(matches!(arguments[0], CallArgument::Value(_)));
     assert!(matches!(arguments[1], CallArgument::Spread { .. }));
     assert!(matches!(arguments[2], CallArgument::Value(_)));
+}
+
+#[test]
+fn parses_logical_assignment_operators_into_ir() {
+    let program = compile(
+        r#"
+        let truthy = 1;
+        let falsy = 0;
+        truthy ||= 2;
+        falsy &&= 3;
+        "#,
+    )
+    .expect("logical assignment operators should parse");
+
+    match &program.script.body[2] {
+        Stmt::Expression {
+            expression:
+                Expr::Assignment {
+                    operator: AssignOp::OrAssign,
+                    ..
+                },
+            ..
+        } => {}
+        other => panic!("expected ||= assignment expression, got {other:?}"),
+    }
+
+    match &program.script.body[3] {
+        Stmt::Expression {
+            expression:
+                Expr::Assignment {
+                    operator: AssignOp::AndAssign,
+                    ..
+                },
+            ..
+        } => {}
+        other => panic!("expected &&= assignment expression, got {other:?}"),
+    }
 }

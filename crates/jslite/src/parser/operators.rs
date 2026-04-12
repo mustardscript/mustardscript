@@ -90,6 +90,8 @@ impl<'a> Lowerer<'a> {
             AssignmentOperator::Subtraction => Some(AssignOp::SubAssign),
             AssignmentOperator::Multiplication => Some(AssignOp::MulAssign),
             AssignmentOperator::Division => Some(AssignOp::DivAssign),
+            AssignmentOperator::LogicalOr => Some(AssignOp::OrAssign),
+            AssignmentOperator::LogicalAnd => Some(AssignOp::AndAssign),
             AssignmentOperator::LogicalNullish => Some(AssignOp::NullishAssign),
             _ => {
                 self.unsupported("unsupported assignment operator in v1", Some(span.into()));

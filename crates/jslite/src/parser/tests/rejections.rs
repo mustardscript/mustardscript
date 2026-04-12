@@ -149,13 +149,6 @@ fn rejects_instanceof_with_guest_functions() {
 }
 
 #[test]
-fn rejects_logical_assignment_operators() {
-    for source in ["let value = 1; value ||= 2;", "let value = 1; value &&= 2;"] {
-        assert_validation_reject(source, "unsupported assignment operator in v1");
-    }
-}
-
-#[test]
 fn rejects_additional_unsupported_assignment_operators() {
     for source in [
         "let value = 2; value %= 3;",
