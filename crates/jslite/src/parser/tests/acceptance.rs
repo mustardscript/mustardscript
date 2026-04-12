@@ -224,3 +224,24 @@ fn lowers_spread_constructor_arguments_into_ir() {
     assert!(matches!(arguments[1], CallArgument::Spread { .. }));
     assert!(matches!(arguments[2], CallArgument::Value(_)));
 }
+
+#[test]
+fn lowers_spread_optional_call_arguments_into_ir() {
+    let program =
+        compile("maybeRun?.(1, ...values, 3);").expect("optional spread call should compile");
+
+    let Stmt::Expression { expression, .. } = &program.script.body[0] else {
+        panic!("unexpected stmt: {:?}", program.script.body[0]);
+    };
+    let Expr::Call {
+        arguments, optional, ..
+    } = expression
+    else {
+        panic!("unexpected expr: {expression:?}");
+    };
+
+    assert!(*optional);
+    assert!(matches!(arguments[0], CallArgument::Value(_)));
+    assert!(matches!(arguments[1], CallArgument::Spread { .. }));
+    assert!(matches!(arguments[2], CallArgument::Value(_)));
+}
