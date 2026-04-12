@@ -25,6 +25,7 @@ use compiler::pattern_bindings;
 pub use serialization::{dump_program, dump_snapshot, load_program, load_snapshot};
 
 use std::collections::{HashSet, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use indexmap::IndexMap;
 use slotmap::SlotMap;
@@ -81,6 +82,7 @@ impl Runtime {
             microtasks: VecDeque::new(),
             pending_host_calls: VecDeque::new(),
             suspended_host_call: None,
+            snapshot_nonce: next_snapshot_nonce(),
             instruction_counter: 0,
             heap_bytes_used: 0,
             allocation_count: 0,
@@ -261,6 +263,11 @@ fn serialization_error(message: impl Into<String>) -> JsliteError {
         span: None,
         traceback: Vec::new(),
     }
+}
+
+fn next_snapshot_nonce() -> u64 {
+    static NEXT_SNAPSHOT_NONCE: AtomicU64 = AtomicU64::new(1);
+    NEXT_SNAPSHOT_NONCE.fetch_add(1, Ordering::Relaxed)
 }
 
 fn pop_many(stack: &mut Vec<Value>, count: usize) -> JsliteResult<Vec<Value>> {

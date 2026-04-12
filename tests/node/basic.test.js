@@ -792,14 +792,20 @@ test('progress.load rejects reused snapshots in the same process', () => {
   );
 });
 
-test('progress resume surfaces snapshot failures as typed errors', () => {
-  const restored = Progress.load({
-    capability: 'fetch_data',
-    args: [],
-    snapshot: Buffer.from('not-a-valid-snapshot'),
-  });
+test('progress load surfaces snapshot failures as typed errors', () => {
   assert.throws(
-    () => restored.resume(1),
+    () =>
+      Progress.load(
+        {
+          snapshot: Buffer.from('not-a-valid-snapshot'),
+        },
+        {
+          capabilities: {
+            fetch_data() {},
+          },
+          limits: {},
+        },
+      ),
     (error) =>
       error instanceof JsliteError &&
       error.name === 'JsliteSerializationError' &&
@@ -857,14 +863,19 @@ test('limit errors do not leak host internals', async () => {
 });
 
 test('serialization errors do not leak host internals', () => {
-  const restored = Progress.load({
-    capability: 'fetch_data',
-    args: [],
-    snapshot: Buffer.from('not-a-valid-snapshot'),
-  });
-
   assert.throws(
-    () => restored.resume(1),
+    () =>
+      Progress.load(
+        {
+          snapshot: Buffer.from('not-a-valid-snapshot'),
+        },
+        {
+          capabilities: {
+            fetch_data() {},
+          },
+          limits: {},
+        },
+      ),
     (error) =>
       error instanceof JsliteError &&
       error.name === 'JsliteSerializationError' &&

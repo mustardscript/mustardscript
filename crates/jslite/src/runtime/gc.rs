@@ -119,10 +119,10 @@ impl Runtime {
                 self.mark_promise(promise, &mut marks, &mut worklist);
             }
         }
-        if let Some(request) = &self.suspended_host_call {
-            if let Some(promise) = request.promise {
-                self.mark_promise(promise, &mut marks, &mut worklist);
-            }
+        if let Some(request) = &self.suspended_host_call
+            && let Some(promise) = request.promise
+        {
+            self.mark_promise(promise, &mut marks, &mut worklist);
         }
 
         while !worklist.envs.is_empty()

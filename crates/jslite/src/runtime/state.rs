@@ -440,6 +440,7 @@ pub(super) struct Runtime {
     pub(super) microtasks: VecDeque<MicrotaskJob>,
     pub(super) pending_host_calls: VecDeque<PendingHostCall>,
     pub(super) suspended_host_call: Option<PendingHostCall>,
+    pub(super) snapshot_nonce: u64,
     pub(super) instruction_counter: usize,
     #[serde(skip, default)]
     pub(super) heap_bytes_used: usize,

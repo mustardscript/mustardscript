@@ -32,6 +32,9 @@ the safety rules they are expected to follow.
 - Snapshot loads also validate live frame pointers, referenced runtime objects,
   iterator references, promise references, and queued host-call state before
   restore.
+- Loaded snapshots are inert until the host rebinds explicit resume policy.
+  Restores fail closed if the host does not reassert allowed capability names
+  and authoritative runtime limits.
 - Opaque host references, native handles, and host futures are never
   serialized.
 - Snapshots are only created at explicit suspension points.
@@ -47,6 +50,9 @@ the safety rules they are expected to follow.
 - In the Node wrapper, `start()` and `Progress.dump()` happen before any async
   capability promise is awaited, so JavaScript `Promise` objects never enter the
   serialized snapshot.
+- In the Node wrapper, same-process `Progress.load(...)` can reuse cached policy
+  for a dumped snapshot, but fresh-process restores must pass explicit
+  `capabilities` and `limits` before inspection or resume.
 
 ## Value Encoding
 

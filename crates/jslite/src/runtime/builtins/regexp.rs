@@ -165,7 +165,10 @@ impl Runtime {
         builder.case_insensitive(flags.ignore_case);
         builder.multi_line(flags.multiline);
         builder.dot_matches_new_line(flags.dot_all);
-        builder.unicode(flags.unicode);
+        // The Rust engine operates over UTF-8 strings, so keep Unicode mode
+        // enabled even without the JS `u` flag. This preserves the supported
+        // text-regexp subset while avoiding non-UTF-8 byte classes.
+        builder.unicode(true);
         let regex = builder.build().map_err(|error| {
             JsliteError::runtime(format!("SyntaxError: invalid regular expression: {error}"))
         })?;

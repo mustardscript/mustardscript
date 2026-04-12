@@ -51,6 +51,10 @@ Cooperative cancellation is controlled separately through:
   identities.
 - Snapshot load recomputes heap accounting before resuming so serialized inputs
   cannot bypass the configured heap and allocation budgets.
+- Loaded snapshots do not get to keep serialized runtime limits. Resume policy
+  must reassert explicit host limits, and restored execution fails closed if the
+  snapshot is already over the host's configured heap, allocation, depth,
+  outstanding-call, or instruction budgets.
 - Outstanding host-call limits are enforced for async guest execution across
   queued and currently suspended host capability requests.
 - Call-depth limits are enforced before each new guest frame is pushed, so

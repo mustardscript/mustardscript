@@ -557,6 +557,7 @@ impl Runtime {
         let capability = request.capability.clone();
         let args = request.args.clone();
         self.suspended_host_call = Some(request);
+        self.snapshot_nonce = next_snapshot_nonce();
         ExecutionStep::Suspended(Box::new(Suspension {
             capability,
             args,

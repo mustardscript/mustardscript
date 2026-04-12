@@ -12,7 +12,10 @@ fn number(value: f64) -> StructuredValue {
 
 fn snapshot_policy(capabilities: &[&str], limits: RuntimeLimits) -> SnapshotPolicy {
     SnapshotPolicy {
-        capabilities: capabilities.iter().map(|name| (*name).to_string()).collect(),
+        capabilities: capabilities
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect(),
         limits,
     }
 }
@@ -193,10 +196,7 @@ fn snapshot_round_trip_preserves_active_array_iterators() {
         ResumePayload::Value(number(10.0)),
         ResumeOptions {
             cancellation_token: None,
-            snapshot_policy: Some(snapshot_policy(
-                &["fetch_data"],
-                RuntimeLimits::default(),
-            )),
+            snapshot_policy: Some(snapshot_policy(&["fetch_data"], RuntimeLimits::default())),
         },
     )
     .expect("resume should work")

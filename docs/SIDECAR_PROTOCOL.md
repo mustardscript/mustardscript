@@ -53,6 +53,10 @@ Successful responses return either:
   "method": "resume",
   "id": 3,
   "snapshot_base64": "...",
+  "policy": {
+    "capabilities": ["fetch_data"],
+    "limits": {}
+  },
   "payload": {
     "type": "value",
     "value": { "Number": { "Finite": 1.0 } }
@@ -61,6 +65,9 @@ Successful responses return either:
 ```
 
 `payload.type` is either `value` or `error`.
+`policy` is required. The host must reassert the allowed capability names and
+authoritative runtime limits before the sidecar will inspect or resume a loaded
+snapshot.
 
 ## Response Shape
 

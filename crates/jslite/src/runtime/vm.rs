@@ -368,6 +368,7 @@ impl Runtime {
                             resume_behavior,
                             traceback: self.traceback_snapshots(),
                         });
+                        self.snapshot_nonce = next_snapshot_nonce();
                         return Ok(StepAction::Return(ExecutionStep::Suspended(Box::new(
                             Suspension {
                                 capability,

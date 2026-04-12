@@ -209,8 +209,8 @@ pub fn start_program(
 pub fn inspect_snapshot(snapshot: Buffer, policy_json: String) -> Result<String> {
     let mut snapshot = load_snapshot(snapshot.as_ref()).map_err(to_napi_error)?;
     let policy: SnapshotPolicyDto = parse_json(&policy_json)?;
-    let inspection =
-        inspect_loaded_snapshot(&mut snapshot, policy.into_snapshot_policy()).map_err(to_napi_error)?;
+    let inspection = inspect_loaded_snapshot(&mut snapshot, policy.into_snapshot_policy())
+        .map_err(to_napi_error)?;
     encode_json(&inspection)
 }
 

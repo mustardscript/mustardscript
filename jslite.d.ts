@@ -38,6 +38,12 @@ export interface ResumeOptions {
   signal?: AbortSignal;
 }
 
+export interface ProgressLoadOptions {
+  capabilities?: Record<string, Capability>;
+  console?: ConsoleCallbacks;
+  limits?: RuntimeLimits;
+}
+
 export interface RuntimeLimits {
   instructionBudget?: number;
   heapLimitBytes?: number;
@@ -77,7 +83,7 @@ export class Progress {
   resumeError(error: unknown, options?: ResumeOptions): StructuredValue | Progress;
   cancel(): StructuredValue | Progress;
 
-  static load(state: SerializedProgress): Progress;
+  static load(state: SerializedProgress, options?: ProgressLoadOptions): Progress;
 }
 
 export class Jslite {

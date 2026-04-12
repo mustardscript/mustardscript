@@ -3,12 +3,15 @@ use jslite::structured::StructuredNumber;
 use jslite::{
     ExecutionOptions, ExecutionStep, ResumeOptions, ResumePayload, RuntimeLimits, SnapshotPolicy,
     StructuredValue, compile, dump_program, dump_snapshot, execute, load_program, load_snapshot,
-    lower_to_bytecode, resume, resume_with_options, start_bytecode,
+    lower_to_bytecode, resume_with_options, start_bytecode,
 };
 
 fn snapshot_policy(capabilities: &[&str], limits: RuntimeLimits) -> SnapshotPolicy {
     SnapshotPolicy {
-        capabilities: capabilities.iter().map(|name| (*name).to_string()).collect(),
+        capabilities: capabilities
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect(),
         limits,
     }
 }
@@ -276,10 +279,7 @@ fn bytecode_and_snapshot_round_trips_preserve_resume_behavior() {
         ResumePayload::Value(StructuredValue::Number(StructuredNumber::Finite(4.0))),
         ResumeOptions {
             cancellation_token: None,
-            snapshot_policy: Some(snapshot_policy(
-                &["fetch_data"],
-                RuntimeLimits::default(),
-            )),
+            snapshot_policy: Some(snapshot_policy(&["fetch_data"], RuntimeLimits::default())),
         },
     )
     .expect("resume should succeed");

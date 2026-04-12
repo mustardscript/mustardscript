@@ -1075,14 +1075,14 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> JsliteResult<()> 
 
 fn validate_runtime_host_capability(value: &Value, allowed: &HashSet<String>) -> JsliteResult<()> {
     match value {
-        Value::HostFunction(capability) if !allowed.contains(capability) => Err(JsliteError::Message {
-            kind: DiagnosticKind::Serialization,
-            message: format!(
-                "snapshot policy rejected unauthorized capability `{capability}`"
-            ),
-            span: None,
-            traceback: Vec::new(),
-        }),
+        Value::HostFunction(capability) if !allowed.contains(capability) => {
+            Err(JsliteError::Message {
+                kind: DiagnosticKind::Serialization,
+                message: format!("snapshot policy rejected unauthorized capability `{capability}`"),
+                span: None,
+                traceback: Vec::new(),
+            })
+        }
         _ => Ok(()),
     }
 }

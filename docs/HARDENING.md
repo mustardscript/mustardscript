@@ -45,7 +45,10 @@ Current hostile-input pressure points and mitigations:
   boundary for adversarial inputs.
 - Bytecode and snapshot loading treat serialized blobs as untrusted. The
   verified suites mutate valid blobs, fuzz loaders with arbitrary bytes, and
-  assert that failures stay host-safe.
+  assert that failures stay host-safe. The dedicated
+  `crates/jslite/tests/snapshot_policy_security.rs` suite also verifies that
+  loaded snapshots cannot resume until the host reasserts allowed capability
+  names and explicit runtime limits.
 - Bytecode execution is bounded by instruction, heap, allocation, and call-depth
   limits. The hardening suite injects over-budget workloads and checks for
   guest-safe failures.

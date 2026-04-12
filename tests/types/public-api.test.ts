@@ -5,6 +5,7 @@ import type {
   ExecutionOptions,
   JsliteError as JsliteErrorType,
   JsliteErrorKind,
+  ProgressLoadOptions,
   Progress as ProgressType,
   ResumeOptions,
   RuntimeLimits,
@@ -49,6 +50,16 @@ const runtimeLimits: RuntimeLimits = {
 const resumeOptions: ResumeOptions = {
   signal: new AbortController().signal,
 };
+const progressLoadOptions: ProgressLoadOptions = {
+  capabilities: {
+    fetch_data(value) {
+      return value;
+    },
+  },
+  limits: {
+    instructionBudget: 1000,
+  },
+};
 
 const errorKind: JsliteErrorKind = 'Runtime';
 const capability: Capability = async (...args) => args[0] ?? structured;
@@ -78,6 +89,7 @@ async function typecheck(): Promise<void> {
     const snapshot: Buffer = step.snapshot;
     const dumpedProgress: SerializedProgress = step.dump();
     const restored: ProgressType = Progress.load(dumpedProgress);
+    const restoredWithPolicy: ProgressType = Progress.load(dumpedProgress, progressLoadOptions);
     const resumed: StructuredValue | ProgressType = step.resume(1, resumeOptions);
     const hostError: CapabilityError = Object.assign(new Error('failed'), {
       name: 'CapabilityError',
@@ -90,6 +102,7 @@ async function typecheck(): Promise<void> {
     void args;
     void snapshot;
     void restored;
+    void restoredWithPolicy;
     void resumed;
     void resumedError;
     void cancelled;
@@ -104,6 +117,7 @@ const typedError: JsliteErrorType = new JsliteError(errorKind, 'boom', new Error
 void typedError;
 void runtimeLimits;
 void resumeOptions;
+void progressLoadOptions;
 void errorKind;
 void consoleCallbacks;
 

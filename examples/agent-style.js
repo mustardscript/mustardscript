@@ -26,8 +26,15 @@ async function main() {
   const persisted = firstStep.dump();
 
   // The host can persist `persisted.snapshot`, `persisted.capability`, and
-  // `persisted.args` anywhere durable before resuming later.
-  const restored = Progress.load(persisted);
+  // `persisted.args` anywhere durable before resuming later. If the progress is
+  // restored in a fresh process, the host must also reassert the capability
+  // allowlist and runtime limits before loading it.
+  const restored = Progress.load(persisted, {
+    capabilities: {
+      fetch_profile() {},
+    },
+    limits: {},
+  });
   const result = restored.resume({
     id: restored.args[0],
     name: 'Ada',

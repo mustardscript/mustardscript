@@ -16,7 +16,8 @@ const CONSOLE_CAPABILITY_NAMES = {
   warn: 'console.warn',
   error: 'console.error',
 };
-const USED_PROGRESS_TOKENS = new Set();
+const USED_PROGRESS_SNAPSHOTS = new Set();
+const KNOWN_PROGRESS_POLICIES = new Map();
 
 class JsliteError extends Error {
   constructor(kind, message, cause) {
@@ -217,32 +218,15 @@ function decodeStructured(value) {
   throw new TypeError(`Unsupported structured value: ${JSON.stringify(value)}`);
 }
 
-function encodeStartOptions({ inputs = {}, limits = {}, signal, ...handlers } = {}) {
+function encodeStartOptions(inputs = {}, policy) {
   const encodedInputs = {};
   for (const [key, descriptor] of enumerateDataProperties(inputs)) {
     defineEnumerableProperty(encodedInputs, key, encodeStructured(descriptor.value));
   }
-  const hostHandlers = collectHostHandlers(handlers);
-  const encodedLimits = {};
-  if (limits.instructionBudget !== undefined) {
-    encodedLimits.instruction_budget = limits.instructionBudget;
-  }
-  if (limits.heapLimitBytes !== undefined) {
-    encodedLimits.heap_limit_bytes = limits.heapLimitBytes;
-  }
-  if (limits.allocationBudget !== undefined) {
-    encodedLimits.allocation_budget = limits.allocationBudget;
-  }
-  if (limits.callDepthLimit !== undefined) {
-    encodedLimits.call_depth_limit = limits.callDepthLimit;
-  }
-  if (limits.maxOutstandingHostCalls !== undefined) {
-    encodedLimits.max_outstanding_host_calls = limits.maxOutstandingHostCalls;
-  }
   return JSON.stringify({
     inputs: encodedInputs,
-    capabilities: Object.keys(hostHandlers),
-    limits: encodedLimits,
+    capabilities: policy.capabilities,
+    limits: policy.limits,
   });
 }
 
@@ -270,6 +254,56 @@ function encodeResumePayloadCancel() {
   return JSON.stringify({
     type: 'cancelled',
   });
+}
+
+function encodeRuntimeLimits(limits = {}) {
+  const encodedLimits = {};
+  if (limits.instructionBudget !== undefined) {
+    encodedLimits.instruction_budget = limits.instructionBudget;
+  }
+  if (limits.heapLimitBytes !== undefined) {
+    encodedLimits.heap_limit_bytes = limits.heapLimitBytes;
+  }
+  if (limits.allocationBudget !== undefined) {
+    encodedLimits.allocation_budget = limits.allocationBudget;
+  }
+  if (limits.callDepthLimit !== undefined) {
+    encodedLimits.call_depth_limit = limits.callDepthLimit;
+  }
+  if (limits.maxOutstandingHostCalls !== undefined) {
+    encodedLimits.max_outstanding_host_calls = limits.maxOutstandingHostCalls;
+  }
+  return encodedLimits;
+}
+
+function cloneSnapshotPolicy(policy) {
+  return {
+    capabilities: policy.capabilities.slice(),
+    limits: { ...policy.limits },
+  };
+}
+
+function encodeSnapshotPolicy(policy) {
+  return JSON.stringify(cloneSnapshotPolicy(policy));
+}
+
+function snapshotIdentity(snapshot) {
+  return crypto.createHash('sha256').update(snapshot).digest('hex');
+}
+
+function rememberProgressPolicy(snapshotId, policy) {
+  KNOWN_PROGRESS_POLICIES.set(snapshotId, cloneSnapshotPolicy(policy));
+}
+
+function createExecutionPolicy({ limits = {}, ...handlers } = {}) {
+  const hostHandlers = collectHostHandlers(handlers);
+  return {
+    hostHandlers,
+    policy: {
+      capabilities: Object.keys(hostHandlers),
+      limits: encodeRuntimeLimits(limits),
+    },
+  };
 }
 
 function getAbortSignal(options, label) {
@@ -390,25 +424,57 @@ function parseStep(stepJson) {
   };
 }
 
+function parseSnapshotInspection(inspectionJson) {
+  const inspection = JSON.parse(inspectionJson);
+  return {
+    capability: inspection.capability,
+    args: inspection.args.map(decodeStructured),
+  };
+}
+
+function resolveProgressLoadPolicy(snapshotId, options) {
+  if (options === undefined) {
+    const cached = KNOWN_PROGRESS_POLICIES.get(snapshotId);
+    if (cached === undefined) {
+      throw new TypeError(
+        'Progress.load() requires explicit capabilities and limits when restoring progress outside the current process',
+      );
+    }
+    return cloneSnapshotPolicy(cached);
+  }
+  if (options === null || typeof options !== 'object') {
+    throw new TypeError('Progress.load() options must be an object');
+  }
+  if (!hasOwnProperty(options, 'limits')) {
+    throw new TypeError(
+      'Progress.load() requires explicit limits when restoring progress outside the current process',
+    );
+  }
+  return createExecutionPolicy(options).policy;
+}
+
 class Progress {
-  constructor(snapshot, capability, args, token = crypto.randomUUID()) {
+  constructor(snapshot, capability, args, policy) {
     this.capability = capability;
     this.args = args;
-    this.#snapshot = snapshot;
-    this.#token = token;
+    this.#snapshot = Buffer.from(snapshot);
+    this.#snapshotId = snapshotIdentity(this.#snapshot);
+    this.#policy = cloneSnapshotPolicy(policy);
+    rememberProgressPolicy(this.#snapshotId, this.#policy);
   }
 
   #snapshot;
-  #token;
+  #snapshotId;
+  #policy;
 
   #claimSnapshot() {
-    if (USED_PROGRESS_TOKENS.has(this.#token)) {
+    if (USED_PROGRESS_SNAPSHOTS.has(this.#snapshotId)) {
       throw new JsliteError(
         'Runtime',
         'Progress objects are single-use; this suspended execution was already resumed',
       );
     }
-    USED_PROGRESS_TOKENS.add(this.#token);
+    USED_PROGRESS_SNAPSHOTS.add(this.#snapshotId);
     return Buffer.from(this.#snapshot);
   }
 
@@ -421,7 +487,7 @@ class Progress {
       capability: this.capability,
       args: this.args.slice(),
       snapshot: this.snapshot,
-      token: this.#token,
+      token: this.#snapshotId,
     };
   }
 
@@ -431,10 +497,11 @@ class Progress {
       return this.cancel();
     }
     const payload = encodeResumePayloadValue(value);
+    const policyJson = encodeSnapshotPolicy(this.#policy);
     const step = parseStep(
-      withCancellationSignal(native.resumeProgram, [this.#claimSnapshot(), payload], signal),
+      withCancellationSignal(native.resumeProgram, [this.#claimSnapshot(), payload, policyJson], signal),
     );
-    return materializeStep(step);
+    return materializeStep(step, this.#policy);
   }
 
   resumeError(error, options = undefined) {
@@ -443,46 +510,43 @@ class Progress {
       return this.cancel();
     }
     const payload = encodeResumePayloadError(error);
+    const policyJson = encodeSnapshotPolicy(this.#policy);
     const step = parseStep(
-      withCancellationSignal(native.resumeProgram, [this.#claimSnapshot(), payload], signal),
+      withCancellationSignal(native.resumeProgram, [this.#claimSnapshot(), payload, policyJson], signal),
     );
-    return materializeStep(step);
+    return materializeStep(step, this.#policy);
   }
 
   cancel() {
+    const policyJson = encodeSnapshotPolicy(this.#policy);
     const step = parseStep(
-      callNative(native.resumeProgram, this.#claimSnapshot(), encodeResumePayloadCancel()),
+      callNative(native.resumeProgram, this.#claimSnapshot(), encodeResumePayloadCancel(), policyJson),
     );
-    return materializeStep(step);
+    return materializeStep(step, this.#policy);
   }
 
-  static load(state) {
+  static load(state, options = undefined) {
     if (!state || typeof state !== 'object') {
       throw new TypeError('Progress.load() expects a dumped progress object');
-    }
-    if (typeof state.capability !== 'string') {
-      throw new TypeError('Progress.load() requires a string capability name');
-    }
-    if (!Array.isArray(state.args)) {
-      throw new TypeError('Progress.load() requires an args array');
     }
     if (!state.snapshot) {
       throw new TypeError('Progress.load() requires snapshot bytes');
     }
-    return new Progress(
-      Buffer.from(state.snapshot),
-      state.capability,
-      state.args.slice(),
-      typeof state.token === 'string' ? state.token : crypto.randomUUID(),
+    const snapshot = Buffer.from(state.snapshot);
+    const snapshotId = snapshotIdentity(snapshot);
+    const policy = resolveProgressLoadPolicy(snapshotId, options);
+    const inspection = parseSnapshotInspection(
+      callNative(native.inspectSnapshot, snapshot, encodeSnapshotPolicy(policy)),
     );
+    return new Progress(snapshot, inspection.capability, inspection.args, policy);
   }
 }
 
-function materializeStep(step) {
+function materializeStep(step, policy) {
   if (step.type === 'completed') {
     return step.value;
   }
-  return new Progress(step.snapshot, step.capability, step.args);
+  return new Progress(step.snapshot, step.capability, step.args, policy);
 }
 
 class Jslite {
@@ -493,9 +557,14 @@ class Jslite {
 
   async run(options = {}) {
     const signal = getAbortSignal(options, 'run options');
-    const hostHandlers = collectHostHandlers(options);
+    const { hostHandlers, policy } = createExecutionPolicy(options);
+    const policyJson = encodeSnapshotPolicy(policy);
     let step = parseStep(
-      withCancellationSignal(native.startProgram, [this._program, encodeStartOptions(options)], signal),
+      withCancellationSignal(
+        native.startProgram,
+        [this._program, encodeStartOptions(options.inputs, policy)],
+        signal,
+      ),
     );
     while (step.type === 'suspended') {
       const capability = hostHandlers[step.capability];
@@ -505,7 +574,7 @@ class Jslite {
       const outcome = await settleCapabilityInvocation(capability, step.args, signal);
       if (outcome.type === 'cancelled') {
         step = parseStep(
-          callNative(native.resumeProgram, step.snapshot, encodeResumePayloadCancel()),
+          callNative(native.resumeProgram, step.snapshot, encodeResumePayloadCancel(), policyJson),
         );
         continue;
       }
@@ -514,7 +583,7 @@ class Jslite {
           ? encodeResumePayloadValue(outcome.value)
           : encodeResumePayloadError(outcome.error);
       step = parseStep(
-        withCancellationSignal(native.resumeProgram, [step.snapshot, payload], signal),
+        withCancellationSignal(native.resumeProgram, [step.snapshot, payload, policyJson], signal),
       );
     }
     return step.value;
@@ -522,10 +591,15 @@ class Jslite {
 
   start(options = {}) {
     const signal = getAbortSignal(options, 'start options');
+    const { policy } = createExecutionPolicy(options);
     const step = parseStep(
-      withCancellationSignal(native.startProgram, [this._program, encodeStartOptions(options)], signal),
+      withCancellationSignal(
+        native.startProgram,
+        [this._program, encodeStartOptions(options.inputs, policy)],
+        signal,
+      ),
     );
-    return materializeStep(step);
+    return materializeStep(step, policy);
   }
 
   dump() {

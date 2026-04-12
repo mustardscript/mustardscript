@@ -1,10 +1,15 @@
 # Security Issues
 
-This file records confirmed critical findings from the threat-model review.
-Entries below were validated with focused local repros or child-process crash /
-timeout repros. The full test suite was not rerun as part of this audit.
+This file records confirmed critical findings from the threat-model review and
+their current status.
+Entries below were originally validated with focused local repros or
+child-process crash / timeout repros. All listed findings are now fixed on
+`main` as of 2026-04-11. The sections remain here as a historical record of the
+original issue statements and repros.
 
 ## Critical: `__proto__` keys can rewrite the prototype of host-visible plain objects
+
+**Status:** fixed on `main`
 
 **Affected files**
 
@@ -46,6 +51,8 @@ Encode and decode structured objects with a prototype-safe representation. Do
 not use plain property assignment on `{}` for attacker-controlled keys.
 
 ## Critical: enumerable accessors execute instead of being rejected at the host boundary
+
+**Status:** fixed on `main`
 
 **Affected files**
 
@@ -94,6 +101,8 @@ descriptors explicitly.
 
 ## Critical: guest-created cycles crash the process instead of failing closed
 
+**Status:** fixed on `main`
+
 **Affected files**
 
 - [`crates/jslite/src/runtime.rs`](crates/jslite/src/runtime.rs)
@@ -140,6 +149,8 @@ Track visited guest heap objects while converting to `StructuredValue` and fail
 closed on cycles instead of recursing indefinitely.
 
 ## Critical: regex-backed built-ins bypass instruction budgeting and cancellation
+
+**Status:** fixed on `main`
 
 **Affected files**
 
@@ -198,6 +209,8 @@ Either move to a regex engine with hard complexity guarantees or add a separate
 metered and cancellable regex execution path.
 
 ## Critical: `Progress.load()` trusts capability metadata that is not bound to the snapshot
+
+**Status:** fixed on `main`
 
 **Affected files**
 
@@ -268,6 +281,8 @@ that is not structurally bound to snapshot contents.
 
 ## Critical: `Progress.load()` token spoofing bypasses the documented single-use guarantee
 
+**Status:** fixed on `main`
+
 **Affected files**
 
 - [`index.js`](index.js)
@@ -316,6 +331,8 @@ metadata derived from the snapshot itself, not to a mutable caller-supplied
 token.
 
 ## Critical: forged snapshots can rewrite capability-bearing runtime state
+
+**Status:** fixed on `main`
 
 **Affected files**
 
@@ -382,6 +399,8 @@ load/resume time against a host-provided allowlist or reject snapshots that
 contain live capability-bearing state.
 
 ## Critical: forged snapshots can raise runtime limits and bypass host policy
+
+**Status:** fixed on `main`
 
 **Affected files**
 

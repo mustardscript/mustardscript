@@ -675,6 +675,12 @@ Native failures are surfaced in Node as typed JavaScript errors:
 `JsliteParseError`, `JsliteValidationError`, `JsliteRuntimeError`,
 `JsliteLimitError`, and `JsliteSerializationError`.
 
+`Progress.load(...)` reuses the original host policy automatically only when the
+dumped progress object stays inside the same Node process. If a progress blob is
+restored in a fresh process, the host must pass explicit `capabilities` and
+`limits` so resume policy is rebound before any loaded capability metadata is
+trusted.
+
 The common path should be easy. The advanced path should remain explicit.
 
 ## Repository Shape

@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 
 use jslite::{
     ExecutionOptions, ExecutionStep, ResumeOptions, RuntimeLimits, SnapshotPolicy, StructuredValue,
-    compile, dump_snapshot, execute, load_snapshot, resume, resume_with_options, start,
+    compile, dump_snapshot, execute, load_snapshot, resume_with_options, start,
 };
 
 fn number(value: f64) -> StructuredValue {
@@ -15,7 +15,10 @@ fn string(value: &str) -> StructuredValue {
 
 fn snapshot_policy(capabilities: &[&str], limits: RuntimeLimits) -> SnapshotPolicy {
     SnapshotPolicy {
-        capabilities: capabilities.iter().map(|name| (*name).to_string()).collect(),
+        capabilities: capabilities
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect(),
         limits,
     }
 }
@@ -318,10 +321,7 @@ fn snapshots_preserve_keyed_collections_and_cycles() {
         jslite::ResumePayload::Value(number(41.0)),
         ResumeOptions {
             cancellation_token: None,
-            snapshot_policy: Some(snapshot_policy(
-                &["fetch_data"],
-                RuntimeLimits::default(),
-            )),
+            snapshot_policy: Some(snapshot_policy(&["fetch_data"], RuntimeLimits::default())),
         },
     )
     .expect("resume should work");

@@ -41,6 +41,8 @@ do not cross the structured host boundary in either addon mode or sidecar mode.
   queues the host request, and suspends at the next runtime checkpoint.
 - `start()` returns a suspension object containing the capability name, the
   converted arguments, and a resumable snapshot.
+- Snapshots loaded from bytes must be rebound to explicit host policy before
+  their capability metadata is trusted or resume is allowed to continue.
 - `resume()` accepts either a structured success value or a sanitized host
   error payload.
 - `Progress.cancel()` injects an explicit cooperative cancellation failure into
@@ -91,7 +93,13 @@ guest-only traceback with guest function names and source spans.
 - The Node `Progress` wrapper is single-use and rejects repeated
   `resume()`/`resumeError()` calls for the same suspended snapshot.
 - `Progress.dump()` / `Progress.load()` preserve that single-use identity within
-  one Node process, so cloned dumped progress objects cannot both be resumed.
+  one Node process using snapshot-derived identity, so cloned dumped progress
+  objects cannot both be resumed.
+- In the Node wrapper, `Progress.load(...)` only reuses cached policy
+  automatically when the snapshot came from the same process. Fresh-process
+  restores must pass explicit `capabilities` and `limits` so the host reasserts
+  both authority and resource policy before dispatching on
+  `progress.capability` / `progress.args`.
 - Hosts must not attempt to run nested guest execution on the same runtime
   state while another `run()`, `start()`, or `resume()` is active.
 

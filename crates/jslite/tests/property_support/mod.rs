@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use jslite::{
     ExecutionStep, JsliteResult, ResumeOptions, ResumePayload, RuntimeLimits, SnapshotPolicy,
-    StructuredValue, dump_snapshot, load_snapshot, resume, resume_with_options,
+    StructuredValue, dump_snapshot, load_snapshot, resume_with_options,
 };
 use proptest::prelude::*;
 
@@ -13,7 +13,10 @@ const OBJECT_KEYS: &[&str] = &["alpha", "beta", "gamma", "delta", "epsilon"];
 
 fn snapshot_policy(capabilities: &[&str], limits: RuntimeLimits) -> SnapshotPolicy {
     SnapshotPolicy {
-        capabilities: capabilities.iter().map(|name| (*name).to_string()).collect(),
+        capabilities: capabilities
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect(),
         limits,
     }
 }
