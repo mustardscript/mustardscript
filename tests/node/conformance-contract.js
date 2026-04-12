@@ -534,14 +534,6 @@ const FEATURE_CONTRACT = Object.freeze([
 ]);
 
 const REJECT_EXPECTATIONS = Object.freeze({
-  'validation.default-parameters': {
-    phase: REJECT_PHASE.CONSTRUCTOR,
-    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
-  },
-  'validation.default-destructuring': {
-    phase: REJECT_PHASE.CONSTRUCTOR,
-    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
-  },
   'validation.free-arguments': {
     phase: REJECT_PHASE.CONSTRUCTOR,
     category: DIAGNOSTIC_CATEGORY.AMBIENT_GLOBAL,
@@ -610,10 +602,6 @@ const REJECT_EXPECTATIONS = Object.freeze({
     phase: REJECT_PHASE.CONSTRUCTOR,
     category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
   },
-  'validation.update-expressions': {
-    phase: REJECT_PHASE.CONSTRUCTOR,
-    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
-  },
   'validation.tagged-templates': {
     phase: REJECT_PHASE.CONSTRUCTOR,
     category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
@@ -622,19 +610,11 @@ const REJECT_EXPECTATIONS = Object.freeze({
     phase: REJECT_PHASE.RUNTIME,
     category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE,
   },
-  'validation.destructuring-assignment': {
-    phase: REJECT_PHASE.CONSTRUCTOR,
-    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_SYNTAX,
-  },
   'validation.unsupported-unary': {
     phase: REJECT_PHASE.CONSTRUCTOR,
     category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
   },
   'validation.unsupported-binary': {
-    phase: REJECT_PHASE.CONSTRUCTOR,
-    category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
-  },
-  'validation.instanceof-guest-function': {
     phase: REJECT_PHASE.CONSTRUCTOR,
     category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
   },
@@ -728,7 +708,6 @@ const CURATED_REJECTION_REGRESSION_IDS = Object.freeze([
   'validation.var',
   'validation.delete',
   'validation.object-accessors',
-  'validation.instanceof-guest-function',
   'runtime.symbol',
   'validation.array-spread-surface',
   'runtime.object-create',

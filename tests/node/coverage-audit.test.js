@@ -84,6 +84,30 @@ const MANUAL_CONFORMANCE_BUCKETS = Object.freeze({
     file: 'tests/node/differential.test.js',
     pattern: 'logical assignment short-circuits and evaluates member targets once',
   },
+  'validation.default-parameters': {
+    file: 'tests/node/language-gaps.test.js',
+    pattern: 'run supports default parameters and default destructuring in parameter scope',
+  },
+  'validation.default-destructuring': {
+    file: 'tests/node/language-gaps.test.js',
+    pattern: 'run supports default destructuring in declarations and catch bindings',
+  },
+  'validation.update-expressions': {
+    file: 'tests/node/language-gaps.test.js',
+    pattern: 'run supports prefix and postfix update expressions for identifiers and members',
+  },
+  'validation.destructuring-assignment': {
+    file: 'tests/node/language-gaps.test.js',
+    pattern: 'run supports destructuring assignment for identifiers, members, and loop assignment headers',
+  },
+  'validation.unsupported-binary': {
+    file: 'tests/node/language-gaps.test.js',
+    pattern: 'run supports conservative instanceof checks for supported constructors',
+  },
+  'validation.instanceof-guest-function': {
+    file: 'tests/node/language-gaps.test.js',
+    pattern: 'run supports conservative instanceof checks for supported constructors',
+  },
   'runtime.object-create': {
     file: 'tests/node/builtins.test.js',
     pattern: 'Object.create is unsupported because prototype semantics are deferred',
@@ -213,6 +237,12 @@ const DOCUMENTED_BUILTIN_COVERAGE = Object.freeze({
     {
       file: 'tests/node/coverage-audit.test.js',
       pattern: 'primitive and error constructors expose the documented built-in surface',
+    },
+  ],
+  '`Date`': [
+    {
+      file: 'tests/node/builtins.test.js',
+      pattern: 'run truncates Date timestamps to integer milliseconds',
     },
   ],
   '`Math`': [

@@ -82,15 +82,16 @@ missing:
   iterable-surface `TypeError`.
 - Spread arguments are supported for the same documented iterable surface and
   fail closed with the same runtime `TypeError` on unsupported inputs.
-- Default parameters are rejected during validation.
-- Default destructuring is rejected during validation.
-- Destructuring assignment is rejected during validation. Binding destructuring
-  works in declarations, `catch` parameters, and the supported `for...of`
-  surface.
+- Default parameters are supported for function declarations, expressions, and
+  arrow functions.
+- Default destructuring is supported in parameter scope, declarations, and
+  `catch` bindings.
+- Destructuring assignment is supported for identifiers, members, and the
+  documented loop-header assignment targets.
 - `var` is rejected during validation. This is a deliberate v1 contract
   decision: the runtime supports only lexical `let` / `const` bindings and
   does not emulate hoisting or legacy redeclaration.
-- Update expressions are rejected during validation.
+- Update expressions are supported for identifiers and member expressions.
 - `delete` is rejected during validation. Plain-object and array deletion stay
   intentionally unsupported until own-property absence, sparse-array behavior,
   and descriptor/configurability semantics are chosen explicitly.
@@ -101,8 +102,8 @@ missing:
 - `for await...of` is supported for the documented synchronous iterable
   surface by awaiting each yielded value inside async functions.
 - `for...of` supports the documented iterable surface plus single-binding
-  `let` / `const` declaration headers and identifier/member assignment-target
-  headers, but destructuring assignment targets remain unsupported.
+  `let` / `const` declaration headers plus identifier, member, and
+  conservative destructuring assignment-target headers.
 - Generators and `yield` are unsupported.
 - Tagged template literals are unsupported.
 - Sparse array holes are now supported across literals, property access, the
@@ -117,12 +118,9 @@ missing:
 
 ### Operators And Expression Surface
 
-- Binary operators are still limited. `**` and conservative `in` support now
-  exist, but common generated operators such as `instanceof`, bitwise
-  operators, and shift operators are rejected during validation.
-- `instanceof` is not blocked on a missing opcode alone. It remains deferred
-  until the runtime has explicit prototype-parent links and constructor
-  `.prototype` identities for the values that participate in the check.
+- Binary operators are still limited. `**`, conservative `in`, and
+  conservative `instanceof` now exist, but bitwise operators and shift
+  operators are still rejected during validation.
 - Assignment operators are limited. Only `=`, `+=`, `-=`, `*=`, `/=`, `||=`,
   `&&=`, and `??=` are implemented. Generated `%=`, `**=`, and bitwise
   assignment forms are still rejected during validation.
@@ -200,13 +198,15 @@ missing:
 - The implicit `arguments` object is absent.
 - Member calls for non-arrow guest functions now bind the computed receiver as
   `this`.
-- Arrow function `this` beyond the currently documented subset remains partial.
-- Full prototype semantics are still deferred, so codegen that relies on
-  prototype inheritance, `instanceof`, or method dispatch through prototypes is
-  outside the supported contract.
-- The missing prototype surface is deliberate rather than accidental: `jslite`
-  does not yet store guest-visible prototype-parent links or constructor
-  `.prototype` identities broadly enough to specify `instanceof`.
+- Arrow functions capture lexical `this` from the surrounding supported guest
+  frame, but this does not imply support for `call`, `apply`, `bind`, or full
+  prototype-heavy function semantics.
+- Full prototype inheritance semantics are still deferred, so codegen that
+  relies on user-defined prototype chains or method dispatch through
+  prototypes is outside the supported contract.
+- The remaining prototype deferral is deliberate rather than accidental:
+  `jslite` now exposes enough constructor/prototype identity for conservative
+  `instanceof`, but not the full JavaScript prototype model.
 - Accessors are unsupported, so generated getter and setter objects and classes
   are out of scope.
 
@@ -228,9 +228,9 @@ missing:
 
 ## Partial Support And Semantic Footguns
 
-- Default parameters and default destructuring now fail closed at validation.
-  The older runtime-only fallback path is no longer reachable from validated
-  source code.
+- Default parameters and default destructuring are now part of the supported
+  surface. The older validation-reject and runtime-only fallback notes from
+  earlier audits no longer apply.
 - `var` is not a temporary parser gap. The v1 contract deliberately keeps only
   lexical bindings, so legacy hoisting and redeclaration behavior remain out of
   scope.
@@ -239,25 +239,24 @@ missing:
   supported `Map.prototype.delete` and `Set.prototype.delete` methods are a
   separate collection API surface.
 - `for...of` is narrower than full JavaScript: declaration headers still must
-  declare exactly one `let` or `const` binding, destructuring assignment
-  targets remain unsupported, and `for...in` is still limited to plain objects
-  and arrays.
+  declare exactly one `let` or `const` binding, and `for...in` is still
+  limited to plain objects and arrays.
 - Object spread is narrower than full JavaScript: plain-object and array
   sources work, `null` / `undefined` are skipped, and other source values fail
   closed instead of following full boxing and coercion rules.
 - `in` intentionally checks only the runtime's currently exposed property
   surface. It does not introduce full prototype walking, descriptor semantics,
   or a reflective `globalThis` mirror of every global binding.
-- `instanceof` remains intentionally rejected until the runtime exposes the
-  prototype chain and constructor links needed to specify it without implying
+- `instanceof` is now supported conservatively for the documented
+  constructors, wrapper objects, and callable `Object` checks without implying
   full class or descriptor semantics.
 - Array callback helpers and `Array.from` mapping fail closed when a callback
   would cause a synchronous host suspension.
-- `JSON.stringify` does not match normal JavaScript plain-object key order. The
-  documented and tested behavior sorts plain-object keys.
+- `JSON.stringify` on plain objects now follows JavaScript own-property order:
+  array-index keys first in numeric order, then remaining string keys in
+  insertion order.
 - `Object.keys`, `Object.values`, and `Object.entries` on plain objects follow
-  the same documented sorted-key behavior rather than JavaScript insertion
-  order.
+  the same JavaScript own-property order as `JSON.stringify`.
 
 ## What This Means For MCP-Style Code Generation
 
@@ -270,7 +269,6 @@ missing:
   supported keyed collections, conservative built-ins, async guest promises,
   and explicit fail-closed behavior outside that subset.
 - If `jslite` is meant to execute broader AI-generated code without manual
-  rewrites, the biggest compatibility wins from here are default parameters and
-  destructuring, richer array and object built-ins, broader loop forms, and
-  any future prototype or constructor work needed for `instanceof` and related
-  helpers.
+  rewrites, the biggest compatibility wins from here are richer array and
+  object built-ins, broader loop forms, wider platform API shims, and any
+  future work on full prototype inheritance or class-related semantics.

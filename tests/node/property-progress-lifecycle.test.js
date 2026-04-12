@@ -234,25 +234,25 @@ async function assertReplayLifecycleSequence(actions) {
 
   let consumed = false;
   for (const action of actions) {
-    if (action === 'load-same' || action === 'load-explicit') {
+    if (!consumed && (action === 'load-same' || action === 'load-explicit')) {
       current = performReplayAction(current, action);
       assert.ok(current instanceof Progress);
       continue;
     }
 
-    if (!consumed) {
-      if (action === 'resume') {
-        assert.equal(performReplayAction(current, action), 4);
-      } else if (action === 'resumeError') {
-        assert.throws(() => performReplayAction(current, action), isRuntimeBoom);
-      } else {
-        assert.throws(() => performReplayAction(current, action), isCancelledLimit);
-      }
-      consumed = true;
+    if (consumed) {
+      assert.throws(() => performReplayAction(current, action), isSingleUseRuntimeError);
       continue;
     }
 
-    assert.throws(() => performReplayAction(current, action), isSingleUseRuntimeError);
+    if (action === 'resume') {
+      assert.equal(performReplayAction(current, action), 4);
+    } else if (action === 'resumeError') {
+      assert.throws(() => performReplayAction(current, action), isRuntimeBoom);
+    } else {
+      assert.throws(() => performReplayAction(current, action), isCancelledLimit);
+    }
+    consumed = true;
   }
 }
 

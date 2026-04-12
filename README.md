@@ -386,6 +386,7 @@ Currently implemented built-ins:
 - `Set`
 - `Promise`
 - `RegExp`
+- `Date`
 - `String`
 - `Error`
 - `TypeError`
@@ -439,9 +440,17 @@ Current built-in helper support is intentionally conservative:
 - strings support `trim`, `includes`, `startsWith`, `endsWith`, `slice`,
   `substring`, `toLowerCase`, `toUpperCase`, `split`, `replace`,
   `replaceAll`, `search`, and `match`
+- `Array(...)` and `new Array(...)` follow JavaScript's single-length
+  constructor behavior for one numeric argument and reject invalid lengths
+  with `RangeError`
+- `Object(value)` preserves supported object-like guest values and boxes
+  primitive strings, numbers, and booleans into conservative wrapper objects
 - `Object.keys`, `Object.values`, `Object.entries`, and `Object.hasOwn`
-  currently support plain objects and arrays
+  support plain objects, arrays, supported callables, and conservative boxed
+  strings
 - `Math.pow`, `Math.sqrt`, `Math.trunc`, and `Math.sign` are supported
+- `Date.now()` and `new Date(value).getTime()` return integral epoch
+  milliseconds
 - array callback helpers currently support guest callbacks, built-in callbacks,
   and async host callbacks reached from an async guest boundary; synchronous
   host suspensions from those helpers fail closed
@@ -458,10 +467,11 @@ Current built-in helper support is intentionally conservative:
 Current function-call support is intentionally narrow:
 
 - non-arrow guest member calls bind the computed receiver as `this`
+- arrow functions capture lexical `this` from the surrounding supported guest
+  frame
 - rest parameters are supported for functions and arrow functions
-- arrow functions are supported, but broader `this` semantics remain deferred
-- default parameters, default destructuring, and implicit free `arguments`
-  are rejected with validation diagnostics
+- default parameters and conservative default destructuring are supported
+- implicit free `arguments` is rejected with a validation diagnostic
 - `new` remains limited to the documented conservative built-in constructors
 
 Current legacy-binding and prototype-related exclusions are deliberate:
@@ -474,9 +484,9 @@ Current legacy-binding and prototype-related exclusions are deliberate:
   sparse arrays, and descriptor/configurability semantics; until then guest
   code must rebuild values instead. This does not affect the supported
   `Map.prototype.delete` and `Set.prototype.delete` methods.
-- `instanceof` is intentionally unavailable until the runtime has explicit
-  prototype-parent links plus constructor `.prototype` identities for the
-  values that participate in the check.
+- full prototype inheritance remains unavailable, but conservative
+  `instanceof` checks work for the documented built-in constructors,
+  primitive-wrapper objects, and `Object` checks over supported callables.
 
 Current keyed-collection support is intentionally narrow:
 

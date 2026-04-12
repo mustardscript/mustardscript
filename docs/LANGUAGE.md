@@ -55,8 +55,8 @@ extensions are called out explicitly instead of being implied.
 ## Supported Function Call Surface
 
 - non-arrow guest member calls bind the computed receiver as `this`
-- arrow functions are supported, but this does not imply full lexical or
-  dynamic `this` parity beyond the currently documented subset
+- arrow functions capture lexical `this` from the surrounding supported guest
+  frame, including top-level script execution and ordinary guest member calls
 - rest parameters are supported for function declarations, function
   expressions, and arrow functions
 - `new` remains limited to the documented conservative built-in constructors
@@ -212,11 +212,11 @@ extensions are called out explicitly instead of being implied.
   affect the supported `Map.prototype.delete` and `Set.prototype.delete`
   collection methods.
 - `instanceof` is intentionally conservative in v1. The supported surface is
-  constructor-instance checks for the runtime's built-in instance kinds
-  (`Array`, `Object`, `Map`, `Set`, `Promise`, `Date`, `RegExp`, and the
-  supported error constructors). Guest-function constructors are accepted on
-  the right-hand side but currently return `false` because `new` on guest
-  functions and general prototype-link semantics remain deferred.
+  constructor-instance checks for the runtime's built-in instance kinds,
+  conservative primitive-wrapper objects, and `Object` checks over the
+  runtime's callable values. Guest-function constructors are accepted on the
+  right-hand side but currently return `false` because `new` on guest
+  functions and full prototype-link semantics remain deferred.
 
 ## Diagnostics and Tracebacks
 
@@ -406,6 +406,9 @@ extensions are called out explicitly instead of being implied.
   callbacks may yield promise values for downstream helpers such as `Promise.all`
 - `Array.of` always creates a fresh guest array from its arguments and does not
   expose the special single-length constructor behavior from full JavaScript
+- `Array(...)` and `new Array(...)` follow JavaScript's single-length
+  constructor behavior for one numeric argument, including explicit
+  `RangeError` rejection for invalid lengths
 - `Array.prototype.concat` returns a fresh guest array, spreads only actual
   guest array arguments, and appends every other value as a single element
 - `Array.prototype.at` truncates the requested index, supports negative offsets
@@ -425,6 +428,12 @@ extensions are called out explicitly instead of being implied.
 - `Object.assign` mutates and returns the original target, copies enumerable
   properties from later plain-object or array sources in the runtime's
   documented helper enumeration order, and skips `null` / `undefined` sources
+- `Object(value)` preserves existing supported object-like guest values and
+  boxes primitive strings, numbers, and booleans into conservative wrapper
+  objects
+- supported guest functions and built-in callables expose `name`, `length`,
+  `constructor`, and the usual constructible-function `.prototype` property;
+  guest functions also support custom enumerable string-keyed properties
 - object literal spread uses the same plain-object and array source surface as
   `Object.assign`, always targets a fresh plain object, skips `null` /
   `undefined` sources, and throws a runtime `TypeError` for other source
@@ -465,9 +474,10 @@ extensions are called out explicitly instead of being implied.
   strings for global `RegExp` patterns, or the first-match array for
   non-global patterns, with guest-visible `index`, `input`, and optional
   `groups` properties on that result array
-- `Date.now()` reads the host wall clock, `new Date(value)` currently supports
-  zero arguments or exactly one numeric, string, or existing `Date` value, and
-  `Date.prototype.getTime()` returns the stored epoch milliseconds
+- `Date.now()` reads the host wall clock as integral epoch milliseconds,
+  `new Date(value)` currently supports zero arguments or exactly one numeric,
+  string, or existing `Date` value, and `Date.prototype.getTime()` returns the
+  stored integral epoch milliseconds
 - `Math.random()` draws host entropy and returns a finite `number` in the
   half-open range `[0, 1)`; values are intentionally nondeterministic, are not
   seedable or reproducible across runs or resumes, and are not a
