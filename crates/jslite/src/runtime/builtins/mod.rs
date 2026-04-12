@@ -137,11 +137,8 @@ fn byte_index_to_char_index(value: &str, byte_index: usize) -> usize {
 }
 
 fn advance_char_index(value: &str, index: usize) -> usize {
-    value
-        .chars()
-        .nth(index)
-        .map(|ch| index + ch.len_utf8().max(1).min(1))
-        .unwrap_or(index + 1)
+    let total = value.chars().count();
+    (index + 1).min(total)
 }
 
 fn find_string_pattern(value: &str, needle: &str, start: usize) -> Option<usize> {
@@ -157,7 +154,7 @@ fn split_string_by_pattern(value: &str, separator: Option<&str>, limit: usize) -
         None => {
             parts.push(value.to_string());
         }
-        Some(separator) if separator.is_empty() => {
+        Some("") => {
             if limit == 0 {
                 return Vec::new();
             }
@@ -271,7 +268,7 @@ fn expand_regexp_replacement_template(
                 chars.next();
                 let mut name = String::new();
                 let mut closed = false;
-                while let Some(next) = chars.next() {
+                for next in chars.by_ref() {
                     if next == '>' {
                         closed = true;
                         break;
@@ -299,10 +296,10 @@ fn expand_regexp_replacement_template(
                         chars.next();
                     }
                 }
-                if index > 0 {
-                    if let Some(Some(value)) = matched.captures.get(index - 1) {
-                        result.push_str(value);
-                    }
+                if index > 0
+                    && let Some(Some(value)) = matched.captures.get(index - 1)
+                {
+                    result.push_str(value);
                 }
             }
             _ => result.push('$'),
