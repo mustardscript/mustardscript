@@ -53,22 +53,17 @@ fn rejects_default_destructuring() {
 }
 
 #[test]
-fn rejects_array_spread() {
-    assert_validation_reject("[...value];", "array spread is not supported in v1");
-}
-
-#[test]
-fn rejects_spread_arguments() {
-    assert_validation_reject(
-        "run(...values);",
-        "spread arguments are not supported in v1",
-    );
-}
-
-#[test]
 fn rejects_module_syntax() {
     let error = compile("export const x = 1;").expect_err("module syntax should fail");
     assert!(error.to_string().contains("module syntax"));
+}
+
+#[test]
+fn rejects_meta_properties_even_near_supported_spread_constructs() {
+    assert_validation_reject(
+        "new.target(...values);",
+        "meta properties are not supported",
+    );
 }
 
 #[test]

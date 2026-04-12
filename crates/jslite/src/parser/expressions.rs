@@ -236,11 +236,10 @@ impl<'a> Lowerer<'a> {
                 for element in &array.elements {
                     match element {
                         ArrayExpressionElement::SpreadElement(spread) => {
-                            self.unsupported(
-                                "array spread is not supported in v1",
-                                Some(spread.span.into()),
-                            );
-                            return None;
+                            elements.push(crate::ir::ArrayElement::Spread {
+                                span: spread.span.into(),
+                                value: self.lower_expr(&spread.argument)?,
+                            });
                         }
                         ArrayExpressionElement::Elision(elision) => {
                             elements.push(crate::ir::ArrayElement::Hole {
@@ -473,11 +472,10 @@ impl<'a> Lowerer<'a> {
         for arg in args {
             match arg {
                 Argument::SpreadElement(spread) => {
-                    self.unsupported(
-                        "spread arguments are not supported in v1",
-                        Some(spread.span.into()),
-                    );
-                    return None;
+                    lowered.push(crate::ir::CallArgument::Spread {
+                        span: spread.span.into(),
+                        value: self.lower_expr(&spread.argument)?,
+                    });
                 }
                 expression => lowered.push(crate::ir::CallArgument::Value(
                     self.lower_expr(expression.to_expression())?,
