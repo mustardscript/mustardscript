@@ -434,7 +434,11 @@ impl Runtime {
         }
     }
 
-    pub(super) fn run_until_frame_depth(&mut self, target_depth: usize) -> JsliteResult<()> {
+    pub(super) fn run_until_frame_depth(
+        &mut self,
+        target_depth: usize,
+        host_suspension_message: &str,
+    ) -> JsliteResult<()> {
         while self.frames.len() > target_depth {
             self.check_cancellation()?;
             let action = match self.step_active_frame() {
@@ -444,9 +448,7 @@ impl Runtime {
             match action {
                 StepAction::Continue => {}
                 StepAction::Return(ExecutionStep::Suspended(_)) => {
-                    return Err(JsliteError::runtime(
-                        "TypeError: array callback helpers do not support synchronous host suspensions",
-                    ));
+                    return Err(JsliteError::runtime(host_suspension_message));
                 }
                 StepAction::Return(ExecutionStep::Completed(_)) => {
                     return Err(JsliteError::runtime(
@@ -613,6 +615,9 @@ impl Runtime {
                 Value::BuiltinFunction(BuiltinFunction::MapCtor) => self.construct_map(args),
                 Value::BuiltinFunction(BuiltinFunction::SetCtor) => self.construct_set(args),
                 Value::BuiltinFunction(BuiltinFunction::DateCtor) => self.construct_date(args),
+                Value::BuiltinFunction(BuiltinFunction::PromiseCtor) => {
+                    self.construct_promise(args)
+                }
                 Value::BuiltinFunction(BuiltinFunction::RegExpCtor) => self.construct_regexp(args),
                 Value::BuiltinFunction(kind) => self.call_builtin(kind, Value::Undefined, args),
                 _ => unreachable!(),

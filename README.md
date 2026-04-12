@@ -36,8 +36,9 @@ The current implementation already supports:
 - `Map` and `Set` with supported iterable constructors, SameValueZero key and
   membership semantics, insertion-order-preserving storage, and iterator
   helpers
-- `async` functions, `await`, guest promises, Promise combinators and instance
-  methods, and internal microtask scheduling for the supported subset
+- `async` functions, `await`, guest promises, `new Promise(...)`, Promise
+  combinators and instance methods, basic thenable adoption, and internal
+  microtask scheduling for the supported subset
 - conservative array, string, object, and Math helper methods, including
   callback-driven array helpers, iterable normalization helpers, and
   string-pattern search/replacement helpers
@@ -317,8 +318,9 @@ JavaScript.
 
 ### Still Deferred Within The Async Surface
 
-- `new Promise(...)`
-- full Promise constructor and general thenable-adoption edge cases
+- fully general Promise constructor and thenable-adoption edge cases,
+  including hostile thenable cycles
+- synchronous host suspensions from Promise executors or adopted thenables
 
 ### Explicitly Out of Scope for v1
 
@@ -385,14 +387,24 @@ Currently implemented built-ins:
 Current Promise support is intentionally narrow:
 
 - async functions return internal guest promises
+- `new Promise(executor)` is supported when `executor` is callable and
+  completes synchronously from the runtime's perspective
 - `Promise.resolve(...)`, `Promise.reject(...)`, `Promise.all(...)`,
   `Promise.race(...)`, `Promise.any(...)`, and `Promise.allSettled(...)` are
   supported
 - promise instance methods `then(...)`, `catch(...)`, and `finally(...)` are
   supported
+- promise resolution and `await` adopt guest promises plus guest object or
+  array thenables whose `.then` property is callable
+- Promise executor and thenable resolve/reject functions keep first-settlement
+  semantics; later resolve/reject calls and post-settlement throws do not
+  override the settled result
 - `Promise.any(...)` rejects with a guest-visible `AggregateError` carrying an
   `errors` array when every input rejects
-- `new Promise(...)` remains unsupported and fails closed
+- async Promise executors and async adopted `.then` handlers reject with an
+  explicit `TypeError`
+- synchronous host suspensions from Promise executors and adopted thenables
+  still fail closed
 
 Current built-in helper support is intentionally conservative:
 

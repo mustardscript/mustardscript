@@ -294,6 +294,9 @@ impl Runtime {
                 }
                 if let Some(driver) = &promise.driver {
                     match driver {
+                        PromiseDriver::Thenable { value } => {
+                            self.mark_value(value, &mut marks, &mut worklist);
+                        }
                         PromiseDriver::All { values, .. } => {
                             for value in values.iter().flatten() {
                                 self.mark_value(value, &mut marks, &mut worklist);
@@ -414,6 +417,10 @@ impl Runtime {
                 }
             }
             Value::Promise(key) => self.mark_promise(*key, marks, worklist),
+            Value::BuiltinFunction(BuiltinFunction::PromiseResolveFunction(key))
+            | Value::BuiltinFunction(BuiltinFunction::PromiseRejectFunction(key)) => {
+                self.mark_promise(*key, marks, worklist)
+            }
             Value::Undefined
             | Value::Null
             | Value::Bool(_)

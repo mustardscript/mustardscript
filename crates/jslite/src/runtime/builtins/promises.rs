@@ -1,6 +1,147 @@
 use super::*;
 
+pub(crate) struct PromiseSetupPolicy<'a> {
+    pub(crate) non_callable_message: &'a str,
+    pub(crate) host_suspension_message: &'a str,
+    pub(crate) async_message: &'a str,
+}
+
 impl Runtime {
+    fn reject_promise_from_setup_error(
+        &mut self,
+        target: PromiseKey,
+        error: JsliteError,
+    ) -> JsliteResult<()> {
+        match error {
+            JsliteError::Message {
+                kind: DiagnosticKind::Runtime,
+                message,
+                ..
+            } if message == super::super::INTERNAL_CALLBACK_THROW_MARKER => {
+                let rejection = self.pending_internal_exception.take().ok_or_else(|| {
+                    JsliteError::runtime("missing internal callback exception state")
+                })?;
+                self.reject_promise(target, rejection)
+            }
+            other => self.reject_promise_from_error(target, other),
+        }
+    }
+
+    pub(crate) fn promise_settler(&self, target: PromiseKey, rejected: bool) -> Value {
+        Value::BuiltinFunction(if rejected {
+            BuiltinFunction::PromiseRejectFunction(target)
+        } else {
+            BuiltinFunction::PromiseResolveFunction(target)
+        })
+    }
+
+    pub(crate) fn promise_thenable_handler(&self, value: &Value) -> JsliteResult<Option<Value>> {
+        match value {
+            Value::Object(_) | Value::Array(_) => {
+                let then =
+                    self.get_property(value.clone(), Value::String("then".to_string()), false)?;
+                if is_callable(&then) {
+                    Ok(Some(then))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
+    pub(crate) fn call_promise_setup_callback(
+        &mut self,
+        target: PromiseKey,
+        callback: Value,
+        this_arg: Value,
+        args: &[Value],
+        policy: PromiseSetupPolicy<'_>,
+    ) -> JsliteResult<()> {
+        let result = match callback {
+            Value::Closure(closure) => {
+                let closure = self
+                    .closures
+                    .get(closure)
+                    .cloned()
+                    .ok_or_else(|| JsliteError::runtime("closure not found"))?;
+                let function = self
+                    .program
+                    .functions
+                    .get(closure.function_id)
+                    .ok_or_else(|| JsliteError::runtime("function not found"))?;
+                if function.is_async {
+                    Err(JsliteError::runtime(policy.async_message))
+                } else {
+                    let env = self.new_env(Some(closure.env))?;
+                    let outcome = self.insert_promise(PromiseState::Pending)?;
+                    let base_depth = self.frames.len();
+                    self.push_frame(closure.function_id, env, args, this_arg, Some(outcome))?;
+                    if let Err(error) =
+                        self.run_until_frame_depth(base_depth, policy.host_suspension_message)
+                    {
+                        self.frames.truncate(base_depth);
+                        self.suspended_host_call = None;
+                        self.pending_resume_behavior = ResumeBehavior::Value;
+                        return self.reject_promise_from_setup_error(target, error);
+                    }
+                    match self.promise_outcome(outcome)? {
+                        Some(PromiseOutcome::Rejected(rejection)) => {
+                            self.reject_promise(target, rejection)
+                        }
+                        Some(PromiseOutcome::Fulfilled(_)) | None => Ok(()),
+                    }
+                }
+            }
+            Value::BuiltinFunction(function) => {
+                self.call_builtin(function, this_arg, args).map(|_| ())
+            }
+            Value::HostFunction(capability) => {
+                match self.call_callable(Value::HostFunction(capability), this_arg, args) {
+                    Ok(RunState::Completed(_) | RunState::StartedAsync(_)) => Ok(()),
+                    Ok(RunState::PushedFrame) => Err(JsliteError::runtime(
+                        "promise setup callback unexpectedly pushed a frame",
+                    )),
+                    Ok(RunState::Suspended { .. }) => {
+                        Err(JsliteError::runtime(policy.host_suspension_message))
+                    }
+                    Err(error) => Err(error),
+                }
+            }
+            _ => Err(JsliteError::runtime(policy.non_callable_message)),
+        };
+        match result {
+            Ok(()) => Ok(()),
+            Err(error) => self.reject_promise_from_setup_error(target, error),
+        }
+    }
+
+    pub(crate) fn construct_promise(&mut self, args: &[Value]) -> JsliteResult<Value> {
+        let executor = args.first().cloned().unwrap_or(Value::Undefined);
+        if !is_callable(&executor) {
+            return Err(JsliteError::runtime(
+                "TypeError: Promise constructor expects a callable executor",
+            ));
+        }
+        let target = self.insert_promise(PromiseState::Pending)?;
+        let resolve = self.promise_settler(target, false);
+        let reject = self.promise_settler(target, true);
+        self.call_promise_setup_callback(
+            target,
+            executor,
+            Value::Undefined,
+            &[resolve, reject],
+            PromiseSetupPolicy {
+                non_callable_message: "TypeError: Promise constructor expects a callable executor",
+                host_suspension_message:
+                    "TypeError: Promise executors do not support synchronous host suspensions",
+                async_message:
+                    "TypeError: Promise executors must be synchronous in the supported surface",
+            },
+        )?;
+        Ok(Value::Promise(target))
+    }
+
     fn promise_receiver(&self, value: Value, method: &str) -> JsliteResult<PromiseKey> {
         match value {
             Value::Promise(key) => Ok(key),

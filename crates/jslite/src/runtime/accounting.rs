@@ -514,6 +514,7 @@ fn measure_promise_bytes(promise: &PromiseObject) -> usize {
         })
         .sum::<usize>();
     let driver_bytes = match &promise.driver {
+        Some(PromiseDriver::Thenable { value }) => extra_value_bytes(value),
         Some(PromiseDriver::All { values, .. }) => values
             .iter()
             .flatten()
