@@ -5,7 +5,8 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 
 const { Jslite, JsliteError, Progress } = require('../../index.js');
-const { KNOWN_PROGRESS_POLICY_CACHE_LIMIT } = require('../../lib/policy.js');
+const { loadNative } = require('../../native-loader.js');
+const { KNOWN_PROGRESS_POLICY_CACHE_LIMIT, snapshotToken } = require('../../lib/policy.js');
 
 const SNAPSHOT_KEY = Buffer.from('progress-security-test-key');
 
@@ -81,6 +82,22 @@ test('progress load preserves single-use by authenticated snapshot token', () =>
   assert.throws(() => second.resume(4), isSingleUseRuntimeError);
 });
 
+test('progress load rejects already-consumed snapshots before exposing capability metadata', () => {
+  const progress = new Jslite(`
+    const response = fetch_data(4);
+    response * 2;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  const dumped = progress.dump();
+  assert.equal(progress.resume(4), 8);
+  assert.throws(() => Progress.load(dumped), isSingleUseRuntimeError);
+});
+
 test('progress snapshots remain single-use after unrelated same-process churn', () => {
   const runtime = new Jslite(`
     const response = fetch_data(seed);
@@ -114,14 +131,17 @@ test('progress snapshots remain single-use after unrelated same-process churn', 
     assert.equal(progress.resume(index), index);
   }
 
-  const replay = Progress.load(dumped, {
-    snapshotKey: SNAPSHOT_KEY,
-    capabilities: {
-      fetch_data() {},
-    },
-    limits: {},
-  });
-  assert.throws(() => replay.resume(22), isSingleUseRuntimeError);
+  assert.throws(
+    () =>
+      Progress.load(dumped, {
+        snapshotKey: SNAPSHOT_KEY,
+        capabilities: {
+          fetch_data() {},
+        },
+        limits: {},
+      }),
+    isSingleUseRuntimeError,
+  );
 });
 
 test('progress load rejects forged progress tokens', () => {
@@ -153,6 +173,38 @@ test('progress load rejects forged progress tokens', () => {
       ),
     isTamperedSnapshotError,
   );
+});
+
+test('raw native snapshot inspect and resume require snapshot authentication', () => {
+  const native = loadNative();
+  const progress = new Jslite('const value = fetch_data(7); value * 2;').start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  const dumped = progress.dump();
+  const payload = JSON.stringify({ type: 'value', value: { Number: { Finite: 7 } } });
+  const authenticatedPolicy = JSON.stringify({
+    capabilities: ['fetch_data'],
+    limits: {},
+    snapshot_key_base64: SNAPSHOT_KEY.toString('base64'),
+    snapshot_token: snapshotToken(dumped.snapshot, SNAPSHOT_KEY),
+  });
+
+  assert.throws(
+    () => native.inspectSnapshot(dumped.snapshot, JSON.stringify({ capabilities: ['fetch_data'], limits: {} })),
+    /raw snapshot restore requires snapshot_key_base64/,
+  );
+  assert.throws(
+    () => native.resumeProgram(dumped.snapshot, payload, JSON.stringify({ capabilities: ['fetch_data'], limits: {} })),
+    /raw snapshot restore requires snapshot_key_base64/,
+  );
+
+  const inspection = JSON.parse(native.inspectSnapshot(dumped.snapshot, authenticatedPolicy));
+  assert.equal(inspection.capability, 'fetch_data');
+  assert.deepEqual(inspection.args, [{ Number: { Finite: 7 } }]);
 });
 
 test('progress load requires explicit policy and snapshotKey outside the current process', () => {

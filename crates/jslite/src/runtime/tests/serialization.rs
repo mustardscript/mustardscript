@@ -92,3 +92,57 @@ fn rejects_cross_version_snapshots() {
             .contains("serialized snapshot version mismatch")
     );
 }
+
+#[test]
+fn rejects_out_of_range_promise_combinator_snapshot_state() {
+    let mut suspension = suspend(
+        r#"
+        async function main() {
+          return Promise.all([fetch_data(1), fetch_data(2)]);
+        }
+        main();
+        "#,
+        &["fetch_data"],
+    );
+
+    let target = suspension
+        .snapshot
+        .runtime
+        .promises
+        .iter()
+        .find_map(|(key, promise)| match promise.driver.as_ref() {
+            Some(PromiseDriver::All { .. }) => Some(key),
+            _ => None,
+        })
+        .expect("Promise.all target should exist");
+
+    let mutated = suspension
+        .snapshot
+        .runtime
+        .promises
+        .values_mut()
+        .find_map(|promise| {
+            promise.reactions.iter_mut().find_map(|reaction| match reaction {
+                PromiseReaction::Combinator {
+                    target: reaction_target,
+                    index,
+                    ..
+                } if *reaction_target == target => {
+                    *index = 99;
+                    Some(())
+                }
+                _ => None,
+            })
+        });
+    assert!(mutated.is_some(), "Promise.all combinator reaction should exist");
+
+    let bytes = dump_snapshot(&suspension.snapshot).expect("snapshot should serialize");
+    let error = load_snapshot(&bytes).expect_err("forged snapshot should fail validation");
+    assert!(
+        error
+            .to_string()
+            .contains("promise")
+            && error.to_string().contains("combinator index"),
+        "unexpected error: {error}"
+    );
+}

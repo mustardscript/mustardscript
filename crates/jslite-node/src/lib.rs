@@ -1,3 +1,5 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use hmac::{Hmac, Mac};
 use std::collections::HashMap;
 use std::sync::{
     Arc, Mutex, OnceLock,
@@ -13,6 +15,9 @@ use jslite_bridge::{
 use napi::bindgen_prelude::Buffer;
 use napi::{Error, Result};
 use napi_derive::napi;
+use sha2::Sha256;
+
+type HmacSha256 = Hmac<Sha256>;
 
 fn cancellation_tokens() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
     static TOKENS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
@@ -40,6 +45,40 @@ fn lookup_cancellation_token(token_id: Option<String>) -> Result<Option<Cancella
 
 fn to_napi_error(error: impl std::fmt::Display) -> Error {
     Error::from_reason(error.to_string())
+}
+
+fn encode_snapshot_token(snapshot: &[u8], snapshot_key: &[u8]) -> Result<String> {
+    let mut mac = HmacSha256::new_from_slice(snapshot_key)
+        .map_err(|_| to_napi_error("invalid snapshot key"))?;
+    mac.update(snapshot);
+    let digest = mac.finalize().into_bytes();
+    let mut token = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut token, "{byte:02x}");
+    }
+    Ok(token)
+}
+
+fn assert_authenticated_snapshot(snapshot: &[u8], policy: &SnapshotPolicyDto) -> Result<()> {
+    let snapshot_key_base64 = policy
+        .snapshot_key_base64
+        .as_deref()
+        .ok_or_else(|| to_napi_error("raw snapshot restore requires snapshot_key_base64"))?;
+    let snapshot_token = policy
+        .snapshot_token
+        .as_deref()
+        .ok_or_else(|| to_napi_error("raw snapshot restore requires snapshot_token"))?;
+    let snapshot_key = STANDARD
+        .decode(snapshot_key_base64)
+        .map_err(|_| to_napi_error("snapshot_key_base64 must be valid base64"))?;
+    let expected = encode_snapshot_token(snapshot, &snapshot_key)?;
+    if expected != snapshot_token {
+        return Err(to_napi_error(
+            "raw snapshot restore rejected a tampered or unauthenticated snapshot",
+        ));
+    }
+    Ok(())
 }
 
 #[napi]
@@ -96,6 +135,7 @@ pub fn start_program(
 #[napi]
 pub fn inspect_snapshot(snapshot: Buffer, policy_json: String) -> Result<String> {
     let policy: SnapshotPolicyDto = parse_json(&policy_json).map_err(to_napi_error)?;
+    assert_authenticated_snapshot(snapshot.as_ref(), &policy)?;
     let inspection = inspect_snapshot_bytes(snapshot.as_ref(), policy).map_err(to_napi_error)?;
     encode_json(&inspection).map_err(to_napi_error)
 }
@@ -109,6 +149,7 @@ pub fn resume_program(
 ) -> Result<String> {
     let payload: ResumeDto = parse_json(&payload_json).map_err(to_napi_error)?;
     let policy: SnapshotPolicyDto = parse_json(&policy_json).map_err(to_napi_error)?;
+    assert_authenticated_snapshot(snapshot.as_ref(), &policy)?;
     let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
     let step = bridge_resume_program(snapshot.as_ref(), payload, policy, cancellation_token)
         .map_err(to_napi_error)?;

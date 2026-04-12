@@ -41,6 +41,14 @@ fn json_number_array(len: usize) -> String {
     format!("[{}0]", "0,".repeat(len))
 }
 
+fn large_number_array(len: usize) -> StructuredValue {
+    StructuredValue::Array(
+        (0..len)
+            .map(|index| StructuredValue::from(index as f64))
+            .collect(),
+    )
+}
+
 #[test]
 fn cooperative_cancellation_interrupts_running_guest_code() {
     let program = compile(
@@ -338,4 +346,76 @@ fn json_stringify_helper_observes_cancellation() {
 
     worker.join().expect("canceller thread should finish");
     assert_cancelled_limit(&error);
+}
+
+#[test]
+fn resume_payload_boundary_conversion_observes_instruction_budget() {
+    let program = compile("fetch_data(); 0;").expect("source should compile");
+    let suspension = match start(
+        &program,
+        ExecutionOptions {
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits {
+                instruction_budget: 5,
+                heap_limit_bytes: 1_000_000_000,
+                allocation_budget: 2_000_000,
+                ..RuntimeLimits::default()
+            },
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect("program should suspend")
+    {
+        ExecutionStep::Suspended(suspension) => *suspension,
+        other => panic!("expected suspension, got {other:?}"),
+    };
+
+    let error = resume(
+        suspension.snapshot,
+        ResumePayload::Value(large_number_array(20_000)),
+    )
+    .expect_err("structured resume payload should consume instruction budget");
+    match error {
+        jslite::JsliteError::Message { kind, message, .. } => {
+            assert_eq!(kind, DiagnosticKind::Limit);
+            assert!(message.contains("instruction budget exhausted"));
+        }
+        other => panic!("expected limit error, got {other:?}"),
+    }
+}
+
+#[test]
+fn host_argument_boundary_conversion_observes_instruction_budget() {
+    let program = compile(
+        r#"
+        let values = [];
+        for (let index = 0; index < 20000; index = index + 1) {
+          values.push(index);
+        }
+        fetch_data(values);
+        "#,
+    )
+    .expect("source should compile");
+    let error = start(
+        &program,
+        ExecutionOptions {
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits {
+                instruction_budget: 5,
+                heap_limit_bytes: 1_000_000_000,
+                allocation_budget: 2_000_000,
+                ..RuntimeLimits::default()
+            },
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("structured host-call arguments should consume instruction budget");
+
+    match error {
+        jslite::JsliteError::Message { kind, message, .. } => {
+            assert_eq!(kind, DiagnosticKind::Limit);
+            assert!(message.contains("instruction budget exhausted"));
+        }
+        other => panic!("expected limit error, got {other:?}"),
+    }
 }

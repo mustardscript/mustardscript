@@ -288,6 +288,39 @@ test('resumeError rejects proxy-backed details without executing traps', () => {
   assert.deepEqual(events, []);
 });
 
+test('resumeError does not execute inherited host error getters before fail-closed rejection', () => {
+  const progress = new Jslite('fetch_data();').start({
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  let getterRuns = 0;
+  class EvilError extends Error {}
+  Object.defineProperty(EvilError.prototype, 'message', {
+    get() {
+      getterRuns += 1;
+      return 'boom';
+    },
+  });
+
+  const error = new EvilError();
+  Object.defineProperty(error, 'details', {
+    enumerable: true,
+    get() {
+      throw new Error('details getter should not run');
+    },
+  });
+
+  assert.throws(
+    () => progress.resumeError(error),
+    (entry) =>
+      entry instanceof TypeError &&
+      entry.message.includes('host errors cannot use accessor-backed details properties'),
+  );
+  assert.equal(getterRuns, 0);
+});
+
 test('host-to-guest encoding rejects cyclic inputs with a typed boundary error', async () => {
   const value = {};
   value.self = value;
