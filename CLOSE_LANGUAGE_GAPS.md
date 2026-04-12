@@ -139,7 +139,7 @@ Audit sources:
   `++` / `--`.
 - [ ] Add logical assignment operators `||=` and `&&=` if they stay in scope
   for the compatibility target.
-- [ ] Add validation, diagnostics, and differential tests for the full syntax
+- [x] Add validation, diagnostics, and differential tests for the full syntax
   cluster above.
 
 ### Phase 4: Iteration and control-flow expansion

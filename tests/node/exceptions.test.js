@@ -177,6 +177,18 @@ test('constructor rejects unsupported default params, destructuring defaults, an
   );
 });
 
+test('constructor rejects logical assignment before execution', () => {
+  for (const source of ['let value = 1; value ||= 2;', 'let value = 1; value &&= 2;']) {
+    assert.throws(
+      () => runtime(source),
+      isJsliteError({
+        kind: 'Validation',
+        message: /unsupported assignment operator in v1/,
+      }),
+    );
+  }
+});
+
 test('runtime errors do not leak host internals in guest tracebacks', async () => {
   await assert.rejects(
     runtime(`
