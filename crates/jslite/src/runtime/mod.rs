@@ -240,4 +240,19 @@ impl Runtime {
         }
         Ok(())
     }
+
+    pub(super) fn charge_native_helper_work(&mut self, units: usize) -> JsliteResult<()> {
+        if units == 0 {
+            return Ok(());
+        }
+        self.check_cancellation()?;
+        self.instruction_counter = self
+            .instruction_counter
+            .checked_add(units)
+            .ok_or_else(|| limit_error("instruction budget exhausted"))?;
+        if self.instruction_counter > self.limits.instruction_budget {
+            return Err(limit_error("instruction budget exhausted"));
+        }
+        Ok(())
+    }
 }

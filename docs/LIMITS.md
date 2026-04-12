@@ -61,8 +61,11 @@ Cooperative cancellation is controlled separately through:
   recursive or deeply nested guest calls fail with a guest-safe limit error
   once the configured depth budget is exhausted.
 - Cooperative cancellation is implemented and checked before each instruction,
-  before idle microtask or queued-host-call checkpoints, and on every resume
-  entry.
+  before idle microtask or queued-host-call checkpoints, on every resume
+  entry, and inside long-running native helper loops.
+- Native helper loops such as `Array.prototype.sort()` and `Object.keys()` now
+  charge instruction budget explicitly instead of bypassing the guest budget
+  inside opaque Rust work.
 - Cancellation fails as a limit error with the guest-safe message
   `execution cancelled`.
 - In addon mode, same-thread `AbortSignal` delivery cannot interrupt a native

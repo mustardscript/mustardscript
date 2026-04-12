@@ -34,6 +34,7 @@ impl Runtime {
         self.with_temporary_roots(&roots, |runtime| {
             let mut index = 0usize;
             loop {
+                runtime.charge_native_helper_work(1)?;
                 let (value, done) = runtime.iterator_next(iterator.clone())?;
                 if done {
                     break;
@@ -148,19 +149,25 @@ impl Runtime {
         )?))
     }
 
-    pub(crate) fn call_array_join(&self, this_value: Value, args: &[Value]) -> JsliteResult<Value> {
+    pub(crate) fn call_array_join(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> JsliteResult<Value> {
         let array = self.array_receiver(this_value, "join")?;
         let separator = match args.first() {
             Some(value) => self.to_string(value.clone())?,
             None => ",".to_string(),
         };
-        let elements = &self
+        let elements = self
             .arrays
             .get(array)
             .ok_or_else(|| JsliteError::runtime("array missing"))?
-            .elements;
+            .elements
+            .clone();
         let mut parts = Vec::with_capacity(elements.len());
-        for value in elements {
+        for value in &elements {
+            self.charge_native_helper_work(1)?;
             parts.push(match value {
                 Value::Undefined | Value::Null => String::new(),
                 other => self.to_string(other.clone())?,
@@ -225,6 +232,7 @@ impl Runtime {
         left: Value,
         right: Value,
     ) -> JsliteResult<Ordering> {
+        self.charge_native_helper_work(1)?;
         match comparator {
             Some(comparator) => {
                 let result = self.with_temporary_roots(
@@ -287,6 +295,7 @@ impl Runtime {
                 .elements
                 .clone();
             for index in 1..elements.len() {
+                runtime.charge_native_helper_work(1)?;
                 let current = elements[index].clone();
                 let mut position = index;
                 while position > 0
@@ -398,6 +407,7 @@ impl Runtime {
             .elements
             .len();
         for index in 0..length {
+            self.charge_native_helper_work(1)?;
             let value = self.array_callback_value(array, index)?;
             self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -437,6 +447,7 @@ impl Runtime {
             ],
             |runtime| {
                 for index in 0..length {
+                    runtime.charge_native_helper_work(1)?;
                     let value = runtime.array_callback_value(array, index)?;
                     let mapped = runtime.call_array_callback(
                         callback.clone(),
@@ -479,6 +490,7 @@ impl Runtime {
             ],
             |runtime| {
                 for index in 0..length {
+                    runtime.charge_native_helper_work(1)?;
                     let value = runtime.array_callback_value(array, index)?;
                     let keep = runtime.call_array_callback(
                         callback.clone(),
@@ -518,6 +530,7 @@ impl Runtime {
             .elements
             .len();
         for index in 0..length {
+            self.charge_native_helper_work(1)?;
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -554,6 +567,7 @@ impl Runtime {
             .elements
             .len();
         for index in 0..length {
+            self.charge_native_helper_work(1)?;
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -586,6 +600,7 @@ impl Runtime {
             .elements
             .len();
         for index in 0..length {
+            self.charge_native_helper_work(1)?;
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -618,6 +633,7 @@ impl Runtime {
             .elements
             .len();
         for index in 0..length {
+            self.charge_native_helper_work(1)?;
             let value = self.array_callback_value(array, index)?;
             let found = self.with_temporary_roots(
                 &[Value::Array(array), callback.clone(), this_arg.clone()],
@@ -659,6 +675,7 @@ impl Runtime {
             }
         };
         for index in start_index..length {
+            self.charge_native_helper_work(1)?;
             let value = self.array_callback_value(array, index)?;
             accumulator = self.with_temporary_roots(
                 &[
