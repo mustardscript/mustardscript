@@ -320,6 +320,12 @@ const PUBLIC_API_MISUSE_COVERAGE = Object.freeze({
       pattern: 'Jslite.load surfaces invalid compiled-program blobs as typed errors',
     },
   ],
+  'Jslite.validateProgram(...)': [
+    {
+      file: 'tests/node/validation-api.test.js',
+      pattern: 'Jslite.validateProgram accepts supported programs and rejects invalid ones with typed errors',
+    },
+  ],
 });
 
 test('JSON.stringify matches Node for property order, number rendering, and omission rules', async () => {

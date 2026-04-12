@@ -94,6 +94,8 @@ const consoleCallbacks: ConsoleCallbacks = {
 };
 
 async function typecheck(): Promise<void> {
+  Jslite.validateProgram('const value = 1; value + 1;');
+
   const result: StructuredValue = await runtime.run({
     ...executionOptions,
     console: consoleCallbacks,

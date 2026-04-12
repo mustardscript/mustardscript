@@ -729,6 +729,7 @@ const result = await program.run({
 Lower-level control should exist for advanced hosts:
 
 - `new Jslite(...)`
+- `Jslite.validateProgram(...)`
 - `run(...)`
 - `start(...)`
 - `progress.resume(...)`
@@ -747,6 +748,11 @@ The design and invariants for that layer are documented in
 Native failures are surfaced in Node as typed JavaScript errors:
 `JsliteParseError`, `JsliteValidationError`, `JsliteRuntimeError`,
 `JsliteLimitError`, and `JsliteSerializationError`.
+
+`Jslite.validateProgram(source)` checks that a guest program parses, stays
+inside the supported language subset, and lowers to an executable compiled
+program. It does not prove that a later `run()` or `start()` call will succeed
+with a particular host policy, input set, capability map, or runtime limit.
 
 `Progress.load(...)` reuses the original host policy automatically only when the
 dumped progress object stays inside the same Node process. If a progress blob is

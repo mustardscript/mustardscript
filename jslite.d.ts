@@ -171,6 +171,7 @@ export class Jslite {
   start(options?: ExecutionOptions): StructuredValue | Progress;
   dump(): Buffer;
 
+  static validateProgram(code: string): void;
   static load(buffer: Buffer): Jslite;
 }
 
