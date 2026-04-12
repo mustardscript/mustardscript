@@ -427,7 +427,7 @@ Checklist:
 
 ## Success Criteria
 
-- [ ] Every supported semantic family has generated parity coverage.
+- [x] Every supported semantic family has generated parity coverage.
 - [x] Every documented unsupported class has mapped rejection coverage with
       expected phase and category.
 - [x] Snapshot and progress bugs are found by lifecycle/stateful tests, not by
@@ -448,3 +448,4 @@ between docs, runtime promises, and executed verification.
 
 | Iteration | UTC Timestamp | Summary | Commit | Errors / Blockers |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-04-12T08:47:24Z | Closed Tier 1 sections 1 through 4: split supported and rejection properties into contract-backed families, added curated rejection regressions, added stateful progress lifecycle properties with minimized action histories, and expanded negative host-boundary coverage across inputs, capability results, and resume payloads. | f9f1063, 2537dc0, 85e34b7, 890cca2 | A first deferred async-schedule harness was discarded instead of committed after auditing the wrapper behavior: the Node layer currently exposes one host suspension at a time, so the simple concurrently pending host-promise model was the wrong fit for section 5. |
