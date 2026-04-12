@@ -35,6 +35,38 @@ test('run supports for...of assignment-target headers', async () => {
   assert.deepEqual(result, [2, 2, 2, 3, 4, 2]);
 });
 
+test('run supports for...in over plain objects and arrays', async () => {
+  const runtime = new Jslite(`
+    const object = { beta: 2, alpha: 1 };
+    const array = [10, 20];
+    array.extra = 30;
+    const objectKeys = [];
+    for (const key in object) {
+      objectKeys[objectKeys.length] = key;
+    }
+    const arrayKeys = [];
+    for (const key in array) {
+      arrayKeys[arrayKeys.length] = key;
+    }
+    [objectKeys, arrayKeys];
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, [['alpha', 'beta'], ['0', '1', 'extra']]);
+});
+
+test('run supports for...in assignment-target headers', async () => {
+  const runtime = new Jslite(`
+    const record = { current: '' };
+    for (record.current in { beta: 2, alpha: 1 }) {
+    }
+    record.current;
+  `);
+
+  const result = await runtime.run();
+  assert.equal(result, 'beta');
+});
+
 test('progress snapshots preserve active array iterators across resumes', () => {
   const runtime = new Jslite(`
     let total = 0;
@@ -111,6 +143,39 @@ test('progress snapshots preserve assignment-target for...of headers across resu
   assert.deepEqual(result, [3, 60]);
 });
 
+test('progress snapshots preserve active for...in iterators across resumes', () => {
+  const runtime = new Jslite(`
+    let total = 0;
+    for (const key in { beta: 2, alpha: 1 }) {
+      total += fetch_data(key);
+    }
+    total;
+  `);
+
+  const first = runtime.start({
+    capabilities: {
+      fetch_data(value) {
+        return value.length;
+      },
+    },
+  });
+
+  assert.ok(first instanceof Progress);
+  assert.equal(first.capability, 'fetch_data');
+  assert.deepEqual(first.args, ['alpha']);
+
+  const restored = Progress.load(first.dump());
+  assert.ok(restored instanceof Progress);
+
+  const second = restored.resume(10);
+  assert.ok(second instanceof Progress);
+  assert.equal(second.capability, 'fetch_data');
+  assert.deepEqual(second.args, ['beta']);
+
+  const result = second.resume(20);
+  assert.equal(result, 30);
+});
+
 test('run supports strings, keyed collections, and iterator helper objects', async () => {
   const runtime = new Jslite(`
     const map = new Map([['alpha', 1], ['beta', 2]]);
@@ -135,6 +200,22 @@ test('run supports strings, keyed collections, and iterator helper objects', asy
   assert.deepEqual(result, [['alpha:1', 'beta:2'], 'hi', 'ab', 0, 10, false]);
 });
 
+test('run rejects unsupported for...in iterable inputs', async () => {
+  const runtime = new Jslite(`
+    for (const key in new Map()) {
+      key;
+    }
+  `);
+
+  await assert.rejects(
+    () => runtime.run(),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Runtime' &&
+      error.message.includes('Object helpers currently only support plain objects and arrays'),
+  );
+});
+
 test('run rejects unsupported for...of iterable inputs', async () => {
   const runtime = new Jslite(`
     for (const value of { alpha: 1 }) {
@@ -148,5 +229,79 @@ test('run rejects unsupported for...of iterable inputs', async () => {
       error instanceof JsliteError &&
       error.kind === 'Runtime' &&
       error.message.includes('value is not iterable in the supported surface'),
+  );
+});
+
+test('run supports conservative for...in over plain objects and arrays', async () => {
+  const runtime = new Jslite(`
+    const object = { zebra: 1, alpha: 2 };
+    const array = [10, 20];
+    array.label = "seed";
+    const objectKeys = [];
+    const arrayKeys = [];
+    let lastKey = '';
+    const state = { current: '' };
+    for (const key in object) {
+      objectKeys[objectKeys.length] = key;
+    }
+    for (lastKey in array) {
+      arrayKeys[arrayKeys.length] = lastKey;
+    }
+    for (state.current in { beta: 1 }) {
+      lastKey = state.current;
+    }
+    [objectKeys, arrayKeys, lastKey, state.current];
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, [['alpha', 'zebra'], ['0', '1', 'label'], 'beta', 'beta']);
+});
+
+test('progress snapshots preserve for...in assignment-target headers across resumes', () => {
+  const runtime = new Jslite(`
+    const state = { current: "", seen: [] };
+    for (state.current in { beta: 1, alpha: 2 }) {
+      state.seen[state.seen.length] = fetch_data(state.current);
+    }
+    [state.current, state.seen];
+  `);
+
+  const first = runtime.start({
+    capabilities: {
+      fetch_data(value) {
+        return 'seen:' + value;
+      },
+    },
+  });
+
+  assert.ok(first instanceof Progress);
+  assert.equal(first.capability, 'fetch_data');
+  assert.deepEqual(first.args, ['alpha']);
+
+  const restored = Progress.load(first.dump());
+  assert.ok(restored instanceof Progress);
+
+  const second = restored.resume('seen:alpha');
+  assert.ok(second instanceof Progress);
+  assert.equal(second.capability, 'fetch_data');
+  assert.deepEqual(second.args, ['beta']);
+
+  const result = second.resume('seen:beta');
+  assert.deepEqual(result, ['beta', ['seen:alpha', 'seen:beta']]);
+});
+
+test('run rejects unsupported for...in right-hand sides', async () => {
+  const runtime = new Jslite(`
+    for (const key in "hi") {
+      key;
+    }
+  `);
+
+  await assert.rejects(
+    () => runtime.run(),
+    (error) =>
+      error instanceof JsliteError &&
+      error.kind === 'Runtime' &&
+      error.message.includes('Object helpers currently only support plain objects and arrays'),
   );
 });

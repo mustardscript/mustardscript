@@ -210,11 +210,11 @@ const FEATURE_CONTRACT = Object.freeze([
   },
   {
     id: 'validation.for-in',
-    title: 'for...in is a validation reject',
-    outcome: OUTCOME.VALIDATION_REJECT,
+    title: 'for...in rejects unsupported right-hand sides at runtime',
+    outcome: OUTCOME.RUNTIME_REJECT,
     coverage: [COVERAGE.PROPERTY_NEGATIVE],
-    source: 'for (const key in { alpha: 1 }) { key; }',
-    messageIncludes: 'for...in is not supported in v1',
+    source: 'for (const key in "hi") { key; }',
+    messageIncludes: 'Object helpers currently only support plain objects and arrays',
   },
   {
     id: 'validation.for-await-of',

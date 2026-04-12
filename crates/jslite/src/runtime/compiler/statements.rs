@@ -311,6 +311,37 @@ impl Compiler {
                 context.scope_depth -= 1;
                 context.code.push(Instruction::PopEnv);
             }
+            Stmt::ForIn {
+                span,
+                head,
+                object,
+                body,
+            } => {
+                self.compile_stmt(
+                    context,
+                    &Stmt::ForOf {
+                        span: *span,
+                        head: head.clone(),
+                        iterable: Expr::Call {
+                            span: *span,
+                            callee: Box::new(Expr::Member {
+                                span: *span,
+                                object: Box::new(Expr::Identifier {
+                                    span: *span,
+                                    name: "Object".to_string(),
+                                }),
+                                property: crate::ir::MemberProperty::Static(
+                                    crate::ir::PropertyName::Identifier("keys".to_string()),
+                                ),
+                                optional: false,
+                            }),
+                            arguments: vec![object.clone()],
+                            optional: false,
+                        },
+                        body: body.clone(),
+                    },
+                )?;
+            }
             Stmt::Break { span } => {
                 let Some(loop_ctx) = context.loop_stack.last() else {
                     return Err(JsliteError::runtime_at(

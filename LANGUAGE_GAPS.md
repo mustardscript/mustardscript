@@ -89,7 +89,9 @@ missing:
 - Update expressions are unsupported.
 - `delete` is unsupported.
 - `with` is unsupported.
-- `for...in` is unsupported.
+- `for...in` now works for plain objects and arrays only, using the same key
+  order as `Object.keys(...)` and the same header surface as the documented
+  `for...of` subset.
 - `for await...of` is unsupported.
 - `for...of` supports the documented iterable surface plus single-binding
   `let` / `const` declaration headers and identifier/member assignment-target
@@ -214,7 +216,8 @@ missing:
   source code.
 - `for...of` is narrower than full JavaScript: declaration headers still must
   declare exactly one `let` or `const` binding, destructuring assignment
-  targets remain unsupported, and `for await...of` remains unsupported.
+  targets remain unsupported, `for...in` is still limited to plain objects and
+  arrays, and `for await...of` remains unsupported.
 - `in` intentionally checks only the runtime's currently exposed property
   surface. It does not introduce full prototype walking, descriptor semantics,
   or a reflective `globalThis` mirror of every global binding.

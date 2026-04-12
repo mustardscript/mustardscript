@@ -64,7 +64,8 @@ Audit sources:
 - [ ] `var` is rejected; only `let` and `const` are supported.
 - [ ] Update expressions are rejected during validation.
 - [ ] `delete` is rejected during validation.
-- [ ] `for...in` is rejected during validation.
+- [x] `for...in` now works for plain objects and arrays with the documented
+  conservative key-order and header surface.
 - [ ] `for await...of` is rejected during validation.
 - [ ] Array holes in literals are rejected during validation.
 - [ ] `instanceof` is rejected as an unsupported binary operator.
@@ -138,12 +139,12 @@ Audit sources:
 
 - [x] Broaden `for...of` headers beyond exactly one declared `let` / `const`
   binding by supporting identifier and member assignment-target headers.
-- [ ] Decide the supported `for...in` surface for plain objects and arrays,
+- [x] Decide the supported `for...in` surface for plain objects and arrays,
   including enumeration order and inherited-property behavior.
 - [ ] Decide the minimum `for await...of` surface: async arrays and guest
   promises only, or a broader async-iterator protocol.
-- [ ] Implement the chosen `for...in` and `for await...of` surface with
-  snapshot and resume coverage where suspension is possible.
+- [ ] Implement the chosen `for await...of` surface with snapshot and resume
+  coverage where suspension is possible.
 
 ### Phase 5: Hard semantic gaps that need design first
 

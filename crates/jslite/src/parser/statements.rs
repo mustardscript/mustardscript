@@ -70,32 +70,7 @@ impl<'a> Lowerer<'a> {
                     return None;
                 }
 
-                let head = match &statement.left {
-                    ForStatementLeft::VariableDeclaration(decl) => {
-                        if decl.declarations.len() != 1 {
-                            self.unsupported(
-                                "for...of currently requires exactly one let or const binding",
-                                Some(decl.span.into()),
-                            );
-                            return None;
-                        }
-                        let declarator = &decl.declarations[0];
-                        if declarator.init.is_some() {
-                            self.unsupported(
-                                "for...of binding initializers are not supported",
-                                Some(declarator.span.into()),
-                            );
-                            return None;
-                        }
-                        crate::ir::ForOfHead::Binding {
-                            kind: self.lower_binding_kind(decl.kind, decl.span)?,
-                            pattern: self.lower_pattern(&declarator.id)?,
-                        }
-                    }
-                    _ => crate::ir::ForOfHead::Assignment {
-                        target: self.lower_for_of_assignment_target(&statement.left)?,
-                    },
-                };
+                let head = self.lower_for_loop_head(&statement.left, "for...of")?;
 
                 let iterable = self.lower_expr(&statement.right)?;
                 let body = match &head {
@@ -115,6 +90,29 @@ impl<'a> Lowerer<'a> {
                     span: statement.span.into(),
                     head,
                     iterable,
+                    body,
+                })
+            }
+            Statement::ForInStatement(statement) => {
+                let head = self.lower_for_loop_head(&statement.left, "for...in")?;
+                let iterable = self.lower_expr(&statement.right)?;
+                let body = match &head {
+                    crate::ir::ForOfHead::Binding { pattern, .. } => {
+                        self.push_scope();
+                        self.collect_ir_pattern_bindings(pattern);
+                        let body = self.lower_stmt(&statement.body);
+                        self.pop_scope();
+                        Box::new(body?)
+                    }
+                    crate::ir::ForOfHead::Assignment { .. } => {
+                        Box::new(self.lower_stmt(&statement.body)?)
+                    }
+                };
+
+                Some(Stmt::ForIn {
+                    span: statement.span.into(),
+                    head,
+                    object: iterable,
                     body,
                 })
             }
@@ -211,13 +209,6 @@ impl<'a> Lowerer<'a> {
                 );
                 None
             }
-            Statement::ForInStatement(statement) => {
-                self.unsupported(
-                    "for...in is not supported in v1",
-                    Some(statement.span.into()),
-                );
-                None
-            }
             Statement::LabeledStatement(statement) => {
                 self.unsupported(
                     "labeled statements are not supported in v1",
@@ -247,6 +238,39 @@ impl<'a> Lowerer<'a> {
                 );
                 None
             }
+        }
+    }
+
+    fn lower_for_loop_head(
+        &mut self,
+        left: &ForStatementLeft<'a>,
+        loop_name: &str,
+    ) -> Option<crate::ir::ForOfHead> {
+        match left {
+            ForStatementLeft::VariableDeclaration(decl) => {
+                if decl.declarations.len() != 1 {
+                    self.unsupported(
+                        format!("{loop_name} currently requires exactly one let or const binding"),
+                        Some(decl.span.into()),
+                    );
+                    return None;
+                }
+                let declarator = &decl.declarations[0];
+                if declarator.init.is_some() {
+                    self.unsupported(
+                        format!("{loop_name} binding initializers are not supported"),
+                        Some(declarator.span.into()),
+                    );
+                    return None;
+                }
+                Some(crate::ir::ForOfHead::Binding {
+                    kind: self.lower_binding_kind(decl.kind, decl.span)?,
+                    pattern: self.lower_pattern(&declarator.id)?,
+                })
+            }
+            _ => Some(crate::ir::ForOfHead::Assignment {
+                target: self.lower_for_of_assignment_target(left)?,
+            }),
         }
     }
 

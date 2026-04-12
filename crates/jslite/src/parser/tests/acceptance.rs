@@ -78,6 +78,28 @@ fn parses_for_of_with_assignment_targets() {
 }
 
 #[test]
+fn parses_for_in_with_binding_and_assignment_targets() {
+    let program = compile(
+        r#"
+        let total = 0;
+        const boxes = [{ current: 0 }, { current: 0 }];
+        let index = 0;
+        for (const key in { beta: 2, alpha: 1 }) {
+          total += key.length;
+        }
+        for (boxes[index].current in [3, 4]) {
+          index += 1;
+        }
+        total + boxes[0].current + boxes[1].current + index;
+        "#,
+    )
+    .expect("for...in should compile");
+
+    assert!(matches!(program.script.body[3], Stmt::ForIn { .. }));
+    assert!(matches!(program.script.body[4], Stmt::ForIn { .. }));
+}
+
+#[test]
 fn parses_sequence_and_exponentiation_expressions() {
     compile(
         r#"

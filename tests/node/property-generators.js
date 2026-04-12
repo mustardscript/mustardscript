@@ -240,8 +240,8 @@ const unsupportedValidationCaseArbitrary = fc.oneof(
     messageIncludes: 'arguments',
   }),
   fc.constant({
-    source: 'for (const key in { alpha: 1 }) { key; }',
-    messageIncludes: 'for...in',
+    source: 'async function run() { for await (const value of [1]) { value; } }',
+    messageIncludes: 'for await...of',
   }),
   fc.constant({
     source: 'class Example {}',

@@ -104,6 +104,8 @@ extensions are called out explicitly instead of being implied.
 
 - `for...of` supports either exactly one `let` / `const` binding declaration
   or an identifier/member assignment target in the loop header
+- `for...in` supports the same header forms as the documented `for...of`
+  surface, but only when the right-hand side is a plain object or array
 - arrays, strings, `Map`, `Set`, and guest iterator objects from the supported
   helper surface are iterable in the current surface
 - declaration headers can use the same identifier, array, and object
@@ -162,11 +164,10 @@ extensions are called out explicitly instead of being implied.
 - `with`
 - classes
 - generators and `yield`
-- `for...in`
 - `for await...of`
 - `for...of` declaration headers that do not declare exactly one `let` or
-  `const` binding, declaration initializers in `for...of` headers, and
-  destructuring assignment targets
+  `const` binding, declaration initializers in `for...of` / `for...in`
+  headers, and destructuring assignment targets
 - `debugger`
 - labeled statements
 - object spread and object-literal methods
@@ -228,7 +229,9 @@ extensions are called out explicitly instead of being implied.
 - `Object.keys`, `Object.values`, and `Object.entries` on arrays enumerate
   numeric indices in ascending order followed by custom string properties in
   sorted key order.
-- `for...in` remains unsupported.
+- `for...in` over plain objects and arrays uses the same documented key order
+  as `Object.keys(...)`; other right-hand sides fail closed with the same
+  runtime `TypeError` surface as the supported `Object` helpers.
 
 ## Built-Ins and Global Names
 

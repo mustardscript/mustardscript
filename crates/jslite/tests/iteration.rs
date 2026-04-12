@@ -201,6 +201,62 @@ fn for_of_rejects_unsupported_iterable_inputs() {
 }
 
 #[test]
+fn for_in_supports_plain_objects_arrays_and_assignment_targets() {
+    let program = compile(
+        r#"
+        const object = { zebra: 1, alpha: 2 };
+        const array = [10, 20];
+        array.label = "seed";
+        const objectKeys = [];
+        const arrayKeys = [];
+        let lastKey = "";
+        const state = { current: "" };
+        for (const key in object) {
+          objectKeys[objectKeys.length] = key;
+        }
+        for (lastKey in array) {
+          arrayKeys[arrayKeys.length] = lastKey;
+        }
+        for (state.current in { beta: 1 }) {
+          lastKey = state.current;
+        }
+        [objectKeys, arrayKeys, lastKey, state.current];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![string("alpha"), string("zebra")]),
+            StructuredValue::Array(vec![string("0"), string("1"), string("label")]),
+            string("beta"),
+            string("beta"),
+        ])
+    );
+}
+
+#[test]
+fn for_in_rejects_unsupported_right_hand_sides() {
+    let program = compile(
+        r#"
+        for (const key in "hi") {
+          key;
+        }
+        "#,
+    )
+    .expect("source should compile");
+
+    let error = execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("Object helpers currently only support plain objects and arrays")
+    );
+}
+
+#[test]
 fn snapshot_round_trip_preserves_active_array_iterators() {
     let program = compile(
         r#"
@@ -330,6 +386,69 @@ fn snapshot_round_trip_preserves_assignment_target_for_of_headers() {
         ExecutionStep::Completed(value) => assert_eq!(
             value,
             StructuredValue::Array(vec![number(3.0), number(60.0)])
+        ),
+        ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
+    }
+}
+
+#[test]
+fn snapshot_round_trip_preserves_for_in_assignment_targets() {
+    let program = compile(
+        r#"
+        const state = { current: "", seen: [] };
+        for (state.current in { beta: 1, alpha: 2 }) {
+          state.seen[state.seen.length] = fetch_data(state.current);
+        }
+        [state.current, state.seen];
+        "#,
+    )
+    .expect("source should compile");
+
+    let first = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+    assert_eq!(first.capability, "fetch_data");
+    assert_eq!(first.args, vec![string("alpha")]);
+
+    let encoded = dump_snapshot(&first.snapshot).expect("snapshot should serialize");
+    let loaded = load_snapshot(&encoded).expect("snapshot should deserialize");
+
+    let second = match resume_with_options(
+        loaded,
+        ResumePayload::Value(string("seen:alpha")),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(snapshot_policy(&["fetch_data"], RuntimeLimits::default())),
+        },
+    )
+    .expect("resume should work")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected a second suspension, got {value:?}"),
+    };
+    assert_eq!(second.capability, "fetch_data");
+    assert_eq!(second.args, vec![string("beta")]);
+
+    let completed = resume(second.snapshot, ResumePayload::Value(string("seen:beta")))
+        .expect("final resume should work");
+    match completed {
+        ExecutionStep::Completed(value) => assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                string("beta"),
+                StructuredValue::Array(vec![string("seen:alpha"), string("seen:beta")]),
+            ])
         ),
         ExecutionStep::Suspended(other) => panic!("expected completion, got {other:?}"),
     }

@@ -62,6 +62,12 @@ pub enum Stmt {
         iterable: Expr,
         body: Box<Stmt>,
     },
+    ForIn {
+        span: SourceSpan,
+        head: ForOfHead,
+        object: Expr,
+        body: Box<Stmt>,
+    },
     Break {
         span: SourceSpan,
     },

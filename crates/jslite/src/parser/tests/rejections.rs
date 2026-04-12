@@ -84,6 +84,17 @@ fn rejects_for_await_of() {
 }
 
 #[test]
+fn rejects_for_in_destructuring_assignment_targets() {
+    let error = compile("let value = ''; for ([value] in { alpha: 1 }) { value; }")
+        .expect_err("destructuring assignment-target for...in should fail closed");
+    assert!(
+        error
+            .to_string()
+            .contains("destructuring assignment is not supported in v1")
+    );
+}
+
+#[test]
 fn rejects_exponent_assignment_operator() {
     let error = compile("let value = 2; value **= 3;")
         .expect_err("unsupported assignment operators should fail closed");
