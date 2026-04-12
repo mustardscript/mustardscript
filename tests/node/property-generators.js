@@ -191,6 +191,25 @@ const supportedProgramArbitrary = fc.oneof(
       }
       main();
     `),
+  fc
+    .record({
+      left: fc.integer({ min: -12, max: 12 }),
+      right: fc.integer({ min: 1, max: 12 }),
+      extra: fc.integer({ min: -12, max: 12 }),
+    })
+    .map(({ left, right, extra }) => `
+      const left = ${left}n;
+      const right = ${right}n;
+      const extra = ${extra}n;
+      ({
+        sum: String(left + right),
+        diff: String(left - extra),
+        product: String(right * extra),
+        quotient: String((left + right) / right),
+        remainder: String((left + right) % right),
+        compare: [left < right, left >= extra, typeof left],
+      });
+    `),
 );
 
 const unsupportedValidationCaseArbitrary = fc.oneof(
@@ -233,10 +252,6 @@ const unsupportedValidationCaseArbitrary = fc.oneof(
   fc.constant({
     source: '(1, 2);',
     messageIncludes: 'sequence expression',
-  }),
-  fc.constant({
-    source: '1n;',
-    messageIncludes: 'bigint',
   }),
   fc.constant({
     source: 'label: 1;',

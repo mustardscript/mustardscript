@@ -1,4 +1,5 @@
 use super::*;
+use num_bigint::BigInt;
 
 impl Runtime {
     pub(super) fn run_root(&mut self) -> JsliteResult<ExecutionStep> {
@@ -36,6 +37,11 @@ impl Runtime {
             Instruction::PushBool(value) => self.frames[frame_index].stack.push(Value::Bool(value)),
             Instruction::PushNumber(value) => {
                 self.frames[frame_index].stack.push(Value::Number(value))
+            }
+            Instruction::PushBigInt(value) => {
+                let value = BigInt::parse_bytes(value.as_bytes(), 10)
+                    .ok_or_else(|| JsliteError::runtime("invalid BigInt literal in bytecode"))?;
+                self.frames[frame_index].stack.push(Value::BigInt(value));
             }
             Instruction::PushString(value) => {
                 self.frames[frame_index].stack.push(Value::String(value))

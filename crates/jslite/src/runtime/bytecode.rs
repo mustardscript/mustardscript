@@ -103,4 +103,5 @@ pub enum Instruction {
         argc: usize,
     },
     Return,
+    PushBigInt(String),
 }

@@ -290,6 +290,7 @@ fn is_truthy(value: &Value) -> bool {
         Value::Undefined | Value::Null => false,
         Value::Bool(value) => *value,
         Value::Number(value) => *value != 0.0 && !value.is_nan(),
+        Value::BigInt(value) => value != &0.into(),
         Value::String(value) => !value.is_empty(),
         Value::Object(_)
         | Value::Array(_)
@@ -316,6 +317,7 @@ fn strict_equal(left: &Value, right: &Value) -> bool {
         (Value::Null, Value::Null) => true,
         (Value::Bool(left), Value::Bool(right)) => left == right,
         (Value::Number(left), Value::Number(right)) => left == right,
+        (Value::BigInt(left), Value::BigInt(right)) => left == right,
         (Value::String(left), Value::String(right)) => left == right,
         (Value::Object(left), Value::Object(right)) => left == right,
         (Value::Array(left), Value::Array(right)) => left == right,
@@ -334,6 +336,7 @@ fn same_value_zero(left: &Value, right: &Value) -> bool {
         (Value::Number(left), Value::Number(right)) => {
             (left == right) || (left.is_nan() && right.is_nan())
         }
+        (Value::BigInt(left), Value::BigInt(right)) => left == right,
         _ => strict_equal(left, right),
     }
 }

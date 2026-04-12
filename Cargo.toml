@@ -20,6 +20,8 @@ futures = "0.3.31"
 indexmap = { version = "2.12.0", features = ["serde"] }
 napi = { version = "3.8.4", default-features = false, features = ["async", "napi8"] }
 napi-derive = "3.5.3"
+num-bigint = { version = "0.4.6", features = ["serde"] }
+num-traits = "0.2.19"
 oxc_allocator = "0.124.0"
 oxc_ast = "0.124.0"
 oxc_parser = "0.124.0"

@@ -81,6 +81,21 @@ extensions are called out explicitly instead of being implied.
 - synchronous host suspensions from Promise executors and adopted thenables
   still fail closed
 
+## Supported BigInt Surface
+
+- guest code supports `BigInt` literals such as `123n`
+- exact-integer `+`, `-`, `*`, `/`, and `%` are supported when both operands
+  are `BigInt`
+- `typeof value` reports `"bigint"` for guest `BigInt` values
+- `BigInt` truthiness, string coercion, and property-key coercion are
+  supported
+- `Map` and `Set` membership support guest `BigInt` keys
+- mixed `BigInt` / `Number` arithmetic and relational comparisons fail closed
+- unary `+1n`, `Number(1n)`, and `JSON.stringify(...)` of `BigInt` values fail
+  closed with explicit runtime errors
+- guest `BigInt` values remain guest-internal and cannot cross the structured
+  host boundary
+
 ## Supported Iteration Surface
 
 - `for...of` is currently supported only when the header declares exactly one
@@ -147,7 +162,7 @@ extensions are called out explicitly instead of being implied.
 - labeled statements
 - object spread and object-literal methods
 - array spread and array holes
-- bigint and sequence expressions
+- sequence expressions
 
 ## Explicit Deferrals
 

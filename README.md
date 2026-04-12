@@ -39,6 +39,8 @@ The current implementation already supports:
 - `async` functions, `await`, guest promises, `new Promise(...)`, Promise
   combinators and instance methods, basic thenable adoption, and internal
   microtask scheduling for the supported subset
+- guest-internal `BigInt` literals with exact-integer arithmetic,
+  comparison, keyed-collection membership, and string/property-key coercion
 - conservative array, string, object, and Math helper methods, including
   callback-driven array helpers, iterable normalization helpers, and
   string-pattern search/replacement helpers
@@ -406,6 +408,18 @@ Current Promise support is intentionally narrow:
 - synchronous host suspensions from Promise executors and adopted thenables
   still fail closed
 
+Current BigInt support is intentionally conservative:
+
+- guest code supports `123n` literals plus exact-integer `+`, `-`, `*`, `/`,
+  `%`, truthiness, `typeof`, string coercion, and property-key coercion
+- `Map` and `Set` treat `BigInt` values as stable guest keys using the same
+  equality surface as other guest values
+- mixed `BigInt` / `Number` arithmetic and relational comparisons fail closed
+- `Number(1n)` and unary `+1n` fail closed instead of implicitly coercing
+- `JSON.stringify(...)` rejects `BigInt` values with an explicit `TypeError`
+- `BigInt` values remain guest-internal and still cannot cross the structured
+  host boundary
+
 Current built-in helper support is intentionally conservative:
 
 - arrays support `push`, `pop`, `slice`, `join`, `includes`, `indexOf`,
@@ -473,7 +487,8 @@ The host boundary should be narrowly defined and documented as its own contract.
 
 - functions
 - symbols
-- bigint, unless and until bigint support is added deliberately
+- guest `BigInt` values and host bigints; the current `BigInt` surface remains
+  guest-internal only
 - class instances
 - host objects
 - dates

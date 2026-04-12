@@ -701,6 +701,10 @@ impl<'a> Lowerer<'a> {
                 span: literal.span.into(),
                 value: literal.value,
             }),
+            Expression::BigIntLiteral(literal) => Some(Expr::BigInt {
+                span: literal.span.into(),
+                value: literal.value.as_str().to_string(),
+            }),
             Expression::StringLiteral(literal) => Some(Expr::String {
                 span: literal.span.into(),
                 value: literal.value.as_str().to_string(),
@@ -951,13 +955,6 @@ impl<'a> Lowerer<'a> {
             }
             Expression::YieldExpression(expression) => {
                 self.unsupported("yield is not supported in v1", Some(expression.span.into()));
-                None
-            }
-            Expression::BigIntLiteral(expression) => {
-                self.unsupported(
-                    "bigint is not supported in v1",
-                    Some(expression.span.into()),
-                );
                 None
             }
             Expression::TaggedTemplateExpression(expression) => {

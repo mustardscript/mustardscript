@@ -1,6 +1,14 @@
+use std::collections::HashSet;
+
 use crate::runtime::conversions::structured_to_json;
 
 use super::*;
+
+#[derive(Default)]
+struct JsonBigIntTraversalState {
+    arrays: HashSet<ArrayKey>,
+    objects: HashSet<ObjectKey>,
+}
 
 impl Runtime {
     pub(crate) fn construct_date(&mut self, args: &[Value]) -> JsliteResult<Value> {
@@ -150,6 +158,12 @@ impl Runtime {
 
     pub(crate) fn call_json_stringify(&self, args: &[Value]) -> JsliteResult<Value> {
         let value = args.first().cloned().unwrap_or(Value::Undefined);
+        let mut traversal = JsonBigIntTraversalState::default();
+        if self.json_value_contains_bigint(&value, &mut traversal)? {
+            return Err(JsliteError::runtime(
+                "TypeError: JSON.stringify does not support BigInt values",
+            ));
+        }
         let structured = self.value_to_structured(value)?;
         let json = serde_json::to_string(&structured_to_json(structured)?)
             .map_err(|error| JsliteError::runtime(error.to_string()))?;
@@ -161,5 +175,57 @@ impl Runtime {
         let parsed: serde_json::Value = serde_json::from_str(&source)
             .map_err(|error| JsliteError::runtime(error.to_string()))?;
         self.value_from_json(parsed)
+    }
+
+    fn json_value_contains_bigint(
+        &self,
+        value: &Value,
+        traversal: &mut JsonBigIntTraversalState,
+    ) -> JsliteResult<bool> {
+        match value {
+            Value::BigInt(_) => Ok(true),
+            Value::Array(array) => {
+                if !traversal.arrays.insert(*array) {
+                    return Ok(false);
+                }
+                let result = (|| {
+                    for value in &self
+                        .arrays
+                        .get(*array)
+                        .ok_or_else(|| JsliteError::runtime("array missing"))?
+                        .elements
+                    {
+                        if self.json_value_contains_bigint(value, traversal)? {
+                            return Ok(true);
+                        }
+                    }
+                    Ok(false)
+                })();
+                traversal.arrays.remove(array);
+                result
+            }
+            Value::Object(object) => {
+                if !traversal.objects.insert(*object) {
+                    return Ok(false);
+                }
+                let result = (|| {
+                    for value in self
+                        .objects
+                        .get(*object)
+                        .ok_or_else(|| JsliteError::runtime("object missing"))?
+                        .properties
+                        .values()
+                    {
+                        if self.json_value_contains_bigint(value, traversal)? {
+                            return Ok(true);
+                        }
+                    }
+                    Ok(false)
+                })();
+                traversal.objects.remove(object);
+                result
+            }
+            _ => Ok(false),
+        }
     }
 }

@@ -117,6 +117,7 @@ fn expr_contains(expr: &Expr, predicate: &impl Fn(&Expr) -> bool) -> bool {
         | Expr::Null { .. }
         | Expr::Bool { .. }
         | Expr::Number { .. }
+        | Expr::BigInt { .. }
         | Expr::String { .. }
         | Expr::RegExp { .. }
         | Expr::Identifier { .. }

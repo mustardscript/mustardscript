@@ -124,7 +124,6 @@ coverage gaps for realistic tool-calling workloads.
 
 | Gap family | Retained examples | Why it matters |
 | --- | ---: | --- |
-| `BigInt` and exact-integer money math | `5` | Large settlement, reserve, and ledger workloads routinely exceed safe-number precision. |
 | `Intl` formatting and locale-aware presentation | `4` | Cross-border finance, policy notices, and customer-facing ops often need locale-correct formatting. |
 | Typed arrays, buffers, and binary payloads | `5` | Attachments, banking files, digest verification, EDI, and network payloads are naturally byte-oriented. |
 | Non-JSON host boundary shapes | `6` | Real SDKs often return `Map`, `Set`, class instances, cyclic graphs, accessors, or native `Date`s. |
@@ -135,9 +134,6 @@ coverage gaps for realistic tool-calling workloads.
 
 Representative retained ideas:
 
-- `BigInt`:
-  sovereign-scale treasury sweeps in cents, repo haircuts on 18-digit notionals,
-  nano-unit fee netting, and micro-cent reserve rollups.
 - `Intl`:
   multi-locale premium notices, accounting-style negative currency rendering,
   and localized loan quote text.
@@ -153,6 +149,13 @@ Representative retained ideas:
 - Explicit syntax rejections:
   pricing/config merges with object spread, helpers that rely on default
   parameters, and field scrubbers built around `delete`.
+
+Resolved since this analysis pass:
+
+- guest-internal `BigInt` literals and exact-integer arithmetic now support the
+  retained treasury-style money-math cases that originally promoted this gap
+- `BigInt` still remains outside the structured host boundary, so host inputs,
+  results, capability payloads, and JSON serialization continue to fail closed
 
 ### C. Product-Fit Gaps Found During Doc Review
 
