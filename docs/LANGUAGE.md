@@ -174,7 +174,6 @@ extensions are called out explicitly instead of being implied.
 - `debugger`
 - labeled statements
 - object literal accessors
-- array spread and spread arguments
 - update expressions
 - `instanceof`
 
@@ -393,6 +392,10 @@ extensions are called out explicitly instead of being implied.
 
 ## Current Helper Constraints
 
+- array literals plus call and constructor argument lists support spread over
+  the documented iterable surface (`Array`, `String`, `Map`, `Set`, and
+  supported iterator objects); array holes iterate as `undefined`, and other
+  inputs fail closed with `TypeError: value is not iterable in the supported surface`
 - array callback helpers snapshot the starting array length, read element values
   live by index, and pass `(value, index, array)` plus an optional `thisArg`
 - array callback helpers currently support guest callbacks, built-in callbacks,

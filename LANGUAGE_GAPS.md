@@ -77,8 +77,11 @@ missing:
   constructors.
 - Private fields are unsupported.
 - Object literal accessors are unsupported.
-- Array spread is rejected during validation.
-- Spread arguments are rejected during validation.
+- Array spread is supported for arrays, strings, `Map`, `Set`, and supported
+  iterator objects. Other inputs fail closed at runtime with the documented
+  iterable-surface `TypeError`.
+- Spread arguments are supported for the same documented iterable surface and
+  fail closed with the same runtime `TypeError` on unsupported inputs.
 - Default parameters are rejected during validation.
 - Default destructuring is rejected during validation.
 - Destructuring assignment is rejected during validation. Binding destructuring
@@ -184,8 +187,10 @@ missing:
 - The full symbol-based iterable protocol is not implemented.
 - Arrays, strings, `Map`, `Set`, and the documented iterator helper objects are
   iterable in the current surface.
-- Spread syntax is still only partially supported: sparse arrays exist now, but
-  array spread and spread arguments remain unsupported.
+- Spread syntax is still only partially supported: array spread and spread
+  arguments work for the documented iterable surface, object spread works for
+  documented plain-object and array sources, and custom symbol-based iterables
+  remain unsupported.
 - Plain objects are not iterable in `for...of`.
 - Custom iterables and `Symbol.iterator`-based patterns are unsupported because
   symbols and the public iterator protocol remain deferred.
@@ -265,7 +270,7 @@ missing:
   supported keyed collections, conservative built-ins, async guest promises,
   and explicit fail-closed behavior outside that subset.
 - If `jslite` is meant to execute broader AI-generated code without manual
-  rewrites, the biggest compatibility wins from here are spread syntax, default
-  parameters and destructuring, richer array and object built-ins, broader loop
-  forms, and any future prototype or constructor work needed for `instanceof`
-  and related helpers.
+  rewrites, the biggest compatibility wins from here are default parameters and
+  destructuring, richer array and object built-ins, broader loop forms, and
+  any future prototype or constructor work needed for `instanceof` and related
+  helpers.

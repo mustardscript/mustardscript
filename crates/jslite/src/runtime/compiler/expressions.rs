@@ -53,8 +53,9 @@ impl Compiler {
                             ArrayElement::Hole { .. } => {
                                 context.code.push(Instruction::ArrayPushHole);
                             }
-                            ArrayElement::Spread { .. } => {
-                                unreachable!("array spread lowering is not wired in this milestone")
+                            ArrayElement::Spread { value, .. } => {
+                                self.compile_expr(context, value)?;
+                                context.code.push(Instruction::ArrayExtend);
                             }
                         }
                     }
@@ -255,31 +256,78 @@ impl Compiler {
                 } else {
                     self.compile_expr(context, callee)?;
                 }
-                for argument in arguments {
-                    let CallArgument::Value(argument) = argument else {
-                        unreachable!("spread arguments are not lowered in this milestone");
-                    };
-                    self.compile_expr(context, argument)?;
+                if arguments
+                    .iter()
+                    .all(|argument| matches!(argument, CallArgument::Value(_)))
+                {
+                    for argument in arguments {
+                        let CallArgument::Value(argument) = argument else {
+                            unreachable!(
+                                "non-spread call fast-path should only see value arguments"
+                            );
+                        };
+                        self.compile_expr(context, argument)?;
+                    }
+                    context.code.push(Instruction::Call {
+                        argc: arguments.len(),
+                        with_this,
+                        optional: *optional,
+                    });
+                } else {
+                    context.code.push(Instruction::MakeArray { count: 0 });
+                    for argument in arguments {
+                        match argument {
+                            CallArgument::Value(argument) => {
+                                self.compile_expr(context, argument)?;
+                                context.code.push(Instruction::ArrayPush);
+                            }
+                            CallArgument::Spread { value, .. } => {
+                                self.compile_expr(context, value)?;
+                                context.code.push(Instruction::ArrayExtend);
+                            }
+                        }
+                    }
+                    context.code.push(Instruction::CallWithArray {
+                        with_this,
+                        optional: *optional,
+                    });
                 }
-                context.code.push(Instruction::Call {
-                    argc: arguments.len(),
-                    with_this,
-                    optional: *optional,
-                });
             }
             Expr::New {
                 callee, arguments, ..
             } => {
                 self.compile_expr(context, callee)?;
-                for argument in arguments {
-                    let CallArgument::Value(argument) = argument else {
-                        unreachable!("spread arguments are not lowered in this milestone");
-                    };
-                    self.compile_expr(context, argument)?;
+                if arguments
+                    .iter()
+                    .all(|argument| matches!(argument, CallArgument::Value(_)))
+                {
+                    for argument in arguments {
+                        let CallArgument::Value(argument) = argument else {
+                            unreachable!(
+                                "non-spread constructor fast-path should only see value arguments"
+                            );
+                        };
+                        self.compile_expr(context, argument)?;
+                    }
+                    context.code.push(Instruction::Construct {
+                        argc: arguments.len(),
+                    });
+                } else {
+                    context.code.push(Instruction::MakeArray { count: 0 });
+                    for argument in arguments {
+                        match argument {
+                            CallArgument::Value(argument) => {
+                                self.compile_expr(context, argument)?;
+                                context.code.push(Instruction::ArrayPush);
+                            }
+                            CallArgument::Spread { value, .. } => {
+                                self.compile_expr(context, value)?;
+                                context.code.push(Instruction::ArrayExtend);
+                            }
+                        }
+                    }
+                    context.code.push(Instruction::ConstructWithArray);
                 }
-                context.code.push(Instruction::Construct {
-                    argc: arguments.len(),
-                });
             }
             Expr::Template {
                 quasis,

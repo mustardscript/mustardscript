@@ -271,6 +271,74 @@ fn runs_object_literals_with_computed_keys_methods_and_spread() {
 }
 
 #[test]
+fn runs_array_spread_and_spread_arguments() {
+    let value = run(
+        r#"
+            const values = [2, 4];
+            const sparse = [2, , 4];
+            const extra = new Set("ab");
+            const box = {
+              base: 10,
+              total(...args) {
+                return this.base + args[0] + args[1] + args[2] + args[3];
+              },
+            };
+            const array = [1, ...sparse, ...extra, 5];
+            const built = new Array(...values, 9);
+            [
+              array,
+              box.total(...values, 6),
+              [1, ...sparse][2],
+              Math.max(...values, 3),
+              built,
+              ({ missing: null }).missing?.(...values),
+            ];
+            "#,
+    );
+    assert_eq!(
+        value,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![
+                StructuredValue::Number(StructuredNumber::Finite(1.0)),
+                StructuredValue::Number(StructuredNumber::Finite(2.0)),
+                StructuredValue::Null,
+                StructuredValue::Number(StructuredNumber::Finite(4.0)),
+                StructuredValue::String("a".to_string()),
+                StructuredValue::String("b".to_string()),
+                StructuredValue::Number(StructuredNumber::Finite(5.0)),
+            ]),
+            StructuredValue::Number(StructuredNumber::Finite(22.0)),
+            StructuredValue::Null,
+            StructuredValue::Number(StructuredNumber::Finite(4.0)),
+            StructuredValue::Array(vec![
+                StructuredValue::Number(StructuredNumber::Finite(2.0)),
+                StructuredValue::Number(StructuredNumber::Finite(4.0)),
+                StructuredValue::Number(StructuredNumber::Finite(9.0)),
+            ]),
+            StructuredValue::Undefined,
+        ])
+    );
+}
+
+#[test]
+fn spread_fails_closed_for_unsupported_iterables() {
+    let program = compile(
+        r#"
+            const object = { alpha: 1 };
+            [ [...object], Math.max(...object) ];
+            "#,
+    )
+    .expect("spread should lower");
+    let error = execute(&program, ExecutionOptions::default())
+        .expect_err("unsupported spread sources should fail closed at runtime");
+    assert!(
+        error
+            .to_string()
+            .contains("value is not iterable in the supported surface")
+    );
+}
+
+#[test]
 fn runs_sparse_arrays_across_helpers_and_json() {
     let value = run(
         r#"

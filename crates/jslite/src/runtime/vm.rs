@@ -135,6 +135,18 @@ impl Runtime {
                 self.refresh_array_accounting(array)?;
                 self.frames[frame_index].stack.push(Value::Array(array));
             }
+            Instruction::ArrayExtend => {
+                let iterable = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let target = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let target = self.expand_iterable_into_array(target, iterable)?;
+                self.frames[frame_index].stack.push(target);
+            }
             Instruction::MakeObject { keys } => {
                 let values = pop_many(&mut self.frames[frame_index].stack, keys.len())?;
                 let mut properties = IndexMap::new();
@@ -442,8 +454,72 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
                 self.suspend_async_await(value)?;
             }
+            Instruction::CallWithArray {
+                with_this,
+                optional,
+            } => {
+                let args = self.pop_argument_array(frame_index)?;
+                let callee = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let this_value = if with_this {
+                    self.frames[frame_index]
+                        .stack
+                        .pop()
+                        .ok_or_else(|| JsliteError::runtime("stack underflow"))?
+                } else {
+                    Value::Undefined
+                };
+                if optional && matches!(callee, Value::Undefined | Value::Null) {
+                    self.frames[frame_index].stack.push(Value::Undefined);
+                    return Ok(StepAction::Continue);
+                }
+                match self.call_callable(callee, this_value, &args)? {
+                    RunState::Completed(value) => {
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    RunState::PushedFrame => {}
+                    RunState::StartedAsync(value) => {
+                        self.frames[frame_index].stack.push(value);
+                    }
+                    RunState::Suspended {
+                        capability,
+                        args,
+                        resume_behavior,
+                    } => {
+                        self.pending_resume_behavior = resume_behavior;
+                        self.suspended_host_call = Some(PendingHostCall {
+                            capability: capability.clone(),
+                            args: args.clone(),
+                            promise: None,
+                            resume_behavior,
+                            traceback: self.traceback_snapshots(),
+                        });
+                        self.snapshot_nonce = next_snapshot_nonce();
+                        return Ok(StepAction::Return(ExecutionStep::Suspended(Box::new(
+                            Suspension {
+                                capability,
+                                args,
+                                snapshot: ExecutionSnapshot {
+                                    runtime: self.clone(),
+                                },
+                            },
+                        ))));
+                    }
+                }
+            }
             Instruction::Construct { argc } => {
                 let args = pop_many(&mut self.frames[frame_index].stack, argc)?;
+                let callee = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+                let value = self.construct(callee, &args)?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::ConstructWithArray => {
+                let args = self.pop_argument_array(frame_index)?;
                 let callee = self.frames[frame_index]
                     .stack
                     .pop()
@@ -680,5 +756,63 @@ impl Runtime {
                 "only conservative built-in constructors are supported in v1",
             )),
         }
+    }
+
+    fn pop_argument_array(&mut self, frame_index: usize) -> JsliteResult<Vec<Value>> {
+        let args = self.frames[frame_index]
+            .stack
+            .pop()
+            .ok_or_else(|| JsliteError::runtime("stack underflow"))?;
+        self.array_argument_values(args)
+    }
+
+    fn array_argument_values(&self, value: Value) -> JsliteResult<Vec<Value>> {
+        let Value::Array(array) = value else {
+            return Err(JsliteError::runtime(
+                "argument builder target is not an array",
+            ));
+        };
+        let elements = &self
+            .arrays
+            .get(array)
+            .ok_or_else(|| JsliteError::runtime("array missing"))?
+            .elements;
+        Ok(elements
+            .iter()
+            .map(|value| value.clone().unwrap_or(Value::Undefined))
+            .collect())
+    }
+
+    fn expand_iterable_into_array(
+        &mut self,
+        target: Value,
+        iterable: Value,
+    ) -> JsliteResult<Value> {
+        let Value::Array(array) = target else {
+            return Err(JsliteError::runtime("array builder target is not an array"));
+        };
+        self.with_temporary_roots(&[Value::Array(array), iterable.clone()], |runtime| {
+            let iterator = runtime.create_iterator(iterable.clone())?;
+            runtime.with_temporary_roots(
+                &[Value::Array(array), iterable, iterator.clone()],
+                |runtime| {
+                    loop {
+                        runtime.charge_native_helper_work(1)?;
+                        let (value, done) = runtime.iterator_next(iterator.clone())?;
+                        if done {
+                            break;
+                        }
+                        runtime
+                            .arrays
+                            .get_mut(array)
+                            .ok_or_else(|| JsliteError::runtime("array missing"))?
+                            .elements
+                            .push(Some(value));
+                        runtime.refresh_array_accounting(array)?;
+                    }
+                    Ok(Value::Array(array))
+                },
+            )
+        })
     }
 }

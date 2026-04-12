@@ -127,7 +127,7 @@ Audit sources:
 - [x] Decide and implement sparse-array semantics so array holes can exist
   consistently across literals, property access, helper methods, JSON, and the
   host boundary.
-- [ ] Add lowering and runtime expansion for array spread and spread arguments
+- [x] Add lowering and runtime expansion for array spread and spread arguments
   using the currently supported iterable surface.
 - [x] Add lowering and runtime expansion for object spread using the documented
   plain-object enumeration rules.

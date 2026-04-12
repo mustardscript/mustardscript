@@ -241,6 +241,13 @@ fn apply_validation_effect(
             require_stack(1)?;
             state
         }
+        Instruction::ArrayExtend => {
+            require_stack(2)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                ..state
+            }
+        }
         Instruction::MakeObject { keys } => {
             require_stack(keys.len())?;
             ValidationState {
@@ -414,6 +421,14 @@ fn apply_validation_effect(
                 ..state
             }
         }
+        Instruction::CallWithArray { with_this, .. } => {
+            let required = 2 + usize::from(*with_this);
+            require_stack(required)?;
+            ValidationState {
+                stack_depth: state.stack_depth - required + 1,
+                ..state
+            }
+        }
         Instruction::Await => {
             require_stack(1)?;
             state
@@ -423,6 +438,13 @@ fn apply_validation_effect(
             require_stack(required)?;
             ValidationState {
                 stack_depth: state.stack_depth - required + 1,
+                ..state
+            }
+        }
+        Instruction::ConstructWithArray => {
+            require_stack(2)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
                 ..state
             }
         }

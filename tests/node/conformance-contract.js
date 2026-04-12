@@ -74,6 +74,12 @@ const FEATURE_CONTRACT = Object.freeze([
     coverage: [COVERAGE.EXISTING],
   },
   {
+    id: 'language.array-spread',
+    title: 'array spread over the documented iterable surface',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.EXISTING],
+  },
+  {
     id: 'language.object-literals',
     title: 'plain object literals with static keys',
     outcome: OUTCOME.NODE_PARITY,
@@ -114,6 +120,12 @@ const FEATURE_CONTRACT = Object.freeze([
     title: 'function and member calls',
     outcome: OUTCOME.NODE_PARITY,
     coverage: [COVERAGE.GENERATED_AST, COVERAGE.EXHAUSTIVE_AST, COVERAGE.METAMORPHIC],
+  },
+  {
+    id: 'language.spread-arguments',
+    title: 'spread arguments over the documented iterable surface',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.EXISTING],
   },
   {
     id: 'language.sequence-expressions',
@@ -280,12 +292,12 @@ const FEATURE_CONTRACT = Object.freeze([
     messageIncludes: 'with is not supported',
   },
   {
-    id: 'validation.array-spread',
-    title: 'array spread is a validation reject',
-    outcome: OUTCOME.VALIDATION_REJECT,
-    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
+    id: 'validation.array-spread-surface',
+    title: 'array spread rejects unsupported iterable inputs at runtime',
+    outcome: OUTCOME.RUNTIME_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE],
     source: '[...value];',
-    messageIncludes: 'array spread is not supported in v1',
+    messageIncludes: 'value is not iterable in the supported surface',
   },
   {
     id: 'validation.debugger',
@@ -360,12 +372,12 @@ const FEATURE_CONTRACT = Object.freeze([
     messageIncludes: 'tagged templates are not supported in v1',
   },
   {
-    id: 'validation.spread-arguments',
-    title: 'spread arguments are a validation reject',
-    outcome: OUTCOME.VALIDATION_REJECT,
-    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
+    id: 'validation.spread-arguments-surface',
+    title: 'spread arguments reject unsupported iterable inputs at runtime',
+    outcome: OUTCOME.RUNTIME_REJECT,
+    coverage: [COVERAGE.PROPERTY_NEGATIVE],
     source: 'run(...values);',
-    messageIncludes: 'spread arguments are not supported in v1',
+    messageIncludes: 'value is not iterable in the supported surface',
   },
   {
     id: 'validation.destructuring-assignment',

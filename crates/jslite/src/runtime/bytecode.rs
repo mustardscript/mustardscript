@@ -50,6 +50,7 @@ pub enum Instruction {
     },
     ArrayPush,
     ArrayPushHole,
+    ArrayExtend,
     MakeObject {
         keys: Vec<PropertyName>,
     },
@@ -101,10 +102,15 @@ pub enum Instruction {
         with_this: bool,
         optional: bool,
     },
+    CallWithArray {
+        with_this: bool,
+        optional: bool,
+    },
     Await,
     Construct {
         argc: usize,
     },
+    ConstructWithArray,
     Return,
     PushBigInt(String),
 }

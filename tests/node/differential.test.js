@@ -444,6 +444,28 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'array spread and spread arguments over supported iterables',
+    source: `
+      const values = [2, 4];
+      const sparse = [2, , 4];
+      const extra = new Set('ab');
+      const box = {
+        base: 10,
+        total(...args) {
+          return this.base + args[0] + args[1] + args[2] + args[3];
+        },
+      };
+      ({
+        array: [1, ...sparse, ...extra, 5],
+        total: box.total(...values, 6),
+        spreadValue: [1, ...sparse][2],
+        max: Math.max(...values, 3),
+        built: new Array(...values, 9),
+        missing: ({ maybe: null }).maybe?.(...values),
+      });
+    `,
+  },
+  {
     name: 'array growth through indexed writes',
     source: `
       const values = [1, 2];

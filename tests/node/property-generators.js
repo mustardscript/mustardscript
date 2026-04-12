@@ -260,6 +260,30 @@ const supportedProgramArbitraries = [
     }),
   fc
     .record({
+      values: smallIntegerArrayArbitrary,
+      extra: finiteIntegerArbitrary,
+      suffix: finiteIntegerArbitrary,
+    })
+    .map(({ values, extra, suffix }) => {
+      const renderedValues = renderLiteral(values);
+      return `
+        const values = ${renderedValues};
+        const doubled = new Set(values.map((value) => value + ${extra}));
+        const box = {
+          base: ${suffix},
+          total(...args) {
+            return args.reduce((sum, value) => sum + value, this.base);
+          },
+        };
+        ({
+          spread: [${suffix}, ...values, ...doubled],
+          total: box.total(...values, ...doubled),
+          built: new Array(...values, ${suffix}),
+        });
+      `;
+    }),
+  fc
+    .record({
       entries: fc.array(
         fc.tuple(identifierArbitrary, finiteIntegerArbitrary),
         { minLength: 1, maxLength: 4 },

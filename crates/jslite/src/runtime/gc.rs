@@ -554,13 +554,16 @@ fn instruction_may_allocate(instruction: &Instruction) -> bool {
             | Instruction::MakeArray { .. }
             | Instruction::ArrayPush
             | Instruction::ArrayPushHole
+            | Instruction::ArrayExtend
             | Instruction::MakeObject { .. }
             | Instruction::CopyDataProperties
             | Instruction::CreateIterator
             | Instruction::SetPropStatic { .. }
             | Instruction::SetPropComputed
             | Instruction::Call { .. }
+            | Instruction::CallWithArray { .. }
             | Instruction::Await
             | Instruction::Construct { .. }
+            | Instruction::ConstructWithArray
     )
 }
