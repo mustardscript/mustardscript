@@ -1,0 +1,52 @@
+[
+  {
+    "id": "sync-object-json",
+    "source": "const record = {}; record.beta = 2; record.alpha = 1; ({ keys: Object.keys(record), json: JSON.stringify(record) });",
+    "capabilities": [],
+    "steps": []
+  },
+  {
+    "id": "async-promise-combinators",
+    "source": "async function main() { const chained = await Promise.resolve(2).then((value) => value + 3); const settled = await Promise.allSettled([Promise.resolve(1), Promise.reject('nope')]); return { chained, settled }; } main();",
+    "capabilities": [],
+    "steps": []
+  },
+  {
+    "id": "sync-suspension",
+    "source": "const value = fetch_data(4); value + 2;",
+    "capabilities": ["fetch_data"],
+    "steps": [
+      {
+        "type": "value",
+        "value": 4
+      }
+    ]
+  },
+  {
+    "id": "async-queued-host-calls",
+    "source": "async function main() { const first = fetch_data(1); const second = fetch_data(2); return [await first, await second]; } main();",
+    "capabilities": ["fetch_data"],
+    "steps": [
+      {
+        "type": "value",
+        "value": 1
+      },
+      {
+        "type": "value",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "id": "caught-resume-error",
+    "source": "async function main() { try { await fetch_data(1); return 'unreachable'; } catch (error) { return [error.name, error.message]; } } main();",
+    "capabilities": ["fetch_data"],
+    "steps": [
+      {
+        "type": "error",
+        "name": "CapabilityError",
+        "message": "upstream failed"
+      }
+    ]
+  }
+]

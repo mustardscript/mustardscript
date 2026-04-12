@@ -18,6 +18,8 @@ This document defines the current `jslite-sidecar` process contract.
 3. `resume`
 
 All requests include an integer `id` chosen by the host.
+The sidecar treats `id` as a correlation token only: it echoes the value back
+verbatim and does not require request IDs to be unique.
 
 ### `compile`
 
@@ -96,6 +98,18 @@ Instead:
 
 That means capability proxying happens through suspension and resume, not by
 shipping host callbacks or JavaScript functions into the sidecar process.
+
+## Stateless Request Semantics
+
+- The sidecar keeps no server-side session, program handle, or snapshot handle
+  between requests.
+- `program_base64` and `snapshot_base64` are host-managed opaque blobs. The host
+  may reuse the same compiled program bytes for multiple `start` requests and
+  may replay the same snapshot bytes in multiple `resume` requests.
+- Replaying a snapshot re-executes from that suspension point deterministically
+  under the supplied `policy`; there is no in-sidecar single-use tracking.
+- If the embedding host wants stronger single-use or anti-replay guarantees, it
+  must enforce them above this protocol boundary.
 
 ## Lifecycle and Shutdown
 
