@@ -10,6 +10,7 @@ mod exceptions;
 mod gc;
 mod properties;
 mod serialization;
+mod shared;
 mod state;
 mod validation;
 mod vm;
@@ -24,13 +25,15 @@ pub use compiler::lower_to_bytecode;
 use compiler::pattern_bindings;
 pub use serialization::{dump_program, dump_snapshot, load_program, load_snapshot};
 
-use std::collections::{HashSet, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use indexmap::IndexMap;
 use slotmap::SlotMap;
+use std::collections::{HashSet, VecDeque};
 
 use self::properties::{format_number_key, property_name_to_key};
+use self::shared::{
+    CallbackCallOptions, is_callable, is_truthy, limit_error, next_snapshot_nonce, pop_many,
+    resume_behavior_for_capability, same_value_zero, serialization_error, strict_equal,
+};
 use self::state::*;
 use crate::{
     cancellation::CancellationToken,
@@ -41,14 +44,6 @@ use crate::{
 };
 
 const INTERNAL_CALLBACK_THROW_MARKER: &str = "\0internal-array-callback-throw";
-
-struct CallbackCallOptions<'a> {
-    non_callable_message: &'a str,
-    host_suspension_message: &'a str,
-    unsettled_message: &'a str,
-    allow_host_suspension: bool,
-    allow_pending_promise_result: bool,
-}
 
 impl Runtime {
     fn new(program: BytecodeProgram, options: ExecutionOptions) -> JsliteResult<Self> {
@@ -244,99 +239,5 @@ impl Runtime {
             return Err(limit_error("instruction budget exhausted"));
         }
         Ok(())
-    }
-}
-
-fn limit_error(message: impl Into<String>) -> JsliteError {
-    JsliteError::Message {
-        kind: DiagnosticKind::Limit,
-        message: message.into(),
-        span: None,
-        traceback: Vec::new(),
-    }
-}
-
-fn serialization_error(message: impl Into<String>) -> JsliteError {
-    JsliteError::Message {
-        kind: DiagnosticKind::Serialization,
-        message: message.into(),
-        span: None,
-        traceback: Vec::new(),
-    }
-}
-
-fn next_snapshot_nonce() -> u64 {
-    static NEXT_SNAPSHOT_NONCE: AtomicU64 = AtomicU64::new(1);
-    NEXT_SNAPSHOT_NONCE.fetch_add(1, Ordering::Relaxed)
-}
-
-fn pop_many(stack: &mut Vec<Value>, count: usize) -> JsliteResult<Vec<Value>> {
-    if stack.len() < count {
-        return Err(JsliteError::runtime("stack underflow"));
-    }
-    let start = stack.len() - count;
-    Ok(stack.drain(start..).collect())
-}
-
-fn resume_behavior_for_capability(capability: &str) -> ResumeBehavior {
-    match capability {
-        "console.log" | "console.warn" | "console.error" => ResumeBehavior::Undefined,
-        _ => ResumeBehavior::Value,
-    }
-}
-
-fn is_truthy(value: &Value) -> bool {
-    match value {
-        Value::Undefined | Value::Null => false,
-        Value::Bool(value) => *value,
-        Value::Number(value) => *value != 0.0 && !value.is_nan(),
-        Value::BigInt(value) => value != &0.into(),
-        Value::String(value) => !value.is_empty(),
-        Value::Object(_)
-        | Value::Array(_)
-        | Value::Map(_)
-        | Value::Set(_)
-        | Value::Iterator(_)
-        | Value::Promise(_)
-        | Value::Closure(_)
-        | Value::BuiltinFunction(_)
-        | Value::HostFunction(_) => true,
-    }
-}
-
-fn is_callable(value: &Value) -> bool {
-    matches!(
-        value,
-        Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_)
-    )
-}
-
-fn strict_equal(left: &Value, right: &Value) -> bool {
-    match (left, right) {
-        (Value::Undefined, Value::Undefined) => true,
-        (Value::Null, Value::Null) => true,
-        (Value::Bool(left), Value::Bool(right)) => left == right,
-        (Value::Number(left), Value::Number(right)) => left == right,
-        (Value::BigInt(left), Value::BigInt(right)) => left == right,
-        (Value::String(left), Value::String(right)) => left == right,
-        (Value::Object(left), Value::Object(right)) => left == right,
-        (Value::Array(left), Value::Array(right)) => left == right,
-        (Value::Map(left), Value::Map(right)) => left == right,
-        (Value::Set(left), Value::Set(right)) => left == right,
-        (Value::Iterator(left), Value::Iterator(right)) => left == right,
-        (Value::Promise(left), Value::Promise(right)) => left == right,
-        (Value::Closure(left), Value::Closure(right)) => left == right,
-        (Value::BuiltinFunction(left), Value::BuiltinFunction(right)) => left == right,
-        _ => false,
-    }
-}
-
-fn same_value_zero(left: &Value, right: &Value) -> bool {
-    match (left, right) {
-        (Value::Number(left), Value::Number(right)) => {
-            (left == right) || (left.is_nan() && right.is_nan())
-        }
-        (Value::BigInt(left), Value::BigInt(right)) => left == right,
-        _ => strict_equal(left, right),
     }
 }

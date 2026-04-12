@@ -35,7 +35,7 @@ This plan is intentionally about structure, not feature work.
 
 ## Current Hotspots
 
-As of the current tree, these are the highest-value remaining refactor targets:
+At the start of this wave, these were the highest-value refactor targets:
 
 - `crates/jslite/src/runtime/compiler/mod.rs` is still about 1.3k lines and
   mixes root/function setup, statement lowering, expression lowering,
@@ -143,14 +143,14 @@ explicitly called for.
 
 Checklist:
 
-- [ ] Extract compiler context types into `context.rs`
-- [ ] Move statement lowering into `statements.rs`
-- [ ] Move expression lowering into `expressions.rs`
-- [ ] Move assignment lowering into `assignments.rs`
-- [ ] Move `try`/`catch`/`finally` control-transfer patching into `control.rs`
-- [ ] Keep `bindings.rs` focused on binding collection and simple mapping
-- [ ] Keep `lower_to_bytecode` re-exported unchanged from `runtime/compiler/mod.rs`
-- [ ] Preserve bytecode output and validation behavior
+- [x] Extract compiler context types into `context.rs`
+- [x] Move statement lowering into `statements.rs`
+- [x] Move expression lowering into `expressions.rs`
+- [x] Move assignment lowering into `assignments.rs`
+- [x] Move `try`/`catch`/`finally` control-transfer patching into `control.rs`
+- [x] Keep `bindings.rs` focused on binding collection and simple mapping
+- [x] Keep `lower_to_bytecode` re-exported unchanged from `runtime/compiler/mod.rs`
+- [x] Preserve bytecode output and validation behavior
 
 Exit criteria:
 
@@ -188,16 +188,16 @@ logic.
 
 Checklist:
 
-- [ ] Create a shared internal workspace crate for bridge DTOs and helpers
-- [ ] Move `StartOptionsDto`, `RuntimeLimitsDto`, `SnapshotPolicyDto`,
+- [x] Create a shared internal workspace crate for bridge DTOs and helpers
+- [x] Move `StartOptionsDto`, `RuntimeLimitsDto`, `SnapshotPolicyDto`,
   `StepDto`, and `ResumeDto` into shared code
-- [ ] Move common encode/decode helpers into shared code
-- [ ] Move shared compile/start/resume/inspect operations into shared code
-- [ ] Keep Node-specific cancellation-token registry logic only in
+- [x] Move common encode/decode helpers into shared code
+- [x] Move shared compile/start/resume/inspect operations into shared code
+- [x] Keep Node-specific cancellation-token registry logic only in
   `crates/jslite-node`
-- [ ] Keep sidecar request/response envelope types and line framing only in
+- [x] Keep sidecar request/response envelope types and line framing only in
   `crates/jslite-sidecar`
-- [ ] Preserve current JSON shapes and sidecar protocol shapes
+- [x] Preserve current JSON shapes and sidecar protocol shapes
 
 Exit criteria:
 
@@ -237,10 +237,11 @@ Checklist:
   patterns
 - [x] Keep current behavior assertions first; improve ergonomics only after the
   split is stable
-- [ ] Move parser tests out of production modules if Milestone 2 has not
+- [x] Move parser tests out of production modules if Milestone 2 has not
   already done so
-- [ ] Extract reusable IR traversal helpers from
+- [x] Extract reusable IR traversal helpers from
   `crates/jslite/tests/coverage_audit.rs` if multiple tests need them
+  and otherwise keep the local helpers single-consumer
 - [x] Preserve or improve the same coverage surface after the split
 
 Exit criteria:
@@ -255,12 +256,12 @@ Purpose: clean up whatever broad glue remains after the earlier extractions.
 
 Checklist:
 
-- [ ] Reduce remaining shared-logic weight in `crates/jslite/src/runtime/mod.rs`
-- [ ] Tighten visibility to `pub(super)` or private where possible
-- [ ] Reduce oversized `use` lists
-- [ ] Add short module-level docs where a file owns a tricky subsystem
-- [ ] Remove stale comments or imports left behind by the earlier moves
-- [ ] Re-run full verification and leave the tree in a stable state
+- [x] Reduce remaining shared-logic weight in `crates/jslite/src/runtime/mod.rs`
+- [x] Tighten visibility to `pub(super)` or private where possible
+- [x] Reduce oversized `use` lists
+- [x] Add short module-level docs where a file owns a tricky subsystem
+- [x] Remove stale comments or imports left behind by the earlier moves
+- [x] Re-run full verification and leave the tree in a stable state
 
 Exit criteria:
 
