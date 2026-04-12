@@ -124,7 +124,7 @@ test('BigInt mixed edges and JSON.stringify fail closed with explicit errors', a
     'cannot coerce BigInt values to numbers',
     'unary plus is not supported for BigInt values',
     'cannot mix BigInt and Number values in arithmetic',
-    'JSON.stringify does not support BigInt values',
+    'Do not know how to serialize a BigInt',
   ]);
 });
 

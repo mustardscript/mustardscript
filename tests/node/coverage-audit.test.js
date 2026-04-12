@@ -2,18 +2,31 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { Jslite } = require('../../index.js');
+const { assertDifferential } = require('./runtime-oracle.js');
 
-test('JSON.stringify uses the documented sorted-key object order', async () => {
-  const runtime = new Jslite(`
-    JSON.stringify({
-      zebra: 1,
-      alpha: 2,
-      middle: 3,
+test('JSON.stringify matches Node for property order, number rendering, and omission rules', async () => {
+  await assertDifferential(`
+    const record = {};
+    record.beta = 2;
+    record[10] = 10;
+    record.alpha = 1;
+    record[2] = 3;
+    record["01"] = 4;
+    const values = [1, undefined, () => 3, (0 / 0), -0, (1 / 0)];
+    ({
+      objectKeys: Object.keys(record),
+      objectValues: Object.values(record),
+      objectEntries: Object.entries(record),
+      stringifiedRecord: JSON.stringify(record),
+      stringifiedValues: JSON.stringify(values),
+      stringifiedWrapper: JSON.stringify({
+        keep: 1,
+        skipUndefined: undefined,
+        skipFunction: () => 1,
+        nested: record,
+      }),
     });
   `);
-
-  const result = await runtime.run();
-  assert.equal(result, '{"alpha":2.0,"middle":3.0,"zebra":1.0}');
 });
 
 test('built-in error constructors round-trip visible fields', async () => {

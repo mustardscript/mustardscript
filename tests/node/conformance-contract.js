@@ -394,17 +394,15 @@ const FEATURE_CONTRACT = Object.freeze([
   },
   {
     id: 'observable.sorted-object-enumeration',
-    title: 'plain object key enumeration is sorted instead of insertion-ordered',
-    outcome: OUTCOME.KNOWN_DIVERGENCE,
-    coverage: [COVERAGE.AUDIT],
-    note: 'Object.keys/Object.values/Object.entries and JSON.stringify on plain objects use sorted keys.',
+    title: 'plain object key enumeration matches JavaScript own-property order',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.EXISTING, COVERAGE.AUDIT],
   },
   {
     id: 'observable.sorted-json-stringify',
-    title: 'JSON.stringify uses the documented sorted-key object order',
-    outcome: OUTCOME.KNOWN_DIVERGENCE,
-    coverage: [COVERAGE.AUDIT],
-    note: 'The current object serialization order is deliberate but does not match Node insertion order.',
+    title: 'JSON.stringify preserves JavaScript ordering and rendering semantics',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.EXISTING, COVERAGE.AUDIT],
   },
 ]);
 

@@ -52,9 +52,7 @@ function normalizeValue(value) {
     return {
       type: 'object',
       value: Object.fromEntries(
-        Object.keys(value)
-          .sort()
-          .map((key) => [key, normalizeValue(value[key])]),
+        Object.keys(value).map((key) => [key, normalizeValue(value[key])]),
       ),
     };
   }

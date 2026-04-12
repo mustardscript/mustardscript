@@ -1,6 +1,6 @@
 # Conformance Strategy
 
-`jslite` currently needs three distinct conformance buckets instead of one:
+`jslite` currently uses two active conformance buckets:
 
 1. Node-parity programs
    These are guest programs that should evaluate the same way in `jslite` and
@@ -10,15 +10,14 @@
    These are syntactic or statically recognizable forms that should never reach
    runtime. We exercise them with generated validation-negative cases and the
    curated `test262` unsupported manifest.
-3. Documented divergences
-   A few currently documented surfaces intentionally do not match Node today,
-   such as sorted-key object enumeration and `JSON.stringify` rendering. Those
-   cases are covered by targeted audit tests and remain explicit blockers to a
-   universal “Node parity or validation rejection” claim.
+
+The contract format still reserves a third `known_divergence` bucket so new
+audited mismatches can be tracked explicitly if they are discovered, but there
+are no current documented divergence entries in the machine-readable contract.
 
 ## Generated Coverage
 
-The machine-readable source of truth for these buckets lives in
+The machine-readable source of truth for these outcomes lives in
 `tests/node/conformance-contract.js`.
 
 The property-based conformance generator is split intentionally:
@@ -50,5 +49,5 @@ When adding coverage, prefer one of these paths:
 - add a new generated family when the behavior is a broad semantic class
 - add a new curated fixture when the behavior is a stable regression or an
   exact parser diagnostic category
-- add an audit test when the current behavior is intentionally documented but
-  not Node-parity
+- add an audit test when the behavior is especially regression-prone or relies
+  on observable ordering, rendering, or trace details

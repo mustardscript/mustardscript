@@ -73,8 +73,8 @@ test('run supports conservative array, string, object, and Math helper surface',
     replaceAll: 'z-b-z',
     search: 8,
     match: ['Example'],
-    objectKeys: ['alpha', 'zebra'],
-    objectValues: [2, 1],
+    objectKeys: ['zebra', 'alpha'],
+    objectValues: [1, 2],
     hasOwn: true,
     assignedObjectIdentity: true,
     assignedObjectEntries: [['alpha', 1], ['beta', 3], ['zebra', 2]],
@@ -87,6 +87,38 @@ test('run supports conservative array, string, object, and Math helper surface',
     sign: -0,
   });
   assert.ok(Object.is(result.sign, -0));
+});
+
+test('JSON.stringify matches Node ordering and omission semantics for supported values', async () => {
+  const result = await runtime(`
+    const object = {};
+    object.beta = 2;
+    object[10] = 10;
+    object.alpha = 1;
+    object[2] = 3;
+    object["01"] = 4;
+    const values = [1, undefined, () => 3, (0 / 0), -0, (1 / 0)];
+    ({
+      objectKeys: Object.keys(object),
+      arrayStringified: JSON.stringify(values),
+      objectStringified: JSON.stringify(object),
+      wrapperStringified: JSON.stringify({
+        keep: 1,
+        skipUndefined: undefined,
+        skipFunction: () => 1,
+        nested: object,
+      }),
+      topLevelUndefined: JSON.stringify(undefined),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    objectKeys: ['2', '10', 'beta', 'alpha', '01'],
+    arrayStringified: '[1,null,null,null,0,null]',
+    objectStringified: '{"2":3,"10":10,"beta":2,"alpha":1,"01":4}',
+    wrapperStringified: '{"keep":1,"nested":{"2":3,"10":10,"beta":2,"alpha":1,"01":4}}',
+    topLevelUndefined: undefined,
+  });
 });
 
 test('run supports callback-heavy array helpers and thisArg for supported callbacks', async () => {

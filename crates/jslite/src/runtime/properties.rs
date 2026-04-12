@@ -370,7 +370,7 @@ impl Runtime {
                     .ok_or_else(|| JsliteError::runtime("array missing"))?;
                 if key == "length" {
                     Ok(Value::Number(array.elements.len() as f64))
-                } else if let Ok(index) = key.parse::<usize>() {
+                } else if let Some(index) = array_index_from_property_key(&key) {
                     Ok(array
                         .elements
                         .get(index)
@@ -552,7 +552,7 @@ impl Runtime {
                         .arrays
                         .get_mut(array)
                         .ok_or_else(|| JsliteError::runtime("array missing"))?;
-                    if let Ok(index) = key.parse::<usize>() {
+                    if let Some(index) = array_index_from_property_key(&key) {
                         if index >= array_ref.elements.len() {
                             array_ref.elements.resize(index + 1, Value::Undefined);
                         }
@@ -605,4 +605,57 @@ pub(super) fn format_number_key(value: f64) -> String {
     } else {
         value.to_string()
     }
+}
+
+pub(super) fn array_index_from_property_key(key: &str) -> Option<usize> {
+    if key == "0" {
+        return Some(0);
+    }
+
+    if key.is_empty() || key.starts_with('0') {
+        return None;
+    }
+
+    let index = key.parse::<u32>().ok()?;
+    if index == u32::MAX {
+        return None;
+    }
+
+    if key == index.to_string() {
+        Some(index as usize)
+    } else {
+        None
+    }
+}
+
+pub(super) fn ordered_own_property_keys(properties: &IndexMap<String, Value>) -> Vec<String> {
+    ordered_own_property_keys_filtered(properties, |_, _| true)
+}
+
+pub(super) fn ordered_own_property_keys_filtered<F>(
+    properties: &IndexMap<String, Value>,
+    mut include: F,
+) -> Vec<String>
+where
+    F: FnMut(&str, &Value) -> bool,
+{
+    let mut keys = Vec::with_capacity(properties.len());
+    let mut index_keys = properties
+        .iter()
+        .filter(|(key, value)| include(key, value))
+        .filter_map(|(key, _)| array_index_from_property_key(key).map(|index| (index, key.clone())))
+        .collect::<Vec<_>>();
+    index_keys.sort_unstable_by_key(|(index, _)| *index);
+    keys.extend(index_keys.into_iter().map(|(_, key)| key));
+
+    keys.extend(
+        properties
+            .iter()
+            .filter(|(key, value)| {
+                include(key, value) && array_index_from_property_key(key).is_none()
+            })
+            .map(|(key, _)| key.clone()),
+    );
+
+    keys
 }

@@ -215,20 +215,30 @@ extensions are called out explicitly instead of being implied.
   `JSON.stringify`, `for...of` over the documented iterable surface, `Map` /
   `Set` iteration helpers, and the supported `Object.keys` / `Object.values` /
   `Object.entries` helpers.
-- `JSON.stringify` on plain objects renders string keys in sorted key order.
+- `JSON.stringify` on plain objects follows JavaScript own-property order:
+  array-index keys in ascending numeric order, then remaining string keys in
+  insertion order.
 - `JSON.stringify` on arrays renders elements in ascending numeric index order.
 - Non-index array properties are ignored by `JSON.stringify`.
+- `JSON.stringify` omits object properties whose values are `undefined` or
+  callable, serializes those values as `null` inside arrays, returns
+  `undefined` for top-level `undefined` or callable inputs, serializes
+  non-finite numbers as `null`, and renders supported `Date` values as UTC
+  RFC3339 timestamps.
 - Array `for...of` yields values in ascending numeric index order.
 - String iteration yields characters in source order.
 - `Map` iteration and `Map.prototype.entries` / `keys` / `values` preserve
   insertion order.
 - `Set` iteration and `Set.prototype.entries` / `keys` / `values` preserve
   insertion order.
-- `Object.keys`, `Object.values`, and `Object.entries` on plain objects render
-  string keys in sorted key order.
+- `Object.keys`, `Object.values`, and `Object.entries` on plain objects follow
+  the same JavaScript own-property order as `JSON.stringify`.
 - `Object.keys`, `Object.values`, and `Object.entries` on arrays enumerate
   numeric indices in ascending order followed by custom string properties in
-  sorted key order.
+  insertion order.
+- Canonical array-index keys are the standard JavaScript string forms such as
+  `"0"` and `"10"`; non-canonical numeric-looking keys such as `"01"` and
+  `"4294967295"` remain ordinary string properties.
 - `for...in` over plain objects and arrays uses the same documented key order
   as `Object.keys(...)`; other right-hand sides fail closed with the same
   runtime `TypeError` surface as the supported `Object` helpers.

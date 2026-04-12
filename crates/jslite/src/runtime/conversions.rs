@@ -542,36 +542,6 @@ impl Runtime {
     }
 }
 
-pub(super) fn structured_to_json(value: StructuredValue) -> JsliteResult<serde_json::Value> {
-    Ok(match value {
-        StructuredValue::Undefined => serde_json::Value::Null,
-        StructuredValue::Null => serde_json::Value::Null,
-        StructuredValue::Bool(value) => serde_json::Value::Bool(value),
-        StructuredValue::String(value) => serde_json::Value::String(value),
-        StructuredValue::Number(number) => match number {
-            StructuredNumber::Finite(value) => serde_json::Number::from_f64(value)
-                .map(serde_json::Value::Number)
-                .unwrap_or(serde_json::Value::Null),
-            StructuredNumber::NaN
-            | StructuredNumber::Infinity
-            | StructuredNumber::NegInfinity
-            | StructuredNumber::NegZero => serde_json::Value::Null,
-        },
-        StructuredValue::Array(values) => serde_json::Value::Array(
-            values
-                .into_iter()
-                .map(structured_to_json)
-                .collect::<JsliteResult<Vec<_>>>()?,
-        ),
-        StructuredValue::Object(values) => serde_json::Value::Object(
-            values
-                .into_iter()
-                .map(|(key, value)| Ok((key, structured_to_json(value)?)))
-                .collect::<JsliteResult<serde_json::Map<_, _>>>()?,
-        ),
-    })
-}
-
 fn structured_boundary_cycle_error() -> JsliteError {
     JsliteError::runtime("cyclic values cannot cross the structured host boundary")
 }

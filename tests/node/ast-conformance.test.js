@@ -31,7 +31,6 @@ test('machine-readable conformance contract stays internally consistent', () => 
   }
 
   const divergenceEntries = FEATURE_CONTRACT.filter((entry) => entry.outcome === OUTCOME.KNOWN_DIVERGENCE);
-  assert.ok(divergenceEntries.length > 0);
   for (const entry of divergenceEntries) {
     assert.match(entry.note, /\S/);
   }

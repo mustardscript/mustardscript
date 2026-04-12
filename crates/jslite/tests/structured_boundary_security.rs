@@ -1,6 +1,7 @@
 use jslite::{ExecutionOptions, StructuredValue, compile, execute, start};
 
 const CYCLE_BOUNDARY_MESSAGE: &str = "cyclic values cannot cross the structured host boundary";
+const JSON_STRINGIFY_CYCLE_MESSAGE: &str = "Converting circular structure to JSON";
 const SAFE_MESSAGE_PATH_FRAGMENTS: &[&str] = &["/Users/", "\\Users\\", "C:\\", "/home/"];
 
 fn assert_cycle_boundary_error(error: impl std::fmt::Display) {
@@ -78,6 +79,6 @@ fn json_stringify_reports_cyclic_guest_values_as_guest_safe_errors() {
         .expect("JSON.stringify cycle failures should be catchable guest errors");
     assert_eq!(
         result,
-        StructuredValue::String(CYCLE_BOUNDARY_MESSAGE.to_string())
+        StructuredValue::String(JSON_STRINGIFY_CYCLE_MESSAGE.to_string())
     );
 }

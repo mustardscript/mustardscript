@@ -213,8 +213,8 @@ fn bigint_json_and_host_boundary_fail_closed() {
     assert_eq!(
         json_result,
         StructuredValue::Array(vec![
-            "JSON.stringify does not support BigInt values".into(),
-            "JSON.stringify does not support BigInt values".into(),
+            "Do not know how to serialize a BigInt".into(),
+            "Do not know how to serialize a BigInt".into(),
         ])
     );
 

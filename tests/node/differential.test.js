@@ -308,6 +308,36 @@ const DIFFERENTIAL_CASES = [
     `,
   },
   {
+    name: 'property order and JSON.stringify rendering',
+    source: `
+      const object = {};
+      object.beta = 2;
+      object[10] = 10;
+      object.alpha = 1;
+      object[2] = 3;
+      object["01"] = 4;
+      const values = [1, 2];
+      values["01"] = 7;
+      values[4294967295] = 9;
+      ({
+        objectKeys: Object.keys(object),
+        objectValues: Object.values(object),
+        objectEntries: Object.entries(object),
+        arrayKeys: Object.keys(values),
+        arrayEntries: Object.entries(values),
+        arrayProps: [values["01"], values[4294967295], values.length],
+        stringifiedObject: JSON.stringify(object),
+        stringifiedArray: JSON.stringify(values),
+        stringifiedMixed: JSON.stringify({
+          keep: 1,
+          skipUndefined: undefined,
+          skipFunction: () => 1,
+          values: [undefined, () => 2, -0, (1 / 0)],
+        }),
+      });
+    `,
+  },
+  {
     name: 'supported iterable surfaces',
     source: `
       const map = new Map([['alpha', 1], ['beta', 2], ['alpha', 3]]);

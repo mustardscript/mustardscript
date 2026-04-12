@@ -29,7 +29,10 @@ use indexmap::IndexMap;
 use slotmap::SlotMap;
 use std::collections::{HashSet, VecDeque};
 
-use self::properties::{format_number_key, property_name_to_key};
+use self::properties::{
+    array_index_from_property_key, format_number_key, ordered_own_property_keys,
+    ordered_own_property_keys_filtered, property_name_to_key,
+};
 use self::shared::{
     CallbackCallOptions, is_callable, is_truthy, limit_error, next_snapshot_nonce, pop_many,
     resume_behavior_for_capability, same_value_zero, serialization_error, strict_equal,

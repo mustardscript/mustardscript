@@ -362,17 +362,17 @@ fn object_helpers_enumerate_plain_objects_and_arrays_deterministically() {
         StructuredValue::Object(IndexMap::from([
             (
                 "objectKeys".to_string(),
-                StructuredValue::Array(vec!["alpha".into(), "zebra".into()]),
+                StructuredValue::Array(vec!["zebra".into(), "alpha".into()]),
             ),
             (
                 "objectValues".to_string(),
-                StructuredValue::Array(vec![number(2.0), number(1.0)]),
+                StructuredValue::Array(vec![number(1.0), number(2.0)]),
             ),
             (
                 "objectEntries".to_string(),
                 StructuredValue::Array(vec![
-                    StructuredValue::Array(vec!["alpha".into(), number(2.0)]),
                     StructuredValue::Array(vec!["zebra".into(), number(1.0)]),
+                    StructuredValue::Array(vec!["alpha".into(), number(2.0)]),
                 ]),
             ),
             (
@@ -418,6 +418,66 @@ fn object_helpers_enumerate_plain_objects_and_arrays_deterministically() {
                     StructuredValue::Array(vec!["label".into(), "seed".into()]),
                 ]),
             ),
+        ]))
+    );
+}
+
+#[test]
+fn json_stringify_matches_node_ordering_and_omission_rules() {
+    let program = compile(
+        r#"
+        const object = {};
+        object.beta = 2;
+        object[10] = 10;
+        object.alpha = 1;
+        object[2] = 3;
+        object["01"] = 4;
+        const values = [1, undefined, () => 3, (0 / 0), -0, (1 / 0)];
+        ({
+          objectKeys: Object.keys(object),
+          arrayStringified: JSON.stringify(values),
+          objectStringified: JSON.stringify(object),
+          wrapperStringified: JSON.stringify({
+            keep: 1,
+            skipUndefined: undefined,
+            skipFunction: () => 1,
+            nested: object,
+          }),
+          topLevelUndefined: JSON.stringify(undefined),
+        });
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Object(IndexMap::from([
+            (
+                "objectKeys".to_string(),
+                StructuredValue::Array(vec![
+                    "2".into(),
+                    "10".into(),
+                    "beta".into(),
+                    "alpha".into(),
+                    "01".into(),
+                ]),
+            ),
+            (
+                "arrayStringified".to_string(),
+                StructuredValue::String("[1,null,null,null,0,null]".to_string()),
+            ),
+            (
+                "objectStringified".to_string(),
+                StructuredValue::String(r#"{"2":3,"10":10,"beta":2,"alpha":1,"01":4}"#.to_string()),
+            ),
+            (
+                "wrapperStringified".to_string(),
+                StructuredValue::String(
+                    r#"{"keep":1,"nested":{"2":3,"10":10,"beta":2,"alpha":1,"01":4}}"#.to_string(),
+                ),
+            ),
+            ("topLevelUndefined".to_string(), StructuredValue::Undefined),
         ]))
     );
 }

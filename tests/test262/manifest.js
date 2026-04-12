@@ -82,6 +82,82 @@ module.exports = {
       expected: [true, false, -1],
     },
     {
+      id: 'built-ins/Array/from/set-map-fn.js',
+      file: 'cases/pass/built-ins/Array/from/set-map-fn.js',
+      expected: [6, 8],
+    },
+    {
+      id: 'built-ins/Array/prototype/sort/numeric-compare.js',
+      file: 'cases/pass/built-ins/Array/prototype/sort/numeric-compare.js',
+      expected: [-1, 1, 2, 3],
+    },
+    {
+      id: 'built-ins/Object/keys/property-order.js',
+      file: 'cases/pass/built-ins/Object/keys/property-order.js',
+      expected: [
+        ['2', '10', 'beta', 'alpha', '01'],
+        '{"2":3,"10":10,"beta":2,"alpha":1,"01":4}',
+      ],
+    },
+    {
+      id: 'built-ins/Object/fromEntries/basic.js',
+      file: 'cases/pass/built-ins/Object/fromEntries/basic.js',
+      expected: [['alpha', 'beta', 'gamma'], [1, 2, 3], 2, true],
+    },
+    {
+      id: 'built-ins/JSON/stringify/array-extra-properties.js',
+      file: 'cases/pass/built-ins/JSON/stringify/array-extra-properties.js',
+      expected: [
+        ['0', '1', '01', '4294967295', 'tail'],
+        [
+          ['0', 1],
+          ['1', 2],
+          ['01', 7],
+          ['4294967295', 9],
+          ['tail', 4],
+        ],
+        '[1,2]',
+      ],
+    },
+    {
+      id: 'built-ins/String/prototype/matchAll/basic-groups.js',
+      file: 'cases/pass/built-ins/String/prototype/matchAll/basic-groups.js',
+      expected: [
+        ['ab12', 'ab', '12', 0, 'ab'],
+        ['cd34', 'cd', '34', 4, 'cd'],
+      ],
+    },
+    {
+      id: 'built-ins/Date/constructor/clone-getTime.js',
+      file: 'cases/pass/built-ins/Date/constructor/clone-getTime.js',
+      expected: [1234, 1234, -50],
+    },
+    {
+      id: 'built-ins/Map/prototype/delete-clear.js',
+      file: 'cases/pass/built-ins/Map/prototype/delete-clear.js',
+      expected: [[['alpha', 3], ['beta', 2]], true, ['alpha'], 0],
+    },
+    {
+      id: 'built-ins/Set/prototype/delete-clear.js',
+      file: 'cases/pass/built-ins/Set/prototype/delete-clear.js',
+      expected: [['alpha', 'beta'], true, [['alpha', 'alpha']], 0],
+    },
+    {
+      id: 'built-ins/Promise/any/reject-errors.js',
+      file: 'cases/pass/built-ins/Promise/any/reject-errors.js',
+      expected: ['AggregateError', 'All promises were rejected', ['alpha', 'beta']],
+    },
+    {
+      id: 'built-ins/BigInt/map-set-membership.js',
+      file: 'cases/pass/built-ins/BigInt/map-set-membership.js',
+      expected: ['7', 'left', true, 'bigint'],
+    },
+    {
+      id: 'built-ins/RegExp/prototype/test-lastIndex.js',
+      file: 'cases/pass/built-ins/RegExp/prototype/test-lastIndex.js',
+      expected: [true, 2, false, 0],
+    },
+    {
       id: 'language/statements/function/recursion-factorial.js',
       file: 'cases/pass/language/statements/function/recursion-factorial.js',
       expected: 120,
@@ -95,6 +171,21 @@ module.exports = {
       id: 'language/statements/for-of/assignment-target.js',
       file: 'cases/pass/language/statements/for-of/assignment-target.js',
       expected: 3,
+    },
+    {
+      id: 'language/statements/for-of/map-destructuring.js',
+      file: 'cases/pass/language/statements/for-of/map-destructuring.js',
+      expected: ['alpha:1', 'beta:2'],
+    },
+    {
+      id: 'language/expressions/call/member-this.js',
+      file: 'cases/pass/language/expressions/call/member-this.js',
+      expected: 42,
+    },
+    {
+      id: 'language/statements/function/rest-parameters.js',
+      file: 'cases/pass/language/statements/function/rest-parameters.js',
+      expected: [1, 2, 2, 3],
     },
   ],
   unsupported: [

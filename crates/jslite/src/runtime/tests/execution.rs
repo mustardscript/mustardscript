@@ -221,7 +221,10 @@ fn preserves_supported_enumeration_order_for_json_stringify() {
     let value = run(r#"
             const record = {};
             record.beta = "b";
+            record[10] = "ten";
             record.alpha = "a";
+            record[2] = "two";
+            record["01"] = "leading";
             const values = ["c", "d"];
             values.extra = "ignored";
             JSON.stringify({ record, values });
@@ -229,7 +232,8 @@ fn preserves_supported_enumeration_order_for_json_stringify() {
     assert_eq!(
         value,
         StructuredValue::String(
-            r#"{"record":{"alpha":"a","beta":"b"},"values":["c","d"]}"#.to_string()
+            r#"{"record":{"2":"two","10":"ten","beta":"b","alpha":"a","01":"leading"},"values":["c","d"]}"#
+                .to_string()
         )
     );
 }
