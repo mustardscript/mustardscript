@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 
 const budgets = require('./budgets.json');
-const { Mustard, Progress } = require('../index.ts');
+const { ExecutionContext, Mustard, Progress } = require('../index.ts');
 const {
   machineMetadata,
   measure,
@@ -31,6 +31,7 @@ function parseArgs(argv) {
 }
 
 async function benchmarkStartup(profileBudgets) {
+  const context = new ExecutionContext();
   const [, summary] = await measure('startup', async () => {
     const runtime = new Mustard(`
       const values = [1, 2, 3, 4];
@@ -40,13 +41,14 @@ async function benchmarkStartup(profileBudgets) {
       }
       total;
     `);
-    const result = await runtime.run();
+    const result = await runtime.run({ context });
     assert.equal(result, 10);
   }, profileBudgets.startup);
   return summary;
 }
 
 async function benchmarkCompute(profileBudgets) {
+  const context = new ExecutionContext();
   const runtime = new Mustard(`
     function double(value) {
       return value * 2;
@@ -58,13 +60,21 @@ async function benchmarkCompute(profileBudgets) {
     total;
   `);
   const [, summary] = await measure('compute', async () => {
-    const result = await runtime.run();
+    const result = await runtime.run({ context });
     assert.equal(result, 40000);
   }, profileBudgets.compute);
   return summary;
 }
 
 async function benchmarkHostCallOverhead(profileBudgets) {
+  const guestContext = new ExecutionContext();
+  const hostContext = new ExecutionContext({
+    capabilities: {
+      fetch_value(value) {
+        return value;
+      },
+    },
+  });
   const guestRuntime = new Mustard(`
     function echo(value) {
       return value;
@@ -84,17 +94,11 @@ async function benchmarkHostCallOverhead(profileBudgets) {
   `);
 
   const [, guestBaseline] = await measure('host_baseline_guest', async () => {
-    const result = await guestRuntime.run();
+    const result = await guestRuntime.run({ context: guestContext });
     assert.equal(result, 276);
   }, profileBudgets.hostCall);
   const [, hostCalls] = await measure('host_calls', async () => {
-    const result = await hostRuntime.run({
-      capabilities: {
-        fetch_value(value) {
-          return value;
-        },
-      },
-    });
+    const result = await hostRuntime.run({ context: hostContext });
     assert.equal(result, 276);
   }, profileBudgets.hostCall);
 
@@ -107,25 +111,22 @@ async function benchmarkHostCallOverhead(profileBudgets) {
 }
 
 function driveSuspension({ reloadSnapshots }) {
+  const context = new ExecutionContext({
+    capabilities: {
+      fetch_value() {},
+    },
+    snapshotKey: SNAPSHOT_KEY,
+    limits: {},
+  });
   const runtime = new Mustard(`
     const first = fetch_value(4);
     const second = fetch_value(first + 1);
     second * 2;
   `);
-  const capabilities = {
-    fetch_value() {},
-  };
-  let step = runtime.start({
-    capabilities,
-    snapshotKey: SNAPSHOT_KEY,
-  });
+  let step = runtime.start({ context });
   while (step instanceof Progress) {
     if (reloadSnapshots) {
-      step = Progress.load(step.dump(), {
-        capabilities,
-        limits: {},
-        snapshotKey: SNAPSHOT_KEY,
-      });
+      step = Progress.load(step.dump(), { context });
     }
     step = step.resume(step.args[0]);
   }

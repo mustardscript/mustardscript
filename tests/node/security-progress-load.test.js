@@ -161,7 +161,7 @@ test('progress load requires explicit restore policy even in the same process', 
 
   assert.throws(
     () => Progress.load(progress.dump()),
-    /requires explicit capabilities, limits, and snapshotKey/,
+    /requires an ExecutionContext or explicit capabilities, limits, and snapshotKey/,
   );
 });
 
@@ -511,7 +511,7 @@ test('progress load requires explicit policy, limits, and snapshotKey', () => {
   assert.equal(child.status, 0);
   assert.match(
     child.stdout,
-    /requires explicit capabilities, limits, and snapshotKey/,
+    /requires an ExecutionContext or explicit capabilities, limits, and snapshotKey/,
   );
 });
 

@@ -711,6 +711,8 @@ The public Node API should stay small.
 Illustrative shape:
 
 ```ts
+import { ExecutionContext, Mustard } from 'mustardscript'
+
 type HostValue =
   | undefined
   | null
@@ -726,8 +728,7 @@ const program = new Mustard(source, {
   inputs: ['x'],
 })
 
-const result = await program.run({
-  inputs: { x: 1 },
+const context = new ExecutionContext({
   capabilities: {
     fetch_data: async (url) => '...',
   },
@@ -736,12 +737,23 @@ const result = await program.run({
     heapLimitBytes: 8 << 20,
     callDepthLimit: 256,
   },
+  snapshotKey: 'host-chosen-snapshot-key',
+})
+
+const result = await program.run({
+  context,
+  inputs: { x: 1 },
 })
 ```
+
+`ExecutionContext` is optional, but it is the intended steady-state path when a
+host will reuse the same capabilities, limits, and snapshot key across many
+`run()` / `start()` / `Progress.load()` calls.
 
 Lower-level control should exist for advanced hosts:
 
 - `new Mustard(...)`
+- `new ExecutionContext(...)`
 - `Mustard.validateProgram(...)`
 - `run(...)`
 - `start(...)`
@@ -768,10 +780,11 @@ program. It does not prove that a later `run()` or `start()` call will succeed
 with a particular host policy, input set, capability map, or runtime limit.
 
 `Progress.load(...)` always requires explicit restore authority: the host must
-pass `capabilities` or `console`, explicit `limits` as an object (use `{}` for
-default runtime limits), and the original `snapshotKey`. The dumped token
-authenticates the snapshot bytes before any loaded capability metadata is
-trusted, and same-process dumps stay single-use.
+pass either a reusable `ExecutionContext` or explicit `capabilities` /
+`console`, explicit `limits` as an object (use `{}` for default runtime
+limits), and the original `snapshotKey`. The dumped token authenticates the
+snapshot bytes before any loaded capability metadata is trusted, and
+same-process dumps stay single-use.
 
 The common path should be easy. The advanced path should remain explicit.
 

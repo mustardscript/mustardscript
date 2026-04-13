@@ -8,7 +8,7 @@ const {
   withCancellationSignal,
 } = require('./cancellation.ts');
 const {
-  createExecutionPolicy,
+  resolveExecutionContext,
   encodeSnapshotPolicy,
   snapshotIdentity,
   snapshotToken,
@@ -68,7 +68,7 @@ function createMustardClass({ native, materializeStep, parseStep }) {
     async run(options = {}) {
       const signal = getAbortSignal(options, 'run options');
       throwIfAborted(signal);
-      const { hostHandlers, policy, snapshotKey } = createExecutionPolicy(options);
+      const { hostHandlers, policy, snapshotKey } = resolveExecutionContext(options, 'run options');
       const programHandle = this._ensureProgramHandle();
       let step = parseStep(
         withCancellationSignal(
@@ -110,7 +110,7 @@ function createMustardClass({ native, materializeStep, parseStep }) {
     start(options = {}) {
       const signal = getAbortSignal(options, 'start options');
       throwIfAborted(signal);
-      const { policy, snapshotKey } = createExecutionPolicy(options);
+      const { policy, snapshotKey } = resolveExecutionContext(options, 'start options');
       const programHandle = this._ensureProgramHandle();
       const step = parseStep(
         withCancellationSignal(

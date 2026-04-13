@@ -72,14 +72,17 @@ objects instead of alias-expanding them during export.
 - The Node wrapper accepts sync JavaScript capability functions and real
   `Promise`-returning async handlers; it does not adopt arbitrary thenables or
   proxy-backed handler registries.
+- The Node wrapper also exposes an `ExecutionContext` helper that caches a
+  validated capability map, limits object, and snapshot key for repeated
+  `run()` / `start()` / `Progress.load()` calls.
 - `run()` and `start()` accept an optional `AbortSignal`, and
   `resume()` / `resumeError()` accept an optional `{ signal }` object for the
   resumed compute segment.
 - `limits.maxOutstandingHostCalls` bounds the combined number of queued and
   currently suspended host requests for async guest execution.
-- Hosts restoring dumped progress must provide explicit `capabilities` or
-  `console`, explicit `limits`, and the same `snapshotKey` on
-  `Progress.load(...)`, even in the same process.
+- Hosts restoring dumped progress must provide either an `ExecutionContext` or
+  explicit `capabilities` or `console`, explicit `limits`, and the same
+  `snapshotKey` on `Progress.load(...)`, even in the same process.
 
 ## Error Sanitization
 
@@ -137,8 +140,8 @@ guest-only traceback with guest function names and source spans.
   `Progress.load()` verifies that bundle before trusting the dumped snapshot
   bytes.
 - In the Node wrapper, `Progress.load(...)` always requires the host to
-  reassert explicit `capabilities` or `console`, explicit `limits`, and the
-  original `snapshotKey` before it exposes authoritative
+  reassert either an `ExecutionContext` or explicit `capabilities` or
+  `console`, explicit `limits`, and the original `snapshotKey` before it exposes authoritative
   `progress.capability` / `progress.args`.
 - `limits` must be present as a plain object even when the caller
   intentionally wants default limits and therefore passes `{}`.

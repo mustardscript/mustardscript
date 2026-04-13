@@ -10,12 +10,11 @@ const { spawn, execFileSync } = require('node:child_process');
 
 const ivm = require('isolated-vm');
 
-const { Mustard, Progress } = require('../index.ts');
+const { ExecutionContext, Mustard, Progress } = require('../index.ts');
 const { loadNative } = require('../native-loader.ts');
 const { callNative } = require('../lib/errors.ts');
 const { decodeStructured, encodeResumePayloadValue } = require('../lib/structured.ts');
 const {
-  createExecutionPolicy,
   encodeSnapshotPolicy,
   resolveProgressLoadContext,
   snapshotIdentity,
@@ -511,11 +510,13 @@ async function measureFailureCleanup(name, failThenRecover, options = DEFAULT_OP
 
 function createPhaseLoadOptions() {
   return {
-    snapshotKey: SNAPSHOT_KEY,
-    capabilities: {
-      checkpoint() {},
-    },
-    limits: {},
+    context: new ExecutionContext({
+      snapshotKey: SNAPSHOT_KEY,
+      capabilities: {
+        checkpoint() {},
+      },
+      limits: {},
+    }),
   };
 }
 
@@ -524,14 +525,8 @@ function takeProgress(step, label) {
   return step;
 }
 
-function createPhaseProgressFactory(runtime) {
-  const startOptions = {
-    snapshotKey: SNAPSHOT_KEY,
-    capabilities: {
-      checkpoint() {},
-    },
-  };
-  return () => takeProgress(runtime.start(startOptions), 'phase benchmark');
+function createPhaseProgressFactory(runtime, context) {
+  return () => takeProgress(runtime.start({ context }), 'phase benchmark');
 }
 
 function createAuthenticatedPolicyJson(dumped, loadOptions) {
@@ -556,17 +551,19 @@ function queuedFactory(factory) {
 async function benchmarkAddonPhases() {
   const native = loadNative();
   const loadOptions = createPhaseLoadOptions();
+  const defaultContext = new ExecutionContext();
+  const checkpointContext = loadOptions.context;
   const runtimeInitRuntime = new Mustard(createRuntimeInitSource());
   const suspendRuntime = new Mustard(createImmediateSuspendSource());
   const executionRuntime = new Mustard(createExecutionOnlySource());
 
   const phaseLatency = {};
-  const phaseProgressFactory = createPhaseProgressFactory(executionRuntime);
-  const suspendProgressFactory = createPhaseProgressFactory(suspendRuntime);
+  const phaseProgressFactory = createPhaseProgressFactory(executionRuntime, checkpointContext);
+  const suspendProgressFactory = createPhaseProgressFactory(suspendRuntime, checkpointContext);
 
   const runtimeInit = await measureSamples('runtime_init_only', async () => {
     const start = performance.now();
-    const result = await runtimeInitRuntime.run();
+    const result = await runtimeInitRuntime.run({ context: defaultContext });
     const duration = performance.now() - start;
     assert.equal(result, 0);
     return duration;
@@ -585,12 +582,7 @@ async function benchmarkAddonPhases() {
 
   const suspendOnly = await measureSamples('suspend_only', async () => {
     const start = performance.now();
-    const progress = suspendRuntime.start({
-      snapshotKey: SNAPSHOT_KEY,
-      capabilities: {
-        checkpoint() {},
-      },
-    });
+    const progress = suspendRuntime.start({ context: checkpointContext });
     const duration = performance.now() - start;
     assert.ok(progress instanceof Progress);
     return duration;
@@ -649,49 +641,52 @@ async function benchmarkAddon(fixtures) {
   console.log('Running addon benchmarks...');
   const latency = {};
   const { smallSource, codeModeSource, workflowSource, workflowData } = fixtures;
+  const defaultContext = new ExecutionContext();
   const warmSmallRuntime = new Mustard(smallSource);
   const warmCodeModeRuntime = new Mustard(codeModeSource);
   const workflowRuntime = new Mustard(workflowSource);
   const workflowCapabilities = createWorkflowCapabilities(workflowData);
+  const workflowContext = new ExecutionContext({
+    capabilities: workflowCapabilities,
+    snapshotKey: SNAPSHOT_KEY,
+  });
   const phases = await benchmarkAddonPhases();
 
   Object.assign(latency, Object.fromEntries([
     await measure('cold_start_small', async () => {
-      const result = await new Mustard(smallSource).run();
+      const result = await new Mustard(smallSource).run({ context: defaultContext });
       assert.equal(typeof result, 'number');
     }, { warmup: 1, iterations: 3 }),
     await measure('warm_run_small', async () => {
-      const result = await warmSmallRuntime.run();
+      const result = await warmSmallRuntime.run({ context: defaultContext });
       assert.equal(typeof result, 'number');
     }),
     await measure('cold_start_code_mode_search', async () => {
-      const result = await new Mustard(codeModeSource).run();
+      const result = await new Mustard(codeModeSource).run({ context: defaultContext });
       assert.equal(result.count > 0, true);
     }, { warmup: 1, iterations: 2 }),
     await measure('warm_run_code_mode_search', async () => {
-      const result = await warmCodeModeRuntime.run();
+      const result = await warmCodeModeRuntime.run({ context: defaultContext });
       assert.equal(result.count > 0, true);
     }),
     await measure('programmatic_tool_workflow', async () => {
-      const result = await workflowRuntime.run({
-        capabilities: workflowCapabilities,
-        snapshotKey: SNAPSHOT_KEY,
-      });
+      const result = await workflowRuntime.run({ context: workflowContext });
       assertWorkflowResult(result);
     }, DEFAULT_OPTIONS),
   ]));
 
   for (const callCount of [1, 10, 50, 100]) {
     const runtime = new Mustard(createFanoutSource(callCount));
-    const metric = await measure(`host_fanout_${callCount}`, async () => {
-      const result = await runtime.run({
-        capabilities: {
-          fetch_value(value) {
-            return value;
-          },
+    const context = new ExecutionContext({
+      capabilities: {
+        fetch_value(value) {
+          return value;
         },
-        snapshotKey: SNAPSHOT_KEY,
-      });
+      },
+      snapshotKey: SNAPSHOT_KEY,
+    });
+    const metric = await measure(`host_fanout_${callCount}`, async () => {
+      const result = await runtime.run({ context });
       assert.equal(result, expectedFanoutTotal(callCount));
     }, DEFAULT_OPTIONS);
     latency[metric[0]] = metric[1];
@@ -699,19 +694,17 @@ async function benchmarkAddon(fixtures) {
 
   for (const boundaryCount of [1, 5, 20]) {
     const runtime = new Mustard(createSuspendResumeSource(boundaryCount));
+    const context = new ExecutionContext({
+      capabilities: { checkpoint() {} },
+      limits: {},
+      snapshotKey: SNAPSHOT_KEY,
+    });
     const metric = await measure(`suspend_resume_${boundaryCount}`, async () => {
-      let step = runtime.start({
-        capabilities: { checkpoint() {} },
-        snapshotKey: SNAPSHOT_KEY,
-      });
+      let step = runtime.start({ context });
       let expected = 0;
       while (step instanceof Progress) {
         expected += step.args[0];
-        step = Progress.load(step.dump(), {
-          capabilities: { checkpoint() {} },
-          limits: {},
-          snapshotKey: SNAPSHOT_KEY,
-        }).resume(step.args[0]);
+        step = Progress.load(step.dump(), { context }).resume(step.args[0]);
       }
       assert.equal(step, expected);
     }, DEFAULT_OPTIONS);
@@ -720,10 +713,7 @@ async function benchmarkAddon(fixtures) {
 
   const memory = await measureRetainedMemory(async () => {
     for (let i = 0; i < MEMORY_RUNS; i += 1) {
-      const result = await workflowRuntime.run({
-        capabilities: workflowCapabilities,
-        snapshotKey: SNAPSHOT_KEY,
-      });
+      const result = await workflowRuntime.run({ context: workflowContext });
       assertWorkflowResult(result);
     }
   });
@@ -732,28 +722,32 @@ async function benchmarkAddon(fixtures) {
     limitFailure: await measureFailureCleanup('limit_failure', async () => {
       await assert.rejects(
         new Mustard(fixtures.failureSource).run({
-          limits: {
-            heapLimitBytes: 512,
-          },
+          context: new ExecutionContext({
+            limits: {
+              heapLimitBytes: 512,
+            },
+          }),
         }),
       );
-      const recovered = await warmSmallRuntime.run();
+      const recovered = await warmSmallRuntime.run({ context: defaultContext });
       assert.equal(typeof recovered, 'number');
     }, DEFAULT_OPTIONS),
     hostFailure: await measureFailureCleanup('host_failure', async () => {
       await assert.rejects(
         new Mustard(fixtures.hostFailureSource).run({
-          capabilities: {
-            fetch_value(value) {
-              return value;
+          context: new ExecutionContext({
+            capabilities: {
+              fetch_value(value) {
+                return value;
+              },
+              explode() {
+                throw new Error('explode');
+              },
             },
-            explode() {
-              throw new Error('explode');
-            },
-          },
+          }),
         }),
       );
-      const recovered = await warmSmallRuntime.run();
+      const recovered = await warmSmallRuntime.run({ context: defaultContext });
       assert.equal(typeof recovered, 'number');
     }, DEFAULT_OPTIONS),
   };

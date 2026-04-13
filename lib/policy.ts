@@ -126,6 +126,67 @@ function cloneSnapshotKey(snapshotKey) {
   return Buffer.from(snapshotKey);
 }
 
+function freezePolicy(policy) {
+  return Object.freeze({
+    capabilities: Object.freeze(policy.capabilities.slice()),
+    limits: Object.freeze({ ...policy.limits }),
+  });
+}
+
+function assertNoContextOverrides(options, label) {
+  if (
+    hasOwnProperty(options, 'capabilities') ||
+    hasOwnProperty(options, 'console') ||
+    hasOwnProperty(options, 'limits') ||
+    hasOwnProperty(options, 'snapshotKey')
+  ) {
+    throw new TypeError(
+      `${label}.context cannot be combined with capabilities, console, limits, or snapshotKey`,
+    );
+  }
+}
+
+class ExecutionContext {
+  #hostHandlers;
+  #policy;
+  #snapshotKey;
+
+  constructor(options = {}) {
+    const { hostHandlers, policy, snapshotKey } = createExecutionPolicy(options);
+    this.#hostHandlers = hostHandlers;
+    this.#policy = freezePolicy(policy);
+    this.#snapshotKey = cloneSnapshotKey(snapshotKey);
+  }
+
+  hostHandlers() {
+    return this.#hostHandlers;
+  }
+
+  policy() {
+    return this.#policy;
+  }
+
+  snapshotKey() {
+    return cloneSnapshotKey(this.#snapshotKey);
+  }
+}
+
+function resolveExecutionContext(options = {}, label = 'options') {
+  const context = options?.context;
+  if (context === undefined) {
+    return createExecutionPolicy(options);
+  }
+  if (!(context instanceof ExecutionContext)) {
+    throw new TypeError(`${label}.context must be an ExecutionContext`);
+  }
+  assertNoContextOverrides(options, label);
+  return {
+    hostHandlers: context.hostHandlers(),
+    policy: context.policy(),
+    snapshotKey: context.snapshotKey(),
+  };
+}
+
 function encodeSnapshotPolicy(policy, options = undefined) {
   const encoded = cloneSnapshotPolicy(policy);
   if (typeof options?.snapshotId === 'string' && options.snapshotId.length > 0) {
@@ -235,8 +296,27 @@ function resolveProgressLoadContext(state, snapshot, options) {
   }
   if (options === undefined || options === null || typeof options !== 'object') {
     throw new TypeError(
-      'Progress.load() requires explicit capabilities, limits, and snapshotKey',
+      'Progress.load() requires an ExecutionContext or explicit capabilities, limits, and snapshotKey',
     );
+  }
+  if (hasOwnProperty(options, 'context')) {
+    const context = options.context;
+    if (!(context instanceof ExecutionContext)) {
+      throw new TypeError('Progress.load() options.context must be an ExecutionContext');
+    }
+    assertNoContextOverrides(options, 'Progress.load() options');
+    const snapshotKey = context.snapshotKey();
+    assertSnapshotToken(
+      snapshot,
+      state.token,
+      snapshotKey,
+      expectedSnapshotId,
+      expectedSnapshotKeyDigest,
+    );
+    return {
+      policy: context.policy(),
+      snapshotKey,
+    };
   }
   if (
     !hasOwnProperty(options, 'capabilities') &&
@@ -278,6 +358,7 @@ function resolveProgressLoadContext(state, snapshot, options) {
 }
 
 module.exports = {
+  ExecutionContext,
   cloneSnapshotPolicy,
   cloneSnapshotKey,
   collectHostHandlers,
@@ -285,6 +366,7 @@ module.exports = {
   encodeRuntimeLimits,
   encodeSnapshotPolicy,
   normalizeSnapshotKey,
+  resolveExecutionContext,
   resolveProgressLoadContext,
   snapshotIdentity,
   snapshotKeyDigest,

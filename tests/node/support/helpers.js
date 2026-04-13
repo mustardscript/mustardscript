@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { InMemoryMustardExecutorStore, Mustard, MustardError, MustardExecutor, Progress } =
+const { ExecutionContext, InMemoryMustardExecutorStore, Mustard, MustardError, MustardExecutor, Progress } =
   require('../../../index.ts');
 
 function runtime(code, options) {
@@ -45,6 +45,7 @@ function isMustardError({ kind, name = kind && `Mustard${kind}Error`, message, g
 module.exports = {
   assert,
   assertGuestSafeMessage,
+  ExecutionContext,
   InMemoryMustardExecutorStore,
   isMustardError,
   Mustard,

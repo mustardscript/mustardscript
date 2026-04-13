@@ -28,8 +28,16 @@ export interface CompileOptions {
 
 export type SnapshotKey = string | Buffer | Uint8Array;
 
+export interface ExecutionContextOptions {
+  capabilities?: Record<string, Capability>;
+  console?: ConsoleCallbacks;
+  limits?: RuntimeLimits;
+  snapshotKey?: SnapshotKey;
+}
+
 export interface ExecutionOptions {
   inputs?: Record<string, StructuredValue>;
+  context?: ExecutionContext;
   capabilities?: Record<string, Capability>;
   console?: ConsoleCallbacks;
   limits?: RuntimeLimits;
@@ -46,7 +54,7 @@ export interface ProgressLoadOptionsBase {
   snapshotKey: SnapshotKey;
 }
 
-export type ProgressLoadOptions =
+export type ProgressLoadOptionsExplicit =
   | (ProgressLoadOptionsBase & {
       capabilities: Record<string, Capability>;
       console?: ConsoleCallbacks;
@@ -55,6 +63,12 @@ export type ProgressLoadOptions =
       capabilities?: Record<string, Capability>;
       console: ConsoleCallbacks;
     });
+
+export interface ProgressLoadContextOptions {
+  context: ExecutionContext;
+}
+
+export type ProgressLoadOptions = ProgressLoadOptionsExplicit | ProgressLoadContextOptions;
 
 export interface RuntimeLimits {
   instructionBudget?: number;
@@ -172,6 +186,10 @@ export class Progress {
   cancel(): StructuredValue | Progress;
 
   static load(state: SerializedProgress, options: ProgressLoadOptions): Progress;
+}
+
+export class ExecutionContext {
+  constructor(options?: ExecutionContextOptions);
 }
 
 export class Mustard {
