@@ -1,3 +1,12 @@
+---
+title: "Benchmark Findings"
+description: "Performance metrics, optimization results, and latency measurements"
+category: "Development"
+order: 2
+slug: "benchmark-findings"
+lastUpdated: "2026-04-13"
+---
+
 # Benchmark Findings
 
 This document summarizes the latest kept benchmark evidence from:

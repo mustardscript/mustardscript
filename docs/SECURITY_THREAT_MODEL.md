@@ -1,3 +1,12 @@
+---
+title: "Security Threat Model"
+description: "Project-level threat model, security objectives, and mitigation strategies"
+category: "Security"
+order: 2
+slug: "security-threat-model"
+lastUpdated: "2026-04-13"
+---
+
 # Security Threat Model
 
 This document is the project-level threat model for `mustard`. It complements:

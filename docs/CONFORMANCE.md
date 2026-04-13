@@ -1,3 +1,12 @@
+---
+title: "Conformance Strategy"
+description: "Node-parity conformance buckets and validator-rejected test strategy"
+category: "Development"
+order: 1
+slug: "conformance"
+lastUpdated: "2026-04-13"
+---
+
 # Conformance Strategy
 
 `mustard` currently uses two active conformance buckets:

@@ -1,3 +1,12 @@
+---
+title: "Sidecar Protocol"
+description: "Sidecar process wire protocol using newline-delimited JSON"
+category: "API Reference"
+order: 3
+slug: "sidecar-protocol"
+lastUpdated: "2026-04-13"
+---
+
 # Sidecar Protocol
 
 This document defines the current `mustard-sidecar` process contract.

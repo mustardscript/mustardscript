@@ -1,3 +1,12 @@
+---
+title: "Security Model"
+description: "Normative security contract and threat assumptions"
+category: "Security"
+order: 1
+slug: "security-model"
+lastUpdated: "2026-04-13"
+---
+
 # Security Model
 
 ## Threat Assumptions

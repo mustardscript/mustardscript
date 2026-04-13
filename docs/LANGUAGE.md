@@ -1,3 +1,12 @@
+---
+title: "Language Contract"
+description: "Describes the implemented language surface, supported value types, syntax, and built-in methods"
+category: "Language & Runtime"
+order: 1
+slug: "language"
+lastUpdated: "2026-04-13"
+---
+
 # Language Contract
 
 This document describes the currently implemented language surface. Planned

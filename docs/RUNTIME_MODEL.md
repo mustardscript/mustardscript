@@ -1,3 +1,12 @@
+---
+title: "Runtime Value Model"
+description: "Internal guest-value heap model, GC semantics, and value representation"
+category: "Language & Runtime"
+order: 2
+slug: "runtime-model"
+lastUpdated: "2026-04-13"
+---
+
 # Runtime Value Model
 
 This document defines the current internal guest-value and heap model used by

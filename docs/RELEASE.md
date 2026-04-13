@@ -1,3 +1,12 @@
+---
+title: "Release Guide"
+description: "Release process, verification checklist, and publishing steps"
+category: "Development"
+order: 3
+slug: "release"
+lastUpdated: "2026-04-13"
+---
+
 # Release Guide
 
 This document defines the current release shape for `MustardScript` and the commands

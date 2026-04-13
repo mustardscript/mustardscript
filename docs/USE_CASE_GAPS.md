@@ -1,3 +1,12 @@
+---
+title: "Use Case Gaps"
+description: "Audit status of the realistic programmatic tool-call use case gallery"
+category: "Development"
+order: 4
+slug: "use-case-gaps"
+lastUpdated: "2026-04-13"
+---
+
 # Use Case Gaps
 
 This file tracks the audit status of the realistic programmatic tool-call

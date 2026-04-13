@@ -1,3 +1,12 @@
+---
+title: "Resource Limits"
+description: "Instruction budgets, heap limits, call depth, and timeout controls"
+category: "Language & Runtime"
+order: 4
+slug: "limits"
+lastUpdated: "2026-04-13"
+---
+
 # Limits
 
 `mustard` exposes a limits struct early so resource controls stay part of the

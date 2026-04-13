@@ -1,3 +1,12 @@
+---
+title: "Hardening Guide"
+description: "Hostile input testing, fuzzing entry points, and hardening strategies"
+category: "Security"
+order: 3
+slug: "hardening"
+lastUpdated: "2026-04-13"
+---
+
 # Hardening Guide
 
 This document tracks the hostile-input and fuzzing entry points that back Phase

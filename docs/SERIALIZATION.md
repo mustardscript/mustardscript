@@ -1,3 +1,12 @@
+---
+title: "Serialization"
+description: "Compiled program and snapshot serialization formats"
+category: "API Reference"
+order: 4
+slug: "serialization"
+lastUpdated: "2026-04-13"
+---
+
 # Serialization
 
 This document covers the serialized forms that already exist in the runtime and

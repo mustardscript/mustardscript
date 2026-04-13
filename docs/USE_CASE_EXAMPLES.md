@@ -1,3 +1,12 @@
+---
+title: "Use Case Examples"
+description: "Real-world programmatic tool-calling examples for code mode, multi-tool execution, and resumable workflows"
+category: "Getting Started"
+order: 1
+slug: "use-case-examples"
+lastUpdated: "2026-04-13"
+---
+
 # Use Case Examples
 
 This file expands the three primary use cases called out in

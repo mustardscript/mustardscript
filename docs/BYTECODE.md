@@ -1,3 +1,12 @@
+---
+title: "Bytecode VM Model"
+description: "Stack-based bytecode VM architecture and instruction set"
+category: "Language & Runtime"
+order: 3
+slug: "bytecode"
+lastUpdated: "2026-04-13"
+---
+
 # Bytecode VM Model
 
 `mustard` currently uses a private stack-based bytecode.

@@ -1,3 +1,12 @@
+---
+title: "Host API"
+description: "Host boundary, structured values, capability calls, and error handling"
+category: "API Reference"
+order: 1
+slug: "host-api"
+lastUpdated: "2026-04-13"
+---
+
 # Host API
 
 This document describes the current host boundary and the near-term rules the

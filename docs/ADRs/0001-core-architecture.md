@@ -1,3 +1,12 @@
+---
+title: "ADR 0001: Core Architecture"
+description: "Architecture decision record for Rust core + Node addon + sidecar design"
+category: "Architecture"
+order: 1
+slug: "adr-0001-core-architecture"
+lastUpdated: "2026-04-13"
+---
+
 # ADR 0001: Core Architecture
 
 ## Status

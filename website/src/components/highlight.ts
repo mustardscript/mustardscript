@@ -116,6 +116,72 @@ export function highlightLine(line: string): string {
   }).join('')
 }
 
-export function highlightCode(code: string): string {
+export function highlightCode(code: string, language?: string): string {
+  const lang = language?.toLowerCase()
+  if (lang === 'json') return highlightJson(code)
+  if (lang === 'sh' || lang === 'bash' || lang === 'shell') return highlightShell(code)
+  if (lang && lang !== 'js' && lang !== 'ts' && lang !== 'javascript' && lang !== 'typescript') {
+    // Unknown language — just escape
+    return code.split('\n').map(line => line.trim() ? escapeHtml(line) : '&nbsp;').join('\n')
+  }
   return code.split('\n').map(line => highlightLine(line)).join('\n')
+}
+
+// JSON tokenizer — warm palette
+function highlightJson(code: string): string {
+  return code.split('\n').map(line => {
+    if (!line.trim()) return '&nbsp;'
+    const tokens: string[] = []
+    let i = 0
+    while (i < line.length) {
+      // String (could be key or value)
+      if (line[i] === '"') {
+        let j = i + 1
+        while (j < line.length && line[j] !== '"') {
+          if (line[j] === '\\') j++
+          j++
+        }
+        j++
+        const str = line.slice(i, j)
+        // If followed by ':', it's a key
+        const rest = line.slice(j)
+        const isKey = /^\s*:/.test(rest)
+        tokens.push(`<span style="color:${isKey ? COLORS.property : COLORS.string}">${escapeHtml(str)}</span>`)
+        i = j
+        continue
+      }
+      // Number
+      if (/[-0-9]/.test(line[i]) && (i === 0 || /[\s,:\[]/.test(line[i - 1]))) {
+        let j = i
+        if (line[j] === '-') j++
+        while (j < line.length && /[0-9.eE+-]/.test(line[j])) j++
+        tokens.push(`<span style="color:${COLORS.number}">${escapeHtml(line.slice(i, j))}</span>`)
+        i = j
+        continue
+      }
+      // Boolean / null
+      const boolMatch = line.slice(i).match(/^(true|false|null)\b/)
+      if (boolMatch) {
+        tokens.push(`<span style="color:${COLORS.keyword};font-weight:600">${boolMatch[1]}</span>`)
+        i += boolMatch[1].length
+        continue
+      }
+      tokens.push(`<span style="color:${COLORS.default}">${escapeHtml(line[i])}</span>`)
+      i++
+    }
+    return tokens.join('')
+  }).join('\n')
+}
+
+// Shell tokenizer — just comments
+function highlightShell(code: string): string {
+  return code.split('\n').map(line => {
+    if (!line.trim()) return '&nbsp;'
+    const trimmed = line.trimStart()
+    if (trimmed.startsWith('#')) {
+      const indent = escapeHtml(line.slice(0, line.length - trimmed.length))
+      return `${indent}<span style="color:${COLORS.comment};font-style:italic">${escapeHtml(trimmed)}</span>`
+    }
+    return escapeHtml(line)
+  }).join('\n')
 }

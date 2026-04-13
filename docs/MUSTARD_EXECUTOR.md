@@ -1,3 +1,12 @@
+---
+title: "Mustard Executor"
+description: "Queue-oriented executor API for managing resumable executions"
+category: "API Reference"
+order: 2
+slug: "mustard-executor"
+lastUpdated: "2026-04-13"
+---
+
 # Mustard Executor
 
 `MustardExecutor` is a Node-side queue-oriented API built on top of the existing
