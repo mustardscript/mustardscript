@@ -11,6 +11,8 @@ mod gc;
 mod properties;
 mod serialization;
 mod shared;
+#[cfg(test)]
+mod snapshot_validation_tests;
 mod state;
 mod validation;
 mod vm;

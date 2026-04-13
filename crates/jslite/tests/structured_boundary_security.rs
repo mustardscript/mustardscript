@@ -3,6 +3,8 @@ use jslite::{ExecutionOptions, StructuredValue, compile, execute, start};
 const CYCLE_BOUNDARY_MESSAGE: &str = "cyclic values cannot cross the structured host boundary";
 const SHARED_BOUNDARY_MESSAGE: &str = "shared references cannot cross the structured host boundary";
 const DEPTH_BOUNDARY_MESSAGE: &str = "structured host boundary nesting limit exceeded";
+const PLAIN_OBJECT_BOUNDARY_MESSAGE: &str =
+    "only plain objects can cross the structured host boundary";
 const JSON_STRINGIFY_CYCLE_MESSAGE: &str = "Converting circular structure to JSON";
 const SAFE_MESSAGE_PATH_FRAGMENTS: &[&str] = &["/Users/", "\\Users\\", "C:\\", "/home/"];
 
@@ -39,6 +41,20 @@ fn assert_shared_boundary_error(error: impl std::fmt::Display) {
     assert!(
         message.contains(SHARED_BOUNDARY_MESSAGE),
         "expected shared-reference boundary error, got: {message}"
+    );
+    for fragment in SAFE_MESSAGE_PATH_FRAGMENTS {
+        assert!(
+            !message.contains(fragment),
+            "message leaked host path fragment `{fragment}`: {message}"
+        );
+    }
+}
+
+fn assert_plain_object_boundary_error(error: impl std::fmt::Display) {
+    let message = error.to_string();
+    assert!(
+        message.contains(PLAIN_OBJECT_BOUNDARY_MESSAGE),
+        "expected plain-object boundary error, got: {message}"
     );
     for fragment in SAFE_MESSAGE_PATH_FRAGMENTS {
         assert!(
@@ -213,4 +229,34 @@ fn json_stringify_reports_cyclic_guest_values_as_guest_safe_errors() {
         result,
         StructuredValue::String(JSON_STRINGIFY_CYCLE_MESSAGE.to_string())
     );
+}
+
+#[test]
+fn boxed_number_root_results_fail_closed_during_result_serialization() {
+    let program = compile("new Number(1);").expect("source should compile");
+    let error = execute(&program, ExecutionOptions::default())
+        .expect_err("boxed number results should fail closed");
+    assert_plain_object_boundary_error(error);
+}
+
+#[test]
+fn regexp_root_results_fail_closed_during_result_serialization() {
+    let program = compile("/a/;").expect("source should compile");
+    let error = execute(&program, ExecutionOptions::default())
+        .expect_err("regexp results should fail closed");
+    assert_plain_object_boundary_error(error);
+}
+
+#[test]
+fn boxed_number_host_capability_arguments_fail_closed_before_suspension() {
+    let program = compile("send(new Number(1));").expect("source should compile");
+    let error = start(
+        &program,
+        ExecutionOptions {
+            capabilities: vec!["send".to_string()],
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("boxed number host-call arguments should fail closed");
+    assert_plain_object_boundary_error(error);
 }

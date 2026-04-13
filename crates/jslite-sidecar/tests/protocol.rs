@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 const SNAPSHOT_KEY: &[u8] = b"sidecar-protocol-test-key";
+const PROTOCOL_VERSION: u32 = jslite_sidecar::PROTOCOL_VERSION;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -76,6 +77,7 @@ fn sidecar_compiles_starts_and_resumes() {
         stdin,
         "{}",
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "compile",
             "id": 1,
             "source": "const value = fetch_data(5); value + 1;",
@@ -90,6 +92,7 @@ fn sidecar_compiles_starts_and_resumes() {
     let compile_response: Value =
         serde_json::from_str(&line).expect("compile response should parse");
     assert!(compile_response["ok"].as_bool().unwrap_or(false));
+    assert_eq!(compile_response["protocol_version"], PROTOCOL_VERSION);
     let program = compile_response["result"]["program_base64"]
         .as_str()
         .expect("program base64 should exist")
@@ -99,6 +102,7 @@ fn sidecar_compiles_starts_and_resumes() {
         stdin,
         "{}",
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "start",
             "id": 2,
             "program_base64": program,
@@ -116,6 +120,7 @@ fn sidecar_compiles_starts_and_resumes() {
         .expect("start response should read");
     let start_response: Value = serde_json::from_str(&line).expect("start response should parse");
     assert!(start_response["ok"].as_bool().unwrap_or(false));
+    assert_eq!(start_response["protocol_version"], PROTOCOL_VERSION);
     assert_eq!(start_response["result"]["step"]["type"], "suspended");
     assert_eq!(start_response["result"]["step"]["capability"], "fetch_data");
     let snapshot = start_response["result"]["step"]["snapshot_base64"]
@@ -128,6 +133,7 @@ fn sidecar_compiles_starts_and_resumes() {
         stdin,
         "{}",
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 3,
             "snapshot_base64": snapshot,
@@ -146,6 +152,7 @@ fn sidecar_compiles_starts_and_resumes() {
         .expect("resume response should read");
     let resume_response: Value = serde_json::from_str(&line).expect("resume response should parse");
     assert!(resume_response["ok"].as_bool().unwrap_or(false));
+    assert_eq!(resume_response["protocol_version"], PROTOCOL_VERSION);
     assert_eq!(resume_response["result"]["step"]["type"], "completed");
     assert_eq!(
         resume_response["result"]["step"]["value"]["Number"]["Finite"],
@@ -174,6 +181,7 @@ fn sidecar_accepts_cancelled_resume_payload() {
         stdin,
         "{}",
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "compile",
             "id": 1,
             "source": "const value = fetch_data(5); value + 1;",
@@ -188,6 +196,7 @@ fn sidecar_accepts_cancelled_resume_payload() {
     let compile_response: Value =
         serde_json::from_str(&line).expect("compile response should parse");
     assert!(compile_response["ok"].as_bool().unwrap_or(false));
+    assert_eq!(compile_response["protocol_version"], PROTOCOL_VERSION);
     let program = compile_response["result"]["program_base64"]
         .as_str()
         .expect("program base64 should exist")
@@ -197,6 +206,7 @@ fn sidecar_accepts_cancelled_resume_payload() {
         stdin,
         "{}",
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "start",
             "id": 2,
             "program_base64": program,
@@ -214,6 +224,7 @@ fn sidecar_accepts_cancelled_resume_payload() {
         .expect("start response should read");
     let start_response: Value = serde_json::from_str(&line).expect("start response should parse");
     assert!(start_response["ok"].as_bool().unwrap_or(false));
+    assert_eq!(start_response["protocol_version"], PROTOCOL_VERSION);
     let snapshot = start_response["result"]["step"]["snapshot_base64"]
         .as_str()
         .expect("snapshot base64 should exist")
@@ -224,6 +235,7 @@ fn sidecar_accepts_cancelled_resume_payload() {
         stdin,
         "{}",
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 3,
             "snapshot_base64": snapshot,
@@ -241,6 +253,7 @@ fn sidecar_accepts_cancelled_resume_payload() {
         .expect("resume response should read");
     let resume_response: Value = serde_json::from_str(&line).expect("resume response should parse");
     assert!(!resume_response["ok"].as_bool().unwrap_or(true));
+    assert_eq!(resume_response["protocol_version"], PROTOCOL_VERSION);
     assert!(
         resume_response["error"]
             .as_str()
@@ -293,6 +306,7 @@ fn sidecar_can_be_forcefully_terminated_and_restarted() {
         stdin,
         "{}",
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "compile",
             "id": 1,
             "source": "while (true) {}",
@@ -307,6 +321,7 @@ fn sidecar_can_be_forcefully_terminated_and_restarted() {
     let compile_response: Value =
         serde_json::from_str(&line).expect("compile response should parse");
     assert!(compile_response["ok"].as_bool().unwrap_or(false));
+    assert_eq!(compile_response["protocol_version"], PROTOCOL_VERSION);
     let program = compile_response["result"]["program_base64"]
         .as_str()
         .expect("program base64 should exist")
@@ -316,6 +331,7 @@ fn sidecar_can_be_forcefully_terminated_and_restarted() {
         stdin,
         "{}",
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "start",
             "id": 2,
             "program_base64": program,
@@ -354,6 +370,7 @@ fn sidecar_can_be_forcefully_terminated_and_restarted() {
         fresh_stdin,
         "{}",
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "compile",
             "id": 3,
             "source": "const value = 2; value + 1;",
@@ -368,6 +385,7 @@ fn sidecar_can_be_forcefully_terminated_and_restarted() {
     let compile_response: Value =
         serde_json::from_str(&line).expect("compile response should parse");
     assert!(compile_response["ok"].as_bool().unwrap_or(false));
+    assert_eq!(compile_response["protocol_version"], PROTOCOL_VERSION);
     let program = compile_response["result"]["program_base64"]
         .as_str()
         .expect("program base64 should exist")
@@ -377,6 +395,7 @@ fn sidecar_can_be_forcefully_terminated_and_restarted() {
         fresh_stdin,
         "{}",
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "start",
             "id": 4,
             "program_base64": program,
@@ -394,6 +413,7 @@ fn sidecar_can_be_forcefully_terminated_and_restarted() {
         .expect("start response should read");
     let start_response: Value = serde_json::from_str(&line).expect("start response should parse");
     assert!(start_response["ok"].as_bool().unwrap_or(false));
+    assert_eq!(start_response["protocol_version"], PROTOCOL_VERSION);
     assert_eq!(start_response["result"]["step"]["type"], "completed");
     assert_eq!(
         start_response["result"]["step"]["value"]["Number"]["Finite"],
@@ -403,4 +423,67 @@ fn sidecar_can_be_forcefully_terminated_and_restarted() {
     drop(fresh_stdin);
     let status = fresh.wait().expect("fresh sidecar should exit cleanly");
     assert!(status.success());
+}
+
+#[test]
+fn sidecar_rejects_unsupported_protocol_versions() {
+    let exe = env!("CARGO_BIN_EXE_jslite-sidecar");
+    let mut child = Command::new(exe)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("sidecar should spawn");
+
+    let mut stdin = child.stdin.take().expect("stdin should be available");
+    let stdout = child.stdout.take().expect("stdout should be available");
+    let mut reader = BufReader::new(stdout);
+
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION + 1,
+            "method": "compile",
+            "id": 1,
+            "source": "1;",
+        })
+    )
+    .expect("request should write");
+
+    let mut line = String::new();
+    reader.read_line(&mut line).expect("response should read");
+    let response: Value = serde_json::from_str(&line).expect("response should parse");
+    assert!(!response["ok"].as_bool().unwrap_or(true));
+    assert_eq!(response["protocol_version"], PROTOCOL_VERSION);
+    assert!(
+        response["error"]
+            .as_str()
+            .expect("error should exist")
+            .contains("unsupported sidecar protocol version"),
+    );
+
+    drop(stdin);
+    let status = child.wait().expect("sidecar should exit cleanly");
+    assert!(status.success());
+}
+
+#[test]
+fn oversized_request_lines_fail_closed_before_protocol_parsing() {
+    let exe = env!("CARGO_BIN_EXE_jslite-sidecar");
+    let mut child = Command::new(exe)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("sidecar should spawn");
+
+    let mut stdin = child.stdin.take().expect("stdin should be available");
+    let oversized = "x".repeat(jslite_sidecar::MAX_REQUEST_LINE_BYTES + 2);
+    writeln!(stdin, "{oversized}").expect("oversized request should write");
+    drop(stdin);
+
+    let output = child.wait_with_output().expect("sidecar should exit");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("request line exceeds maximum size"));
 }

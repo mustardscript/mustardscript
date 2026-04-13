@@ -11,6 +11,7 @@ use sha2::{Digest, Sha256};
 
 const SAFE_MESSAGE_PATH_FRAGMENTS: &[&str] = &["/Users/", "\\Users\\", "C:\\", "/home/"];
 const SNAPSHOT_KEY: &[u8] = b"sidecar-hostile-protocol-key";
+const PROTOCOL_VERSION: u32 = jslite_sidecar::PROTOCOL_VERSION;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -121,6 +122,7 @@ fn hostile_but_well_formed_requests_fail_closed() {
     let snapshot = encoded_snapshot();
     let requests = vec![
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "start",
             "id": 1,
             "program_base64": "%%%%",
@@ -131,6 +133,7 @@ fn hostile_but_well_formed_requests_fail_closed() {
         })
         .to_string(),
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 2,
             "snapshot_base64": "%%%%",
@@ -145,6 +148,7 @@ fn hostile_but_well_formed_requests_fail_closed() {
         })
         .to_string(),
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "start",
             "id": 3,
             "program_base64": encoded_program(),
@@ -162,6 +166,7 @@ fn hostile_but_well_formed_requests_fail_closed() {
         })
         .to_string(),
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 4,
             "snapshot_base64": snapshot,
@@ -201,6 +206,7 @@ fn resume_rejects_tampered_or_unauthenticated_snapshots() {
 
     let missing_limits = handle_request_line(
         &serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 9,
             "snapshot_base64": snapshot,
@@ -231,6 +237,7 @@ fn resume_rejects_tampered_or_unauthenticated_snapshots() {
 
     let unauthenticated = handle_request_line(
         &serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 10,
             "snapshot_base64": snapshot,
@@ -258,6 +265,7 @@ fn resume_rejects_tampered_or_unauthenticated_snapshots() {
 
     let forged = handle_request_line(
         &serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 11,
             "snapshot_base64": snapshot,
@@ -293,12 +301,14 @@ fn mutated_request_lines_never_panic() {
     let snapshot = encoded_snapshot();
     let seeds = vec![
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "compile",
             "id": 1,
             "source": "const value = 1; value + 1;",
         })
         .to_string(),
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "start",
             "id": 2,
             "program_base64": encoded_program(),
@@ -310,6 +320,7 @@ fn mutated_request_lines_never_panic() {
         })
         .to_string(),
         serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 3,
             "snapshot_base64": snapshot,
