@@ -116,12 +116,6 @@
           }
         },
         {
-          "MakeObject": {
-            "keys": []
-          }
-        },
-        "Dup",
-        {
           "LoadSlot": {
             "depth": 0,
             "slot": 5
@@ -153,11 +147,14 @@
           "Binary": "Add"
         },
         {
-          "SetPropStatic": {
-            "name": "total"
+          "MakeObject": {
+            "keys": [
+              {
+                "Identifier": "total"
+              }
+            ]
           }
         },
-        "Pop",
         "Return",
         "PushUndefined",
         "Return"

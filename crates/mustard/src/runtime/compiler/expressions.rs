@@ -62,38 +62,61 @@ impl Compiler {
                 }
             }
             Expr::Object { properties, .. } => {
-                context
-                    .code
-                    .push(Instruction::MakeObject { keys: Vec::new() });
-                for property in properties {
-                    context.code.push(Instruction::Dup);
-                    match property {
-                        ObjectProperty::Property { key, value, .. } => match key {
-                            ObjectPropertyKey::Static(PropertyName::Identifier(name))
-                            | ObjectPropertyKey::Static(PropertyName::String(name)) => {
-                                self.compile_expr(context, value)?;
-                                context
-                                    .code
-                                    .push(Instruction::SetPropStatic { name: name.clone() });
+                let static_keys = properties
+                    .iter()
+                    .map(|property| match property {
+                        ObjectProperty::Property {
+                            key: ObjectPropertyKey::Static(name),
+                            ..
+                        } => Some(name.clone()),
+                        _ => None,
+                    })
+                    .collect::<Option<Vec<_>>>();
+
+                if let Some(keys) = static_keys {
+                    for property in properties {
+                        let ObjectProperty::Property { value, .. } = property else {
+                            unreachable!("static-key object fast-path should only see properties");
+                        };
+                        self.compile_expr(context, value)?;
+                    }
+                    context.code.push(Instruction::MakeObject { keys });
+                } else {
+                    context
+                        .code
+                        .push(Instruction::MakeObject { keys: Vec::new() });
+                    for property in properties {
+                        match property {
+                            ObjectProperty::Property { key, value, .. } => {
+                                context.code.push(Instruction::Dup);
+                                match key {
+                                    ObjectPropertyKey::Static(PropertyName::Identifier(name))
+                                    | ObjectPropertyKey::Static(PropertyName::String(name)) => {
+                                        self.compile_expr(context, value)?;
+                                        context.code.push(Instruction::SetPropStatic {
+                                            name: name.clone(),
+                                        });
+                                    }
+                                    ObjectPropertyKey::Static(PropertyName::Number(number)) => {
+                                        self.compile_expr(context, value)?;
+                                        context.code.push(Instruction::SetPropStatic {
+                                            name: format_number_key(*number),
+                                        });
+                                    }
+                                    ObjectPropertyKey::Computed(expression) => {
+                                        self.compile_expr(context, expression)?;
+                                        self.compile_expr(context, value)?;
+                                        context.code.push(Instruction::SetPropComputed);
+                                    }
+                                }
+                                context.code.push(Instruction::Pop);
                             }
-                            ObjectPropertyKey::Static(PropertyName::Number(number)) => {
+                            ObjectProperty::Spread { value, .. } => {
                                 self.compile_expr(context, value)?;
-                                context.code.push(Instruction::SetPropStatic {
-                                    name: format_number_key(*number),
-                                });
+                                context.code.push(Instruction::CopyDataProperties);
                             }
-                            ObjectPropertyKey::Computed(expression) => {
-                                self.compile_expr(context, expression)?;
-                                self.compile_expr(context, value)?;
-                                context.code.push(Instruction::SetPropComputed);
-                            }
-                        },
-                        ObjectProperty::Spread { value, .. } => {
-                            self.compile_expr(context, value)?;
-                            context.code.push(Instruction::CopyDataProperties);
                         }
                     }
-                    context.code.push(Instruction::Pop);
                 }
             }
             Expr::Function(function) => {

@@ -209,6 +209,36 @@ fn object_literals_support_computed_keys_methods_and_spread() {
 }
 
 #[test]
+fn static_object_literals_lower_without_runtime_property_mutation_ops() {
+    let program = compile(
+        r#"
+        ({
+          alpha: 1,
+          beta: 2,
+          gamma: 3,
+        });
+        "#,
+    )
+    .expect("source should compile");
+
+    let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+    let instructions: Vec<_> = bytecode
+        .functions
+        .iter()
+        .flat_map(|function| function.code.iter())
+        .collect();
+
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::MakeObject { keys } if keys.len() == 3
+    )));
+    assert!(!instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::SetPropStatic { .. } | Instruction::SetPropComputed | Instruction::Dup
+    )));
+}
+
+#[test]
 fn nested_closures_keep_shadowed_slots_distinct_while_updating_outer_bindings() {
     let program = compile(
         r#"
