@@ -176,18 +176,18 @@ Target by end of milestone:
 
 Action items:
 
-- [ ] Add a native compiled-program handle so `Mustard` can hold decoded,
+- [x] Add a native compiled-program handle so `Mustard` can hold decoded,
   validated bytecode instead of a serialized buffer.
-- [ ] Make `Runtime` start from shared immutable program state rather than
+- [x] Make `Runtime` start from shared immutable program state rather than
   cloning `BytecodeProgram` per execution.
 - [ ] Introduce a reusable immutable runtime image for builtins, global object
   state, and other stable startup heap data, with copy-on-write or equivalent
   isolation for guest-visible mutation.
 - [ ] Introduce a reusable execution-context handle for stable capabilities and
   limits so repeated runs do not rebuild policy state from scratch.
-- [ ] Remove or drastically reduce duplicated globals bookkeeping between the
+- [x] Remove or drastically reduce duplicated globals bookkeeping between the
   globals env and the global object on hot startup and assignment paths.
-- [ ] Validate bytecode once at compile/load boundaries and skip redundant
+- [x] Validate bytecode once at compile/load boundaries and skip redundant
   validation for trusted in-process compiled handles.
 - [x] Separate "compile + validate", "deserialize + validate", and "execute"
   benchmarks so the win is visible in isolation.
@@ -444,3 +444,4 @@ Action items:
 | 2026-04-13T06:44:27Z | `fac215a` (worktree dirty) | Audited the benchmark/runtime/boundary hot paths, wrote the initial performance roadmap, and folded parallel sub-agent review findings into the milestone structure. | `npm run bench:smoke` currently fails with `compute average 52.76ms exceeded 25ms`; no external blocker identified. |
 | 2026-04-13T07:17:00Z | `125fcb6`, `2b5bf99` | Completed Milestone 0 benchmark stabilization: added explicit dev/release benchmark commands, artifact metadata, release smoke coverage, phase-split addon metrics, a benchmark diff script, a fresh checked-in release baseline, and updated findings/docs. Then started Milestone 1 by switching addon execution to validated native program handles plus shared `Arc<BytecodeProgram>` state so in-process runs stop re-deserializing and re-cloning program bytecode on every start path. | Full verification passed (`npm test`, `cargo test --workspace`, `npm run lint`, smoke/workload benchmark commands). Release workload deltas for the Milestone 1 groundwork were small and mixed (`programmatic_tool_workflow -1.8%`, `host_fanout_100 -1.9%`, `warm_run_small +1.0%` versus the new baseline), so the next concrete path is reusable runtime-image/startup-state work. A temporary `bench:smoke`/`bench:workloads` parallel rerun hit a local `scripts/build-ts-dist.ts` `ENOTEMPTY` race on `dist/`; rerunning sequentially resolved it. |
 | 2026-04-13T07:30:55Z | `a6ec42d` | Added the Rust-core microbenchmark suite under `crates/mustard/benches/runtime_core.rs`, wired `npm run bench:rust`, documented the required workload-plus-Rust perf evidence workflow, and covered compile/lower, deserialize/validate, runtime init variants, start-vs-execute, VM hot paths, structured boundary encode/decode, and snapshot dump/load. | Verification passed (`npm run bench:rust`, `cargo test --workspace`, `npm test`, `npm run lint`). `npm test` initially failed in `tests/package-smoke.test.js` because the packed source tarball omitted `crates/mustard/benches/runtime_core.rs` while `crates/mustard/Cargo.toml` declared the bench; fixed by adding `crates/mustard/benches/**` to `package.json` `files`. |
+| 2026-04-13T07:41:57Z | `49d891f` | Reduced Milestone 1 startup overhead by keeping builtins, capabilities, and inputs on the real global object instead of duplicating globals-env cells, added a regression test for global-object lookup/mutation of inputs and capabilities, and removed the redundant `start(&CompiledProgram, ...)` bytecode revalidation after lowering. Checked-in release artifact `benchmarks/results/2026-04-13T07-40-15-477Z-workloads.json` improved versus `2026-04-13T06-59-51-780Z`: addon `cold_start_small -33.5%`, `warm_run_small -32.6%`, `programmatic_tool_workflow -11.7%`, `host_fanout_100 -20.5%`, `runtime_init_only -24.4%`, and `execution_only_small -23.6%`. | Verification passed (`npm run bench:rust`, `npm run bench:workloads:release`, `cargo test --workspace`, `npm test`, `npm run lint`). No external blocker identified; the next concrete Milestone 1 path is a reusable immutable runtime image plus execution-context caching. |
