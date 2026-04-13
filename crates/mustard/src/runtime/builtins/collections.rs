@@ -4,8 +4,12 @@ use super::*;
 
 impl Runtime {
     pub(crate) fn construct_map(&mut self, args: &[Value]) -> MustardResult<Value> {
-        let map = self.insert_map(Vec::new())?;
         let iterable = args.first().cloned().unwrap_or(Value::Undefined);
+        let length_hint = self.iterable_length_hint(&iterable)?;
+        let map = match length_hint {
+            Some(length) => self.insert_map_slots(vec![None; length])?,
+            None => self.insert_map(Vec::new())?,
+        };
         if matches!(iterable, Value::Null | Value::Undefined) {
             return Ok(Value::Map(map));
         }
@@ -35,13 +39,20 @@ impl Runtime {
             let value = items.get(1).cloned().unwrap_or(Value::Undefined);
             self.map_set(map, key, value)?;
         }
+        if length_hint.is_some() {
+            self.trim_trailing_map_builder_slots(map)?;
+        }
 
         Ok(Value::Map(map))
     }
 
     pub(crate) fn construct_set(&mut self, args: &[Value]) -> MustardResult<Value> {
-        let set = self.insert_set(Vec::new())?;
         let iterable = args.first().cloned().unwrap_or(Value::Undefined);
+        let length_hint = self.iterable_length_hint(&iterable)?;
+        let set = match length_hint {
+            Some(length) => self.insert_set_slots(vec![None; length])?,
+            None => self.insert_set(Vec::new())?,
+        };
         if matches!(iterable, Value::Null | Value::Undefined) {
             return Ok(Value::Set(set));
         }
@@ -53,6 +64,9 @@ impl Runtime {
                 break;
             }
             self.set_add(set, value)?;
+        }
+        if length_hint.is_some() {
+            self.trim_trailing_set_builder_slots(set)?;
         }
 
         Ok(Value::Set(set))
@@ -268,7 +282,23 @@ impl Runtime {
                 let new_bytes = Self::map_slot_bytes(Some(entry));
                 (old_bytes, new_bytes)
             } else {
-                map_ref.entries.push(Some(MapEntry { key, value }));
+                let new_entry = MapEntry { key, value };
+                let (slot, old_slot_bytes) = if map_ref.live_len < map_ref.entries.len()
+                    && map_ref.entries[map_ref.live_len].is_none()
+                {
+                    let slot = map_ref.live_len;
+                    let old_slot_bytes = Self::map_slot_bytes(None);
+                    map_ref.entries[slot] = Some(new_entry);
+                    (slot, old_slot_bytes)
+                } else {
+                    map_ref.entries.push(Some(new_entry));
+                    let slot = map_ref
+                        .entries
+                        .len()
+                        .checked_sub(1)
+                        .ok_or_else(|| MustardError::runtime("map entry missing"))?;
+                    (slot, 0)
+                };
                 map_ref.live_len = map_ref
                     .live_len
                     .checked_add(1)
@@ -277,22 +307,17 @@ impl Runtime {
                 {
                     map_ref.rebuild_lookup();
                 } else if !map_ref.lookup.is_empty() {
-                    let slot = map_ref
-                        .entries
-                        .len()
-                        .checked_sub(1)
-                        .ok_or_else(|| MustardError::runtime("map entry missing"))?;
                     map_ref.lookup.insert(index_key, slot);
                 }
                 let new_lookup_bytes = Self::map_lookup_bytes(map_ref);
                 let entry = map_ref
                     .entries
-                    .last()
+                    .get(slot)
                     .and_then(|entry| entry.as_ref())
                     .ok_or_else(|| MustardError::runtime("map entry missing"))?;
                 let new_bytes = Self::map_slot_bytes(Some(entry))
                     + new_lookup_bytes.saturating_sub(old_lookup_bytes);
-                (0, new_bytes)
+                (old_slot_bytes, new_bytes)
             }
         };
         self.apply_map_component_delta(map, old_bytes, new_bytes)
@@ -371,16 +396,31 @@ impl Runtime {
                 .ok_or_else(|| MustardError::runtime("set missing"))?;
             Self::set_slot_by_value(set_ref, &value)
         };
-        let added_bytes = {
+        let (old_bytes, new_bytes) = {
             let set_ref = self
                 .sets
                 .get_mut(set)
                 .ok_or_else(|| MustardError::runtime("set missing"))?;
             let old_lookup_bytes = Self::set_lookup_bytes(set_ref);
             if existing_slot.is_some() {
-                0
+                (0, 0)
             } else {
-                set_ref.entries.push(Some(value));
+                let (slot, old_slot_bytes) = if set_ref.live_len < set_ref.entries.len()
+                    && set_ref.entries[set_ref.live_len].is_none()
+                {
+                    let slot = set_ref.live_len;
+                    let old_slot_bytes = Self::set_slot_bytes(None);
+                    set_ref.entries[slot] = Some(value);
+                    (slot, old_slot_bytes)
+                } else {
+                    set_ref.entries.push(Some(value));
+                    let slot = set_ref
+                        .entries
+                        .len()
+                        .checked_sub(1)
+                        .ok_or_else(|| MustardError::runtime("set entry missing"))?;
+                    (slot, 0)
+                };
                 set_ref.live_len = set_ref
                     .live_len
                     .checked_add(1)
@@ -389,27 +429,81 @@ impl Runtime {
                 {
                     set_ref.rebuild_lookup();
                 } else if !set_ref.lookup.is_empty() {
-                    let slot = set_ref
-                        .entries
-                        .len()
-                        .checked_sub(1)
-                        .ok_or_else(|| MustardError::runtime("set entry missing"))?;
                     set_ref.lookup.insert(index_key, slot);
                 }
                 let new_lookup_bytes = Self::set_lookup_bytes(set_ref);
                 let value = set_ref
                     .entries
-                    .last()
+                    .get(slot)
                     .and_then(|value| value.as_ref())
                     .ok_or_else(|| MustardError::runtime("set entry missing"))?;
-                Self::set_slot_bytes(Some(value))
-                    + new_lookup_bytes.saturating_sub(old_lookup_bytes)
+                let new_bytes = Self::set_slot_bytes(Some(value))
+                    + new_lookup_bytes.saturating_sub(old_lookup_bytes);
+                (old_slot_bytes, new_bytes)
             }
         };
-        if added_bytes == 0 {
+        if old_bytes == 0 && new_bytes == 0 {
             return Ok(());
         }
-        self.apply_set_component_delta(set, 0, added_bytes)
+        self.apply_set_component_delta(set, old_bytes, new_bytes)
+    }
+
+    fn trim_trailing_map_builder_slots(&mut self, map: MapKey) -> MustardResult<()> {
+        let removed_slots = {
+            let map_ref = self
+                .maps
+                .get_mut(map)
+                .ok_or_else(|| MustardError::runtime("map missing"))?;
+            let removed_slots = map_ref
+                .entries
+                .iter()
+                .rev()
+                .take_while(|entry| entry.is_none())
+                .count();
+            if removed_slots == 0 {
+                return Ok(());
+            }
+            let next_len = map_ref
+                .entries
+                .len()
+                .checked_sub(removed_slots)
+                .ok_or_else(|| MustardError::runtime("map entry underflow"))?;
+            map_ref.entries.truncate(next_len);
+            removed_slots
+        };
+        let removed_bytes = removed_slots
+            .checked_mul(Self::map_slot_bytes(None))
+            .ok_or_else(|| MustardError::runtime("map accounting overflow"))?;
+        self.apply_map_component_delta(map, removed_bytes, 0)
+    }
+
+    fn trim_trailing_set_builder_slots(&mut self, set: SetKey) -> MustardResult<()> {
+        let removed_slots = {
+            let set_ref = self
+                .sets
+                .get_mut(set)
+                .ok_or_else(|| MustardError::runtime("set missing"))?;
+            let removed_slots = set_ref
+                .entries
+                .iter()
+                .rev()
+                .take_while(|entry| entry.is_none())
+                .count();
+            if removed_slots == 0 {
+                return Ok(());
+            }
+            let next_len = set_ref
+                .entries
+                .len()
+                .checked_sub(removed_slots)
+                .ok_or_else(|| MustardError::runtime("set entry underflow"))?;
+            set_ref.entries.truncate(next_len);
+            removed_slots
+        };
+        let removed_bytes = removed_slots
+            .checked_mul(Self::set_slot_bytes(None))
+            .ok_or_else(|| MustardError::runtime("set accounting overflow"))?;
+        self.apply_set_component_delta(set, removed_bytes, 0)
     }
 
     fn set_contains(&self, set: SetKey, value: &Value) -> MustardResult<bool> {

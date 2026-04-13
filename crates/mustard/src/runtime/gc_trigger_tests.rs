@@ -273,6 +273,86 @@ fn array_length_and_object_from_entries_deltas_preserve_cached_totals() {
 }
 
 #[test]
+fn keyed_collection_constructors_trim_unused_builder_slots_after_duplicates() {
+    let mut runtime = test_runtime();
+
+    let pair_alpha = runtime
+        .insert_array(
+            vec![Value::String("alpha".to_string()), Value::Number(1.0)],
+            IndexMap::new(),
+        )
+        .expect("pair should allocate");
+    let pair_beta = runtime
+        .insert_array(
+            vec![Value::String("beta".to_string()), Value::Number(2.0)],
+            IndexMap::new(),
+        )
+        .expect("pair should allocate");
+    let pair_alpha_update = runtime
+        .insert_array(
+            vec![Value::String("alpha".to_string()), Value::Number(3.0)],
+            IndexMap::new(),
+        )
+        .expect("pair should allocate");
+    let map_entries = runtime
+        .insert_array(
+            vec![
+                Value::Array(pair_alpha),
+                Value::Array(pair_beta),
+                Value::Array(pair_alpha_update),
+            ],
+            IndexMap::new(),
+        )
+        .expect("outer entries should allocate");
+
+    let Value::Map(map) = runtime
+        .construct_map(&[Value::Array(map_entries)])
+        .expect("Map constructor should succeed")
+    else {
+        panic!("Map constructor should produce a map");
+    };
+    let map_ref = runtime.maps.get(map).expect("map should exist");
+    assert_eq!(map_ref.live_len, 2);
+    assert_eq!(
+        map_ref.entries.len(),
+        2,
+        "duplicate-heavy constructors should trim unused builder slots"
+    );
+    let entries: Vec<_> = map_ref.entries.iter().flatten().collect();
+    assert!(matches!(entries[0].key, Value::String(ref value) if value == "alpha"));
+    assert!(matches!(entries[0].value, Value::Number(value) if value == 3.0));
+    assert!(matches!(entries[1].key, Value::String(ref value) if value == "beta"));
+
+    let set_values = runtime
+        .insert_array(
+            vec![
+                Value::String("alpha".to_string()),
+                Value::String("beta".to_string()),
+                Value::String("alpha".to_string()),
+            ],
+            IndexMap::new(),
+        )
+        .expect("set values should allocate");
+    let Value::Set(set) = runtime
+        .construct_set(&[Value::Array(set_values)])
+        .expect("Set constructor should succeed")
+    else {
+        panic!("Set constructor should produce a set");
+    };
+    let set_ref = runtime.sets.get(set).expect("set should exist");
+    assert_eq!(set_ref.live_len, 2);
+    assert_eq!(
+        set_ref.entries.len(),
+        2,
+        "duplicate-heavy constructors should trim unused builder slots"
+    );
+    let values: Vec<_> = set_ref.entries.iter().flatten().collect();
+    assert!(matches!(values[0], Value::String(value) if value == "alpha"));
+    assert!(matches!(values[1], Value::String(value) if value == "beta"));
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}
+
+#[test]
 fn map_and_set_deltas_preserve_cached_totals_without_full_refreshes() {
     let mut runtime = test_runtime();
     let map = runtime.insert_map(Vec::new()).expect("map should allocate");

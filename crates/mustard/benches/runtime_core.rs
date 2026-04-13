@@ -29,6 +29,8 @@ struct BenchFixtures {
     array_callback_shared: Arc<BytecodeProgram>,
     collection_callback_shared: Arc<BytecodeProgram>,
     map_set_shared: Arc<BytecodeProgram>,
+    map_ctor_large_shared: Arc<BytecodeProgram>,
+    set_ctor_large_shared: Arc<BytecodeProgram>,
     map_get_large_shared: Arc<BytecodeProgram>,
     map_set_large_shared: Arc<BytecodeProgram>,
     map_has_large_shared: Arc<BytecodeProgram>,
@@ -65,6 +67,8 @@ impl BenchFixtures {
         let collection_callback_shared =
             Arc::new(compile_to_bytecode(collection_callback_source()));
         let map_set_shared = Arc::new(compile_to_bytecode(map_set_source()));
+        let map_ctor_large_shared = Arc::new(compile_to_bytecode(map_ctor_large_source()));
+        let set_ctor_large_shared = Arc::new(compile_to_bytecode(set_ctor_large_source()));
         let map_get_large_shared = Arc::new(compile_to_bytecode(map_get_large_source()));
         let map_set_large_shared = Arc::new(compile_to_bytecode(map_set_large_source()));
         let map_has_large_shared = Arc::new(compile_to_bytecode(map_has_large_source()));
@@ -104,6 +108,8 @@ impl BenchFixtures {
             array_callback_shared,
             collection_callback_shared,
             map_set_shared,
+            map_ctor_large_shared,
+            set_ctor_large_shared,
             map_get_large_shared,
             map_set_large_shared,
             map_has_large_shared,
@@ -486,6 +492,30 @@ fn keyed_collection_large_benches(c: &mut Criterion) {
                 let step =
                     start_shared_bytecode(Arc::clone(&fixtures.map_get_large_shared), options)
                         .expect("large Map.get bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("map_ctor_large", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.map_ctor_large_shared), options)
+                        .expect("large Map constructor bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("set_ctor_large", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.set_ctor_large_shared), options)
+                        .expect("large Set constructor bench should execute");
                 consume_completed(step);
             },
             BatchSize::SmallInput,
@@ -879,6 +909,40 @@ fn map_get_large_source() -> &'static str {
     let total = 0;
     for (let round = 0; round < 8192; round += 1) {
       total += map.get(keys[round % size]);
+    }
+    total;
+    "#
+}
+
+fn map_ctor_large_source() -> &'static str {
+    r#"
+    const size = 1024;
+    const entries = [];
+    for (let i = 0; i < size; i += 1) {
+      entries.push(["k" + i, i]);
+    }
+    let total = 0;
+    for (let round = 0; round < 256; round += 1) {
+      const map = new Map(entries);
+      total += map.get("k" + (round % size));
+    }
+    total;
+    "#
+}
+
+fn set_ctor_large_source() -> &'static str {
+    r#"
+    const size = 1024;
+    const values = [];
+    for (let i = 0; i < size; i += 1) {
+      values.push("k" + i);
+    }
+    let total = 0;
+    for (let round = 0; round < 256; round += 1) {
+      const set = new Set(values);
+      if (set.has("k" + (round % size))) {
+        total += 1;
+      }
     }
     total;
     "#

@@ -539,8 +539,42 @@ impl Runtime {
         Ok(self.maps.insert(map))
     }
 
+    pub(super) fn insert_map_slots(
+        &mut self,
+        entries: Vec<Option<MapEntry>>,
+    ) -> MustardResult<MapKey> {
+        let mut map = MapObject {
+            entries,
+            live_len: 0,
+            clear_epoch: 0,
+            lookup: IndexMap::new(),
+            accounted_bytes: 0,
+        };
+        map.rebuild_lookup();
+        map.accounted_bytes = measure_map_bytes(&map);
+        self.account_new_allocation(map.accounted_bytes)?;
+        Ok(self.maps.insert(map))
+    }
+
     pub(super) fn insert_set(&mut self, entries: Vec<Value>) -> MustardResult<SetKey> {
         let mut set = SetObject::from_entries(entries);
+        set.accounted_bytes = measure_set_bytes(&set);
+        self.account_new_allocation(set.accounted_bytes)?;
+        Ok(self.sets.insert(set))
+    }
+
+    pub(super) fn insert_set_slots(
+        &mut self,
+        entries: Vec<Option<Value>>,
+    ) -> MustardResult<SetKey> {
+        let mut set = SetObject {
+            entries,
+            live_len: 0,
+            clear_epoch: 0,
+            lookup: IndexMap::new(),
+            accounted_bytes: 0,
+        };
+        set.rebuild_lookup();
         set.accounted_bytes = measure_set_bytes(&set);
         self.account_new_allocation(set.accounted_bytes)?;
         Ok(self.sets.insert(set))
