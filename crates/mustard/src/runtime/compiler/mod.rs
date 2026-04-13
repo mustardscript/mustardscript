@@ -244,6 +244,19 @@ impl Compiler {
         }
     }
 
+    fn emit_store_name_discard(&self, context: &mut CompileContext, name: &str) {
+        if let Some(binding) = context.resolve_binding(name) {
+            context.code.push(Instruction::StoreSlotDiscard {
+                depth: binding.depth,
+                slot: binding.slot,
+            });
+        } else {
+            context
+                .code
+                .push(Instruction::StoreGlobalDiscard(name.to_string()));
+        }
+    }
+
     fn optimize_code(code: Vec<Instruction>) -> Vec<Instruction> {
         if !code.windows(2).any(|window| {
             matches!(window[1], Instruction::Pop) && Self::supports_discard_peephole(&window[0])

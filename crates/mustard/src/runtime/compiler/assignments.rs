@@ -130,13 +130,16 @@ impl Compiler {
         Ok(())
     }
 
-    fn compile_assign_target_pattern(
+    pub(super) fn compile_assign_target_pattern(
         &mut self,
         context: &mut CompileContext,
         target: &AssignTarget,
     ) -> MustardResult<()> {
         match target {
-            AssignTarget::Identifier { .. } | AssignTarget::Member { .. } => {
+            AssignTarget::Identifier { name, .. } => {
+                self.emit_store_name_discard(context, name);
+            }
+            AssignTarget::Member { .. } => {
                 let source = self.declare_internal_binding(context, "assign_value");
                 self.store_internal_binding(context, &source, SourceSpan::new(0, 0));
                 self.compile_assignment(

@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     diagnostic::{MustardError, MustardResult},
-    ir::{AssignOp, BinaryOp, BindingKind, Expr, ForInit, ForOfHead, Pattern, Stmt},
+    ir::{BinaryOp, BindingKind, Expr, ForInit, ForOfHead, Pattern, Stmt},
 };
 
 impl Compiler {
@@ -195,23 +195,7 @@ impl Compiler {
                 self.enter_env_scope(context);
                 let loop_scope_depth = context.scope_depth;
                 let iterator_binding = self.fresh_internal_name(context, "iter");
-                let assignment_value_binding = match head {
-                    ForOfHead::Binding { .. } => None,
-                    ForOfHead::Assignment { .. } => {
-                        Some(self.fresh_internal_name(context, "for_of_value"))
-                    }
-                };
                 self.emit_declare_name(context, iterator_binding.clone(), false);
-                if let Some(binding) = &assignment_value_binding {
-                    self.emit_declare_name(context, binding.clone(), true);
-                    context.code.push(Instruction::PushUndefined);
-                    context
-                        .code
-                        .push(Instruction::InitializePattern(Pattern::Identifier {
-                            span: *span,
-                            name: binding.clone(),
-                        }));
-                }
                 self.compile_expr(context, iterable)?;
                 context.code.push(Instruction::CreateIterator);
                 context
@@ -239,25 +223,7 @@ impl Compiler {
                         self.compile_pattern_binding(context, pattern)?;
                     }
                     ForOfHead::Assignment { target } => {
-                        let binding = assignment_value_binding
-                            .as_ref()
-                            .expect("assignment-target for...of should have a temp binding");
-                        context
-                            .code
-                            .push(Instruction::InitializePattern(Pattern::Identifier {
-                                span: *span,
-                                name: binding.clone(),
-                            }));
-                        self.compile_assignment(
-                            context,
-                            target,
-                            AssignOp::Assign,
-                            &Expr::Identifier {
-                                span: *span,
-                                name: binding.clone(),
-                            },
-                        )?;
-                        context.code.push(Instruction::Pop);
+                        self.compile_assign_target_pattern(context, target)?;
                     }
                 }
                 context.loop_stack.push(LoopContext {

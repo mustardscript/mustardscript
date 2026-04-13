@@ -284,6 +284,50 @@ fn assignment_statements_lower_to_discard_store_and_set_opcodes() {
 }
 
 #[test]
+fn for_of_assignment_headers_lower_without_synthetic_value_temporaries() {
+    let program = compile(
+        r#"
+        let left = 0;
+        let right = 0;
+        for ([left, right] of [[1, 2]]) {
+          break;
+        }
+        [left, right];
+        "#,
+    )
+    .expect("source should compile");
+
+    let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+    let instructions: Vec<_> = bytecode
+        .functions
+        .iter()
+        .flat_map(|function| function.code.iter())
+        .collect();
+
+    assert_eq!(
+        execute(&program, ExecutionOptions::default()).expect("program should run"),
+        StructuredValue::Array(vec![number(1.0), number(2.0)])
+    );
+    assert!(
+        instructions
+            .iter()
+            .filter(|instruction| matches!(instruction, Instruction::StoreSlotDiscard { .. }))
+            .count()
+            >= 2
+    );
+    assert!(!instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::DeclareName { name, .. } | Instruction::LoadGlobal(name)
+            if name.contains("mustard_for_of_value_") || name.contains("mustard_assign_value_")
+    )));
+    assert!(!instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::InitializePattern(mustard::ir::Pattern::Identifier { name, .. })
+            if name.contains("mustard_for_of_value_") || name.contains("mustard_assign_value_")
+    )));
+}
+
+#[test]
 fn nested_closures_keep_shadowed_slots_distinct_while_updating_outer_bindings() {
     let program = compile(
         r#"
