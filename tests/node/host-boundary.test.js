@@ -35,6 +35,34 @@ test('run drives host capabilities', async () => {
   assert.equal(result, 10);
 });
 
+test('run resolves inputs and capabilities through the real global object', async () => {
+  const result = await runtime(`
+    value += 2;
+    ({
+      inputLookup: value,
+      inputOnGlobal: globalThis.value,
+      capabilityIdentity: globalThis.fetch_data === fetch_data,
+      capabilityResult: globalThis.fetch_data(5),
+    });
+  `).run({
+    inputs: {
+      value: 5,
+    },
+    capabilities: {
+      fetch_data(value) {
+        return value + 1;
+      },
+    },
+  });
+
+  assert.deepEqual(result, {
+    inputLookup: 7,
+    inputOnGlobal: 7,
+    capabilityIdentity: true,
+    capabilityResult: 6,
+  });
+});
+
 test('run awaits async host capabilities', async () => {
   const result = await runtime(`
     const response = fetch_data(5);

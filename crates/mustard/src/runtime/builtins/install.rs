@@ -252,7 +252,7 @@ impl Runtime {
         ] {
             self.register_builtin_prototype(function)?;
         }
-        self.define_global(
+        self.define_global_binding(
             "globalThis".to_string(),
             Value::Object(global_object),
             false,

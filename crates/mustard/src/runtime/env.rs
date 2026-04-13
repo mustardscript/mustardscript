@@ -65,6 +65,16 @@ impl Runtime {
         &mut self,
         name: String,
         value: Value,
+        _mutable: bool,
+    ) -> MustardResult<()> {
+        self.infer_closure_name(&value, &name)?;
+        self.set_global_property_value(name, value)
+    }
+
+    pub(super) fn define_global_binding(
+        &mut self,
+        name: String,
+        value: Value,
         mutable: bool,
     ) -> MustardResult<()> {
         let binding_name = name.clone();
@@ -342,13 +352,8 @@ impl Runtime {
     }
 
     pub(super) fn capability_value(&self, name: &str) -> Option<Value> {
-        let cell = self.find_cell(self.globals, name)?;
-        let cell = self.cells.get(cell)?;
-        if !cell.initialized {
-            return None;
-        }
-        match &cell.value {
-            Value::HostFunction(_) => Some(cell.value.clone()),
+        match self.global_property_value(name)? {
+            Value::HostFunction(capability) => Some(Value::HostFunction(capability)),
             _ => None,
         }
     }

@@ -145,7 +145,7 @@ pub fn execute(
 
 pub fn start(program: &CompiledProgram, options: ExecutionOptions) -> MustardResult<ExecutionStep> {
     let bytecode = lower_to_bytecode(program)?;
-    start_bytecode(&bytecode, options)
+    start_validated_bytecode(&bytecode, options)
 }
 
 pub fn start_bytecode(
