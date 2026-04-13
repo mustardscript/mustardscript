@@ -129,13 +129,7 @@ impl Runtime {
                 } else {
                     value
                 };
-                runtime
-                    .arrays
-                    .get_mut(result)
-                    .ok_or_else(|| MustardError::runtime("array missing"))?
-                    .elements
-                    .push(Some(mapped));
-                runtime.refresh_array_accounting(result)?;
+                runtime.push_array_element(result, Some(mapped))?;
                 index += 1;
             }
             Ok(Value::Array(result))
@@ -148,15 +142,7 @@ impl Runtime {
         args: &[Value],
     ) -> MustardResult<Value> {
         let array = self.array_receiver(this_value, "push")?;
-        {
-            let elements = &mut self
-                .arrays
-                .get_mut(array)
-                .ok_or_else(|| MustardError::runtime("array missing"))?
-                .elements;
-            elements.extend(args.iter().cloned().map(Some));
-        }
-        self.refresh_array_accounting(array)?;
+        self.extend_array_elements(array, args.iter().cloned().map(Some))?;
         let length = self
             .arrays
             .get(array)
@@ -168,15 +154,7 @@ impl Runtime {
 
     pub(crate) fn call_array_pop(&mut self, this_value: Value) -> MustardResult<Value> {
         let array = self.array_receiver(this_value, "pop")?;
-        let value = self
-            .arrays
-            .get_mut(array)
-            .ok_or_else(|| MustardError::runtime("array missing"))?
-            .elements
-            .pop()
-            .flatten()
-            .unwrap_or(Value::Undefined);
-        self.refresh_array_accounting(array)?;
+        let value = self.pop_array_element(array)?.unwrap_or(Value::Undefined);
         Ok(value)
     }
 
@@ -466,7 +444,6 @@ impl Runtime {
             .ok_or_else(|| MustardError::runtime("array missing"))?
             .elements
             .reverse();
-        self.refresh_array_accounting(array)?;
         Ok(Value::Array(array))
     }
 
@@ -673,21 +650,12 @@ impl Runtime {
         match value {
             Value::Array(array) => {
                 let elements = self.array_slots(array)?;
-                self.arrays
-                    .get_mut(result)
-                    .ok_or_else(|| MustardError::runtime("array missing"))?
-                    .elements
-                    .extend(elements.into_iter().flatten().map(Some));
+                self.extend_array_elements(result, elements.into_iter().flatten().map(Some))?;
             }
             other => {
-                self.arrays
-                    .get_mut(result)
-                    .ok_or_else(|| MustardError::runtime("array missing"))?
-                    .elements
-                    .push(Some(other));
+                self.push_array_element(result, Some(other))?;
             }
         }
-        self.refresh_array_accounting(result)?;
         Ok(())
     }
 
@@ -758,12 +726,7 @@ impl Runtime {
                         this_arg.clone(),
                         &[value, Value::Number(index as f64), Value::Array(array)],
                     )?;
-                    runtime
-                        .arrays
-                        .get_mut(result)
-                        .ok_or_else(|| MustardError::runtime("array missing"))?
-                        .elements[index] = Some(mapped);
-                    runtime.refresh_array_accounting(result)?;
+                    runtime.set_array_element_at(result, index, mapped)?;
                 }
                 Ok(Value::Array(result))
             },
@@ -808,13 +771,7 @@ impl Runtime {
                         ],
                     )?;
                     if is_truthy(&keep) {
-                        runtime
-                            .arrays
-                            .get_mut(result)
-                            .ok_or_else(|| MustardError::runtime("array missing"))?
-                            .elements
-                            .push(Some(value));
-                        runtime.refresh_array_accounting(result)?;
+                        runtime.push_array_element(result, Some(value))?;
                     }
                 }
                 Ok(Value::Array(result))

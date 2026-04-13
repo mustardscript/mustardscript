@@ -1046,10 +1046,28 @@ impl Runtime {
         property: Value,
         optional: bool,
     ) -> MustardResult<Value> {
+        let key = self.to_property_key(property)?;
+        self.get_property_by_key(object, &key, optional)
+    }
+
+    pub(super) fn get_property_static(
+        &self,
+        object: Value,
+        key: &str,
+        optional: bool,
+    ) -> MustardResult<Value> {
+        self.get_property_by_key(object, key, optional)
+    }
+
+    fn get_property_by_key(
+        &self,
+        object: Value,
+        key: &str,
+        optional: bool,
+    ) -> MustardResult<Value> {
         if optional && matches!(object, Value::Null | Value::Undefined) {
             return Ok(Value::Undefined);
         }
-        let key = self.to_property_key(property)?;
         match object {
             Value::Object(object) => {
                 let object = self
@@ -1057,7 +1075,7 @@ impl Runtime {
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
                 if let ObjectKind::Date(_) = &object.kind {
-                    let built_in = match key.as_str() {
+                    let built_in = match key {
                         "getTime" => Some(Value::BuiltinFunction(BuiltinFunction::DateGetTime)),
                         "valueOf" => Some(Value::BuiltinFunction(BuiltinFunction::DateValueOf)),
                         "toISOString" => {
@@ -1090,7 +1108,7 @@ impl Runtime {
                     }
                 }
                 if let ObjectKind::RegExp(regex) = &object.kind {
-                    let built_in = match key.as_str() {
+                    let built_in = match key {
                         "source" => Some(Value::String(regex.pattern.clone())),
                         "flags" => Some(Value::String(regex.flags.clone())),
                         "global" => Some(Value::Bool(regex.flags.contains('g'))),
@@ -1113,12 +1131,12 @@ impl Runtime {
                     if key == "length" {
                         return Ok(Value::Number(value.chars().count() as f64));
                     }
-                    if let Some(index) = array_index_from_property_key(&key)
+                    if let Some(index) = array_index_from_property_key(key)
                         && let Some(ch) = value.chars().nth(index)
                     {
                         return Ok(Value::String(ch.to_string()));
                     }
-                    if let Some(method) = match key.as_str() {
+                    if let Some(method) = match key {
                         "trim" => Some(Value::BuiltinFunction(BuiltinFunction::StringTrim)),
                         "trimStart" => {
                             Some(Value::BuiltinFunction(BuiltinFunction::StringTrimStart))
@@ -1165,7 +1183,7 @@ impl Runtime {
                     }
                 }
                 if let ObjectKind::NumberObject(_) = &object.kind {
-                    match key.as_str() {
+                    match key {
                         "toString" => {
                             return Ok(Value::BuiltinFunction(BuiltinFunction::NumberToString));
                         }
@@ -1176,7 +1194,7 @@ impl Runtime {
                     }
                 }
                 if let ObjectKind::BooleanObject(_) = &object.kind {
-                    match key.as_str() {
+                    match key {
                         "toString" => {
                             return Ok(Value::BuiltinFunction(BuiltinFunction::BooleanToString));
                         }
@@ -1187,7 +1205,7 @@ impl Runtime {
                     }
                 }
                 if matches!(object.kind, ObjectKind::Intl) {
-                    let built_in = match key.as_str() {
+                    let built_in = match key {
                         "DateTimeFormat" => Some(Value::BuiltinFunction(
                             BuiltinFunction::IntlDateTimeFormatCtor,
                         )),
@@ -1202,7 +1220,7 @@ impl Runtime {
                     }
                 }
                 if matches!(object.kind, ObjectKind::IntlDateTimeFormat(_)) {
-                    let built_in = match key.as_str() {
+                    let built_in = match key {
                         "constructor" => Some(Value::BuiltinFunction(
                             BuiltinFunction::IntlDateTimeFormatCtor,
                         )),
@@ -1219,7 +1237,7 @@ impl Runtime {
                     }
                 }
                 if matches!(object.kind, ObjectKind::IntlNumberFormat(_)) {
-                    let built_in = match key.as_str() {
+                    let built_in = match key {
                         "constructor" => Some(Value::BuiltinFunction(
                             BuiltinFunction::IntlNumberFormatCtor,
                         )),
@@ -1235,7 +1253,7 @@ impl Runtime {
                         return Ok(value);
                     }
                 }
-                if let Some(value) = object.properties.get(&key) {
+                if let Some(value) = object.properties.get(key) {
                     return Ok(value.clone());
                 }
                 if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
@@ -1246,7 +1264,7 @@ impl Runtime {
                         constructor,
                         Value::BuiltinFunction(BuiltinFunction::DateCtor)
                     ) {
-                        match key.as_str() {
+                        match key {
                             "getTime" => {
                                 return Ok(Value::BuiltinFunction(BuiltinFunction::DateGetTime));
                             }
@@ -1294,7 +1312,7 @@ impl Runtime {
                     }
                 }
                 if let ObjectKind::BoundFunction(bound) = &object.kind {
-                    match key.as_str() {
+                    match key {
                         "name" => {
                             return Ok(Value::String(format!(
                                 "bound {}",
@@ -1309,7 +1327,7 @@ impl Runtime {
                         }
                         "constructor" => return Ok(Self::callable_constructor()),
                         _ => {
-                            if let Some(method) = Self::function_helper_method(&key) {
+                            if let Some(method) = Self::function_helper_method(key) {
                                 return Ok(method);
                             }
                         }
@@ -1331,7 +1349,7 @@ impl Runtime {
                     return Ok(Value::BuiltinFunction(BuiltinFunction::BooleanCtor));
                 }
                 if matches!(object.kind, ObjectKind::Console)
-                    && let Some(value) = self.console_method(&key)
+                    && let Some(value) = self.console_method(key)
                 {
                     return Ok(value);
                 }
@@ -1369,17 +1387,17 @@ impl Runtime {
                     Ok(Value::Number(array.elements.len() as f64))
                 } else if key == "constructor" {
                     Ok(Value::BuiltinFunction(BuiltinFunction::ArrayCtor))
-                } else if let Some(index) = array_index_from_property_key(&key) {
+                } else if let Some(index) = array_index_from_property_key(key) {
                     Ok(array
                         .elements
                         .get(index)
                         .cloned()
                         .flatten()
                         .unwrap_or(Value::Undefined))
-                } else if let Some(value) = array.properties.get(&key) {
+                } else if let Some(value) = array.properties.get(key) {
                     Ok(value.clone())
                 } else {
-                    match key.as_str() {
+                    match key {
                         "sort" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySort)),
                         "push" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPush)),
                         "pop" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPop)),
@@ -1424,7 +1442,7 @@ impl Runtime {
                     .maps
                     .get(map)
                     .ok_or_else(|| MustardError::runtime("map missing"))?;
-                match key.as_str() {
+                match key {
                     "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::MapCtor)),
                     "size" => Ok(Value::Number(map.entries.len() as f64)),
                     "get" => Ok(Value::BuiltinFunction(BuiltinFunction::MapGet)),
@@ -1444,7 +1462,7 @@ impl Runtime {
                     .sets
                     .get(set)
                     .ok_or_else(|| MustardError::runtime("set missing"))?;
-                match key.as_str() {
+                match key {
                     "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::SetCtor)),
                     "size" => Ok(Value::Number(set.entries.len() as f64)),
                     "add" => Ok(Value::BuiltinFunction(BuiltinFunction::SetAdd)),
@@ -1465,7 +1483,7 @@ impl Runtime {
                 Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCtor))
             }
             Value::Iterator(_) => Ok(Value::Undefined),
-            Value::Promise(_) => match key.as_str() {
+            Value::Promise(_) => match key {
                 "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::PromiseCtor)),
                 "then" => Ok(Value::BuiltinFunction(BuiltinFunction::PromiseThen)),
                 "catch" => Ok(Value::BuiltinFunction(BuiltinFunction::PromiseCatch)),
@@ -1473,38 +1491,38 @@ impl Runtime {
                 _ => Ok(Value::Undefined),
             },
             Value::BuiltinFunction(function) => {
-                if let Some(value) = self.builtin_function_custom_property(function, &key)? {
+                if let Some(value) = self.builtin_function_custom_property(function, key)? {
                     return Ok(value);
                 }
-                if let Some(value) = self.builtin_function_own_property(function, &key) {
+                if let Some(value) = self.builtin_function_own_property(function, key) {
                     return Ok(value);
                 }
                 if key == "constructor" {
                     return Ok(Self::callable_constructor());
                 }
-                Ok(Self::function_helper_method(&key).unwrap_or(Value::Undefined))
+                Ok(Self::function_helper_method(key).unwrap_or(Value::Undefined))
             }
             Value::Closure(closure) => {
-                if let Some(value) = self.closure_own_property(closure, &key)? {
+                if let Some(value) = self.closure_own_property(closure, key)? {
                     return Ok(value);
                 }
                 if key == "constructor" {
                     return Ok(Self::callable_constructor());
                 }
-                Ok(Self::function_helper_method(&key).unwrap_or(Value::Undefined))
+                Ok(Self::function_helper_method(key).unwrap_or(Value::Undefined))
             }
             Value::HostFunction(capability) => {
-                if let Some(value) = self.host_function_custom_property(&capability, &key)? {
+                if let Some(value) = self.host_function_custom_property(&capability, key)? {
                     return Ok(value);
                 }
-                match key.as_str() {
+                match key {
                     "name" => Ok(Value::String(capability)),
                     "length" => Ok(Value::Number(0.0)),
                     "constructor" => Ok(Self::callable_constructor()),
-                    _ => Ok(Self::function_helper_method(&key).unwrap_or(Value::Undefined)),
+                    _ => Ok(Self::function_helper_method(key).unwrap_or(Value::Undefined)),
                 }
             }
-            Value::String(value) => match key.as_str() {
+            Value::String(value) => match key {
                 "length" => Ok(Value::Number(value.chars().count() as f64)),
                 "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::StringCtor)),
                 "trim" => Ok(Value::BuiltinFunction(BuiltinFunction::StringTrim)),
@@ -1533,10 +1551,10 @@ impl Runtime {
                 "matchAll" => Ok(Value::BuiltinFunction(BuiltinFunction::StringMatchAll)),
                 "toString" => Ok(Value::BuiltinFunction(BuiltinFunction::StringToString)),
                 "valueOf" => Ok(Value::BuiltinFunction(BuiltinFunction::StringValueOf)),
-                _ if array_index_from_property_key(&key)
+                _ if array_index_from_property_key(key)
                     .is_some_and(|index| value.chars().nth(index).is_some()) =>
                 {
-                    let index = array_index_from_property_key(&key).expect("index already checked");
+                    let index = array_index_from_property_key(key).expect("index already checked");
                     Ok(Value::String(
                         value
                             .chars()
@@ -1547,13 +1565,13 @@ impl Runtime {
                 }
                 _ => Ok(Value::Undefined),
             },
-            Value::Number(_) => match key.as_str() {
+            Value::Number(_) => match key {
                 "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberCtor)),
                 "toString" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToString)),
                 "valueOf" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberValueOf)),
                 _ => Ok(Value::Undefined),
             },
-            Value::Bool(_) => match key.as_str() {
+            Value::Bool(_) => match key {
                 "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::BooleanCtor)),
                 "toString" => Ok(Value::BuiltinFunction(BuiltinFunction::BooleanToString)),
                 "valueOf" => Ok(Value::BuiltinFunction(BuiltinFunction::BooleanValueOf)),
@@ -1619,21 +1637,42 @@ impl Runtime {
         value: Value,
     ) -> MustardResult<()> {
         let key = self.to_property_key(property)?;
-        self.infer_closure_name(&value, &key)?;
+        self.set_property_by_key(object, &key, value)
+    }
+
+    pub(super) fn set_property_static(
+        &mut self,
+        object: Value,
+        key: &str,
+        value: Value,
+    ) -> MustardResult<()> {
+        self.set_property_by_key(object, key, value)
+    }
+
+    fn set_property_by_key(&mut self, object: Value, key: &str, value: Value) -> MustardResult<()> {
+        self.infer_closure_name(&value, key)?;
         match object {
             Value::Object(object) => {
                 if self.is_regexp_object(object) && key == "lastIndex" {
                     let index = self.to_integer(value.clone())?.max(0) as usize;
                     self.regexp_object_mut(object)?.last_index = index;
-                    self.refresh_object_accounting(object)?;
                     return Ok(());
                 }
-                self.objects
-                    .get_mut(object)
-                    .ok_or_else(|| MustardError::runtime("object missing"))?
-                    .properties
-                    .insert(key, value);
-                self.refresh_object_accounting(object)?;
+                let new_entry_bytes = Self::property_entry_bytes(key, &value);
+                let old_entry_bytes = {
+                    let object_ref = self
+                        .objects
+                        .get_mut(object)
+                        .ok_or_else(|| MustardError::runtime("object missing"))?;
+                    let old_entry_bytes = object_ref
+                        .properties
+                        .get(key)
+                        .map(|existing| Self::property_entry_bytes(key, existing))
+                        .unwrap_or(0);
+                    object_ref.properties.insert(key.to_string(), value);
+                    old_entry_bytes
+                };
+                self.apply_object_component_delta(object, old_entry_bytes, new_entry_bytes)?;
                 Ok(())
             }
             Value::Array(array) => {
@@ -1641,21 +1680,25 @@ impl Runtime {
                     self.set_array_length(array, value)?;
                     return Ok(());
                 }
-                {
-                    let array_ref = self
-                        .arrays
-                        .get_mut(array)
-                        .ok_or_else(|| MustardError::runtime("array missing"))?;
-                    if let Some(index) = array_index_from_property_key(&key) {
-                        if index >= array_ref.elements.len() {
-                            array_ref.elements.resize(index + 1, None);
-                        }
-                        array_ref.elements[index] = Some(value);
-                    } else {
-                        array_ref.properties.insert(key, value);
-                    }
+                if let Some(index) = array_index_from_property_key(key) {
+                    self.set_array_element_at(array, index, value)?;
+                } else {
+                    let new_entry_bytes = Self::property_entry_bytes(key, &value);
+                    let old_entry_bytes = {
+                        let array_ref = self
+                            .arrays
+                            .get_mut(array)
+                            .ok_or_else(|| MustardError::runtime("array missing"))?;
+                        let old_entry_bytes = array_ref
+                            .properties
+                            .get(key)
+                            .map(|existing| Self::property_entry_bytes(key, existing))
+                            .unwrap_or(0);
+                        array_ref.properties.insert(key.to_string(), value);
+                        old_entry_bytes
+                    };
+                    self.apply_array_component_delta(array, old_entry_bytes, new_entry_bytes)?;
                 }
-                self.refresh_array_accounting(array)?;
                 Ok(())
             }
             Value::Map(_) => Err(MustardError::runtime(
@@ -1664,12 +1707,12 @@ impl Runtime {
             Value::Set(_) => Err(MustardError::runtime(
                 "TypeError: custom properties on Set values are not supported",
             )),
-            Value::Closure(closure) => self.set_closure_property(closure, key, value),
+            Value::Closure(closure) => self.set_closure_property(closure, key.to_string(), value),
             Value::BuiltinFunction(function) => {
-                self.set_builtin_function_property(function, key, value)
+                self.set_builtin_function_property(function, key.to_string(), value)
             }
             Value::HostFunction(capability) => {
-                self.set_host_function_property(capability, key, value)
+                self.set_host_function_property(capability, key.to_string(), value)
             }
             _ => Err(MustardError::runtime("TypeError: value is not an object")),
         }

@@ -232,13 +232,14 @@ fn apply_validation_effect(
         | Instruction::PushRegExp { .. }
         | Instruction::LoadSlot { .. }
         | Instruction::LoadName(_)
+        | Instruction::LoadGlobal(_)
         | Instruction::LoadGlobalObject
         | Instruction::MakeClosure { .. }
         | Instruction::BeginCatch => ValidationState {
             stack_depth: state.stack_depth + 1,
             ..state
         },
-        Instruction::StoreSlot { .. } | Instruction::StoreName(_) => {
+        Instruction::StoreSlot { .. } | Instruction::StoreName(_) | Instruction::StoreGlobal(_) => {
             require_stack(1)?;
             state
         }

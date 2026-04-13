@@ -23,6 +23,10 @@ impl Runtime {
             .cloned()
     }
 
+    fn global_binding_cell(&self, name: &str) -> Option<CellKey> {
+        self.envs.get(self.globals)?.bindings.get(name).copied()
+    }
+
     fn set_global_property_value(&mut self, name: String, value: Value) -> MustardResult<()> {
         let Some(global_object) = self.global_object_key() else {
             return Ok(());
@@ -220,15 +224,7 @@ impl Runtime {
 
     pub(super) fn lookup_name(&self, env: EnvKey, name: &str) -> MustardResult<Value> {
         let Some(cell) = self.find_cell(env, name) else {
-            if let Some(value) = self.global_property_value(name) {
-                return Ok(value);
-            }
-            return Err(MustardError::Message {
-                kind: DiagnosticKind::Runtime,
-                message: format!("ReferenceError: `{name}` is not defined"),
-                span: None,
-                traceback: Vec::new(),
-            });
+            return self.lookup_global_name(name);
         };
         let cell = self
             .cells
@@ -242,21 +238,40 @@ impl Runtime {
         Ok(cell.value.clone())
     }
 
+    pub(super) fn lookup_global_name(&self, name: &str) -> MustardResult<Value> {
+        if let Some(cell) = self.global_binding_cell(name) {
+            let cell = self
+                .cells
+                .get(cell)
+                .ok_or_else(|| MustardError::runtime("binding cell missing"))?;
+            if !cell.initialized {
+                return Err(MustardError::runtime(format!(
+                    "ReferenceError: `{name}` accessed before initialization"
+                )));
+            }
+            return Ok(cell.value.clone());
+        }
+        if let Some(value) = self.global_property_value(name) {
+            return Ok(value);
+        }
+        Err(MustardError::Message {
+            kind: DiagnosticKind::Runtime,
+            message: format!("ReferenceError: `{name}` is not defined"),
+            span: None,
+            traceback: Vec::new(),
+        })
+    }
+
     pub(super) fn assign_name(
         &mut self,
         env: EnvKey,
         name: &str,
         value: Value,
     ) -> MustardResult<()> {
-        self.infer_closure_name(&value, name)?;
         let Some(cell_key) = self.find_cell(env, name) else {
-            if self.global_property_value(name).is_some() {
-                return self.set_global_property_value(name.to_string(), value);
-            }
-            return Err(MustardError::runtime(format!(
-                "ReferenceError: `{name}` is not defined"
-            )));
+            return self.assign_global_name(name, value);
         };
+        self.infer_closure_name(&value, name)?;
         {
             let cell = self
                 .cells
@@ -290,6 +305,44 @@ impl Runtime {
             self.set_global_property_value(name.to_string(), value)?;
         }
         Ok(())
+    }
+
+    pub(super) fn assign_global_name(&mut self, name: &str, value: Value) -> MustardResult<()> {
+        if let Some(cell_key) = self.global_binding_cell(name) {
+            self.infer_closure_name(&value, name)?;
+            {
+                let cell = self
+                    .cells
+                    .get_mut(cell_key)
+                    .ok_or_else(|| MustardError::runtime("binding cell missing"))?;
+                if !cell.initialized {
+                    return Err(MustardError::runtime(format!(
+                        "ReferenceError: `{name}` accessed before initialization"
+                    )));
+                }
+                if !cell.mutable {
+                    return Err(MustardError::runtime(format!(
+                        "TypeError: assignment to constant variable `{name}`"
+                    )));
+                }
+                cell.value = value;
+            }
+            self.refresh_cell_accounting(cell_key)?;
+            let value = self
+                .cells
+                .get(cell_key)
+                .ok_or_else(|| MustardError::runtime("binding cell missing"))?
+                .value
+                .clone();
+            return self.set_global_property_value(name.to_string(), value);
+        }
+        if self.global_property_value(name).is_some() {
+            self.infer_closure_name(&value, name)?;
+            return self.set_global_property_value(name.to_string(), value);
+        }
+        Err(MustardError::runtime(format!(
+            "ReferenceError: `{name}` is not defined"
+        )))
     }
 
     pub(super) fn initialize_name_in_env(
@@ -419,8 +472,7 @@ impl Runtime {
                 let mut seen = HashSet::new();
                 for property in properties {
                     let key = property_name_to_key(&property.key);
-                    let prop_value =
-                        self.get_property(value.clone(), Value::String(key.clone()), false)?;
+                    let prop_value = self.get_property_static(value.clone(), &key, false)?;
                     seen.insert(key);
                     self.initialize_pattern(env, &property.value, prop_value)?;
                 }

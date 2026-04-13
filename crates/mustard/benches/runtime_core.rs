@@ -21,6 +21,7 @@ struct BenchFixtures {
     local_load_store_shared: Arc<BytecodeProgram>,
     closure_access_shared: Arc<BytecodeProgram>,
     env_lookup_shared: Arc<BytecodeProgram>,
+    global_lookup_shared: Arc<BytecodeProgram>,
     property_access_shared: Arc<BytecodeProgram>,
     builtin_method_shared: Arc<BytecodeProgram>,
     array_callback_shared: Arc<BytecodeProgram>,
@@ -45,6 +46,7 @@ impl BenchFixtures {
         let local_load_store_shared = Arc::new(compile_to_bytecode(local_load_store_source()));
         let closure_access_shared = Arc::new(compile_to_bytecode(closure_access_source()));
         let env_lookup_shared = Arc::new(compile_to_bytecode(env_lookup_source()));
+        let global_lookup_shared = Arc::new(compile_to_bytecode(global_lookup_source()));
         let property_access_shared = Arc::new(compile_to_bytecode(property_access_source()));
         let builtin_method_shared = Arc::new(compile_to_bytecode(builtin_method_source()));
         let array_callback_shared = Arc::new(compile_to_bytecode(array_callback_source()));
@@ -74,6 +76,7 @@ impl BenchFixtures {
             local_load_store_shared,
             closure_access_shared,
             env_lookup_shared,
+            global_lookup_shared,
             property_access_shared,
             builtin_method_shared,
             array_callback_shared,
@@ -138,6 +141,24 @@ fn consume_suspended(step: ExecutionStep) {
 
 fn hot_runtime_options() -> ExecutionOptions {
     ExecutionOptions {
+        limits: RuntimeLimits {
+            instruction_budget: 10_000_000,
+            ..RuntimeLimits::default()
+        },
+        ..ExecutionOptions::default()
+    }
+}
+
+fn global_lookup_runtime_options() -> ExecutionOptions {
+    ExecutionOptions {
+        inputs: IndexMap::from([(
+            "config".to_string(),
+            StructuredValue::Object(IndexMap::from([(
+                "seed".to_string(),
+                StructuredValue::Number(StructuredNumber::Finite(7.0)),
+            )])),
+        )]),
+        capabilities: vec!["fetch_data".to_string()],
         limits: RuntimeLimits {
             instruction_budget: 10_000_000,
             ..RuntimeLimits::default()
@@ -319,6 +340,18 @@ fn runtime_execution_benches(c: &mut Criterion) {
             |options| {
                 let step = start_shared_bytecode(Arc::clone(&fixtures.env_lookup_shared), options)
                     .expect("env lookup hot path should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("global_lookup_hot", |b| {
+        b.iter_batched(
+            global_lookup_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.global_lookup_shared), options)
+                        .expect("global lookup hot path should execute");
                 consume_completed(step);
             },
             BatchSize::SmallInput,
@@ -535,6 +568,19 @@ fn env_lookup_source() -> &'static str {
       result += stepper(round);
     }
     result;
+    "#
+}
+
+fn global_lookup_source() -> &'static str {
+    r#"
+    let total = 0;
+    for (let round = 0; round < 2400; round += 1) {
+      total += config.seed;
+      total += Array.length;
+      total += Math.PI > 3 ? 1 : 0;
+      total += fetch_data.name.length;
+    }
+    total;
     "#
 }
 

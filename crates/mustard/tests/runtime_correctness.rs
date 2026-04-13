@@ -1,4 +1,8 @@
-use mustard::{ExecutionOptions, RuntimeLimits, StructuredValue, compile, execute};
+use mustard::runtime::Instruction;
+use mustard::{
+    ExecutionOptions, ExecutionStep, RuntimeLimits, StructuredValue, compile, execute,
+    lower_to_bytecode, start,
+};
 
 fn number(value: f64) -> StructuredValue {
     StructuredValue::from(value)
@@ -238,6 +242,72 @@ fn nested_closures_keep_shadowed_slots_distinct_while_updating_outer_bindings() 
             StructuredValue::Array(vec![number(1002.0), number(3.0)]),
             StructuredValue::Array(vec![number(1003.0), number(6.0)]),
         ])
+    );
+}
+
+#[test]
+fn unresolved_globals_lower_to_fast_path_and_preserve_runtime_behavior() {
+    let program = compile(
+        r#"
+        function run(step) {
+          value += step;
+          return fetch_data(value + (Math.PI > 3 ? 1 : 0));
+        }
+        run(2);
+        "#,
+    )
+    .expect("source should compile");
+    let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+    let instructions: Vec<_> = bytecode
+        .functions
+        .iter()
+        .flat_map(|function| function.code.iter())
+        .collect();
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::LoadGlobal(name) if name == "value"
+    )));
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::StoreGlobal(name) if name == "value"
+    )));
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::LoadGlobal(name) if name == "fetch_data"
+    )));
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::LoadGlobal(name) if name == "Math"
+    )));
+
+    let step = start(
+        &program,
+        ExecutionOptions {
+            inputs: indexmap::IndexMap::from([("value".to_string(), number(5.0))]),
+            capabilities: vec!["fetch_data".to_string()],
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect("program should start");
+    let suspended = match step {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(_) => panic!("program should suspend on fetch_data"),
+    };
+    assert_eq!(suspended.capability, "fetch_data");
+    assert_eq!(suspended.args, vec![number(8.0)]);
+}
+
+#[test]
+fn missing_unresolved_globals_still_raise_reference_errors() {
+    let program = compile("missingValue + 1;").expect("source should compile");
+
+    let error = execute(&program, ExecutionOptions::default())
+        .expect_err("missing global should still fail closed");
+
+    assert!(
+        error
+            .to_string()
+            .contains("ReferenceError: `missingValue` is not defined")
     );
 }
 

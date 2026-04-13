@@ -38,8 +38,7 @@ impl Runtime {
     pub(crate) fn promise_thenable_handler(&self, value: &Value) -> MustardResult<Option<Value>> {
         match value {
             Value::Object(_) | Value::Array(_) => {
-                let then =
-                    self.get_property(value.clone(), Value::String("then".to_string()), false)?;
+                let then = self.get_property_static(value.clone(), "then", false)?;
                 if is_callable(&then) {
                     Ok(Some(then))
                 } else {

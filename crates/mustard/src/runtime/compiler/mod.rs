@@ -225,7 +225,7 @@ impl Compiler {
                 slot: binding.slot,
             });
         } else {
-            context.code.push(Instruction::LoadName(name.to_string()));
+            context.code.push(Instruction::LoadGlobal(name.to_string()));
         }
     }
 
@@ -236,7 +236,9 @@ impl Compiler {
                 slot: binding.slot,
             });
         } else {
-            context.code.push(Instruction::StoreName(name.to_string()));
+            context
+                .code
+                .push(Instruction::StoreGlobal(name.to_string()));
         }
     }
 }

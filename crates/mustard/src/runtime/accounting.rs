@@ -70,6 +70,151 @@ impl Runtime {
         Ok(())
     }
 
+    pub(super) fn property_entry_bytes(key: &str, value: &Value) -> usize {
+        measure_property_entry_bytes(key, value)
+    }
+
+    pub(super) fn array_slot_bytes(value: Option<&Value>) -> usize {
+        measure_array_slot_bytes(value)
+    }
+
+    pub(super) fn apply_object_component_delta(
+        &mut self,
+        key: ObjectKey,
+        old_component_bytes: usize,
+        new_component_bytes: usize,
+    ) -> MustardResult<()> {
+        let old_bytes = self
+            .objects
+            .get(key)
+            .ok_or_else(|| MustardError::runtime("object missing"))?
+            .accounted_bytes;
+        let new_bytes = old_bytes
+            .checked_sub(old_component_bytes)
+            .ok_or_else(|| MustardError::runtime("object accounting underflow"))?
+            .checked_add(new_component_bytes)
+            .ok_or_else(|| MustardError::runtime("object accounting overflow"))?;
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.objects
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("object missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    pub(super) fn apply_array_component_delta(
+        &mut self,
+        key: ArrayKey,
+        old_component_bytes: usize,
+        new_component_bytes: usize,
+    ) -> MustardResult<()> {
+        let old_bytes = self
+            .arrays
+            .get(key)
+            .ok_or_else(|| MustardError::runtime("array missing"))?
+            .accounted_bytes;
+        let new_bytes = old_bytes
+            .checked_sub(old_component_bytes)
+            .ok_or_else(|| MustardError::runtime("array accounting underflow"))?
+            .checked_add(new_component_bytes)
+            .ok_or_else(|| MustardError::runtime("array accounting overflow"))?;
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.arrays
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("array missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    pub(super) fn push_array_element(
+        &mut self,
+        key: ArrayKey,
+        value: Option<Value>,
+    ) -> MustardResult<()> {
+        let added_bytes = Self::array_slot_bytes(value.as_ref());
+        self.arrays
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("array missing"))?
+            .elements
+            .push(value);
+        self.apply_array_component_delta(key, 0, added_bytes)
+    }
+
+    pub(super) fn extend_array_elements<I>(&mut self, key: ArrayKey, values: I) -> MustardResult<()>
+    where
+        I: IntoIterator<Item = Option<Value>>,
+    {
+        let values: Vec<_> = values.into_iter().collect();
+        let added_bytes = values
+            .iter()
+            .map(|value| Self::array_slot_bytes(value.as_ref()))
+            .sum::<usize>();
+        self.arrays
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("array missing"))?
+            .elements
+            .extend(values);
+        self.apply_array_component_delta(key, 0, added_bytes)
+    }
+
+    pub(super) fn pop_array_element(&mut self, key: ArrayKey) -> MustardResult<Option<Value>> {
+        let (removed, removed_bytes) = {
+            let array = self
+                .arrays
+                .get_mut(key)
+                .ok_or_else(|| MustardError::runtime("array missing"))?;
+            let removed_bytes = array
+                .elements
+                .last()
+                .map(|value| Self::array_slot_bytes(value.as_ref()))
+                .unwrap_or(0);
+            let removed = array.elements.pop().flatten();
+            (removed, removed_bytes)
+        };
+        if removed_bytes != 0 {
+            self.apply_array_component_delta(key, removed_bytes, 0)?;
+        }
+        Ok(removed)
+    }
+
+    pub(super) fn set_array_element_at(
+        &mut self,
+        key: ArrayKey,
+        index: usize,
+        value: Value,
+    ) -> MustardResult<()> {
+        let empty_slot_bytes = Self::array_slot_bytes(None);
+        let new_slot_bytes = Self::array_slot_bytes(Some(&value));
+        let (old_component_bytes, new_component_bytes) = {
+            let array = self
+                .arrays
+                .get_mut(key)
+                .ok_or_else(|| MustardError::runtime("array missing"))?;
+            let old_len = array.elements.len();
+            let old_component_bytes = if index < old_len {
+                Self::array_slot_bytes(array.elements[index].as_ref())
+            } else {
+                0
+            };
+            if index >= old_len {
+                array.elements.resize(index + 1, None);
+            }
+            array.elements[index] = Some(value);
+            let new_component_bytes = if index < old_len {
+                new_slot_bytes
+            } else {
+                let added_slots = index + 1 - old_len;
+                added_slots
+                    .saturating_sub(1)
+                    .checked_mul(empty_slot_bytes)
+                    .and_then(|bytes| bytes.checked_add(new_slot_bytes))
+                    .ok_or_else(|| MustardError::runtime("array accounting overflow"))?
+            };
+            (old_component_bytes, new_component_bytes)
+        };
+        self.apply_array_component_delta(key, old_component_bytes, new_component_bytes)
+    }
+
     pub(super) fn insert_env(&mut self, parent: Option<EnvKey>) -> MustardResult<EnvKey> {
         let mut env = Env {
             parent,
@@ -491,12 +636,15 @@ fn measure_bindings_bytes(bindings: &IndexMap<String, CellKey>) -> usize {
         + bindings.keys().map(|key| key.len()).sum::<usize>()
 }
 
+fn measure_property_entry_bytes(key: &str, value: &Value) -> usize {
+    std::mem::size_of::<(String, Value)>() + key.len() + extra_value_bytes(value)
+}
+
 fn measure_properties_bytes(properties: &IndexMap<String, Value>) -> usize {
-    properties.len() * std::mem::size_of::<(String, Value)>()
-        + properties
-            .iter()
-            .map(|(key, value)| key.len() + extra_value_bytes(value))
-            .sum::<usize>()
+    properties
+        .iter()
+        .map(|(key, value)| measure_property_entry_bytes(key, value))
+        .sum::<usize>()
 }
 
 fn measure_env_bytes(env: &Env) -> usize {
@@ -526,14 +674,16 @@ fn measure_object_bytes(object: &PlainObject) -> usize {
 
 fn measure_array_bytes(array: &ArrayObject) -> usize {
     std::mem::size_of::<ArrayObject>()
-        + array.elements.len() * std::mem::size_of::<Option<Value>>()
         + array
             .elements
             .iter()
-            .filter_map(Option::as_ref)
-            .map(extra_value_bytes)
+            .map(|value| measure_array_slot_bytes(value.as_ref()))
             .sum::<usize>()
         + measure_properties_bytes(&array.properties)
+}
+
+fn measure_array_slot_bytes(value: Option<&Value>) -> usize {
+    std::mem::size_of::<Option<Value>>() + value.map_or(0, extra_value_bytes)
 }
 
 fn measure_map_bytes(map: &MapObject) -> usize {

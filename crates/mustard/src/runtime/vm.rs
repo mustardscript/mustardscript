@@ -71,6 +71,10 @@ impl Runtime {
                 let value = self.lookup_name(env, name)?;
                 self.frames[frame_index].stack.push(value);
             }
+            Instruction::LoadGlobal(name) => {
+                let value = self.lookup_global_name(name)?;
+                self.frames[frame_index].stack.push(value);
+            }
             Instruction::LoadGlobalObject => {
                 let value = Value::Object(
                     self.global_object_key()
@@ -85,6 +89,14 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 let env = self.frames[frame_index].env;
                 self.assign_name(env, name, value.clone())?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::StoreGlobal(name) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                self.assign_global_name(name, value.clone())?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::StoreSlot { depth, slot } => {
@@ -146,12 +158,7 @@ impl Runtime {
                         "array builder target is not an array",
                     ));
                 };
-                self.arrays
-                    .get_mut(array)
-                    .ok_or_else(|| MustardError::runtime("array missing"))?
-                    .elements
-                    .push(Some(value));
-                self.refresh_array_accounting(array)?;
+                self.push_array_element(array, Some(value))?;
                 self.frames[frame_index].stack.push(Value::Array(array));
             }
             Instruction::ArrayPushHole => {
@@ -164,12 +171,7 @@ impl Runtime {
                         "array builder target is not an array",
                     ));
                 };
-                self.arrays
-                    .get_mut(array)
-                    .ok_or_else(|| MustardError::runtime("array missing"))?
-                    .elements
-                    .push(None);
-                self.refresh_array_accounting(array)?;
+                self.push_array_element(array, None)?;
                 self.frames[frame_index].stack.push(Value::Array(array));
             }
             Instruction::ArrayExtend => {
@@ -227,7 +229,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let value = self.get_property(object, Value::String(name.clone()), *optional)?;
+                let value = self.get_property_static(object, name, *optional)?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::GetPropComputed { optional } => {
@@ -251,7 +253,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                self.set_property(object, Value::String(name.clone()), value.clone())?;
+                self.set_property_static(object, name, value.clone())?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::SetPropComputed => {
@@ -976,13 +978,7 @@ impl Runtime {
                         if done {
                             break;
                         }
-                        runtime
-                            .arrays
-                            .get_mut(array)
-                            .ok_or_else(|| MustardError::runtime("array missing"))?
-                            .elements
-                            .push(Some(value));
-                        runtime.refresh_array_accounting(array)?;
+                        runtime.push_array_element(array, Some(value))?;
                     }
                     Ok(Value::Array(array))
                 },

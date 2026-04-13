@@ -166,7 +166,7 @@ impl Runtime {
             None,
         )?;
         let errors = Value::Array(self.insert_array(reasons, IndexMap::new())?);
-        self.set_property(error.clone(), Value::String("errors".to_string()), errors)?;
+        self.set_property_static(error.clone(), "errors", errors)?;
         Ok(error)
     }
 

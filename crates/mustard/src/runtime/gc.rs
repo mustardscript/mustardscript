@@ -573,6 +573,7 @@ fn instruction_may_allocate(instruction: &Instruction) -> bool {
     matches!(
         instruction,
         Instruction::StoreName(_)
+            | Instruction::StoreGlobal(_)
             | Instruction::InitializePattern(_)
             | Instruction::PushEnv
             | Instruction::DeclareName { .. }

@@ -32,6 +32,17 @@ fn tracks_heap_growth_and_enforces_heap_limits() {
         .insert_array(vec![Value::String("payload".to_string())], IndexMap::new())
         .expect_err("next allocation should exceed the heap limit");
     assert!(error.to_string().contains("heap limit exceeded"));
+    let push_array = heap_limited
+        .insert_array(Vec::new(), IndexMap::new())
+        .expect("empty array should allocate before tightening the limit");
+    heap_limited.limits.heap_limit_bytes = heap_limited.heap_bytes_used;
+    let error = heap_limited
+        .call_array_push(
+            Value::Array(push_array),
+            &[Value::String("payload".to_string())],
+        )
+        .expect_err("incremental array growth should still exceed the heap limit");
+    assert!(error.to_string().contains("heap limit exceeded"));
 
     let mut allocation_limited = Runtime::new(Arc::new(program), ExecutionOptions::default())
         .expect("runtime should initialize");
@@ -40,6 +51,55 @@ fn tracks_heap_growth_and_enforces_heap_limits() {
         .insert_object(IndexMap::new(), ObjectKind::Plain)
         .expect_err("next allocation should exhaust the allocation budget");
     assert!(error.to_string().contains("allocation budget exhausted"));
+}
+
+#[test]
+fn cached_accounting_matches_full_recount_after_local_mutations() {
+    let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
+        .expect("lowering should succeed");
+    let mut runtime =
+        Runtime::new(Arc::new(program), ExecutionOptions::default()).expect("runtime init");
+
+    let object = runtime
+        .insert_object(IndexMap::new(), ObjectKind::Plain)
+        .expect("object allocation should succeed");
+    let array = runtime
+        .insert_array(vec![Value::Number(1.0)], IndexMap::new())
+        .expect("array allocation should succeed");
+
+    runtime
+        .set_property(
+            Value::Object(object),
+            Value::String("label".to_string()),
+            Value::String("payload".to_string()),
+        )
+        .expect("object property write should succeed");
+    runtime
+        .set_property(
+            Value::Array(array),
+            Value::String("3".to_string()),
+            Value::String("tail".to_string()),
+        )
+        .expect("array index write should succeed");
+    runtime
+        .set_property(
+            Value::Array(array),
+            Value::String("extra".to_string()),
+            Value::String("metadata".to_string()),
+        )
+        .expect("array property write should succeed");
+    runtime
+        .call_array_push(
+            Value::Array(array),
+            &[Value::String("delta".to_string())],
+        )
+        .expect("array push should succeed");
+
+    let cached = (runtime.heap_bytes_used, runtime.allocation_count);
+    let measured = runtime
+        .recompute_accounting_totals()
+        .expect("full recount should succeed");
+    assert_eq!(cached, measured);
 }
 
 #[test]
