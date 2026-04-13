@@ -501,6 +501,17 @@ async function measureRetainedMemory(runMany, options = {}) {
   return subtractMemory(after, before);
 }
 
+async function measureRetainedLiveMemory(createLiveState, options = {}) {
+  const sample = options.sample ?? processMemorySnapshot;
+  global.gc();
+  const before = sample();
+  const liveState = await createLiveState();
+  void liveState;
+  global.gc();
+  const after = sample();
+  return subtractMemory(after, before);
+}
+
 async function measureFailureCleanup(name, failThenRecover, options = DEFAULT_OPTIONS) {
   const [, summary] = await measure(name, async () => {
     await failThenRecover();
@@ -640,6 +651,7 @@ async function benchmarkAddonPhases() {
 async function benchmarkAddon(fixtures) {
   console.log('Running addon benchmarks...');
   const latency = {};
+  const suspendState = {};
   const { smallSource, codeModeSource, workflowSource, workflowData } = fixtures;
   const defaultContext = new ExecutionContext();
   const warmSmallRuntime = new Mustard(smallSource);
@@ -693,7 +705,8 @@ async function benchmarkAddon(fixtures) {
   }
 
   for (const boundaryCount of [1, 5, 20]) {
-    const runtime = new Mustard(createSuspendResumeSource(boundaryCount));
+    const source = createSuspendResumeSource(boundaryCount);
+    const runtime = new Mustard(source);
     const context = new ExecutionContext({
       capabilities: { checkpoint() {} },
       limits: {},
@@ -709,6 +722,26 @@ async function benchmarkAddon(fixtures) {
       assert.equal(step, expected);
     }, DEFAULT_OPTIONS);
     latency[metric[0]] = metric[1];
+
+    const dumpedProgram = runtime.dump();
+    const dumpedSnapshot = takeProgress(runtime.start({ context }), 'suspend state').dump();
+    const retainedLiveMemory = await measureRetainedLiveMemory(() => {
+      const retainedProgress = [];
+      for (let index = 0; index < MEMORY_RUNS; index += 1) {
+        const retainedRuntime = new Mustard(source);
+        retainedProgress.push(
+          takeProgress(retainedRuntime.start({ context }), 'retained suspend state'),
+        );
+      }
+      return retainedProgress;
+    });
+    suspendState[metric[0]] = {
+      serializedProgramBytes: dumpedProgram.length,
+      snapshotBytes: dumpedSnapshot.snapshot.length,
+      retainedLiveProgressCount: MEMORY_RUNS,
+      retainedLiveHeapBytes: retainedLiveMemory.heapUsedDeltaBytes,
+      retainedLiveRssBytes: retainedLiveMemory.rssDeltaBytes,
+    };
   }
 
   const memory = await measureRetainedMemory(async () => {
@@ -752,7 +785,7 @@ async function benchmarkAddon(fixtures) {
     }, DEFAULT_OPTIONS),
   };
 
-  return { latency, phases, memory, failureCleanup };
+  return { latency, phases, suspendState, memory, failureCleanup };
 }
 
 async function benchmarkSidecar(fixtures, profile) {
@@ -1126,6 +1159,13 @@ function printSummary(results) {
     console.log(`${name}: ${metric.medianMs.toFixed(2)}ms median, ${metric.p95Ms.toFixed(2)}ms p95`);
   }
   console.log('');
+  console.log('Addon suspend-state sizes:');
+  for (const [name, metric] of Object.entries(results.addon.suspendState)) {
+    console.log(
+      `${name}: program ${metric.serializedProgramBytes}B snapshot ${metric.snapshotBytes}B liveHeap ${metric.retainedLiveHeapBytes}B liveRss ${metric.retainedLiveRssBytes}B`,
+    );
+  }
+  console.log('');
   console.log(`Memory retained after ${MEMORY_RUNS} workflow runs:`);
   console.log(`addon heap ${results.addon.memory.heapUsedDeltaBytes}B rss ${results.addon.memory.rssDeltaBytes}B`);
   console.log(`sidecar heap ${results.sidecar.memory.heapUsedDeltaBytes}B rss ${results.sidecar.memory.rssDeltaBytes}B`);
@@ -1165,6 +1205,8 @@ async function main() {
         'sidecar memory deltas include parent Node process RSS plus the live child sidecar RSS sampled via ps.',
       phaseSplitDefinitions:
         'addon.phases isolates compile-free runtime slices: runtime_init_only uses a precompiled trivial program, execution_only_small resumes pre-created suspended progress, snapshot_load_only uses raw native inspectSnapshot, and Progress.load_only measures the public JS wrapper before cleanup.',
+      suspendStateDefinitions:
+        'addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.',
     },
     addon,
     sidecar,

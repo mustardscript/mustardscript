@@ -72,6 +72,8 @@ machine metadata and latency summaries for:
 - addon host-call fanout at 1, 10, 50, and 100 host boundaries
 - addon programmatic tool-calling workflow over synthetic team/budget/expense data
 - addon suspend/resume chains with snapshot reloads
+- addon suspend/resume state-size summaries for serialized program bytes,
+  dumped snapshot bytes, and retained live `Progress` heap deltas
 - addon phase-split measurements for:
   - `runtime_init_only`
   - `execution_only_small`
@@ -149,6 +151,10 @@ The new addon-only phase metrics are intentionally narrow:
 - `apply_snapshot_policy_only` measures the JS-side snapshot authentication and policy rebinding path used by `Progress.load(...)`
 - `snapshot_load_only` measures raw native `inspectSnapshot(...)` on an authenticated snapshot
 - `Progress.load_only` measures the public JS wrapper path before the post-measurement cleanup step
+- `addon.suspendState` records size-oriented suspend-state facts for the
+  `suspend_resume_*` fixtures: serialized program bytes, dumped snapshot bytes,
+  and retained live `Progress` memory deltas after GC while a batch of
+  suspended executions remains live
 
 These definitions are not replacements for future Rust microbenches, but they
 do make it possible to tell whether time is going into startup, resume
@@ -302,6 +308,7 @@ Each benchmark result should record at least:
 - startup vs warm latency
 - peak RSS and post-GC heap usage
 - snapshot or state-transfer bytes where applicable
+- serialized program bytes and dumped snapshot bytes for suspend-heavy workloads
 - success/failure outcome counts
 - Node version, machine profile, and benchmark fixture version
 

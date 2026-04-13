@@ -23,6 +23,13 @@ test('flattenMetricTree collects nested median/p95 metrics and skips derived sec
       phases: {
         execution_only_small: { medianMs: 1, p95Ms: 2 },
       },
+      suspendState: {
+        suspend_resume_20: {
+          serializedProgramBytes: 512,
+          snapshotBytes: 128,
+          retainedLiveHeapBytes: 64,
+        },
+      },
     },
     ratios: {
       latency: {
