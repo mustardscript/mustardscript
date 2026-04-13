@@ -5,8 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { performance } = require('node:perf_hooks');
 
-const { JsliteError, callNative } = require('./errors');
-const { getAbortSignal, withCancellationSignal } = require('./cancellation');
+const { JsliteError, callNative } = require('./errors.ts');
+const { getAbortSignal, withCancellationSignal } = require('./cancellation.ts');
 const {
   cloneSnapshotPolicy,
   cloneSnapshotKey,
@@ -15,13 +15,13 @@ const {
   snapshotIdentity,
   snapshotKeyDigest,
   snapshotToken,
-} = require('./policy');
+} = require('./policy.ts');
 const {
   decodeStructured,
   encodeResumePayloadCancel,
   encodeResumePayloadError,
   encodeResumePayloadValue,
-} = require('./structured');
+} = require('./structured.ts');
 
 const SHARED_PROGRESS_REGISTRY_ROOT = path.join(
   os.tmpdir(),

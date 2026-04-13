@@ -10,7 +10,7 @@ const {
 } = require('./support/helpers.js');
 
 function buildExecutor(source, capabilities, options = {}) {
-  const { Jslite } = require('../../index.js');
+  const { Jslite } = require('../../index.ts');
   return new JsliteExecutor({
     program: new Jslite(source, options.compileOptions),
     capabilities,

@@ -8,13 +8,13 @@ const readline = require('node:readline');
 const { once } = require('node:events');
 const { spawn, spawnSync } = require('node:child_process');
 
-const { Jslite, Progress } = require('../../index.js');
+const { Jslite, Progress } = require('../../index.ts');
 const {
   decodeStructured,
   encodeResumePayloadError,
   encodeResumePayloadValue,
-} = require('../../lib/structured.js');
-const { snapshotIdentity, snapshotKeyDigest, snapshotToken } = require('../../lib/policy.js');
+} = require('../../lib/structured.ts');
+const { snapshotIdentity, snapshotKeyDigest, snapshotToken } = require('../../lib/policy.ts');
 const { normalizeValue } = require('./runtime-oracle.js');
 
 const REPO_ROOT = path.join(__dirname, '../..');

@@ -8,13 +8,13 @@ const os = require('node:os');
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 
-const { Jslite, JsliteError, Progress } = require('../../index.js');
+const { Jslite, JsliteError, Progress } = require('../../index.ts');
 const {
   loadNative,
   localBinaryCandidates,
   resolvePrebuiltPackage,
-} = require('../../native-loader.js');
-const { snapshotToken } = require('../../lib/policy.js');
+} = require('../../native-loader.ts');
+const { snapshotToken } = require('../../lib/policy.ts');
 
 const SNAPSHOT_KEY = Buffer.from('progress-security-test-key');
 
@@ -305,7 +305,7 @@ test('progress load rejects already-consumed snapshots across same-process worke
       });
     `,
     {
-      indexPath: require.resolve('../../index.js'),
+      indexPath: require.resolve('../../index.ts'),
       snapshotBase64: dumped.snapshot.toString('base64'),
       snapshotId: dumped.snapshot_id,
       snapshotKeyDigest: dumped.snapshot_key_digest,
@@ -337,12 +337,12 @@ test('progress load rejects already-consumed snapshots across duplicate package 
   const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-dup-copy-'));
   try {
     fs.copyFileSync(
-      path.join(__dirname, '..', '..', 'index.js'),
-      path.join(packageRoot, 'index.js'),
+      path.join(__dirname, '..', '..', 'index.ts'),
+      path.join(packageRoot, 'index.ts'),
     );
     fs.copyFileSync(
-      path.join(__dirname, '..', '..', 'native-loader.js'),
-      path.join(packageRoot, 'native-loader.js'),
+      path.join(__dirname, '..', '..', 'native-loader.ts'),
+      path.join(packageRoot, 'native-loader.ts'),
     );
     fs.cpSync(path.join(__dirname, '..', '..', 'lib'), path.join(packageRoot, 'lib'), {
       recursive: true,
@@ -354,7 +354,7 @@ test('progress load rejects already-consumed snapshots across duplicate package 
       path.join(packageRoot, path.basename(nativeBinaryPath)),
     );
 
-    const duplicateCopy = require(path.join(packageRoot, 'index.js'));
+    const duplicateCopy = require(path.join(packageRoot, 'index.ts'));
     assert.throws(
       () =>
         duplicateCopy.Progress.load(dumped, {
@@ -479,7 +479,7 @@ test('progress load requires explicit policy, limits, and snapshotKey', () => {
     [
       '-e',
       `
-        const { Progress } = require('./index.js');
+        const { Progress } = require('./index.ts');
         try {
           Progress.load({
             snapshot: Buffer.from(process.env.SNAPSHOT_BASE64, 'base64'),
@@ -531,7 +531,7 @@ test('progress load works across processes when explicit policy and snapshotKey 
     [
       '-e',
       `
-        const { Progress } = require('./index.js');
+        const { Progress } = require('./index.ts');
         const restored = Progress.load(
           {
             snapshot: Buffer.from(process.env.SNAPSHOT_BASE64, 'base64'),

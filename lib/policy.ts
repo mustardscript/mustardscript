@@ -2,10 +2,10 @@
 
 const crypto = require('node:crypto');
 const { types } = require('node:util');
-const { loadNative } = require('../native-loader');
+const { loadNative } = require('../native-loader.ts');
 
-const { JsliteError, callNative } = require('./errors');
-const { defineEnumerableProperty, hasOwnProperty, isAccessorDescriptor } = require('./structured');
+const { JsliteError, callNative } = require('./errors.ts');
+const { defineEnumerableProperty, hasOwnProperty, isAccessorDescriptor } = require('./structured.ts');
 
 const CONSOLE_CAPABILITY_NAMES = {
   log: 'console.log',

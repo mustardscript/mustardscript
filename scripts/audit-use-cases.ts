@@ -3,13 +3,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { Jslite, JsliteError, Progress } = require('../index.js');
+const { Jslite, JsliteError, Progress } = require('../index.ts');
 
 const ROOT = path.join(__dirname, '..');
 const USE_CASE_ROOT = path.join(ROOT, 'examples/programmatic-tool-calls');
 
 function loadCatalog(relativePath) {
-  const catalogPath = path.join(USE_CASE_ROOT, relativePath, 'catalog.js');
+  const catalogPath = path.join(USE_CASE_ROOT, relativePath, 'catalog.ts');
   if (!fs.existsSync(catalogPath)) {
     return [];
   }

@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../index.js');
+const { Jslite, JsliteError, Progress } = require('../../index.ts');
 const {
   PROPERTY_RUNS,
   fc,

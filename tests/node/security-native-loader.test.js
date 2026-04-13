@@ -11,7 +11,7 @@ const {
   localBinaryCandidates,
   loadNative,
   resolvePrebuiltPackage,
-} = require('../../native-loader.js');
+} = require('../../native-loader.ts');
 
 function withTempDir(prefix, fn) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -104,11 +104,11 @@ test(
         `${JSON.stringify({
           name: target.packageName,
           version: '0.0.0',
-          main: 'index.js',
+          main: 'index.ts',
         })}\n`,
       );
       writeFile(
-        path.join(packageRoot, 'index.js'),
+        path.join(packageRoot, 'index.ts'),
         `
           const fs = require('node:fs');
           fs.writeFileSync(${JSON.stringify(sentinelPath)}, 'fake-prebuilt-ran');

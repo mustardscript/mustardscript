@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "moduleDetection": "force",
+    "strict": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": [
+    "index.ts",
+    "install.ts",
+    "native-loader.ts",
+    "lib/**/*.ts",
+    "scripts/**/*.ts",
+    "benchmarks/**/*.ts",
+    "examples/agent-style.ts",
+    "examples/programmatic-tool-calls/**/catalog.ts"
+  ]
+}

@@ -3,6 +3,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+function packageRoot(fromDir = __dirname) {
+  return path.basename(fromDir) === 'dist' ? path.dirname(fromDir) : fromDir;
+}
+
 const PREBUILT_TARGETS = Object.freeze([
   {
     triple: 'x86_64-pc-windows-msvc',
@@ -106,7 +110,7 @@ function validatePrebuiltPackageManifest(manifest, target, packageJsonPath) {
   }
 }
 
-function resolvePrebuiltPackage(searchRoot = __dirname) {
+function resolvePrebuiltPackage(searchRoot = packageRoot()) {
   const target = getCurrentPrebuiltTarget();
   if (!target) {
     return null;
@@ -139,7 +143,7 @@ function resolvePrebuiltPackage(searchRoot = __dirname) {
   };
 }
 
-function localBinaryCandidates(searchRoot = __dirname) {
+function localBinaryCandidates(searchRoot = packageRoot()) {
   const roots = [
     searchRoot,
     path.join(searchRoot, 'crates', 'jslite-node'),
@@ -165,7 +169,7 @@ function localBinaryCandidates(searchRoot = __dirname) {
 
 function loadNative(options = {}) {
   const env = options.env ?? process.env;
-  const searchRoot = options.searchRoot ?? __dirname;
+  const searchRoot = options.searchRoot ?? packageRoot();
   const overrideCwd = options.overrideCwd ?? process.cwd();
   const loadErrors = [];
   const overridePath =

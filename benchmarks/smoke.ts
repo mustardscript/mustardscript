@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { performance } = require('node:perf_hooks');
 
 const budgets = require('./budgets.json');
-const { Jslite, Progress } = require('../index.js');
+const { Jslite, Progress } = require('../index.ts');
 
 const SNAPSHOT_KEY = Buffer.from('benchmark-snapshot-key');
 
@@ -144,7 +144,7 @@ async function benchmarkSnapshotRoundTrip() {
 
 async function benchmarkMemory() {
   if (typeof global.gc !== 'function') {
-    throw new Error('benchmarks/smoke.js requires node --expose-gc');
+    throw new Error('benchmarks/smoke.ts requires node --expose-gc');
   }
   global.gc();
   const before = process.memoryUsage().heapUsed;

@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
-const { Jslite, JsliteError, Progress } = require('../../index.js');
+const { Jslite, JsliteError, Progress } = require('../../index.ts');
 const { normalizeValue } = require('./runtime-oracle.js');
 
 const SNAPSHOT_KEY = Buffer.from('async-schedule-test-key');

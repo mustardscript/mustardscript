@@ -16,7 +16,7 @@ cargo test -p jslite --test property_snapshot_roundtrip
 cargo test -p jslite-sidecar --test hostile_protocol
 
 npm run build
-node scripts/seed-fuzz-corpus.js
+node scripts/seed-fuzz-corpus.ts
 
 if ! cargo fuzz --help >/dev/null 2>&1; then
   cargo install cargo-fuzz --locked

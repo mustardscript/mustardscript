@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
-const { Jslite, JsliteError, Progress } = require('../../index.js');
+const { Jslite, JsliteError, Progress } = require('../../index.ts');
 const { DIAGNOSTIC_CATEGORY, REJECT_PHASE } = require('./conformance-contract.js');
 
 const DIAGNOSTIC_CATEGORY_MATCHERS = Object.freeze({

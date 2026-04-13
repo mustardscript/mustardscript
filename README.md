@@ -117,7 +117,7 @@ marks itself with `[PLAN HAS BEEN COMPLETED]` or `[BLOCKED]`. Use
 
 ## Agent-Style Example
 
-See [examples/agent-style.js](examples/agent-style.js) for a minimal host loop
+See [examples/agent-style.ts](examples/agent-style.ts) for a minimal host loop
 that starts guest execution, persists a suspended `Progress`, reloads it, and
 resumes with a host result.
 

@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { InMemoryJsliteExecutorStore, Jslite, JsliteError, JsliteExecutor, Progress } =
-  require('../../../index.js');
+  require('../../../index.ts');
 
 function runtime(code, options) {
   return new Jslite(code, options);

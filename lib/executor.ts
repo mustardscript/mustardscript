@@ -4,8 +4,8 @@ const { createHmac, randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
 const { types } = require('node:util');
 
-const { JsliteError, normalizeNativeError } = require('./errors');
-const { normalizeSnapshotKey } = require('./policy');
+const { JsliteError, normalizeNativeError } = require('./errors.ts');
+const { normalizeSnapshotKey } = require('./policy.ts');
 
 const TERMINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
 const RUNNABLE_STATES = new Set(['queued', 'waiting']);

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { Jslite } = require('../../index.js');
+const { Jslite } = require('../../index.ts');
 const { COVERAGE, FEATURE_CONTRACT, OUTCOME } = require('./conformance-contract.js');
 const { assertDifferential } = require('./runtime-oracle.js');
 

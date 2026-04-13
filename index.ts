@@ -1,10 +1,10 @@
 'use strict';
 
-const { loadNative } = require('./native-loader');
-const { createExecutorApi } = require('./lib/executor');
-const { JsliteError } = require('./lib/errors');
-const { createProgressApi } = require('./lib/progress');
-const { createJsliteClass } = require('./lib/runtime');
+const { loadNative } = require('./native-loader.ts');
+const { createExecutorApi } = require('./lib/executor.ts');
+const { JsliteError } = require('./lib/errors.ts');
+const { createProgressApi } = require('./lib/progress.ts');
+const { createJsliteClass } = require('./lib/runtime.ts');
 
 const native = loadNative();
 const { Progress, materializeStep, parseStep } = createProgressApi(native);

@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../index.js');
+const { Jslite, JsliteError, Progress } = require('../../index.ts');
 const { assertDifferential } = require('./runtime-oracle.js');
 
 test('run executes guest async functions, await, and Promise microtasks in order', async () => {

@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { Jslite, Progress } = require('../index.js');
+const { Jslite, Progress } = require('../index.ts');
 
 const repoRoot = path.join(__dirname, '..');
 const corpusRoot = path.join(repoRoot, 'fuzz', 'corpus');

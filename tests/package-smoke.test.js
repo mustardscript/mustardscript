@@ -18,7 +18,7 @@ const packageInfo = require(path.join(repoRoot, 'package.json'));
 const {
   PREBUILT_TARGETS,
   getCurrentPrebuiltTarget,
-} = require(path.join(repoRoot, 'native-loader.js'));
+} = require(path.join(repoRoot, 'native-loader.ts'));
 
 function tarballFilenameForPackage(name, version) {
   return `${name.replace(/^@/, '').replace(/\//g, '-')}-${version}.tgz`;
@@ -248,7 +248,7 @@ test(
             'node_modules',
             '@keppoai',
             'jslite',
-            'install.js',
+            'dist/install.js',
           ),
         ],
         consumerRoot,

@@ -58,7 +58,7 @@ class PlanFileMissingError extends Error {
 function printUsage(stream = process.stdout) {
   stream.write(
     [
-      'Usage: node scripts/ralph-loop.js <plan.md> [--max-iterations N] [--delay-ms N]',
+      'Usage: node scripts/ralph-loop.ts <plan.md> [--max-iterations N] [--delay-ms N]',
       '',
       'Runs `codex exec` repeatedly with `gpt-5.4` and `model_reasoning_effort="xhigh"`',
       `until the plan contains ${PLAN_COMPLETED_MARKER} or ${PLAN_BLOCKED_MARKER}.`,

@@ -59,7 +59,7 @@ That command runs the prebuilt smoke coverage in
 `tests/package-smoke.test.js`. It verifies the configured `@napi-rs/cli`
 target metadata, stages a host-matching release binary into a generated npm
 package directory, installs the root tarball plus the matching optional package
-with lifecycle scripts disabled, and then proves `install.js` skips the source
+with lifecycle scripts disabled, and then proves `dist/install.js` skips the source
 build when the matching prebuilt package is already present. The loader now
 accepts only validated `.node` artifacts from the expected optional package
 layout; JavaScript `main` fallbacks and arbitrary override module resolution are
@@ -82,8 +82,8 @@ Check the dry-run output before keeping the generated tarball:
   `crates/jslite-sidecar/Cargo.toml`.
 - The tarball should include the public JS and type entrypoints plus the
   install/load helpers that preserve the source-build fallback:
-  `index.js`, `index.d.ts`, `jslite.d.ts`, `install.js`, and
-  `native-loader.js`.
+  `dist/index.js`, `index.d.ts`, `jslite.d.ts`, `dist/install.js`, and
+  `dist/native-loader.js`.
 - The tarball should not include local build products, `.github/`, tests,
   planning documents, or a platform-specific `.node` binary from a maintainer
   machine.
@@ -229,11 +229,11 @@ Current mechanics:
 
 - `package.json` carries the target list in the `napi.targets` field so
   `@napi-rs/cli` can generate per-platform npm package directories.
-- `native-loader.js` first tries only the exact expected local source-build
+- `dist/native-loader.js` first tries only the exact expected local source-build
   artifact names (`index.<platform>.node` for configured hosts, plus
   `index.node` as the generic local-build fallback), then falls back to the
   matching optional package if one is installed.
-- `install.js` preserves the source-build path by only skipping the local Cargo
+- `dist/install.js` preserves the source-build path by only skipping the local Cargo
   build when the matching optional package is already installed for the current
   host.
 - `.github/workflows/prebuilt-binaries.yml` is the manual, explicit prebuilt

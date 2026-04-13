@@ -1,6 +1,6 @@
 'use strict';
 
-const { snapshotToken } = require('../../lib/policy.js');
+const { snapshotToken } = require('../../lib/policy.ts');
 const { Jslite, Progress, assert, isJsliteError, test } = require('../node/support/helpers.js');
 
 const SNAPSHOT_KEY = Buffer.from('mutation-guards-snapshot-key');

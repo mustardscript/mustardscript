@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../index.js');
-const { loadNative } = require('../../native-loader.js');
+const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { loadNative } = require('../../native-loader.ts');
 
 function isCancelledLimit(error) {
   return (

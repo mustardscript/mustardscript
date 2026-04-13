@@ -1,6 +1,6 @@
 'use strict';
 
-const { Jslite, Progress } = require('../index.js');
+const { Jslite, Progress } = require('../index.ts');
 
 async function main() {
   const program = new Jslite(`

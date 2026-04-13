@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { Jslite } = require('../../index.js');
+const { Jslite } = require('../../index.ts');
 const manifest = require('./manifest.js');
 const { FEATURE_CONTRACT, OUTCOME } = require('../node/conformance-contract.js');
 const { normalizeValue, runJslite, runNode } = require('../node/runtime-oracle.js');

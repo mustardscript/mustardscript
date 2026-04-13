@@ -19,7 +19,7 @@ That runs:
 - `cargo test -p jslite --test property_snapshot_roundtrip`
 - `cargo test -p jslite-sidecar --test hostile_protocol`
 - `npm run build`
-- `node scripts/seed-fuzz-corpus.js`
+- `node scripts/seed-fuzz-corpus.ts`
 - short executed `cargo-fuzz` smoke for `parser`, `snapshot_load`, and
   `sidecar_protocol`
 
@@ -43,7 +43,7 @@ cargo fuzz run sidecar_protocol --manifest-path fuzz/Cargo.toml
 ```
 
 The maintained corpus seeds are generated into `fuzz/corpus/` by
-`scripts/seed-fuzz-corpus.js`. That script starts from:
+`scripts/seed-fuzz-corpus.ts`. That script starts from:
 
 - curated supported guest programs
 - curated unsupported/fail-closed programs

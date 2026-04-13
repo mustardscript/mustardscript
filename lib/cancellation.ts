@@ -2,7 +2,7 @@
 
 const { types } = require('node:util');
 
-const { JsliteError, callNative } = require('./errors');
+const { JsliteError, callNative } = require('./errors.ts');
 
 function throwIfAborted(signal) {
   if (signal?.aborted) {

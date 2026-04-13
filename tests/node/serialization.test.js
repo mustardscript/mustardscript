@@ -1,7 +1,7 @@
 'use strict';
 
 const { assert, isJsliteError, Jslite, Progress, runtime, test } = require('./support/helpers.js');
-const { snapshotKeyDigest } = require('../../lib/policy.js');
+const { snapshotKeyDigest } = require('../../lib/policy.ts');
 
 const SNAPSHOT_KEY = Buffer.from('serialization-test-key');
 const INVALID_SNAPSHOT = Buffer.from('not-a-valid-snapshot');

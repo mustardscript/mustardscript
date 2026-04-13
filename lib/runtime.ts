@@ -1,24 +1,24 @@
 'use strict';
 
-const { callNative } = require('./errors');
+const { callNative } = require('./errors.ts');
 const {
   getAbortSignal,
   settleCapabilityInvocation,
   throwIfAborted,
   withCancellationSignal,
-} = require('./cancellation');
+} = require('./cancellation.ts');
 const {
   createExecutionPolicy,
   encodeSnapshotPolicy,
   snapshotIdentity,
   snapshotToken,
-} = require('./policy');
+} = require('./policy.ts');
 const {
   encodeResumePayloadCancel,
   encodeResumePayloadError,
   encodeResumePayloadValue,
   encodeStartOptions,
-} = require('./structured');
+} = require('./structured.ts');
 
 function createJsliteClass({ native, materializeStep, parseStep }) {
   function compileProgram(code) {

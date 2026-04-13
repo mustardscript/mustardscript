@@ -19,7 +19,7 @@ const {
   getPlanStateFromContent,
   parseArgs,
   runLoop,
-} = require('../../scripts/ralph-loop.js');
+} = require('../../scripts/ralph-loop.ts');
 
 function createTempPlan(initialContent) {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-ralph-loop-'));

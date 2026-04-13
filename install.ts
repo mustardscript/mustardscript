@@ -7,7 +7,9 @@ const {
   resolvePrebuiltPackage,
   getCurrentPrebuiltTarget,
   getLocalBuildOutputFile,
-} = require('./native-loader');
+} = require('./native-loader.ts');
+
+const packageRoot = path.basename(__dirname) === 'dist' ? path.dirname(__dirname) : __dirname;
 
 let prebuilt = null;
 let prebuiltError = null;
@@ -101,7 +103,7 @@ const cargoOutput = execFileSync(
     'json-render-diagnostics',
   ],
   {
-    cwd: __dirname,
+    cwd: packageRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit'],
     env: process.env,
@@ -109,6 +111,6 @@ const cargoOutput = execFileSync(
 );
 
 const artifactPath = parseCargoArtifactPath(cargoOutput);
-const outputPath = path.join(__dirname, getLocalBuildOutputFile());
+const outputPath = path.join(packageRoot, getLocalBuildOutputFile());
 fs.copyFileSync(artifactPath, outputPath);
 process.stdout.write(`jslite: built local addon at ${path.basename(outputPath)}\n`);

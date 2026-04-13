@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const repoRoot = path.resolve(__dirname, '..', '..');
-const { getLocalBuildOutputFile } = require('../../native-loader.js');
+const { getLocalBuildOutputFile } = require('../../native-loader.ts');
 
 function nativeLibraryExtension() {
   switch (process.platform) {
@@ -75,7 +75,7 @@ process.stdout.write(JSON.stringify({
   };
 }
 
-test('install.js ignores ancestor-resolved @napi-rs/cli and builds through cargo', () => {
+test('dist/install.js ignores ancestor-resolved @napi-rs/cli and builds through cargo', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-install-security-'));
   try {
     const packageRoot = path.join(root, 'node_modules', '@keppoai', 'jslite');
@@ -85,11 +85,15 @@ test('install.js ignores ancestor-resolved @napi-rs/cli and builds through cargo
 
     fs.mkdirSync(packageRoot, { recursive: true });
     fs.mkdirSync(path.join(fakeCliRoot, 'dist'), { recursive: true });
-    fs.copyFileSync(path.join(repoRoot, 'install.js'), path.join(packageRoot, 'install.js'));
+    fs.mkdirSync(path.join(packageRoot, 'dist'), { recursive: true });
+    fs.copyFileSync(path.join(repoRoot, 'dist', 'install.js'), path.join(packageRoot, 'dist', 'install.js'));
     fs.copyFileSync(
-      path.join(repoRoot, 'native-loader.js'),
-      path.join(packageRoot, 'native-loader.js'),
+      path.join(repoRoot, 'dist', 'native-loader.js'),
+      path.join(packageRoot, 'dist', 'native-loader.js'),
     );
+    fs.cpSync(path.join(repoRoot, 'dist', 'lib'), path.join(packageRoot, 'dist', 'lib'), {
+      recursive: true,
+    });
     fs.writeFileSync(
       path.join(fakeCliRoot, 'package.json'),
       JSON.stringify({ name: '@napi-rs/cli', version: '0.0.0' }),
@@ -99,7 +103,7 @@ test('install.js ignores ancestor-resolved @napi-rs/cli and builds through cargo
       `require('node:fs').writeFileSync(${JSON.stringify(cliSentinelPath)}, 'ancestor-cli-ran');`,
     );
 
-    const result = spawnSync(process.execPath, [path.join(packageRoot, 'install.js')], {
+    const result = spawnSync(process.execPath, [path.join(packageRoot, 'dist', 'install.js')], {
       cwd: packageRoot,
       encoding: 'utf8',
       env: {
