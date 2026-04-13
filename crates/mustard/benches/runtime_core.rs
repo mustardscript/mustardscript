@@ -27,6 +27,13 @@ struct BenchFixtures {
     array_callback_shared: Arc<BytecodeProgram>,
     collection_callback_shared: Arc<BytecodeProgram>,
     map_set_shared: Arc<BytecodeProgram>,
+    map_get_large_shared: Arc<BytecodeProgram>,
+    map_set_large_shared: Arc<BytecodeProgram>,
+    map_has_large_shared: Arc<BytecodeProgram>,
+    set_add_large_shared: Arc<BytecodeProgram>,
+    set_has_large_shared: Arc<BytecodeProgram>,
+    set_delete_large_shared: Arc<BytecodeProgram>,
+    collection_iterator_large_shared: Arc<BytecodeProgram>,
     boundary_decode_shared: Arc<BytecodeProgram>,
     boundary_encode_shared: Arc<BytecodeProgram>,
     boundary_payload: StructuredValue,
@@ -53,6 +60,14 @@ impl BenchFixtures {
         let collection_callback_shared =
             Arc::new(compile_to_bytecode(collection_callback_source()));
         let map_set_shared = Arc::new(compile_to_bytecode(map_set_source()));
+        let map_get_large_shared = Arc::new(compile_to_bytecode(map_get_large_source()));
+        let map_set_large_shared = Arc::new(compile_to_bytecode(map_set_large_source()));
+        let map_has_large_shared = Arc::new(compile_to_bytecode(map_has_large_source()));
+        let set_add_large_shared = Arc::new(compile_to_bytecode(set_add_large_source()));
+        let set_has_large_shared = Arc::new(compile_to_bytecode(set_has_large_source()));
+        let set_delete_large_shared = Arc::new(compile_to_bytecode(set_delete_large_source()));
+        let collection_iterator_large_shared =
+            Arc::new(compile_to_bytecode(collection_iterator_large_source()));
         let boundary_decode_shared = Arc::new(compile_to_bytecode(boundary_decode_source()));
         let boundary_encode_shared = Arc::new(compile_to_bytecode(boundary_encode_source()));
         let boundary_payload = nested_boundary_payload();
@@ -82,6 +97,13 @@ impl BenchFixtures {
             array_callback_shared,
             collection_callback_shared,
             map_set_shared,
+            map_get_large_shared,
+            map_set_large_shared,
+            map_has_large_shared,
+            set_add_large_shared,
+            set_has_large_shared,
+            set_delete_large_shared,
+            collection_iterator_large_shared,
             boundary_decode_shared,
             boundary_encode_shared,
             boundary_payload,
@@ -421,6 +443,99 @@ fn runtime_execution_benches(c: &mut Criterion) {
     group.finish();
 }
 
+fn keyed_collection_large_benches(c: &mut Criterion) {
+    let mut group = c.benchmark_group("keyed_collection_large");
+    let fixtures = fixtures();
+
+    group.bench_function("map_get_large", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.map_get_large_shared), options)
+                        .expect("large Map.get bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("map_set_large", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.map_set_large_shared), options)
+                        .expect("large Map.set bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("map_has_large", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.map_has_large_shared), options)
+                        .expect("large Map.has bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("set_add_large", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.set_add_large_shared), options)
+                        .expect("large Set.add bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("set_has_large", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.set_has_large_shared), options)
+                        .expect("large Set.has bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("set_delete_large", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.set_delete_large_shared), options)
+                        .expect("large Set.delete bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("iterator_throughput_large", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.collection_iterator_large_shared),
+                    options,
+                )
+                .expect("large iterator throughput bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.finish();
+}
+
 fn structured_boundary_benches(c: &mut Criterion) {
     let mut group = c.benchmark_group("structured_boundary");
     let fixtures = fixtures();
@@ -688,6 +803,148 @@ fn map_set_source() -> &'static str {
     "#
 }
 
+fn map_get_large_source() -> &'static str {
+    r#"
+    const size = 1024;
+    const keys = [];
+    for (let i = 0; i < size; i += 1) {
+      keys.push("k" + i);
+    }
+    const map = new Map();
+    for (let i = 0; i < keys.length; i += 1) {
+      map.set(keys[i], i);
+    }
+    let total = 0;
+    for (let round = 0; round < 8192; round += 1) {
+      total += map.get(keys[round % size]);
+    }
+    total;
+    "#
+}
+
+fn map_set_large_source() -> &'static str {
+    r#"
+    const size = 1024;
+    const keys = [];
+    for (let i = 0; i < size; i += 1) {
+      keys.push("k" + i);
+    }
+    const map = new Map();
+    for (let i = 0; i < keys.length; i += 1) {
+      map.set(keys[i], i);
+    }
+    let total = 0;
+    for (let round = 0; round < 4096; round += 1) {
+      const key = keys[round % size];
+      map.set(key, round);
+      total += round;
+    }
+    total + map.get(keys[0]);
+    "#
+}
+
+fn map_has_large_source() -> &'static str {
+    r#"
+    const size = 1024;
+    const keys = [];
+    for (let i = 0; i < size; i += 1) {
+      keys.push("k" + i);
+    }
+    const map = new Map();
+    for (let i = 0; i < keys.length; i += 1) {
+      map.set(keys[i], i);
+    }
+    let total = 0;
+    for (let round = 0; round < 8192; round += 1) {
+      if (map.has(keys[round % size])) {
+        total += 1;
+      }
+    }
+    total;
+    "#
+}
+
+fn set_add_large_source() -> &'static str {
+    r#"
+    const size = 1024;
+    const keys = [];
+    const extra = [];
+    for (let i = 0; i < size; i += 1) {
+      keys.push("k" + i);
+      extra.push("extra" + i);
+    }
+    const set = new Set(keys);
+    let total = 0;
+    for (let round = 0; round < extra.length; round += 1) {
+      set.add(extra[round]);
+      total += round;
+    }
+    total + (set.has(extra[extra.length - 1]) ? 1 : 0);
+    "#
+}
+
+fn set_has_large_source() -> &'static str {
+    r#"
+    const size = 1024;
+    const keys = [];
+    for (let i = 0; i < size; i += 1) {
+      keys.push("k" + i);
+    }
+    const set = new Set(keys);
+    let total = 0;
+    for (let round = 0; round < 8192; round += 1) {
+      if (set.has(keys[round % size])) {
+        total += 1;
+      }
+    }
+    total;
+    "#
+}
+
+fn set_delete_large_source() -> &'static str {
+    r#"
+    const size = 2048;
+    const keys = [];
+    for (let i = 0; i < size; i += 1) {
+      keys.push("k" + i);
+    }
+    const set = new Set(keys);
+    let total = 0;
+    for (let round = 0; round < 1024; round += 1) {
+      if (set.delete(keys[round])) {
+        total += 1;
+      }
+    }
+    total;
+    "#
+}
+
+fn collection_iterator_large_source() -> &'static str {
+    r#"
+    const size = 512;
+    const keys = [];
+    for (let i = 0; i < size; i += 1) {
+      keys.push("k" + i);
+    }
+    const map = new Map();
+    const set = new Set();
+    for (let i = 0; i < keys.length; i += 1) {
+      map.set(keys[i], i);
+      set.add(keys[i]);
+    }
+    let total = 0;
+    for (let round = 0; round < 64; round += 1) {
+      for (const [key, value] of map) {
+        total += value + key.length + round;
+      }
+      for (const value of set) {
+        total += value.length + round;
+      }
+    }
+    total;
+    "#
+}
+
 fn boundary_decode_source() -> &'static str {
     r#"
     let total = 0;
@@ -794,6 +1051,7 @@ criterion_group!(
         parse_and_lower_benches,
         startup_benches,
         runtime_execution_benches,
+        keyed_collection_large_benches,
         structured_boundary_benches,
         snapshot_benches
 );
