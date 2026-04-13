@@ -216,7 +216,7 @@ async function runSidecar(entry) {
       protocol_version: SIDECAR_PROTOCOL_VERSION,
       method: 'start',
       id: 2,
-      program_base64: compile.result.program_base64,
+      program_id: compile.result.program_id,
       options: {
         inputs: {},
         capabilities: entry.capabilities,

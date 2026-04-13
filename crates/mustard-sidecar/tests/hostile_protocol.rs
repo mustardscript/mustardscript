@@ -167,6 +167,18 @@ fn hostile_but_well_formed_requests_fail_closed() {
         .to_string(),
         serde_json::json!({
             "protocol_version": PROTOCOL_VERSION,
+            "method": "start",
+            "id": 33,
+            "program_id": "missing-program",
+            "options": {
+                "inputs": {},
+                "capabilities": [],
+                "limits": {},
+            }
+        })
+        .to_string(),
+        serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 4,
             "snapshot_base64": snapshot,

@@ -9,13 +9,14 @@ description = "Sidecar process for the MustardScript runtime"
 
 [dependencies]
 anyhow.workspace = true
+mustard = { path = "../mustard" }
 mustard-bridge = { path = "../mustard-bridge" }
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
 base64 = "0.22.1"
 hmac.workspace = true
-mustard = { path = "../mustard" }
 sha2.workspace = true

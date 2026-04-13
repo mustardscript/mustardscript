@@ -126,7 +126,7 @@ function runInstalledSidecarSmoke(consumerRoot, source) {
               protocol_version: ${SIDECAR_PROTOCOL_VERSION},
               method: 'start',
               id: 2,
-              program_base64: compile.result.program_base64,
+              program_id: compile.result.program_id,
               options: { inputs: {}, capabilities: [], limits: {} },
             }) + '\\n');
             const start = JSON.parse(await readResponse());

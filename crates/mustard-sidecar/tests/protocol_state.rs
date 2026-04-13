@@ -1,6 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use hmac::{Hmac, Mac};
-use mustard_sidecar::handle_request_line;
+use mustard_sidecar::SidecarSession;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -9,27 +9,37 @@ const PROTOCOL_VERSION: u32 = mustard_sidecar::PROTOCOL_VERSION;
 
 type HmacSha256 = Hmac<Sha256>;
 
-fn request(payload: Value) -> Value {
+fn request(session: &mut SidecarSession, payload: Value) -> Value {
     let encoded = payload.to_string();
-    let line = handle_request_line(&encoded)
+    let line = session
+        .handle_request_line(&encoded)
         .unwrap_or_else(|error| panic!("request should succeed:\n{encoded}\n{error}"))
         .expect("request should yield a response line");
     serde_json::from_str(&line).expect("response should parse")
 }
 
-fn compile_program(source: &str, id: u64) -> String {
-    let response = request(json!({
-        "protocol_version": PROTOCOL_VERSION,
-        "method": "compile",
-        "id": id,
-        "source": source,
-    }));
+fn compile_program(session: &mut SidecarSession, source: &str, id: u64) -> (String, String) {
+    let response = request(
+        session,
+        json!({
+            "protocol_version": PROTOCOL_VERSION,
+            "method": "compile",
+            "id": id,
+            "source": source,
+        }),
+    );
     assert!(response["ok"].as_bool().unwrap_or(false));
     assert_eq!(response["id"], id);
-    response["result"]["program_base64"]
-        .as_str()
-        .expect("program base64 should exist")
-        .to_string()
+    (
+        response["result"]["program_base64"]
+            .as_str()
+            .expect("program base64 should exist")
+            .to_string(),
+        response["result"]["program_id"]
+            .as_str()
+            .expect("program id should exist")
+            .to_string(),
+    )
 }
 
 fn snapshot_id(snapshot_base64: &str) -> String {
@@ -68,36 +78,57 @@ fn snapshot_token(snapshot_base64: &str) -> String {
     token
 }
 
-fn start_program(program_base64: &str, capabilities: &[&str], id: u64) -> Value {
-    request(json!({
+fn start_program(
+    session: &mut SidecarSession,
+    program_base64: Option<&str>,
+    program_id: Option<&str>,
+    capabilities: &[&str],
+    id: u64,
+) -> Value {
+    let mut payload = json!({
         "protocol_version": PROTOCOL_VERSION,
         "method": "start",
         "id": id,
-        "program_base64": program_base64,
         "options": {
             "inputs": {},
             "capabilities": capabilities,
             "limits": {},
         }
-    }))
+    });
+    if let Some(program_base64) = program_base64 {
+        payload["program_base64"] = Value::String(program_base64.to_string());
+    }
+    if let Some(program_id) = program_id {
+        payload["program_id"] = Value::String(program_id.to_string());
+    }
+    request(session, payload)
 }
 
-fn resume_snapshot(snapshot_base64: &str, capabilities: &[&str], payload: Value, id: u64) -> Value {
-    request(json!({
-        "protocol_version": PROTOCOL_VERSION,
-        "method": "resume",
-        "id": id,
-        "snapshot_base64": snapshot_base64,
-        "policy": {
-            "capabilities": capabilities,
-            "limits": {},
-            "snapshot_id": snapshot_id(snapshot_base64),
-            "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
-            "snapshot_key_digest": snapshot_key_digest(),
-            "snapshot_token": snapshot_token(snapshot_base64),
-        },
-        "payload": payload,
-    }))
+fn resume_snapshot(
+    session: &mut SidecarSession,
+    snapshot_base64: &str,
+    capabilities: &[&str],
+    payload: Value,
+    id: u64,
+) -> Value {
+    request(
+        session,
+        json!({
+            "protocol_version": PROTOCOL_VERSION,
+            "method": "resume",
+            "id": id,
+            "snapshot_base64": snapshot_base64,
+            "policy": {
+                "capabilities": capabilities,
+                "limits": {},
+                "snapshot_id": snapshot_id(snapshot_base64),
+                "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+                "snapshot_key_digest": snapshot_key_digest(),
+                "snapshot_token": snapshot_token(snapshot_base64),
+            },
+            "payload": payload,
+        }),
+    )
 }
 
 fn finite_number(value: f64) -> Value {
@@ -110,11 +141,12 @@ fn finite_number(value: f64) -> Value {
 
 #[test]
 fn duplicate_ids_are_echoed_without_coupling_unrelated_requests() {
-    let first_program = compile_program("const value = 1; value + 1;", 7);
-    let second_program = compile_program("const value = 5; value + 1;", 7);
+    let mut session = SidecarSession::new();
+    let (first_program, _) = compile_program(&mut session, "const value = 1; value + 1;", 7);
+    let (second_program, _) = compile_program(&mut session, "const value = 5; value + 1;", 7);
 
-    let first = start_program(&first_program, &[], 7);
-    let second = start_program(&second_program, &[], 7);
+    let first = start_program(&mut session, Some(&first_program), None, &[], 7);
+    let second = start_program(&mut session, Some(&second_program), None, &[], 7);
 
     assert!(first["ok"].as_bool().unwrap_or(false));
     assert!(second["ok"].as_bool().unwrap_or(false));
@@ -128,10 +160,11 @@ fn duplicate_ids_are_echoed_without_coupling_unrelated_requests() {
 
 #[test]
 fn same_program_blob_can_start_multiple_independent_suspended_executions() {
-    let program = compile_program("const value = fetch_data(4); value + 2;", 1);
+    let mut session = SidecarSession::new();
+    let (program, _) = compile_program(&mut session, "const value = fetch_data(4); value + 2;", 1);
 
-    let first = start_program(&program, &["fetch_data"], 2);
-    let second = start_program(&program, &["fetch_data"], 3);
+    let first = start_program(&mut session, Some(&program), None, &["fetch_data"], 2);
+    let second = start_program(&mut session, Some(&program), None, &["fetch_data"], 3);
 
     let first_snapshot = first["result"]["step"]["snapshot_base64"]
         .as_str()
@@ -141,6 +174,7 @@ fn same_program_blob_can_start_multiple_independent_suspended_executions() {
         .expect("second snapshot should exist");
 
     let second_resumed = resume_snapshot(
+        &mut session,
         second_snapshot,
         &["fetch_data"],
         json!({
@@ -150,6 +184,7 @@ fn same_program_blob_can_start_multiple_independent_suspended_executions() {
         4,
     );
     let first_resumed = resume_snapshot(
+        &mut session,
         first_snapshot,
         &["fetch_data"],
         json!({
@@ -173,13 +208,15 @@ fn same_program_blob_can_start_multiple_independent_suspended_executions() {
 
 #[test]
 fn replaying_the_same_snapshot_is_deterministic_because_resume_is_stateless() {
-    let program = compile_program("const value = fetch_data(5); value + 3;", 1);
-    let start = start_program(&program, &["fetch_data"], 2);
+    let mut session = SidecarSession::new();
+    let (program, _) = compile_program(&mut session, "const value = fetch_data(5); value + 3;", 1);
+    let start = start_program(&mut session, Some(&program), None, &["fetch_data"], 2);
     let snapshot = start["result"]["step"]["snapshot_base64"]
         .as_str()
         .expect("snapshot should exist");
 
     let first = resume_snapshot(
+        &mut session,
         snapshot,
         &["fetch_data"],
         json!({
@@ -189,6 +226,7 @@ fn replaying_the_same_snapshot_is_deterministic_because_resume_is_stateless() {
         3,
     );
     let replay = resume_snapshot(
+        &mut session,
         snapshot,
         &["fetch_data"],
         json!({
@@ -205,13 +243,15 @@ fn replaying_the_same_snapshot_is_deterministic_because_resume_is_stateless() {
 
 #[test]
 fn resume_fails_closed_when_policy_does_not_reauthorize_the_suspended_capability() {
-    let program = compile_program("const value = fetch_data(2); value + 1;", 1);
-    let start = start_program(&program, &["fetch_data"], 2);
+    let mut session = SidecarSession::new();
+    let (program, _) = compile_program(&mut session, "const value = fetch_data(2); value + 1;", 1);
+    let start = start_program(&mut session, Some(&program), None, &["fetch_data"], 2);
     let snapshot = start["result"]["step"]["snapshot_base64"]
         .as_str()
         .expect("snapshot should exist");
 
     let response = resume_snapshot(
+        &mut session,
         snapshot,
         &["other_capability"],
         json!({
@@ -229,4 +269,18 @@ fn resume_fails_closed_when_policy_does_not_reauthorize_the_suspended_capability
             .expect("error should exist")
             .contains("snapshot policy rejected unauthorized capability `fetch_data`")
     );
+}
+
+#[test]
+fn compiled_program_ids_start_without_resending_program_bytes() {
+    let mut session = SidecarSession::new();
+    let (_, program_id) = compile_program(&mut session, "const value = 40; value + 2;", 1);
+
+    let first = start_program(&mut session, None, Some(&program_id), &[], 2);
+    let second = start_program(&mut session, None, Some(&program_id), &[], 3);
+
+    assert!(first["ok"].as_bool().unwrap_or(false));
+    assert!(second["ok"].as_bool().unwrap_or(false));
+    assert_eq!(first["result"]["step"]["value"]["Number"]["Finite"], 42.0);
+    assert_eq!(second["result"]["step"]["value"]["Number"]["Finite"], 42.0);
 }

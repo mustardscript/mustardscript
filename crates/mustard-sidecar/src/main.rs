@@ -1,12 +1,13 @@
 use std::io::{self, BufRead, Write};
 
 use anyhow::{Context, Result};
-use mustard_sidecar::{MAX_REQUEST_LINE_BYTES, handle_request_line};
+use mustard_sidecar::{MAX_REQUEST_LINE_BYTES, SidecarSession};
 
 fn main() -> Result<()> {
     let stdin = io::stdin();
     let mut stdin = stdin.lock();
     let mut stdout = io::stdout().lock();
+    let mut session = SidecarSession::new();
     let mut line = Vec::new();
     loop {
         line.clear();
@@ -26,7 +27,7 @@ fn main() -> Result<()> {
             }
         }
         let line = String::from_utf8(line.clone()).context("request line must be valid utf-8")?;
-        let Some(response) = handle_request_line(&line)? else {
+        let Some(response) = session.handle_request_line(&line)? else {
             continue;
         };
         writeln!(&mut stdout, "{response}").context("failed to terminate response line")?;

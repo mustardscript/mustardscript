@@ -40,6 +40,8 @@ verbatim and does not require request IDs to be unique.
 ```
 
 Successful responses return a base64-encoded compiled program blob.
+They also return a session-local `program_id` handle that the same sidecar
+process may reuse on later `start` requests.
 
 ### `start`
 
@@ -48,13 +50,24 @@ Successful responses return a base64-encoded compiled program blob.
   "method": "start",
   "protocol_version": 1,
   "id": 2,
-  "program_base64": "...",
+  "program_id": "...",
   "options": {
     "inputs": {},
     "capabilities": ["fetch_data"]
   }
 }
 ```
+
+`start` requires either:
+
+- `program_id` for a compiled program already cached in the current sidecar
+  session
+- or `program_base64` for a raw program blob that should be decoded directly
+  and may seed that session cache
+
+If both fields are omitted, the request fails closed. If `program_base64` is
+used to seed a cached entry for a supplied `program_id`, the digest must match
+or the request fails closed.
 
 Successful responses return either:
 
@@ -128,18 +141,24 @@ Instead:
 That means capability proxying happens through suspension and resume, not by
 shipping host callbacks or JavaScript functions into the sidecar process.
 
-## Stateless Request Semantics
+## Session Semantics
 
-- The sidecar keeps no server-side session, program handle, or snapshot handle
-  between requests.
-- `program_base64` and `snapshot_base64` are host-managed opaque blobs. The host
-  may reuse the same compiled program bytes for multiple `start` requests and
-  may replay the same snapshot bytes in multiple `resume` requests as long as
-  it preserves or recomputes the matching detached `snapshot_id`,
+- The sidecar now keeps a session-local compiled-program cache keyed by
+  `program_id`.
+- `compile` seeds that cache and returns both the opaque `program_base64` blob
+  and its `program_id`.
+- `start` may reference a cached `program_id` instead of resending
+  `program_base64`, but those IDs only remain valid for the lifetime of the
+  current sidecar process.
+- The sidecar still keeps no server-side snapshot handle between requests.
+  `snapshot_base64` remains a host-managed opaque blob.
+- Hosts may replay the same snapshot bytes in multiple `resume` requests as
+  long as they preserve or recompute the matching detached `snapshot_id`,
   `snapshot_key_digest`, and `snapshot_token` for the supplied
   `snapshot_key_base64`.
 - Replaying a snapshot re-executes from that suspension point deterministically
-  under the supplied `policy`; there is no in-sidecar single-use tracking.
+  under the supplied `policy`; there is still no in-sidecar single-use
+  tracking.
 - If the embedding host wants stronger single-use or anti-replay guarantees, it
   must enforce them above this protocol boundary.
 
@@ -166,4 +185,5 @@ shipping host callbacks or JavaScript functions into the sidecar process.
 - Any in-flight request is lost when the process is killed. To continue work,
   the host starts a fresh sidecar and replays a previously persisted
   compiled-program blob or suspension snapshot, or recompiles from source if no
-  resumable blob was saved.
+  resumable blob was saved. Cached `program_id` values do not survive process
+  termination.

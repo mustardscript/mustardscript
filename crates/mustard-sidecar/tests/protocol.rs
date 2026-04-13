@@ -93,9 +93,9 @@ fn sidecar_compiles_starts_and_resumes() {
         serde_json::from_str(&line).expect("compile response should parse");
     assert!(compile_response["ok"].as_bool().unwrap_or(false));
     assert_eq!(compile_response["protocol_version"], PROTOCOL_VERSION);
-    let program = compile_response["result"]["program_base64"]
+    let program_id = compile_response["result"]["program_id"]
         .as_str()
-        .expect("program base64 should exist")
+        .expect("program id should exist")
         .to_string();
 
     writeln!(
@@ -105,7 +105,7 @@ fn sidecar_compiles_starts_and_resumes() {
             "protocol_version": PROTOCOL_VERSION,
             "method": "start",
             "id": 2,
-            "program_base64": program,
+            "program_id": program_id,
             "options": {
                 "inputs": {},
                 "capabilities": ["fetch_data"],
@@ -197,9 +197,9 @@ fn sidecar_accepts_cancelled_resume_payload() {
         serde_json::from_str(&line).expect("compile response should parse");
     assert!(compile_response["ok"].as_bool().unwrap_or(false));
     assert_eq!(compile_response["protocol_version"], PROTOCOL_VERSION);
-    let program = compile_response["result"]["program_base64"]
+    let program_id = compile_response["result"]["program_id"]
         .as_str()
-        .expect("program base64 should exist")
+        .expect("program id should exist")
         .to_string();
 
     writeln!(
@@ -209,7 +209,7 @@ fn sidecar_accepts_cancelled_resume_payload() {
             "protocol_version": PROTOCOL_VERSION,
             "method": "start",
             "id": 2,
-            "program_base64": program,
+            "program_id": program_id,
             "options": {
                 "inputs": {},
                 "capabilities": ["fetch_data"],
@@ -322,9 +322,9 @@ fn sidecar_can_be_forcefully_terminated_and_restarted() {
         serde_json::from_str(&line).expect("compile response should parse");
     assert!(compile_response["ok"].as_bool().unwrap_or(false));
     assert_eq!(compile_response["protocol_version"], PROTOCOL_VERSION);
-    let program = compile_response["result"]["program_base64"]
+    let program_id = compile_response["result"]["program_id"]
         .as_str()
-        .expect("program base64 should exist")
+        .expect("program id should exist")
         .to_string();
 
     writeln!(
@@ -334,7 +334,7 @@ fn sidecar_can_be_forcefully_terminated_and_restarted() {
             "protocol_version": PROTOCOL_VERSION,
             "method": "start",
             "id": 2,
-            "program_base64": program,
+            "program_id": program_id,
             "options": {
                 "inputs": {},
                 "capabilities": [],
