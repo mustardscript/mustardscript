@@ -597,6 +597,10 @@ pub(super) struct Runtime {
     pub(super) heap_bytes_used: usize,
     #[serde(skip, default)]
     pub(super) allocation_count: usize,
+    #[serde(skip, default)]
+    pub(super) gc_allocation_debt_bytes: usize,
+    #[serde(skip, default)]
+    pub(super) gc_allocation_debt_count: usize,
     #[serde(skip, default = "accounting_recount_required_after_deserialize")]
     pub(super) accounting_recount_required: bool,
     #[serde(skip, default)]

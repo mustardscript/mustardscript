@@ -5,7 +5,6 @@ use std::sync::Arc;
 impl Runtime {
     pub(super) fn run_root(&mut self) -> MustardResult<ExecutionStep> {
         self.check_cancellation()?;
-        self.collect_garbage()?;
         self.check_call_depth()?;
         let root_env = self.new_env(Some(self.globals))?;
         self.push_frame(
@@ -18,6 +17,7 @@ impl Runtime {
             ),
             None,
         )?;
+        self.reset_gc_debt();
         self.run()
     }
 

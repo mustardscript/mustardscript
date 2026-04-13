@@ -31,28 +31,76 @@ impl Runtime {
         );
     }
 
-    pub(super) fn ensure_heap_capacity(&self, additional_bytes: usize) -> MustardResult<()> {
-        let next = self
+    fn growth_fits(
+        &self,
+        additional_bytes: usize,
+        additional_allocations: usize,
+    ) -> MustardResult<bool> {
+        let next_allocations = self
+            .allocation_count
+            .checked_add(additional_allocations)
+            .ok_or_else(|| limit_error("allocation budget exhausted"))?;
+        if next_allocations > self.limits.allocation_budget {
+            return Ok(false);
+        }
+
+        let next_heap = self
             .heap_bytes_used
             .checked_add(additional_bytes)
             .ok_or_else(|| limit_error("heap limit exceeded"))?;
-        if next > self.limits.heap_limit_bytes {
+        Ok(next_heap <= self.limits.heap_limit_bytes)
+    }
+
+    fn enforce_growth_limits(
+        &self,
+        additional_bytes: usize,
+        additional_allocations: usize,
+    ) -> MustardResult<()> {
+        let next_allocations = self
+            .allocation_count
+            .checked_add(additional_allocations)
+            .ok_or_else(|| limit_error("allocation budget exhausted"))?;
+        if next_allocations > self.limits.allocation_budget {
+            return Err(limit_error("allocation budget exhausted"));
+        }
+
+        let next_heap = self
+            .heap_bytes_used
+            .checked_add(additional_bytes)
+            .ok_or_else(|| limit_error("heap limit exceeded"))?;
+        if next_heap > self.limits.heap_limit_bytes {
             return Err(limit_error("heap limit exceeded"));
         }
         Ok(())
     }
 
-    pub(super) fn account_new_allocation(&mut self, bytes: usize) -> MustardResult<()> {
-        let next_allocations = self
-            .allocation_count
-            .checked_add(1)
-            .ok_or_else(|| limit_error("allocation budget exhausted"))?;
-        if next_allocations > self.limits.allocation_budget {
-            return Err(limit_error("allocation budget exhausted"));
+    pub(super) fn prepare_for_growth(
+        &mut self,
+        additional_bytes: usize,
+        additional_allocations: usize,
+    ) -> MustardResult<()> {
+        if self.growth_fits(additional_bytes, additional_allocations)? {
+            return Ok(());
         }
-        self.ensure_heap_capacity(bytes)?;
-        self.allocation_count = next_allocations;
+
+        self.collect_garbage()?;
+
+        if self.growth_fits(additional_bytes, additional_allocations)? {
+            return Ok(());
+        }
+
+        self.enforce_growth_limits(additional_bytes, additional_allocations)
+    }
+
+    pub(super) fn ensure_heap_capacity(&mut self, additional_bytes: usize) -> MustardResult<()> {
+        self.prepare_for_growth(additional_bytes, 0)
+    }
+
+    pub(super) fn account_new_allocation(&mut self, bytes: usize) -> MustardResult<()> {
+        self.prepare_for_growth(bytes, 1)?;
+        self.allocation_count += 1;
         self.heap_bytes_used += bytes;
+        self.record_gc_growth(bytes, 1);
         Ok(())
     }
 
@@ -62,8 +110,10 @@ impl Runtime {
         new_bytes: usize,
     ) -> MustardResult<()> {
         if new_bytes >= old_bytes {
-            self.ensure_heap_capacity(new_bytes - old_bytes)?;
-            self.heap_bytes_used += new_bytes - old_bytes;
+            let added_bytes = new_bytes - old_bytes;
+            self.prepare_for_growth(added_bytes, 0)?;
+            self.heap_bytes_used += added_bytes;
+            self.record_gc_growth(added_bytes, 0);
         } else {
             self.heap_bytes_used -= old_bytes - new_bytes;
         }

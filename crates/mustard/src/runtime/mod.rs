@@ -8,6 +8,8 @@ mod conversions;
 mod env;
 mod exceptions;
 mod gc;
+#[cfg(test)]
+mod gc_trigger_tests;
 mod properties;
 mod serialization;
 mod shared;
@@ -85,6 +87,7 @@ impl Runtime {
             let value = runtime.value_from_structured(value)?;
             runtime.define_global(name, value, true)?;
         }
+        runtime.reset_gc_debt();
         Ok(runtime)
     }
 
@@ -124,6 +127,8 @@ impl Runtime {
             instruction_counter: 0,
             heap_bytes_used: 0,
             allocation_count: 0,
+            gc_allocation_debt_bytes: 0,
+            gc_allocation_debt_count: 0,
             accounting_recount_required: false,
             cancellation_token,
             pending_internal_exception: None,
@@ -164,6 +169,8 @@ impl Runtime {
             instruction_counter: 0,
             heap_bytes_used: image.heap_bytes_used,
             allocation_count: image.allocation_count,
+            gc_allocation_debt_bytes: 0,
+            gc_allocation_debt_count: 0,
             accounting_recount_required: false,
             cancellation_token,
             pending_internal_exception: None,

@@ -322,6 +322,8 @@ impl DetachedRuntime {
             instruction_counter: self.instruction_counter,
             heap_bytes_used: 0,
             allocation_count: 0,
+            gc_allocation_debt_bytes: 0,
+            gc_allocation_debt_count: 0,
             accounting_recount_required: true,
             cancellation_token: None,
             pending_internal_exception: None,

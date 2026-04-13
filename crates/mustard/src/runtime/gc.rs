@@ -1,11 +1,53 @@
 use super::*;
 
+const GC_PRESSURE_NUMERATOR: usize = 7;
+const GC_PRESSURE_DENOMINATOR: usize = 8;
+const MIN_GC_DEBT_BYTES: usize = 4 * 1024;
+const MAX_GC_DEBT_BYTES: usize = 256 * 1024;
+const MIN_GC_DEBT_ALLOCATIONS: usize = 32;
+const MAX_GC_DEBT_ALLOCATIONS: usize = 2_048;
+
 impl Runtime {
+    pub(super) fn reset_gc_debt(&mut self) {
+        self.gc_allocation_debt_bytes = 0;
+        self.gc_allocation_debt_count = 0;
+    }
+
+    pub(super) fn record_gc_growth(&mut self, bytes: usize, allocations: usize) {
+        self.gc_allocation_debt_bytes = self.gc_allocation_debt_bytes.saturating_add(bytes);
+        self.gc_allocation_debt_count = self.gc_allocation_debt_count.saturating_add(allocations);
+    }
+
+    fn gc_debt_byte_threshold(&self) -> usize {
+        scaled_gc_threshold(
+            self.limits.heap_limit_bytes,
+            32,
+            MIN_GC_DEBT_BYTES,
+            MAX_GC_DEBT_BYTES,
+        )
+    }
+
+    fn gc_debt_allocation_threshold(&self) -> usize {
+        scaled_gc_threshold(
+            self.limits.allocation_budget,
+            32,
+            MIN_GC_DEBT_ALLOCATIONS,
+            MAX_GC_DEBT_ALLOCATIONS,
+        )
+    }
+
+    fn should_collect_before_allocating(&self) -> bool {
+        self.gc_allocation_debt_bytes >= self.gc_debt_byte_threshold()
+            || self.gc_allocation_debt_count >= self.gc_debt_allocation_threshold()
+            || budget_is_under_pressure(self.heap_bytes_used, self.limits.heap_limit_bytes)
+            || budget_is_under_pressure(self.allocation_count, self.limits.allocation_budget)
+    }
+
     pub(super) fn collect_garbage_before_instruction(
         &mut self,
         instruction: &Instruction,
     ) -> MustardResult<()> {
-        if instruction_may_allocate(instruction) {
+        if instruction_may_allocate(instruction) && self.should_collect_before_allocating() {
             self.collect_garbage()?;
         }
         Ok(())
@@ -31,6 +73,7 @@ impl Runtime {
             .map_err(MustardError::runtime)?;
         self.heap_bytes_used = heap_bytes_used;
         self.allocation_count = allocation_count;
+        self.reset_gc_debt();
 
         Ok(GarbageCollectionStats {
             reclaimed_bytes: baseline_bytes.saturating_sub(heap_bytes_used),
@@ -567,6 +610,24 @@ impl Runtime {
             worklist.promises.push(key);
         }
     }
+}
+
+fn scaled_gc_threshold(limit: usize, divisor: usize, min: usize, max: usize) -> usize {
+    if limit == 0 {
+        return 0;
+    }
+    let scaled = (limit / divisor).max(1);
+    scaled.clamp(min.min(limit), max.min(limit))
+}
+
+fn budget_is_under_pressure(used: usize, limit: usize) -> bool {
+    if limit == 0 {
+        return used > 0;
+    }
+    if limit <= GC_PRESSURE_DENOMINATOR {
+        return used >= limit;
+    }
+    used >= limit.saturating_mul(GC_PRESSURE_NUMERATOR) / GC_PRESSURE_DENOMINATOR
 }
 
 fn instruction_may_allocate(instruction: &Instruction) -> bool {

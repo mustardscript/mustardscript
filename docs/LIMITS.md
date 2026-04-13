@@ -46,9 +46,10 @@ Cooperative cancellation is controlled separately through:
   conservative accounting across live guest heap allocations and heap-backed
   mutations.
 - The runtime runs a non-moving mark-sweep collection pass at allocation-safe
-  execution boundaries and on resume before failing heap or allocation
-  pressure, so unreachable cycles can be reclaimed without changing handle
-  identities.
+  execution boundaries only when recent allocation debt or current budget
+  pressure makes collection worthwhile, and it still forces a collection before
+  failing heap or allocation pressure, so unreachable cycles can be reclaimed
+  without changing handle identities.
 - Snapshot load recomputes heap accounting once before policy is rebound so
   serialized inputs cannot bypass the configured heap and allocation budgets,
   and later restore-policy application reuses those verified totals instead of

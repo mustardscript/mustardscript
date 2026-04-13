@@ -150,6 +150,7 @@ impl Runtime {
                 };
                 self.resolve_promise_with_outcome(promise, outcome)
                     .map_err(|error| self.annotate_runtime_error(error))?;
+                self.reset_gc_debt();
                 return self.run();
             }
 
@@ -168,6 +169,7 @@ impl Runtime {
                         )));
                     };
                     frame.stack.push(value);
+                    self.reset_gc_debt();
                     self.run()
                 }
                 ResumePayload::Error(error) => {
@@ -201,6 +203,7 @@ impl Runtime {
                     )));
                 };
                 frame.stack.push(value);
+                self.reset_gc_debt();
             }
             ResumePayload::Error(error) => {
                 self.pending_resume_behavior = ResumeBehavior::Value;
