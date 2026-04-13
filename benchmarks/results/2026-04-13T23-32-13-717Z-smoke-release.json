@@ -1,0 +1,107 @@
+{
+  "machine": {
+    "timestamp": "2026-04-13T23:32:13.717Z",
+    "benchmarkKind": "smoke",
+    "buildProfile": "release",
+    "gitSha": "b708041",
+    "fixtureVersion": 2,
+    "hostname": "mac.lan",
+    "platform": "darwin 25.2.0",
+    "arch": "arm64",
+    "nodeVersion": "v24.12.0",
+    "cpuModel": "Apple M4",
+    "cpuCount": 10,
+    "totalMemoryBytes": 17179869184
+  },
+  "metrics": {
+    "startup": {
+      "iterations": 20,
+      "minMs": 0.053375000000016826,
+      "medianMs": 0.06812499999995225,
+      "p95Ms": 0.0973329999999919,
+      "maxMs": 0.11612500000001091,
+      "meanMs": 0.07075400000000513
+    },
+    "compute": {
+      "iterations": 10,
+      "minMs": 0.4219999999999686,
+      "medianMs": 0.47495799999995825,
+      "p95Ms": 0.6344589999999926,
+      "maxMs": 0.6344589999999926,
+      "meanMs": 0.5027999999999906
+    },
+    "hostCall": {
+      "guestBaseline": {
+        "iterations": 10,
+        "minMs": 0.06341699999995853,
+        "medianMs": 0.06395800000001373,
+        "p95Ms": 0.06841599999995651,
+        "maxMs": 0.06841599999995651,
+        "meanMs": 0.06456669999998325
+      },
+      "hostCalls": {
+        "iterations": 10,
+        "minMs": 0.2811250000000314,
+        "medianMs": 0.2862920000000031,
+        "p95Ms": 0.3902919999999881,
+        "maxMs": 0.3902919999999881,
+        "meanMs": 0.2991708000000017
+      },
+      "medianRatio": 4.4762500390872395,
+      "p95Ratio": 5.70468896164985
+    },
+    "snapshot": {
+      "direct": {
+        "iterations": 20,
+        "minMs": 0.0721250000000282,
+        "medianMs": 0.07970899999997982,
+        "p95Ms": 0.13579199999998082,
+        "maxMs": 0.19220799999999372,
+        "meanMs": 0.09298545000000047
+      },
+      "snapshotRoundTrip": {
+        "iterations": 20,
+        "minMs": 0.48816599999997834,
+        "medianMs": 0.5280409999999733,
+        "p95Ms": 0.7086250000000405,
+        "maxMs": 1.1240000000000236,
+        "meanMs": 0.5879791000000012
+      },
+      "medianRatio": 6.624609517119861,
+      "p95Ratio": 5.218459113940001
+    },
+    "memory": {
+      "heapDeltaBytes": 56208
+    }
+  },
+  "budgets": {
+    "startup": {
+      "iterations": 20,
+      "warmup": 3,
+      "medianMsMax": 1,
+      "p95MsMax": 2
+    },
+    "compute": {
+      "iterations": 10,
+      "warmup": 2,
+      "medianMsMax": 7,
+      "p95MsMax": 10
+    },
+    "hostCall": {
+      "iterations": 10,
+      "warmup": 2,
+      "medianRatioMax": 5,
+      "p95RatioMax": 6.5
+    },
+    "snapshot": {
+      "iterations": 20,
+      "warmup": 3,
+      "medianRatioMax": 7.5,
+      "p95RatioMax": 9
+    },
+    "memory": {
+      "runs": 40,
+      "heapDeltaBytesMax": 1000000
+    }
+  }
+}

@@ -74,15 +74,22 @@ function isAccessorDescriptor(descriptor) {
 
 function enumerateDataProperties(value) {
   assertNotProxy(value);
-  return Object.entries(Object.getOwnPropertyDescriptors(value)).filter(([, descriptor]) => {
-    if (!descriptor.enumerable) {
-      return false;
+  const keys = Object.keys(value);
+  const entries = new Array(keys.length);
+  let entryCount = 0;
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined) {
+      continue;
     }
     if (isAccessorDescriptor(descriptor)) {
       throw new TypeError('host objects with accessors cannot cross the host boundary');
     }
-    return true;
-  });
+    entries[entryCount] = [key, descriptor];
+    entryCount += 1;
+  }
+  entries.length = entryCount;
+  return entries;
 }
 
 function enterStructuredTraversal(value, traversal) {
