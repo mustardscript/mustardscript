@@ -73,6 +73,63 @@ fn call_depth_limit_is_enforced() {
 }
 
 #[test]
+fn cached_startup_image_still_fails_closed_on_zero_limits() {
+    let program = compile("0;").expect("source should compile");
+
+    let heap_error = execute(
+        &program,
+        ExecutionOptions {
+            limits: RuntimeLimits {
+                heap_limit_bytes: 0,
+                ..RuntimeLimits::default()
+            },
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("startup heap usage should still count against zero-byte limits");
+    assert!(heap_error.to_string().contains("heap limit exceeded"));
+
+    let allocation_error = execute(
+        &program,
+        ExecutionOptions {
+            limits: RuntimeLimits {
+                allocation_budget: 0,
+                ..RuntimeLimits::default()
+            },
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("startup allocations should still count against zero-allocation limits");
+    assert!(
+        allocation_error
+            .to_string()
+            .contains("allocation budget exhausted")
+    );
+}
+
+#[test]
+fn fresh_executions_do_not_share_mutated_global_or_builtin_state() {
+    let mutator = compile(
+        r#"
+        globalThis.cachedFlag = 1;
+        Math.cachedFlag = 2;
+        0;
+        "#,
+    )
+    .expect("source should compile");
+    execute(&mutator, ExecutionOptions::default()).expect("mutating run should complete");
+
+    let reader =
+        compile("[globalThis.cachedFlag, Math.cachedFlag];").expect("source should compile");
+    let result = execute(&reader, ExecutionOptions::default())
+        .expect("fresh run should not observe prior runtime mutations");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![StructuredValue::Undefined, StructuredValue::Undefined])
+    );
+}
+
+#[test]
 fn conditional_expressions_do_not_corrupt_enclosing_object_literals() {
     let program = compile(
         r#"

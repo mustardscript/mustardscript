@@ -32,7 +32,7 @@ pub use serialization::{
 use indexmap::IndexMap;
 use slotmap::SlotMap;
 use std::collections::{HashSet, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use self::properties::{
     array_index_from_property_key, format_number_key, ordered_own_property_keys,
@@ -47,11 +47,19 @@ use crate::{
     cancellation::CancellationToken,
     diagnostic::{DiagnosticKind, MustardError, MustardResult, TraceFrame},
     ir::{BinaryOp, Pattern, PropertyName, UnaryOp},
+    limits::RuntimeLimits,
     span::SourceSpan,
     structured::{StructuredNumber, StructuredValue},
 };
 
 const INTERNAL_CALLBACK_THROW_MARKER: &str = "\0internal-array-callback-throw";
+
+fn runtime_image() -> &'static RuntimeImage {
+    static RUNTIME_IMAGE: OnceLock<RuntimeImage> = OnceLock::new();
+    RUNTIME_IMAGE.get_or_init(|| {
+        Runtime::build_runtime_image().expect("builtin runtime image should initialize")
+    })
+}
 
 impl Runtime {
     fn new(program: Arc<BytecodeProgram>, options: ExecutionOptions) -> MustardResult<Self> {
@@ -61,13 +69,36 @@ impl Runtime {
             limits,
             cancellation_token,
         } = options;
+        let image = runtime_image();
+        if image.heap_bytes_used > limits.heap_limit_bytes {
+            return Err(limit_error("heap limit exceeded"));
+        }
+        if image.allocation_count > limits.allocation_budget {
+            return Err(limit_error("allocation budget exhausted"));
+        }
+        let mut runtime = Self::from_runtime_image(image, program, limits, cancellation_token);
+        for capability in capabilities {
+            runtime.define_global(capability.clone(), Value::HostFunction(capability), false)?;
+        }
+        for (name, value) in inputs {
+            let value = runtime.value_from_structured(value)?;
+            runtime.define_global(name, value, true)?;
+        }
+        Ok(runtime)
+    }
+
+    fn blank(
+        program: Arc<BytecodeProgram>,
+        limits: RuntimeLimits,
+        cancellation_token: Option<CancellationToken>,
+    ) -> Self {
         let mut envs = SlotMap::with_key();
         let globals = envs.insert(Env {
             parent: None,
             bindings: IndexMap::new(),
             accounted_bytes: 0,
         });
-        let mut runtime = Self {
+        Self {
             program,
             limits,
             globals,
@@ -96,17 +127,82 @@ impl Runtime {
             pending_internal_exception: None,
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
-        };
-        runtime.account_existing_env(globals)?;
+        }
+    }
+
+    fn from_runtime_image(
+        image: &RuntimeImage,
+        program: Arc<BytecodeProgram>,
+        limits: RuntimeLimits,
+        cancellation_token: Option<CancellationToken>,
+    ) -> Self {
+        Self {
+            program,
+            limits,
+            globals: image.globals,
+            envs: image.envs.clone(),
+            cells: image.cells.clone(),
+            objects: image.objects.clone(),
+            arrays: image.arrays.clone(),
+            maps: image.maps.clone(),
+            sets: image.sets.clone(),
+            iterators: image.iterators.clone(),
+            closures: image.closures.clone(),
+            promises: image.promises.clone(),
+            frames: Vec::new(),
+            root_result: None,
+            microtasks: VecDeque::new(),
+            pending_host_calls: VecDeque::new(),
+            suspended_host_call: None,
+            builtin_prototypes: image.builtin_prototypes.clone(),
+            builtin_function_objects: image.builtin_function_objects.clone(),
+            host_function_objects: image.host_function_objects.clone(),
+            snapshot_nonce: next_snapshot_nonce(),
+            instruction_counter: 0,
+            heap_bytes_used: image.heap_bytes_used,
+            allocation_count: image.allocation_count,
+            cancellation_token,
+            pending_internal_exception: None,
+            snapshot_policy_required: false,
+            pending_resume_behavior: ResumeBehavior::Value,
+        }
+    }
+
+    fn build_runtime_image() -> MustardResult<RuntimeImage> {
+        let bootstrap_program = Arc::new(BytecodeProgram {
+            functions: vec![FunctionPrototype {
+                name: None,
+                length: 0,
+                display_source: String::new(),
+                params: Vec::new(),
+                rest: None,
+                code: vec![Instruction::PushUndefined, Instruction::Return],
+                is_async: false,
+                is_arrow: false,
+                span: SourceSpan::new(0, 0),
+            }],
+            root: 0,
+        });
+        let mut runtime = Self::blank(bootstrap_program, RuntimeLimits::default(), None);
+        runtime.account_existing_env(runtime.globals)?;
         runtime.install_builtins()?;
-        for capability in capabilities {
-            runtime.define_global(capability.clone(), Value::HostFunction(capability), false)?;
-        }
-        for (name, value) in inputs {
-            let value = runtime.value_from_structured(value)?;
-            runtime.define_global(name, value, true)?;
-        }
-        Ok(runtime)
+        Ok(RuntimeImage {
+            globals: runtime.globals,
+            envs: runtime.envs,
+            cells: runtime.cells,
+            objects: runtime.objects,
+            arrays: runtime.arrays,
+            maps: runtime.maps,
+            sets: runtime.sets,
+            iterators: runtime.iterators,
+            closures: runtime.closures,
+            promises: runtime.promises,
+            builtin_prototypes: runtime.builtin_prototypes,
+            builtin_function_objects: runtime.builtin_function_objects,
+            host_function_objects: runtime.host_function_objects,
+            heap_bytes_used: runtime.heap_bytes_used,
+            allocation_count: runtime.allocation_count,
+        })
     }
 
     fn apply_resume_options(&mut self, options: ResumeOptions) -> MustardResult<()> {

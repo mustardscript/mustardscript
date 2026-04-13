@@ -600,6 +600,25 @@ pub(super) struct Runtime {
     pub(super) pending_resume_behavior: ResumeBehavior,
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct RuntimeImage {
+    pub(super) globals: EnvKey,
+    pub(super) envs: SlotMap<EnvKey, Env>,
+    pub(super) cells: SlotMap<CellKey, Cell>,
+    pub(super) objects: SlotMap<ObjectKey, PlainObject>,
+    pub(super) arrays: SlotMap<ArrayKey, ArrayObject>,
+    pub(super) maps: SlotMap<MapKey, MapObject>,
+    pub(super) sets: SlotMap<SetKey, SetObject>,
+    pub(super) iterators: SlotMap<IteratorKey, IteratorObject>,
+    pub(super) closures: SlotMap<ClosureKey, Closure>,
+    pub(super) promises: SlotMap<PromiseKey, PromiseObject>,
+    pub(super) builtin_prototypes: IndexMap<BuiltinFunction, ObjectKey>,
+    pub(super) builtin_function_objects: IndexMap<BuiltinFunction, ObjectKey>,
+    pub(super) host_function_objects: IndexMap<String, ObjectKey>,
+    pub(super) heap_bytes_used: usize,
+    pub(super) allocation_count: usize,
+}
+
 pub(super) enum RunState {
     Completed(Value),
     PushedFrame,
