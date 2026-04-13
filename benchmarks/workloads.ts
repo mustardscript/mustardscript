@@ -440,8 +440,24 @@ async function compileSidecarSource(request, source) {
   return compile.result.program_base64;
 }
 
-async function runSidecarProgram(request, programBase64, capabilities = undefined, resumeValue = undefined) {
-  const capabilityNames = capabilities ? Object.keys(capabilities) : [];
+function sidecarCapabilityNames(capabilities = undefined) {
+  return capabilities ? Object.keys(capabilities) : [];
+}
+
+function sidecarSnapshotPolicy(snapshotBase64, capabilityNames) {
+  const snapshot = Buffer.from(snapshotBase64, 'base64');
+  return {
+    capabilities: capabilityNames,
+    limits: {},
+    snapshot_id: snapshotIdentity(snapshot),
+    snapshot_key_base64: SNAPSHOT_KEY_BASE64,
+    snapshot_key_digest: snapshotKeyDigest(Buffer.from(SNAPSHOT_KEY, 'utf8')),
+    snapshot_token: snapshotToken(snapshot, SNAPSHOT_KEY),
+  };
+}
+
+async function startSidecarProgram(request, programBase64, capabilities = undefined) {
+  const capabilityNames = sidecarCapabilityNames(capabilities);
   const start = await request({
     protocol_version: SIDECAR_PROTOCOL_VERSION,
     method: 'start',
@@ -454,31 +470,47 @@ async function runSidecarProgram(request, programBase64, capabilities = undefine
     },
   });
   assert.equal(start.ok, true, `sidecar start failed: ${start.error}`);
-  let step = sidecarStepValue(start.result.step);
+  return {
+    capabilityNames,
+    step: sidecarStepValue(start.result.step),
+  };
+}
+
+async function resumeSidecarSnapshot(
+  request,
+  snapshotBase64,
+  capabilityNames,
+  payloadValue,
+  requestId = 3,
+) {
+  const resume = await request({
+    protocol_version: SIDECAR_PROTOCOL_VERSION,
+    method: 'resume',
+    id: requestId,
+    snapshot_base64: snapshotBase64,
+    policy: sidecarSnapshotPolicy(snapshotBase64, capabilityNames),
+    payload: JSON.parse(encodeResumePayloadValue(payloadValue)),
+  });
+  assert.equal(resume.ok, true, `sidecar resume failed: ${resume.error}`);
+  return sidecarStepValue(resume.result.step);
+}
+
+async function runSidecarProgram(request, programBase64, capabilities = undefined, resumeValue = undefined) {
+  const capabilityNames = capabilities ? Object.keys(capabilities) : [];
+  let { step } = await startSidecarProgram(request, programBase64, capabilities);
   let requestId = 3;
   while (step.type === 'suspended') {
-    const snapshot = Buffer.from(step.snapshotBase64, 'base64');
     const payloadValue =
       typeof resumeValue === 'function'
         ? resumeValue(step)
         : capabilities?.[step.capability]?.(...step.args) ?? step.args[0];
-    const resume = await request({
-      protocol_version: SIDECAR_PROTOCOL_VERSION,
-      method: 'resume',
-      id: requestId,
-      snapshot_base64: step.snapshotBase64,
-      policy: {
-        capabilities: capabilityNames,
-        limits: {},
-        snapshot_id: snapshotIdentity(snapshot),
-        snapshot_key_base64: SNAPSHOT_KEY_BASE64,
-        snapshot_key_digest: snapshotKeyDigest(Buffer.from(SNAPSHOT_KEY, 'utf8')),
-        snapshot_token: snapshotToken(snapshot, SNAPSHOT_KEY),
-      },
-      payload: JSON.parse(encodeResumePayloadValue(payloadValue)),
-    });
-    assert.equal(resume.ok, true, `sidecar resume failed: ${resume.error}`);
-    step = sidecarStepValue(resume.result.step);
+    step = await resumeSidecarSnapshot(
+      request,
+      step.snapshotBase64,
+      capabilityNames,
+      payloadValue,
+      requestId,
+    );
     requestId += 1;
   }
   return step.value;
@@ -1068,7 +1100,13 @@ async function benchmarkAddon(fixtures) {
 async function benchmarkSidecar(fixtures, profile) {
   console.log('Running sidecar benchmarks...');
   const latency = {};
+  const phases = {};
   const { smallSource, codeModeSource, workflowSource, workflowData } = fixtures;
+
+  const startupOnly = await measure('startup_only', async () => {
+    await withSidecar(profile, async () => {});
+  }, COLD_OPTIONS);
+  phases[startupOnly[0]] = startupOnly[1];
 
   Object.assign(latency, Object.fromEntries([
     await measure('cold_start_small', async () => {
@@ -1093,12 +1131,31 @@ async function benchmarkSidecar(fixtures, profile) {
     const smallProgram = await compileSidecarSource(request, smallSource);
     const codeModeProgram = await compileSidecarSource(request, codeModeSource);
     const workflowProgram = await compileSidecarSource(request, workflowSource);
+    const transportProgram = await compileSidecarSource(request, createImmediateSuspendSource());
+    const transportProbe = await startSidecarProgram(request, transportProgram, {
+      checkpoint() {},
+    });
+    assert.equal(transportProbe.step.type, 'suspended');
+    assert.equal(transportProbe.step.capability, 'checkpoint');
 
     const warmSmall = await measure('warm_run_small', async () => {
       const result = await runSidecarProgram(request, smallProgram);
       assert.equal(typeof result, 'number');
     }, DEFAULT_OPTIONS);
     latency[warmSmall[0]] = warmSmall[1];
+    phases.execution_only_small = warmSmall[1];
+
+    const transportResume = await measure('transport_resume_only', async () => {
+      const step = await resumeSidecarSnapshot(
+        request,
+        transportProbe.step.snapshotBase64,
+        transportProbe.capabilityNames,
+        1,
+      );
+      assert.equal(step.type, 'completed');
+      assert.equal(step.value, 1);
+    }, DEFAULT_OPTIONS);
+    phases[transportResume[0]] = transportResume[1];
 
     const warmCode = await measure('warm_run_code_mode_search', async () => {
       const result = await runSidecarProgram(request, codeModeProgram);
@@ -1241,7 +1298,7 @@ async function benchmarkSidecar(fixtures, profile) {
   const failureCleanup = latency.__failureCleanup;
   delete latency.__memory;
   delete latency.__failureCleanup;
-  return { latency, memory, failureCleanup };
+  return { latency, phases, memory, failureCleanup };
 }
 
 async function benchmarkIsolate(fixtures) {
@@ -1436,6 +1493,11 @@ function printSummary(results) {
     console.log(`${name}: ${metric.medianMs.toFixed(2)}ms median, ${metric.p95Ms.toFixed(2)}ms p95`);
   }
   console.log('');
+  console.log('Sidecar phase splits:');
+  for (const [name, metric] of Object.entries(results.sidecar.phases)) {
+    console.log(`${name}: ${metric.medianMs.toFixed(2)}ms median, ${metric.p95Ms.toFixed(2)}ms p95`);
+  }
+  console.log('');
   console.log('Addon boundary-only metrics:');
   for (const [surface, sizes] of Object.entries(results.addon.boundary)) {
     for (const [size, metric] of Object.entries(sizes)) {
@@ -1496,6 +1558,8 @@ async function main() {
         'sidecar memory deltas include parent Node process RSS plus the live child sidecar RSS sampled via ps.',
       phaseSplitDefinitions:
         'addon.phases isolates compile-free runtime slices: runtime_init_only uses a precompiled trivial program, execution_only_small resumes pre-created suspended progress, snapshot_load_only uses raw native detached-snapshot inspection, and Progress.load_only measures the public JS wrapper before cleanup.',
+      sidecarPhaseDefinitions:
+        'sidecar.phases separates process startup from warm execution and transport-dominated resume work: startup_only measures spawn plus clean shutdown, execution_only_small reuses a precompiled program in a warm sidecar, and transport_resume_only replays an already-suspended minimal snapshot so snapshot bytes, auth metadata, and stdio round-trips dominate the timed region.',
       boundaryDefinitions:
         'addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.',
       counterDefinitions:

@@ -91,6 +91,10 @@ machine metadata and latency summaries for:
   - `snapshot_load_only`
   - `apply_snapshot_policy_only`
   - `Progress.load_only`
+- sidecar phase-split measurements for:
+  - `startup_only`
+  - `execution_only_small`
+  - `transport_resume_only`
 - the same workload classes over the sidecar transport
 - the same workload classes over an `isolated-vm` V8 isolate baseline
 - retained parent-process heap/RSS deltas after repeated workflow runs
@@ -182,6 +186,16 @@ The new addon-only phase metrics are intentionally narrow:
   `suspend_resume_*` fixtures: serialized program bytes, dumped snapshot bytes,
   and retained live `Progress` memory deltas after GC while a batch of
   suspended executions remains live
+
+The sidecar phase metrics are intentionally simpler and map to protocol stages:
+
+- `startup_only` measures spawning a fresh sidecar process and shutting it down
+  cleanly without sending any requests
+- `execution_only_small` reuses a precompiled small compute program inside a
+  warm sidecar so process startup and compile time stay out of the timed region
+- `transport_resume_only` replays an already-suspended minimal snapshot through
+  `resume`, so detached snapshot bytes, auth metadata, and stdio request /
+  response cost dominate the timed region while resumed guest work stays tiny
 
 These definitions are not replacements for future Rust microbenches, but they
 do make it possible to tell whether time is going into startup, resume

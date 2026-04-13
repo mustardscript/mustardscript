@@ -45,6 +45,11 @@ test('flattenMetricTree collects nested median/p95 metrics and skips derived sec
         },
       },
     },
+    sidecar: {
+      phases: {
+        startup_only: { medianMs: 2, p95Ms: 3 },
+      },
+    },
     ratios: {
       latency: {
         sidecarVsAddon: {
@@ -58,6 +63,7 @@ test('flattenMetricTree collects nested median/p95 metrics and skips derived sec
     'addon.latency.warm_run_small': { medianMs: 10, p95Ms: 12 },
     'addon.phases.execution_only_small': { medianMs: 1, p95Ms: 2 },
     'addon.boundary.startInputs.medium': { medianMs: 0.3, p95Ms: 0.4 },
+    'sidecar.phases.startup_only': { medianMs: 2, p95Ms: 3 },
   });
 });
 
