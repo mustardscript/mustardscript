@@ -78,6 +78,9 @@ machine metadata and latency summaries for:
 - addon suspend/resume chains with snapshot reloads
 - addon boundary-only measurements for start inputs, suspended args, resume
   values, and resume errors across small/medium/large nested payloads
+- addon runtime counter snapshots for representative paths, including GC
+  collection count, cumulative GC time, reclaimed bytes/allocations, and full
+  accounting refresh count
 - addon suspend/resume state-size summaries for serialized program bytes,
   dumped snapshot bytes, and retained live `Progress` heap deltas
 - addon phase-split measurements for:

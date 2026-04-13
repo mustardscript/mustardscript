@@ -1,9 +1,11 @@
 use indexmap::IndexMap;
+use std::sync::Arc;
 
 use mustard::{
     ExecutionOptions, ExecutionSnapshot, ExecutionStep, ResumeOptions, ResumePayload,
     RuntimeLimits, SnapshotPolicy, StructuredValue, compile, dump_snapshot, inspect_snapshot,
-    load_snapshot, resume, resume_with_options, start,
+    load_snapshot, lower_to_bytecode, resume, resume_with_options, start,
+    start_shared_bytecode_with_metrics,
 };
 
 fn number(value: f64) -> StructuredValue {
@@ -100,6 +102,36 @@ fn inspect_snapshot_derives_metadata_and_rejects_unauthorized_capabilities() {
     .expect("authorized snapshot should inspect");
     assert_eq!(inspection.capability, "fetch_data");
     assert_eq!(inspection.args, vec![number(7.0)]);
+}
+
+#[test]
+fn inspect_snapshot_reports_runtime_metrics_from_suspended_start() {
+    let program =
+        compile("const value = fetch_data(7); value + 1;").expect("source should compile");
+    let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+    let (step, start_metrics) = start_shared_bytecode_with_metrics(
+        Arc::new(bytecode),
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("program should start");
+    let snapshot = match step {
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+        ExecutionStep::Suspended(suspension) => suspension.snapshot,
+    };
+
+    let mut snapshot = snapshot;
+    let inspection = inspect_snapshot(
+        &mut snapshot,
+        snapshot_policy(&["fetch_data"], RuntimeLimits::default()),
+    )
+    .expect("authorized snapshot should inspect");
+
+    assert_eq!(inspection.metrics, start_metrics);
 }
 
 #[test]

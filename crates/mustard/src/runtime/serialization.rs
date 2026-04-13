@@ -5,6 +5,7 @@ use slotmap::SlotMap;
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::{
+    RuntimeDebugMetrics,
     diagnostic::{DiagnosticKind, MustardError, MustardResult},
     limits::RuntimeLimits,
 };
@@ -324,6 +325,7 @@ impl DetachedRuntime {
             allocation_count: 0,
             gc_allocation_debt_bytes: 0,
             gc_allocation_debt_count: 0,
+            debug_metrics: RuntimeDebugMetrics::default(),
             accounting_recount_required: true,
             cancellation_token: None,
             pending_internal_exception: None,

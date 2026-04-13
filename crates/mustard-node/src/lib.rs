@@ -11,9 +11,10 @@ use std::sync::{
 
 use mustard::{
     BytecodeProgram, CancellationToken, ExecutionOptions, ExecutionSnapshot, ExecutionStep,
-    ResumeOptions, StructuredValue, apply_snapshot_policy, compile, dump_detached_snapshot,
-    dump_program as encode_program_bytes, dump_snapshot, load_detached_snapshot, load_snapshot,
-    lower_to_bytecode, resume_with_options, snapshot_inspection, start_shared_bytecode,
+    ResumeOptions, RuntimeDebugMetrics, StructuredValue, apply_snapshot_policy, compile,
+    dump_detached_snapshot, dump_program as encode_program_bytes, dump_snapshot,
+    load_detached_snapshot, load_snapshot, lower_to_bytecode, resume_with_options_and_metrics,
+    snapshot_inspection, start_shared_bytecode_with_metrics,
 };
 use mustard_bridge::{
     ResumeDto, SnapshotPolicyDto, StartOptionsDto, decode_program, encode_json,
@@ -52,11 +53,13 @@ struct StoredSnapshotEntry {
 enum NodeStepDto {
     Completed {
         value: StructuredValue,
+        metrics: RuntimeDebugMetrics,
     },
     Suspended {
         capability: String,
         args: Vec<StructuredValue>,
         snapshot_handle: String,
+        metrics: RuntimeDebugMetrics,
     },
 }
 
@@ -296,11 +299,12 @@ fn assert_authenticated_snapshot(snapshot: &[u8], policy: &SnapshotPolicyDto) ->
 
 fn encode_step_with_snapshot_handle(
     step: ExecutionStep,
+    metrics: RuntimeDebugMetrics,
     format: SnapshotHandleFormat,
 ) -> Result<String> {
     match step {
         ExecutionStep::Completed(value) => {
-            encode_json(&NodeStepDto::Completed { value }).map_err(to_napi_error)
+            encode_json(&NodeStepDto::Completed { value, metrics }).map_err(to_napi_error)
         }
         ExecutionStep::Suspended(suspension) => {
             let handle = insert_snapshot(suspension.snapshot, format)?;
@@ -308,6 +312,7 @@ fn encode_step_with_snapshot_handle(
                 capability: suspension.capability,
                 args: suspension.args,
                 snapshot_handle: handle.clone(),
+                metrics,
             })
             .map_err(to_napi_error);
             if result.is_err() {
@@ -497,9 +502,10 @@ pub fn start_program_with_snapshot_handle(
     let program = lookup_program(&program_handle)?;
     let options: StartOptionsDto = parse_json(&options_json).map_err(to_napi_error)?;
     let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
-    let step = start_shared_bytecode(program, execution_options(options, cancellation_token))
-        .map_err(to_napi_error)?;
-    encode_step_with_snapshot_handle(step, SnapshotHandleFormat::Detached)
+    let (step, metrics) =
+        start_shared_bytecode_with_metrics(program, execution_options(options, cancellation_token))
+            .map_err(to_napi_error)?;
+    encode_step_with_snapshot_handle(step, metrics, SnapshotHandleFormat::Detached)
 }
 
 #[napi]
@@ -602,7 +608,7 @@ pub fn resume_snapshot_handle(
     let payload: ResumeDto = parse_json(&payload_json).map_err(to_napi_error)?;
     let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
     let entry = take_snapshot(&snapshot_handle)?;
-    let step = resume_with_options(
+    let (step, metrics) = resume_with_options_and_metrics(
         entry.snapshot,
         payload.into_resume_payload(),
         ResumeOptions {
@@ -611,5 +617,5 @@ pub fn resume_snapshot_handle(
         },
     )
     .map_err(to_napi_error)?;
-    encode_step_with_snapshot_handle(step, entry.format)
+    encode_step_with_snapshot_handle(step, metrics, entry.format)
 }

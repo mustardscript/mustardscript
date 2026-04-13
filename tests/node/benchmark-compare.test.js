@@ -20,6 +20,15 @@ test('flattenMetricTree collects nested median/p95 metrics and skips derived sec
       latency: {
         warm_run_small: { medianMs: 10, p95Ms: 12 },
       },
+      counters: {
+        warm_run_small: {
+          gc_collections: 1,
+          gc_total_time_ns: 2_000_000,
+          gc_reclaimed_bytes: 64,
+          gc_reclaimed_allocations: 2,
+          accounting_refreshes: 5,
+        },
+      },
       phases: {
         execution_only_small: { medianMs: 1, p95Ms: 2 },
       },

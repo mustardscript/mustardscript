@@ -1,6 +1,15 @@
 use super::*;
 
 impl Runtime {
+    pub(super) fn debug_metrics(&self) -> RuntimeDebugMetrics {
+        self.debug_metrics
+    }
+
+    pub(super) fn record_accounting_refresh(&mut self) {
+        self.debug_metrics.accounting_refreshes =
+            self.debug_metrics.accounting_refreshes.saturating_add(1);
+    }
+
     fn enforce_loaded_accounting_limits(
         &self,
         heap_bytes_used: usize,
@@ -434,6 +443,7 @@ impl Runtime {
     }
 
     pub(super) fn refresh_env_accounting(&mut self, key: EnvKey) -> MustardResult<()> {
+        self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
             let env = self
                 .envs
@@ -450,6 +460,7 @@ impl Runtime {
     }
 
     pub(super) fn refresh_cell_accounting(&mut self, key: CellKey) -> MustardResult<()> {
+        self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
             let cell = self
                 .cells
@@ -466,6 +477,7 @@ impl Runtime {
     }
 
     pub(super) fn refresh_object_accounting(&mut self, key: ObjectKey) -> MustardResult<()> {
+        self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
             let object = self
                 .objects
@@ -482,6 +494,7 @@ impl Runtime {
     }
 
     pub(super) fn refresh_array_accounting(&mut self, key: ArrayKey) -> MustardResult<()> {
+        self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
             let array = self
                 .arrays
@@ -498,6 +511,7 @@ impl Runtime {
     }
 
     pub(super) fn refresh_map_accounting(&mut self, key: MapKey) -> MustardResult<()> {
+        self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
             let map = self
                 .maps
@@ -514,6 +528,7 @@ impl Runtime {
     }
 
     pub(super) fn refresh_set_accounting(&mut self, key: SetKey) -> MustardResult<()> {
+        self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
             let set = self
                 .sets
@@ -530,6 +545,7 @@ impl Runtime {
     }
 
     pub(super) fn refresh_iterator_accounting(&mut self, key: IteratorKey) -> MustardResult<()> {
+        self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
             let iterator = self
                 .iterators
@@ -546,6 +562,7 @@ impl Runtime {
     }
 
     pub(super) fn refresh_closure_accounting(&mut self, key: ClosureKey) -> MustardResult<()> {
+        self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
             let closure = self
                 .closures
@@ -573,6 +590,7 @@ impl Runtime {
     }
 
     pub(super) fn recompute_accounting_after_load(&mut self) -> MustardResult<()> {
+        self.record_accounting_refresh();
         let (heap_bytes_used, allocation_count) =
             self.recompute_accounting_totals().map_err(|message| {
                 serialization_error(format!("snapshot validation failed: {message}"))
@@ -586,6 +604,7 @@ impl Runtime {
     }
 
     pub(super) fn refresh_promise_accounting(&mut self, key: PromiseKey) -> MustardResult<()> {
+        self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
             let promise = self
                 .promises

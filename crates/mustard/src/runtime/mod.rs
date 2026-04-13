@@ -21,9 +21,10 @@ mod vm;
 
 pub use api::{
     ExecutionOptions, ExecutionSnapshot, ExecutionStep, HostError, ResumeOptions, ResumePayload,
-    SnapshotInspection, SnapshotPolicy, Suspension, apply_snapshot_policy, execute,
-    inspect_snapshot, resume, resume_with_options, snapshot_inspection, start, start_bytecode,
-    start_shared_bytecode, start_validated_bytecode,
+    RuntimeDebugMetrics, SnapshotInspection, SnapshotPolicy, Suspension, apply_snapshot_policy,
+    execute, inspect_snapshot, resume, resume_with_options, resume_with_options_and_metrics,
+    snapshot_inspection, start, start_bytecode, start_shared_bytecode,
+    start_shared_bytecode_with_metrics, start_validated_bytecode,
 };
 pub use bytecode::{BytecodeProgram, FunctionPrototype, Instruction};
 pub use compiler::lower_to_bytecode;
@@ -129,6 +130,7 @@ impl Runtime {
             allocation_count: 0,
             gc_allocation_debt_bytes: 0,
             gc_allocation_debt_count: 0,
+            debug_metrics: RuntimeDebugMetrics::default(),
             accounting_recount_required: false,
             cancellation_token,
             pending_internal_exception: None,
@@ -171,6 +173,7 @@ impl Runtime {
             allocation_count: image.allocation_count,
             gc_allocation_debt_bytes: 0,
             gc_allocation_debt_count: 0,
+            debug_metrics: RuntimeDebugMetrics::default(),
             accounting_recount_required: false,
             cancellation_token,
             pending_internal_exception: None,

@@ -13,9 +13,14 @@ const ivm = require('isolated-vm');
 const { ExecutionContext, Mustard, Progress } = require('../index.ts');
 const { loadNative } = require('../native-loader.ts');
 const { callNative } = require('../lib/errors.ts');
-const { decodeStructured, encodeResumePayloadValue } = require('../lib/structured.ts');
+const {
+  decodeStructured,
+  encodeResumePayloadValue,
+  encodeStartOptions,
+} = require('../lib/structured.ts');
 const {
   encodeSnapshotPolicy,
+  resolveExecutionContext,
   resolveProgressLoadContext,
   snapshotIdentity,
   snapshotKeyDigest,
@@ -611,6 +616,70 @@ function createAuthenticatedPolicyJson(dumped, loadOptions) {
   });
 }
 
+function parseNativeStepWithMetrics(stepJson) {
+  const step = JSON.parse(stepJson);
+  const metrics = step.metrics ?? null;
+  if (step.type === 'completed') {
+    return {
+      type: 'completed',
+      value: decodeStructured(step.value),
+      metrics,
+    };
+  }
+  return {
+    type: 'suspended',
+    capability: step.capability,
+    args: step.args.map(decodeStructured),
+    snapshotHandle:
+      typeof step.snapshot_handle === 'string' && step.snapshot_handle.length > 0
+        ? step.snapshot_handle
+        : null,
+    metrics,
+  };
+}
+
+function parseNativeInspectionWithMetrics(inspectionJson) {
+  const inspection = JSON.parse(inspectionJson);
+  return {
+    capability: inspection.capability,
+    args: inspection.args.map(decodeStructured),
+    metrics: inspection.metrics ?? null,
+  };
+}
+
+async function collectAddonStepCounters(runtime, options, resumeValueForStep = undefined) {
+  const native = loadNative();
+  const { policy } = resolveExecutionContext(options, 'benchmark counter options');
+  const programHandle = runtime._ensureProgramHandle();
+  let step = parseNativeStepWithMetrics(
+    callNative(
+      native.startProgramWithSnapshotHandle,
+      programHandle,
+      encodeStartOptions(options.inputs, policy),
+    ),
+  );
+  let metrics = step.metrics;
+  while (step.type === 'suspended') {
+    const snapshotHandle = step.snapshotHandle;
+    assert.ok(snapshotHandle, 'counter collection step should retain a snapshot handle');
+    try {
+      const nextValue =
+        resumeValueForStep === undefined ? step.args[0] : resumeValueForStep(step);
+      step = parseNativeStepWithMetrics(
+        callNative(native.resumeSnapshotHandle, snapshotHandle, encodeResumePayloadValue(nextValue)),
+      );
+      metrics = step.metrics;
+    } finally {
+      try {
+        callNative(native.releaseSnapshotHandle, snapshotHandle);
+      } catch {
+        // Best-effort cleanup only; the handle may already have been consumed.
+      }
+    }
+  }
+  return metrics;
+}
+
 function queuedFactory(factory) {
   const queue = [];
   return () => {
@@ -798,6 +867,7 @@ async function benchmarkAddon(fixtures) {
   console.log('Running addon benchmarks...');
   const latency = {};
   const suspendState = {};
+  const native = loadNative();
   const { smallSource, codeModeSource, workflowSource, workflowData } = fixtures;
   const defaultContext = new ExecutionContext();
   const warmSmallRuntime = new Mustard(smallSource);
@@ -932,7 +1002,57 @@ async function benchmarkAddon(fixtures) {
     }, DEFAULT_OPTIONS),
   };
 
-  return { latency, phases, boundary, suspendState, memory, failureCleanup };
+  const executionCounterRuntime = new Mustard(createExecutionOnlySource());
+  const phaseCounterOptions = createPhaseLoadOptions();
+  const snapshotCounterProgress = takeProgress(
+    executionCounterRuntime.start(phaseCounterOptions),
+    'snapshot counter progress',
+  );
+  const dumpedCounterProgress = snapshotCounterProgress.dump();
+  const snapshotCounterInspection = parseNativeInspectionWithMetrics(
+    callNative(
+      native.inspectDetachedSnapshot,
+      executionCounterRuntime._ensureProgramHandle(),
+      dumpedCounterProgress.snapshot,
+      createAuthenticatedPolicyJson(dumpedCounterProgress, phaseCounterOptions),
+    ),
+  );
+
+  const counters = {
+    warm_run_small: await collectAddonStepCounters(warmSmallRuntime, { context: defaultContext }),
+    programmatic_tool_workflow: await collectAddonStepCounters(workflowRuntime, {
+      context: workflowContext,
+    }),
+    host_fanout_100: await collectAddonStepCounters(new Mustard(createFanoutSource(100)), {
+      context: new ExecutionContext({
+        capabilities: {
+          fetch_value(value) {
+            return value;
+          },
+        },
+        snapshotKey: SNAPSHOT_KEY,
+      }),
+    }),
+    execution_only_small: await collectAddonStepCounters(
+      executionCounterRuntime,
+      phaseCounterOptions,
+      () => 1,
+    ),
+    suspend_resume_20: await collectAddonStepCounters(
+      new Mustard(createSuspendResumeSource(20)),
+      {
+        context: new ExecutionContext({
+          capabilities: { checkpoint() {} },
+          limits: {},
+          snapshotKey: SNAPSHOT_KEY,
+        }),
+      },
+      (step) => step.args[0],
+    ),
+    snapshot_load_only: snapshotCounterInspection.metrics,
+  };
+
+  return { latency, phases, boundary, counters, suspendState, memory, failureCleanup };
 }
 
 async function benchmarkSidecar(fixtures, profile) {
@@ -1320,6 +1440,13 @@ function printSummary(results) {
     );
   }
   console.log('');
+  console.log('Addon runtime counters:');
+  for (const [name, metric] of Object.entries(results.addon.counters)) {
+    console.log(
+      `${name}: gc collections ${metric.gc_collections}, gc time ${(metric.gc_total_time_ns / 1e6).toFixed(3)}ms, reclaimed ${metric.gc_reclaimed_bytes}B/${metric.gc_reclaimed_allocations} allocs, accounting refreshes ${metric.accounting_refreshes}`,
+    );
+  }
+  console.log('');
   console.log(`Memory retained after ${MEMORY_RUNS} workflow runs:`);
   console.log(`addon heap ${results.addon.memory.heapUsedDeltaBytes}B rss ${results.addon.memory.rssDeltaBytes}B`);
   console.log(`sidecar heap ${results.sidecar.memory.heapUsedDeltaBytes}B rss ${results.sidecar.memory.rssDeltaBytes}B`);
@@ -1361,6 +1488,8 @@ async function main() {
         'addon.phases isolates compile-free runtime slices: runtime_init_only uses a precompiled trivial program, execution_only_small resumes pre-created suspended progress, snapshot_load_only uses raw native detached-snapshot inspection, and Progress.load_only measures the public JS wrapper before cleanup.',
       boundaryDefinitions:
         'addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.',
+      counterDefinitions:
+        'addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, and full accounting refresh counts.',
       suspendStateDefinitions:
         'addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.',
     },

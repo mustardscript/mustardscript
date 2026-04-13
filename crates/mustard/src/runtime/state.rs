@@ -1,7 +1,9 @@
 use std::{collections::VecDeque, sync::Arc};
 
+use crate::RuntimeDebugMetrics;
 use indexmap::IndexMap;
 use num_bigint::BigInt;
+
 use serde::{Deserialize, Serialize};
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
@@ -598,6 +600,8 @@ pub(super) struct Runtime {
     pub(super) gc_allocation_debt_bytes: usize,
     #[serde(skip, default)]
     pub(super) gc_allocation_debt_count: usize,
+    #[serde(skip, default)]
+    pub(super) debug_metrics: RuntimeDebugMetrics,
     #[serde(skip, default = "accounting_recount_required_after_deserialize")]
     pub(super) accounting_recount_required: bool,
     #[serde(skip, default)]

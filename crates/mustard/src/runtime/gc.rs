@@ -8,6 +8,26 @@ const MIN_GC_DEBT_ALLOCATIONS: usize = 32;
 const MAX_GC_DEBT_ALLOCATIONS: usize = 2_048;
 
 impl Runtime {
+    fn record_gc_collection(
+        &mut self,
+        stats: GarbageCollectionStats,
+        elapsed: std::time::Duration,
+    ) {
+        self.debug_metrics.gc_collections = self.debug_metrics.gc_collections.saturating_add(1);
+        self.debug_metrics.gc_total_time_ns = self
+            .debug_metrics
+            .gc_total_time_ns
+            .saturating_add(u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX));
+        self.debug_metrics.gc_reclaimed_bytes = self
+            .debug_metrics
+            .gc_reclaimed_bytes
+            .saturating_add(u64::try_from(stats.reclaimed_bytes).unwrap_or(u64::MAX));
+        self.debug_metrics.gc_reclaimed_allocations = self
+            .debug_metrics
+            .gc_reclaimed_allocations
+            .saturating_add(u64::try_from(stats.reclaimed_allocations).unwrap_or(u64::MAX));
+    }
+
     pub(super) fn reset_gc_debt(&mut self) {
         self.gc_allocation_debt_bytes = 0;
         self.gc_allocation_debt_count = 0;
@@ -54,6 +74,7 @@ impl Runtime {
     }
 
     pub(super) fn collect_garbage(&mut self) -> MustardResult<GarbageCollectionStats> {
+        let started = std::time::Instant::now();
         let baseline_bytes = self.heap_bytes_used;
         let baseline_allocations = self.allocation_count;
         let marks = self.mark_reachable_heap()?;
@@ -79,6 +100,7 @@ impl Runtime {
         #[cfg(debug_assertions)]
         self.debug_assert_cached_accounting_matches_full_walk();
 
+        self.record_gc_collection(stats, started.elapsed());
         self.reset_gc_debt();
         Ok(stats)
     }

@@ -95,3 +95,45 @@ fn garbage_collection_updates_cached_totals_from_reclaimed_items() {
         (runtime.heap_bytes_used, runtime.allocation_count)
     );
 }
+
+#[test]
+fn runtime_debug_metrics_track_gc_and_accounting_refreshes() {
+    let mut runtime = test_runtime();
+    let object = runtime
+        .insert_object(IndexMap::new(), ObjectKind::Plain)
+        .expect("object should allocate");
+
+    let baseline_metrics = runtime.debug_metrics();
+    runtime
+        .objects
+        .get_mut(object)
+        .expect("object should exist")
+        .properties
+        .insert("label".to_string(), Value::String("payload".to_string()));
+    runtime
+        .refresh_object_accounting(object)
+        .expect("object accounting refresh should succeed");
+
+    let refreshed_metrics = runtime.debug_metrics();
+    assert_eq!(
+        refreshed_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes + 1
+    );
+
+    let gc_metrics_before = runtime.debug_metrics();
+    let stats = runtime.collect_garbage().expect("gc should succeed");
+    let gc_metrics_after = runtime.debug_metrics();
+    assert_eq!(
+        gc_metrics_after.gc_collections,
+        gc_metrics_before.gc_collections + 1
+    );
+    assert!(gc_metrics_after.gc_total_time_ns > gc_metrics_before.gc_total_time_ns);
+    assert_eq!(
+        gc_metrics_after.gc_reclaimed_bytes,
+        gc_metrics_before.gc_reclaimed_bytes + stats.reclaimed_bytes as u64
+    );
+    assert_eq!(
+        gc_metrics_after.gc_reclaimed_allocations,
+        gc_metrics_before.gc_reclaimed_allocations + stats.reclaimed_allocations as u64
+    );
+}

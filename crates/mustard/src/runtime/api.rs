@@ -62,12 +62,22 @@ pub struct SnapshotPolicy {
 pub struct SnapshotInspection {
     pub capability: String,
     pub args: Vec<StructuredValue>,
+    pub metrics: RuntimeDebugMetrics,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct ResumeOptions {
     pub cancellation_token: Option<CancellationToken>,
     pub snapshot_policy: Option<SnapshotPolicy>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeDebugMetrics {
+    pub gc_collections: u64,
+    pub gc_total_time_ns: u64,
+    pub gc_reclaimed_bytes: u64,
+    pub gc_reclaimed_allocations: u64,
+    pub accounting_refreshes: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -178,6 +188,16 @@ pub fn start_shared_bytecode(
     runtime.run_root()
 }
 
+pub fn start_shared_bytecode_with_metrics(
+    program: Arc<BytecodeProgram>,
+    options: ExecutionOptions,
+) -> MustardResult<(ExecutionStep, RuntimeDebugMetrics)> {
+    let mut runtime = Runtime::new(program, options)?;
+    let step = runtime.run_root()?;
+    let metrics = metrics_after_step(&runtime, &step);
+    Ok((step, metrics))
+}
+
 pub fn resume(snapshot: ExecutionSnapshot, payload: ResumePayload) -> MustardResult<ExecutionStep> {
     resume_with_options(snapshot, payload, ResumeOptions::default())
 }
@@ -190,6 +210,18 @@ pub fn resume_with_options(
     let mut runtime = snapshot.runtime;
     runtime.apply_resume_options(options)?;
     runtime.resume(payload)
+}
+
+pub fn resume_with_options_and_metrics(
+    snapshot: ExecutionSnapshot,
+    payload: ResumePayload,
+    options: ResumeOptions,
+) -> MustardResult<(ExecutionStep, RuntimeDebugMetrics)> {
+    let mut runtime = snapshot.runtime;
+    runtime.apply_resume_options(options)?;
+    let step = runtime.resume(payload)?;
+    let metrics = metrics_after_step(&runtime, &step);
+    Ok((step, metrics))
 }
 
 pub fn apply_snapshot_policy(
@@ -213,6 +245,7 @@ pub fn snapshot_inspection(snapshot: &ExecutionSnapshot) -> MustardResult<Snapsh
     Ok(SnapshotInspection {
         capability: request.capability.clone(),
         args: request.args.clone(),
+        metrics: snapshot.runtime.debug_metrics(),
     })
 }
 
@@ -222,4 +255,11 @@ pub fn inspect_snapshot(
 ) -> MustardResult<SnapshotInspection> {
     apply_snapshot_policy(snapshot, policy)?;
     snapshot_inspection(snapshot)
+}
+
+fn metrics_after_step(runtime: &Runtime, step: &ExecutionStep) -> RuntimeDebugMetrics {
+    match step {
+        ExecutionStep::Completed(_) => runtime.debug_metrics(),
+        ExecutionStep::Suspended(suspension) => suspension.snapshot.runtime.debug_metrics(),
+    }
 }
