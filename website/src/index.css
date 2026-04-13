@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+@theme {
+  --color-mustard: #E8B931;
+  --color-mustard-light: #F5D563;
+  --color-mustard-dark: #C99A1D;
+  --color-mustard-deep: #A67C17;
+  --color-honey: #FFF8E1;
+  --color-dijon: #C49102;
+  --color-green-bright: #4ADE80;
+
+  /* Dark defaults — light overrides below */
+  --color-bg: #0A0A0B;
+  --color-bg-alt: #111113;
+  --color-bg-card: #18181B;
+  --color-bg-card-hover: #222225;
+  --color-text: #F5F5F5;
+  --color-text-mid: #D4D4D8;
+  --color-text-dim: #A1A1AA;
+  --color-border: rgba(255,255,255,0.08);
+  --color-border-hover: rgba(255,255,255,0.2);
+  --color-dot-inactive: rgba(255,255,255,0.2);
+  --color-speed-bg: #14120A;
+  --color-bar-track: #1E1E22;
+  --color-bar-slow: #3F3F46;
+  --color-cta-glow: rgba(232, 185, 49, 0.25);
+
+  --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+}
+
+/* ── Light theme ────────────────────────────────────────── */
+:root:not(.dark) {
+  --color-bg: #FFFDF7;
+  --color-bg-alt: #FFF8E1;
+  --color-bg-card: #FEF3C7;
+  --color-bg-card-hover: #FDE68A;
+  --color-text: #1C1917;
+  --color-text-mid: #44403C;
+  --color-text-dim: #78716C;
+  --color-border: rgba(0,0,0,0.08);
+  --color-border-hover: rgba(0,0,0,0.18);
+  --color-dot-inactive: rgba(0,0,0,0.12);
+  --color-speed-bg: #FFF8E1;
+  --color-bar-track: #F5F0E0;
+  --color-bar-slow: #D6D3D1;
+  --color-cta-glow: rgba(232, 185, 49, 0.35);
+}
+
+:root:not(.dark) .gradient-text {
+  background: linear-gradient(135deg, #B45309, #A16207, #854D0E);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+:root:not(.dark) .mustard-glow {
+  text-shadow: 0 0 30px rgba(180, 83, 9, 0.25), 0 0 60px rgba(180, 83, 9, 0.1);
+}
+
+/* Light code blocks get a warm dark treatment */
+/* Light override no longer needed — single mustard theme */
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background: #E8B931;
+    color: #1C1917;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    margin: 0;
+    transition: background-color 0.35s ease, color 0.35s ease;
+  }
+}
+
+/* ── Animations ─────────────────────────────────────────── */
+@keyframes squeeze {
+  0%, 100% { transform: scaleX(1) scaleY(1); }
+  30% { transform: scaleX(1.12) scaleY(0.9); }
+  60% { transform: scaleX(0.94) scaleY(1.04); }
+}
+
+@keyframes bar-fill {
+  from { width: 0%; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px var(--color-cta-glow), 0 0 60px transparent; }
+  50% { box-shadow: 0 0 30px var(--color-cta-glow), 0 0 80px var(--color-cta-glow); }
+}
+
+@keyframes blob-float {
+  0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
+  33% { transform: translate(8px, -12px) scale(1.03) rotate(1deg); }
+  66% { transform: translate(-6px, 8px) scale(0.97) rotate(-1deg); }
+}
+
+.squeeze-hover:hover {
+  animation: squeeze 0.45s ease-in-out;
+}
+
+.mustard-blob {
+  animation: blob-float 10s ease-in-out infinite;
+}
+
+/* ── Code blocks — warm dark, organic edges, mustard glow ─ */
+.code-block {
+  background: #1C1508;
+  border: 1px solid rgba(201, 154, 29, 0.25);
+  border-radius: 20px 14px 18px 12px;
+  overflow: hidden;
+  box-shadow:
+    0 20px 60px rgba(180, 83, 9, 0.25),
+    0 8px 24px rgba(0, 0, 0, 0.2);
+  /* no rotation — organic edges are enough */
+}
+
+.code-block pre {
+  margin: 0;
+  padding: 1.5rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.75;
+}
+
+/* ── Tabs ───────────────────────────────────────────────── */
+.tab-active {
+  background: var(--color-mustard);
+  color: #0D0D0D;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(232, 185, 49, 0.3);
+}
+
+.tab-inactive {
+  background: transparent;
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
+}
+
+.tab-inactive:hover {
+  color: var(--color-mustard);
+  border-color: var(--color-mustard);
+}
+
+/* ── Gradient text — dark default ───────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, var(--color-mustard-light), var(--color-mustard), var(--color-dijon));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Glow ───────────────────────────────────────────────── */
+.mustard-glow {
+  text-shadow: 0 0 30px rgba(232, 185, 49, 0.5), 0 0 60px rgba(232, 185, 49, 0.15);
+}
+
+/* ── Scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
