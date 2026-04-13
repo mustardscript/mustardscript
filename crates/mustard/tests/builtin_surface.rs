@@ -130,6 +130,54 @@ fn array_callback_throws_are_catchable_and_later_helpers_still_run() {
 }
 
 #[test]
+fn function_call_array_callbacks_unwind_guest_throws_without_corrupting_later_helpers() {
+    let program = compile(
+        r#"
+        const seen = [];
+        function visit(index) {
+          seen[seen.length] = [this, index];
+          if (this === 2) {
+            throw new Error("boom");
+          }
+          return this + index;
+        }
+
+        let recovered;
+        try {
+          [1, 2].map(visit.call, visit);
+        } catch (error) {
+          recovered = [
+            error.name,
+            error.message,
+            [4, 5].map(visit.call, visit),
+          ];
+        }
+
+        [seen, recovered];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![
+                StructuredValue::Array(vec![number(1.0), number(0.0)]),
+                StructuredValue::Array(vec![number(2.0), number(1.0)]),
+                StructuredValue::Array(vec![number(4.0), number(0.0)]),
+                StructuredValue::Array(vec![number(5.0), number(1.0)]),
+            ]),
+            StructuredValue::Array(vec![
+                StructuredValue::String("Error".to_string()),
+                StructuredValue::String("boom".to_string()),
+                StructuredValue::Array(vec![number(4.0), number(6.0)]),
+            ]),
+        ])
+    );
+}
+
+#[test]
 fn array_find_helpers_visit_sparse_holes_as_undefined() {
     let program = compile(
         r#"

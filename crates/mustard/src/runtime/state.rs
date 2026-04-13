@@ -532,6 +532,8 @@ pub(super) struct Frame {
     pub(super) pending_completions: Vec<CompletionRecord>,
     pub(super) active_finally: Vec<ActiveFinallyState>,
     pub(super) async_promise: Option<PromiseKey>,
+    #[serde(skip, default)]
+    pub(super) callback_capture: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -601,6 +603,8 @@ pub(super) struct Runtime {
     pub(super) cancellation_token: Option<CancellationToken>,
     #[serde(skip, default)]
     pub(super) pending_internal_exception: Option<PromiseRejection>,
+    #[serde(skip, default)]
+    pub(super) pending_sync_callback_result: Option<Value>,
     #[serde(skip, default)]
     pub(super) snapshot_policy_required: bool,
     pub(super) pending_resume_behavior: ResumeBehavior,

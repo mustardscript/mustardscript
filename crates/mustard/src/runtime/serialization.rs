@@ -325,6 +325,7 @@ impl DetachedRuntime {
             accounting_recount_required: true,
             cancellation_token: None,
             pending_internal_exception: None,
+            pending_sync_callback_result: None,
             snapshot_policy_required: false,
             pending_resume_behavior: self.pending_resume_behavior,
         }

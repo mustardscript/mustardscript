@@ -90,6 +90,7 @@ fn iterators_participate_in_heap_accounting_and_gc() {
         pending_completions: Vec::new(),
         active_finally: Vec::new(),
         async_promise: None,
+        callback_capture: false,
     });
 
     let garbage_array = runtime
@@ -177,6 +178,7 @@ fn map_and_set_iterators_keep_keyed_collections_alive_for_gc() {
         pending_completions: Vec::new(),
         active_finally: Vec::new(),
         async_promise: None,
+        callback_capture: false,
     });
 
     let garbage_map = runtime.insert_map(Vec::new()).expect("map should allocate");
@@ -265,6 +267,7 @@ fn promise_reactions_keep_target_promises_alive_for_gc() {
         pending_completions: Vec::new(),
         active_finally: Vec::new(),
         async_promise: None,
+        callback_capture: false,
     });
 
     let garbage_source = runtime
@@ -339,6 +342,7 @@ fn keyed_collections_participate_in_heap_accounting_and_gc() {
         pending_completions: Vec::new(),
         active_finally: Vec::new(),
         async_promise: None,
+        callback_capture: false,
     });
 
     let garbage_map = runtime
@@ -428,6 +432,7 @@ fn garbage_collection_marks_runtime_roots_and_collects_cycles() {
         ],
         active_finally: Vec::new(),
         async_promise: None,
+        callback_capture: false,
     });
 
     let garbage_env = runtime.new_env(None).expect("garbage env should allocate");

@@ -241,6 +241,22 @@ impl Runtime {
                 return Ok(StepAction::Continue);
             }
 
+            if self.frames[frame_index].callback_capture {
+                self.frames.pop();
+                self.pending_internal_exception = Some(PromiseRejection {
+                    value: thrown,
+                    span,
+                    traceback: traceback
+                        .iter()
+                        .map(|frame| TraceFrameSnapshot {
+                            function_name: frame.function_name.clone(),
+                            span: frame.span,
+                        })
+                        .collect(),
+                });
+                return Ok(StepAction::Continue);
+            }
+
             if self.frames.len() == 1 {
                 let message = self.render_exception(&thrown)?;
                 return Err(MustardError::Message {
@@ -362,6 +378,10 @@ impl Runtime {
             .frames
             .pop()
             .ok_or_else(|| MustardError::runtime("vm lost all frames"))?;
+        if frame.callback_capture {
+            self.pending_sync_callback_result = Some(value);
+            return Ok(StepAction::Continue);
+        }
         if let Some(async_promise) = frame.async_promise {
             self.resolve_promise(async_promise, value)?;
             return Ok(StepAction::Continue);

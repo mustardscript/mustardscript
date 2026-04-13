@@ -127,6 +127,7 @@ impl Runtime {
             accounting_recount_required: false,
             cancellation_token,
             pending_internal_exception: None,
+            pending_sync_callback_result: None,
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         }
@@ -166,6 +167,7 @@ impl Runtime {
             accounting_recount_required: false,
             cancellation_token,
             pending_internal_exception: None,
+            pending_sync_callback_result: None,
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         }
@@ -280,43 +282,15 @@ impl Runtime {
     ) -> MustardResult<Value> {
         match callback {
             Value::Closure(closure) => {
-                let closure = self
-                    .closures
-                    .get(closure)
-                    .cloned()
-                    .ok_or_else(|| MustardError::runtime("closure not found"))?;
-                let env = self.new_env(Some(closure.env))?;
-                let (is_async, is_arrow, function_id) = self
-                    .program
-                    .functions
-                    .get(closure.function_id)
-                    .map(|function| (function.is_async, function.is_arrow, closure.function_id))
-                    .ok_or_else(|| MustardError::runtime("function not found"))?;
-                let frame_this = if is_arrow {
-                    closure.this_value.clone()
-                } else {
-                    this_arg
-                };
-                let had_async_boundary = self.current_async_boundary_index().is_some();
-                if is_async {
-                    let promise = self.insert_promise(PromiseState::Pending)?;
-                    self.push_frame(function_id, env, args, frame_this, Some(promise))?;
-                    Ok(Value::Promise(promise))
-                } else {
-                    let promise = self.insert_promise(PromiseState::Pending)?;
-                    let base_depth = self.frames.len();
-                    self.push_frame(function_id, env, args, frame_this, Some(promise))?;
-                    self.run_until_frame_depth(base_depth, options.host_suspension_message)?;
-                    match self.promise_outcome(promise)? {
-                        Some(PromiseOutcome::Fulfilled(value)) => Ok(value),
-                        Some(PromiseOutcome::Rejected(rejection)) => {
-                            self.pending_internal_exception = Some(rejection);
-                            Err(MustardError::runtime(INTERNAL_CALLBACK_THROW_MARKER))
-                        }
-                        None if options.allow_pending_promise_result && had_async_boundary => {
-                            Ok(Value::Promise(promise))
-                        }
-                        None => Err(MustardError::runtime(options.unsettled_message)),
+                let base_depth = self.frames.len();
+                match self.call_callable(Value::Closure(closure), this_arg, args)? {
+                    RunState::Completed(value) => Ok(value),
+                    RunState::PushedFrame => {
+                        self.finish_pushed_callback_frame(base_depth, &options)
+                    }
+                    RunState::StartedAsync(value) => Ok(value),
+                    RunState::Suspended { .. } => {
+                        Err(MustardError::runtime(options.host_suspension_message))
                     }
                 }
             }
@@ -332,11 +306,7 @@ impl Runtime {
                 match self.call_callable(Value::BuiltinFunction(function), this_arg, args)? {
                     RunState::Completed(value) => Ok(value),
                     RunState::PushedFrame => {
-                        self.run_until_frame_depth(base_depth, options.host_suspension_message)?;
-                        self.frames
-                            .last_mut()
-                            .and_then(|frame| frame.stack.pop())
-                            .ok_or_else(|| MustardError::runtime("missing callback result"))
+                        self.finish_pushed_callback_frame(base_depth, &options)
                     }
                     RunState::StartedAsync(value) => Ok(value),
                     RunState::Suspended { .. } => {
@@ -355,11 +325,7 @@ impl Runtime {
                 match self.call_callable(Value::Object(object), this_arg, args)? {
                     RunState::Completed(value) => Ok(value),
                     RunState::PushedFrame => {
-                        self.run_until_frame_depth(base_depth, options.host_suspension_message)?;
-                        self.frames
-                            .last_mut()
-                            .and_then(|frame| frame.stack.pop())
-                            .ok_or_else(|| MustardError::runtime("missing callback result"))
+                        self.finish_pushed_callback_frame(base_depth, &options)
                     }
                     RunState::StartedAsync(value) => Ok(value),
                     RunState::Suspended { .. } => {
@@ -393,6 +359,54 @@ impl Runtime {
             }
             _ => Err(MustardError::runtime(options.non_callable_message)),
         }
+    }
+
+    fn finish_pushed_callback_frame(
+        &mut self,
+        base_depth: usize,
+        options: &CallbackCallOptions<'_>,
+    ) -> MustardResult<Value> {
+        self.pending_sync_callback_result = None;
+        let frame = self
+            .frames
+            .last_mut()
+            .ok_or_else(|| MustardError::runtime("missing callback frame"))?;
+        frame.callback_capture = true;
+
+        if let Err(error) = self.run_until_frame_depth(base_depth, options.host_suspension_message)
+        {
+            if self.frames.len() > base_depth
+                && let Some(frame) = self.frames.last_mut()
+            {
+                frame.callback_capture = false;
+            }
+            self.pending_sync_callback_result = None;
+            return Err(error);
+        }
+
+        if self.pending_internal_exception.is_some() {
+            return Err(MustardError::runtime(INTERNAL_CALLBACK_THROW_MARKER));
+        }
+
+        let value = self
+            .pending_sync_callback_result
+            .take()
+            .ok_or_else(|| MustardError::runtime("missing callback result"))?;
+
+        if !options.allow_pending_promise_result
+            && let Value::Promise(promise) = value
+        {
+            return match self.promise_outcome(promise)? {
+                Some(PromiseOutcome::Fulfilled(value)) => Ok(value),
+                Some(PromiseOutcome::Rejected(rejection)) => {
+                    self.pending_internal_exception = Some(rejection);
+                    Err(MustardError::runtime(INTERNAL_CALLBACK_THROW_MARKER))
+                }
+                None => Err(MustardError::runtime(options.unsettled_message)),
+            };
+        }
+
+        Ok(value)
     }
 
     fn bump_instruction_budget(&mut self) -> MustardResult<()> {

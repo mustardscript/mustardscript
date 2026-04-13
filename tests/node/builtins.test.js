@@ -144,6 +144,42 @@ test('run supports callback-heavy array helpers and thisArg for supported callba
   assert.deepEqual(result, [[5, 7, 9], [1, 3], 3, 2, true, true, 11, 36]);
 });
 
+test('run keeps Function.prototype.call callback throws catchable across nested helper execution', async () => {
+  const result = await runtime(`
+    const seen = [];
+    function visit(index) {
+      seen[seen.length] = [this, index];
+      if (this === 2) {
+        throw new Error("boom");
+      }
+      return this + index;
+    }
+
+    let recovered;
+    try {
+      [1, 2].map(visit.call, visit);
+    } catch (error) {
+      recovered = [
+        error.name,
+        error.message,
+        [4, 5].map(visit.call, visit),
+      ];
+    }
+
+    [seen, recovered];
+  `).run();
+
+  assert.deepEqual(result, [
+    [
+      [1, 0],
+      [2, 1],
+      [4, 0],
+      [5, 1],
+    ],
+    ['Error', 'boom', [4, 6]],
+  ]);
+});
+
 test('run supports Array.of, Array.prototype.concat, Array.prototype.at, Math.log, and Math.random', async () => {
   const result = await runtime(`
     const single = Array.of(7);

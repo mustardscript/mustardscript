@@ -699,6 +699,7 @@ impl Runtime {
             pending_completions: Vec::new(),
             active_finally: Vec::new(),
             async_promise,
+            callback_capture: false,
         });
         Ok(())
     }
