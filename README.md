@@ -783,7 +783,9 @@ with a particular host policy, input set, capability map, or runtime limit.
 pass either a reusable `ExecutionContext` or explicit `capabilities` /
 `console`, explicit `limits` as an object (use `{}` for default runtime
 limits), and the original `snapshotKey`. The dumped token authenticates the
-snapshot bytes before any loaded capability metadata is trusted, and
+snapshot bytes before any loaded capability metadata is trusted, current dumps
+also carry authenticated suspended metadata so `Progress.load(...)` usually
+avoids native re-inspection, legacy dumps still fall back to inspection, and
 same-process dumps stay single-use.
 
 The common path should be easy. The advanced path should remain explicit.

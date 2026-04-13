@@ -63,6 +63,14 @@ function isTamperedSnapshotError(error) {
   );
 }
 
+function isTamperedManifestError(error) {
+  return (
+    error instanceof MustardError &&
+    error.kind === 'Serialization' &&
+    error.message.includes('tampered or unauthenticated suspended metadata')
+  );
+}
+
 function runWorker(script, workerData) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(script, { eval: true, workerData });
@@ -88,7 +96,7 @@ function resolveCurrentNativeBinaryPath() {
   throw new Error('unable to resolve the current mustard native addon path');
 }
 
-test('progress load derives capability and args from the snapshot instead of caller metadata', () => {
+test('progress load prefers authenticated suspended metadata over caller-edited fields', () => {
   const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
@@ -102,6 +110,58 @@ test('progress load derives capability and args from the snapshot instead of cal
   assert.ok(progress instanceof Progress);
   const restored = Progress.load({
     ...progress.dump(),
+    capability: 'drop_table',
+    args: ['users'],
+  }, createLoadOptions());
+
+  assert.equal(restored.capability, 'fetch_data');
+  assert.deepEqual(restored.args, [4]);
+  assert.equal(restored.resume(4), 8);
+});
+
+test('progress dump keeps authoritative suspended metadata even if public fields are mutated', () => {
+  const progress = new Mustard(`
+    const response = fetch_data(4);
+    response * 2;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  assert.ok(progress instanceof Progress);
+  progress.capability = 'drop_table';
+  progress.args[0] = 999;
+
+  const dumped = progress.dump();
+  const restored = Progress.load(dumped, createLoadOptions());
+
+  assert.equal(dumped.capability, 'fetch_data');
+  assert.deepEqual(dumped.args, [4]);
+  assert.equal(restored.capability, 'fetch_data');
+  assert.deepEqual(restored.args, [4]);
+  assert.equal(restored.resume(4), 8);
+});
+
+test('progress load falls back to native snapshot inspection for legacy dumps', () => {
+  const progress = new Mustard(`
+    const response = fetch_data(4);
+    response * 2;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  assert.ok(progress instanceof Progress);
+  const dumped = progress.dump();
+  delete dumped.suspended_manifest;
+  delete dumped.suspended_manifest_token;
+
+  const restored = Progress.load({
+    ...dumped,
     capability: 'drop_table',
     args: ['users'],
   }, createLoadOptions());
@@ -401,6 +461,31 @@ test('progress load rejects forged progress tokens', () => {
         },
       ),
     isTamperedSnapshotError,
+  );
+});
+
+test('progress load rejects tampered suspended manifests without falling back', () => {
+  const progress = new Mustard(`
+    const response = fetch_data(4);
+    response * 2;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+
+  const dumped = progress.dump();
+  assert.throws(
+    () =>
+      Progress.load(
+        {
+          ...dumped,
+          suspended_manifest: dumped.suspended_manifest.replace('fetch_data', 'drop_table'),
+        },
+        createLoadOptions(),
+      ),
+    isTamperedManifestError,
   );
 });
 

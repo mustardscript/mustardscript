@@ -5,7 +5,13 @@ const { types } = require('node:util');
 const { loadNative } = require('../native-loader.ts');
 
 const { MustardError, callNative } = require('./errors.ts');
-const { defineEnumerableProperty, hasOwnProperty, isAccessorDescriptor } = require('./structured.ts');
+const {
+  decodeStructured,
+  defineEnumerableProperty,
+  encodeStructured,
+  hasOwnProperty,
+  isAccessorDescriptor,
+} = require('./structured.ts');
 
 const CONSOLE_CAPABILITY_NAMES = {
   log: 'console.log',
@@ -229,18 +235,100 @@ function snapshotKeyDigest(snapshotKey) {
   return crypto.createHash('sha256').update(snapshotKey).digest('hex');
 }
 
+function suspendedManifestError() {
+  return new MustardError(
+    'Serialization',
+    'Progress.load() rejected tampered or unauthenticated suspended metadata',
+  );
+}
+
+function createSuspendedManifest(capability, args) {
+  if (typeof capability !== 'string' || capability.length === 0) {
+    throw new TypeError('Progress.dump() requires a suspended capability name');
+  }
+  if (!Array.isArray(args)) {
+    throw new TypeError('Progress.dump() requires suspended args as an array');
+  }
+  return JSON.stringify({
+    capability,
+    args: args.map((value) => encodeStructured(value)),
+  });
+}
+
+function parseSuspendedManifest(suspendedManifest) {
+  try {
+    const manifest = JSON.parse(suspendedManifest);
+    if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+      throw suspendedManifestError();
+    }
+    if (typeof manifest.capability !== 'string' || manifest.capability.length === 0) {
+      throw suspendedManifestError();
+    }
+    if (!Array.isArray(manifest.args)) {
+      throw suspendedManifestError();
+    }
+    return {
+      capability: manifest.capability,
+      args: manifest.args.map((value) => decodeStructured(value)),
+    };
+  } catch (error) {
+    if (error instanceof MustardError) {
+      throw error;
+    }
+    throw suspendedManifestError();
+  }
+}
+
+function suspendedManifestToken(snapshotId, suspendedManifest, snapshotKey) {
+  return crypto
+    .createHmac('sha256', snapshotKey)
+    .update(snapshotId, 'utf8')
+    .update('\0', 'utf8')
+    .update(suspendedManifest, 'utf8')
+    .digest('hex');
+}
+
+function assertSuspendedManifest(state, snapshotKey, expectedSnapshotId) {
+  const suspendedManifest = state.suspended_manifest;
+  const token = state.suspended_manifest_token;
+  if (suspendedManifest === undefined && token === undefined) {
+    return null;
+  }
+  if (
+    typeof suspendedManifest !== 'string' ||
+    suspendedManifest.length === 0 ||
+    typeof token !== 'string' ||
+    token.length === 0
+  ) {
+    throw suspendedManifestError();
+  }
+  const expected = suspendedManifestToken(
+    expectedSnapshotId,
+    suspendedManifest,
+    snapshotKey,
+  );
+  if (
+    token.length !== expected.length ||
+    !crypto.timingSafeEqual(Buffer.from(token, 'utf8'), Buffer.from(expected, 'utf8'))
+  ) {
+    throw suspendedManifestError();
+  }
+  return parseSuspendedManifest(suspendedManifest);
+}
+
 function assertSnapshotToken(
   snapshot,
   token,
   snapshotKey,
   expectedSnapshotId = undefined,
   expectedSnapshotKeyDigest = undefined,
+  actualSnapshotId = undefined,
 ) {
   if (typeof token !== 'string' || token.length === 0) {
     throw new TypeError('Progress.load() requires a dumped progress token');
   }
-  const actualSnapshotId = snapshotIdentity(snapshot);
-  if (expectedSnapshotId !== undefined && actualSnapshotId !== expectedSnapshotId) {
+  const resolvedSnapshotId = actualSnapshotId ?? snapshotIdentity(snapshot);
+  if (expectedSnapshotId !== undefined && resolvedSnapshotId !== expectedSnapshotId) {
     throw new MustardError(
       'Serialization',
       'Progress.load() rejected a tampered or unauthenticated snapshot',
@@ -255,7 +343,7 @@ function assertSnapshotToken(
       'Progress.load() rejected a mismatched snapshot key digest',
     );
   }
-  const expected = snapshotToken(snapshot, snapshotKey, actualSnapshotId);
+  const expected = snapshotToken(snapshot, snapshotKey, resolvedSnapshotId);
   if (
     token.length !== expected.length ||
     !crypto.timingSafeEqual(Buffer.from(token, 'utf8'), Buffer.from(expected, 'utf8'))
@@ -279,7 +367,7 @@ function createExecutionPolicy({ limits = {}, snapshotKey, ...handlers } = {}) {
   };
 }
 
-function resolveProgressLoadContext(state, snapshot, options) {
+function resolveProgressLoadContext(state, snapshot, options, actualSnapshotId = undefined) {
   const expectedSnapshotId =
     typeof state.snapshot_id === 'string' && state.snapshot_id.length > 0
       ? state.snapshot_id
@@ -312,6 +400,7 @@ function resolveProgressLoadContext(state, snapshot, options) {
       snapshotKey,
       expectedSnapshotId,
       expectedSnapshotKeyDigest,
+      actualSnapshotId,
     );
     return {
       policy: context.policy(),
@@ -350,6 +439,7 @@ function resolveProgressLoadContext(state, snapshot, options) {
     snapshotKey,
     expectedSnapshotId,
     expectedSnapshotKeyDigest,
+    actualSnapshotId,
   );
   return {
     policy: createExecutionPolicy({ ...options, limits }).policy,
@@ -359,16 +449,20 @@ function resolveProgressLoadContext(state, snapshot, options) {
 
 module.exports = {
   ExecutionContext,
+  assertSuspendedManifest,
   cloneSnapshotPolicy,
   cloneSnapshotKey,
   collectHostHandlers,
+  createSuspendedManifest,
   createExecutionPolicy,
   encodeRuntimeLimits,
   encodeSnapshotPolicy,
   normalizeSnapshotKey,
+  parseSuspendedManifest,
   resolveExecutionContext,
   resolveProgressLoadContext,
   snapshotIdentity,
   snapshotKeyDigest,
   snapshotToken,
+  suspendedManifestToken,
 };

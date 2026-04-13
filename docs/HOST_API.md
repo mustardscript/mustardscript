@@ -136,9 +136,10 @@ guest-only traceback with guest function names and source spans.
   in the same PID, so unrelated same-process progress churn cannot make an old
   dumped snapshot replayable again.
 - `Progress.dump()` includes detached `snapshot_id`, `snapshot_key_digest`, and
-  `token` metadata authenticated by the configured `snapshotKey`, and
-  `Progress.load()` verifies that bundle before trusting the dumped snapshot
-  bytes.
+  `token` metadata authenticated by the configured `snapshotKey`. Current dumps
+  also carry an authenticated suspended-manifest blob for capability metadata,
+  and `Progress.load()` verifies the snapshot bundle before it trusts that
+  manifest or falls back to legacy snapshot inspection.
 - In the Node wrapper, `Progress.load(...)` always requires the host to
   reassert either an `ExecutionContext` or explicit `capabilities` or
   `console`, explicit `limits`, and the original `snapshotKey` before it exposes authoritative

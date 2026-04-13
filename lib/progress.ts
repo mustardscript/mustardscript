@@ -8,13 +8,16 @@ const { performance } = require('node:perf_hooks');
 const { MustardError, callNative } = require('./errors.ts');
 const { getAbortSignal, withCancellationSignal } = require('./cancellation.ts');
 const {
+  assertSuspendedManifest,
   cloneSnapshotPolicy,
   cloneSnapshotKey,
+  createSuspendedManifest,
   encodeSnapshotPolicy,
   resolveProgressLoadContext,
   snapshotIdentity,
   snapshotKeyDigest,
   snapshotToken,
+  suspendedManifestToken,
 } = require('./policy.ts');
 const {
   decodeStructured,
@@ -112,6 +115,16 @@ function assertSnapshotNotUsed(native, snapshotIdentityValue) {
 }
 
 function createProgressApi(native) {
+  function assertAuthorizedSuspendedCapability(policy, capability) {
+    if (policy.capabilities.includes(capability)) {
+      return;
+    }
+    throw new MustardError(
+      'Serialization',
+      `snapshot policy rejected unauthorized capability \`${capability}\``,
+    );
+  }
+
   class Progress {
     constructor(
       snapshot,
@@ -121,23 +134,40 @@ function createProgressApi(native) {
       snapshotKey,
       token = undefined,
       claimState = 'unclaimed',
+      suspendedManifest = undefined,
+      suspendedManifestTokenValue = undefined,
     ) {
-      this.capability = capability;
-      this.args = args;
+      this.#capability = capability;
+      this.#args = structuredClone(args);
+      this.capability = this.#capability;
+      this.args = structuredClone(this.#args);
       this.#snapshot = Buffer.from(snapshot);
       this.#snapshotIdentity = snapshotIdentity(this.#snapshot);
       this.#snapshotKey = cloneSnapshotKey(snapshotKey);
       this.#snapshotKeyDigest = snapshotKeyDigest(this.#snapshotKey);
       this.#snapshotToken = token ?? snapshotToken(this.#snapshot, this.#snapshotKey);
+      this.#suspendedManifest =
+        suspendedManifest ?? createSuspendedManifest(this.#capability, this.#args);
+      this.#suspendedManifestToken =
+        suspendedManifestTokenValue ??
+        suspendedManifestToken(
+          this.#snapshotIdentity,
+          this.#suspendedManifest,
+          this.#snapshotKey,
+        );
       this.#policy = cloneSnapshotPolicy(policy);
       this.#claimState = claimState;
     }
 
+    #capability;
+    #args;
     #snapshot;
     #snapshotIdentity;
     #snapshotKey;
     #snapshotKeyDigest;
     #snapshotToken;
+    #suspendedManifest;
+    #suspendedManifestToken;
     #policy;
     #claimState;
 
@@ -173,12 +203,14 @@ function createProgressApi(native) {
 
     dump() {
       return {
-        capability: this.capability,
-        args: this.args.slice(),
+        capability: this.#capability,
+        args: structuredClone(this.#args),
         snapshot: this.snapshot,
         snapshot_id: this.#snapshotIdentity,
         snapshot_key_digest: this.#snapshotKeyDigest,
         token: this.#snapshotToken,
+        suspended_manifest: this.#suspendedManifest,
+        suspended_manifest_token: this.#suspendedManifestToken,
       };
     }
 
@@ -283,9 +315,36 @@ function createProgressApi(native) {
         );
       }
       assertSnapshotNotUsed(native, snapshotIdentityValue);
-      const context = resolveProgressLoadContext(state, snapshot, options);
+      const context = resolveProgressLoadContext(
+        state,
+        snapshot,
+        options,
+        snapshotIdentityValue,
+      );
+      const suspendedManifest = assertSuspendedManifest(
+        state,
+        context.snapshotKey,
+        snapshotIdentityValue,
+      );
       const releaseClaim = claimSnapshotForLoad(native, snapshotIdentityValue);
       try {
+        if (suspendedManifest !== null) {
+          assertAuthorizedSuspendedCapability(
+            context.policy,
+            suspendedManifest.capability,
+          );
+          return new Progress(
+            snapshot,
+            suspendedManifest.capability,
+            suspendedManifest.args,
+            context.policy,
+            context.snapshotKey,
+            state.token,
+            'claimed',
+            state.suspended_manifest,
+            state.suspended_manifest_token,
+          );
+        }
         const inspection = parseSnapshotInspection(
           callNative(
             native.inspectSnapshot,

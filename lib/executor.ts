@@ -35,6 +35,14 @@ function clonePersistedProgress(progress) {
     snapshot_id: progress.snapshot_id,
     snapshot_key_digest: progress.snapshot_key_digest,
     token: progress.token,
+    suspended_manifest:
+      typeof progress.suspended_manifest === 'string'
+        ? progress.suspended_manifest
+        : undefined,
+    suspended_manifest_token:
+      typeof progress.suspended_manifest_token === 'string'
+        ? progress.suspended_manifest_token
+        : undefined,
   };
 }
 

@@ -282,8 +282,10 @@ Current controls:
 - capability lookup is explicit and name-based
 - host calls suspend guest execution rather than moving host callbacks into the
   runtime core
-- same-process `Progress.load(...)` derives authoritative `capability` and
-  `args` from snapshot inspection, not caller-supplied dump metadata
+- `Progress.load(...)` derives authoritative `capability` and `args` from an
+  authenticated suspended manifest on current dumps, falls back to snapshot
+  inspection for legacy dumps, and never trusts caller-edited top-level dump
+  metadata
 - fresh-process `Progress.load(...)` requires explicit host `capabilities` and
   `limits` before restore metadata is trusted
 - `Progress` single-use within one Node process is keyed to the snapshot hash,

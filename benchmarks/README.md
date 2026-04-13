@@ -150,7 +150,7 @@ The new addon-only phase metrics are intentionally narrow:
 - `snapshot_dump_only` measures `Progress.dump()` on an already-suspended execution
 - `apply_snapshot_policy_only` measures the JS-side snapshot authentication and policy rebinding path used by `Progress.load(...)`
 - `snapshot_load_only` measures raw native `inspectSnapshot(...)` on an authenticated snapshot
-- `Progress.load_only` measures the public JS wrapper path before the post-measurement cleanup step
+- `Progress.load_only` measures the public JS wrapper path, including authenticated suspended-manifest verification on current dumps, before the post-measurement cleanup step
 - `addon.suspendState` records size-oriented suspend-state facts for the
   `suspend_resume_*` fixtures: serialized program bytes, dumped snapshot bytes,
   and retained live `Progress` memory deltas after GC while a batch of
