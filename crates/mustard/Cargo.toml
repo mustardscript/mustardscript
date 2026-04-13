@@ -28,4 +28,9 @@ rand.workspace = true
 time.workspace = true
 
 [dev-dependencies]
+criterion = "0.5.1"
 proptest = "1.9.0"
+
+[[bench]]
+name = "runtime_core"
+harness = false

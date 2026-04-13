@@ -16,6 +16,7 @@ npm run bench:smoke:dev
 npm run bench:smoke:release
 npm run bench:workloads:dev
 npm run bench:workloads:release
+npm run bench:rust
 ```
 
 Convenience aliases:
@@ -27,6 +28,9 @@ npm run bench:workloads
 
 Those aliases currently map to the fast dev smoke run and the release workload
 run respectively.
+
+`npm run bench:rust` runs the Rust-core microbenchmark suite in
+`crates/mustard/benches/runtime_core.rs`.
 
 ## Smoke Scope
 
@@ -83,6 +87,31 @@ machine metadata and latency summaries for:
 
 The release workload artifact is the one to compare in performance writeups,
 plan updates, and optimization commits.
+
+## Rust Core Microbench Suite
+
+The Rust-core suite lives under `crates/mustard/benches/runtime_core.rs` and is
+the required companion measurement for engine-level optimization work. Run it
+with:
+
+```sh
+npm run bench:rust
+```
+
+The suite covers:
+
+- parse/validate and bytecode lowering
+- program deserialize/validate
+- runtime initialization with empty, capability-heavy, and input-heavy startup
+- validated start vs trusted shared-program execution
+- VM hot loops, lexical/env lookup, property access, and `Map`/`Set` hot paths
+- structured boundary decode and suspend-time encode
+- snapshot dump and load
+
+When making a runtime performance change, attach before/after numbers from both
+`npm run bench:workloads:release` and `npm run bench:rust`. The workload suite
+captures end-to-end addon/sidecar behavior; the Rust suite shows where wins or
+regressions landed inside the core.
 
 ## Comparison Workflow
 
