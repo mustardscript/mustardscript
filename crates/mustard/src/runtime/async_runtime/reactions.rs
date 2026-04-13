@@ -196,6 +196,7 @@ impl Runtime {
             PromiseCombinatorKind::All => {
                 let mut resolved_values = None;
                 let mut rejection = None;
+                let mut driver_delta = None;
                 {
                     let promise = self
                         .promises
@@ -213,21 +214,34 @@ impl Runtime {
                     };
                     match outcome {
                         PromiseOutcome::Fulfilled(value) => {
+                            let old_driver_bytes = values
+                                .iter()
+                                .flatten()
+                                .map(Self::value_bytes)
+                                .sum::<usize>();
+                            let old_entry_bytes =
+                                values[index].as_ref().map_or(0, Self::value_bytes);
+                            let new_entry_bytes = Self::value_bytes(&value);
                             values[index] = Some(value);
                             *remaining = remaining.saturating_sub(1);
                             if *remaining == 0 {
                                 resolved_values = Some(
-                                    values
-                                        .iter()
-                                        .map(|value| value.clone().unwrap_or(Value::Undefined))
+                                    std::mem::take(values)
+                                        .into_iter()
+                                        .map(|value| value.unwrap_or(Value::Undefined))
                                         .collect::<Vec<_>>(),
                                 );
+                                driver_delta = Some((old_driver_bytes, 0));
+                            } else {
+                                driver_delta = Some((old_entry_bytes, new_entry_bytes));
                             }
                         }
                         PromiseOutcome::Rejected(reason) => rejection = Some(reason),
                     }
                 }
-                self.refresh_promise_accounting(target)?;
+                if let Some((old_bytes, new_bytes)) = driver_delta {
+                    self.apply_promise_component_delta(target, old_bytes, new_bytes)?;
+                }
                 if let Some(rejection) = rejection {
                     self.reject_promise(target, rejection)?;
                 } else if let Some(values) = resolved_values {
@@ -238,6 +252,7 @@ impl Runtime {
             }
             PromiseCombinatorKind::AllSettled => {
                 let mut settled_results = None;
+                let driver_delta;
                 {
                     let promise = self
                         .promises
@@ -253,27 +268,40 @@ impl Runtime {
                     else {
                         return Err(MustardError::runtime("promise combinator kind mismatch"));
                     };
-                    results[index] = Some(match outcome {
+                    let old_entry_bytes = results[index]
+                        .as_ref()
+                        .map_or(0, Self::promise_settled_result_bytes);
+                    let old_driver_bytes = results
+                        .iter()
+                        .flatten()
+                        .map(Self::promise_settled_result_bytes)
+                        .sum::<usize>();
+                    let new_result = match outcome {
                         PromiseOutcome::Fulfilled(value) => PromiseSettledResult::Fulfilled(value),
                         PromiseOutcome::Rejected(reason) => {
                             PromiseSettledResult::Rejected(reason.value)
                         }
-                    });
+                    };
+                    let new_entry_bytes = Self::promise_settled_result_bytes(&new_result);
+                    results[index] = Some(new_result);
                     *remaining = remaining.saturating_sub(1);
                     if *remaining == 0 {
                         settled_results = Some(
-                            results
-                                .iter()
+                            std::mem::take(results)
+                                .into_iter()
                                 .map(|result| {
-                                    result.clone().unwrap_or(PromiseSettledResult::Fulfilled(
+                                    result.unwrap_or(PromiseSettledResult::Fulfilled(
                                         Value::Undefined,
                                     ))
                                 })
                                 .collect::<Vec<_>>(),
                         );
+                        driver_delta = (old_driver_bytes, 0);
+                    } else {
+                        driver_delta = (old_entry_bytes, new_entry_bytes);
                     }
                 }
-                self.refresh_promise_accounting(target)?;
+                self.apply_promise_component_delta(target, driver_delta.0, driver_delta.1)?;
                 if let Some(results) = settled_results {
                     let mut values = Vec::with_capacity(results.len());
                     for result in results {
@@ -287,6 +315,7 @@ impl Runtime {
             PromiseCombinatorKind::Any => {
                 let mut rejection_values = None;
                 let mut fulfillment = None;
+                let mut driver_delta = None;
                 {
                     let promise = self
                         .promises
@@ -305,20 +334,33 @@ impl Runtime {
                     match outcome {
                         PromiseOutcome::Fulfilled(value) => fulfillment = Some(value),
                         PromiseOutcome::Rejected(reason) => {
+                            let old_driver_bytes = reasons
+                                .iter()
+                                .flatten()
+                                .map(Self::value_bytes)
+                                .sum::<usize>();
+                            let old_entry_bytes =
+                                reasons[index].as_ref().map_or(0, Self::value_bytes);
+                            let new_entry_bytes = Self::value_bytes(&reason.value);
                             reasons[index] = Some(reason.value);
                             *remaining = remaining.saturating_sub(1);
                             if *remaining == 0 {
                                 rejection_values = Some(
-                                    reasons
-                                        .iter()
-                                        .map(|value| value.clone().unwrap_or(Value::Undefined))
+                                    std::mem::take(reasons)
+                                        .into_iter()
+                                        .map(|value| value.unwrap_or(Value::Undefined))
                                         .collect::<Vec<_>>(),
                                 );
+                                driver_delta = Some((old_driver_bytes, 0));
+                            } else {
+                                driver_delta = Some((old_entry_bytes, new_entry_bytes));
                             }
                         }
                     }
                 }
-                self.refresh_promise_accounting(target)?;
+                if let Some((old_bytes, new_bytes)) = driver_delta {
+                    self.apply_promise_component_delta(target, old_bytes, new_bytes)?;
+                }
                 if let Some(value) = fulfillment {
                     self.resolve_promise(target, value)?;
                 } else if let Some(reasons) = rejection_values {

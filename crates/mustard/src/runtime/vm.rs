@@ -679,12 +679,13 @@ impl Runtime {
             .get(function_id)
             .ok_or_else(|| MustardError::runtime("function not found"))?;
         let this_cell = self.insert_cell(this_value, true, true)?;
+        let this_binding_bytes = Self::binding_entry_bytes("this");
         self.envs
             .get_mut(env)
             .ok_or_else(|| MustardError::runtime("environment missing"))?
             .bindings
             .insert("this".to_string(), this_cell);
-        self.refresh_env_accounting(env)?;
+        self.apply_env_component_delta(env, 0, this_binding_bytes)?;
         for binding_names in &function.param_binding_names {
             for name in binding_names {
                 self.declare_name(env, name.clone(), true)?;

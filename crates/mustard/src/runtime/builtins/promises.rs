@@ -223,14 +223,13 @@ impl Runtime {
             self.resolve_promise(target, array)?;
             return Ok(Value::Promise(target));
         }
-        self.promises
-            .get_mut(target)
-            .ok_or_else(|| MustardError::runtime("promise missing"))?
-            .driver = Some(PromiseDriver::All {
-            remaining: values.len(),
-            values: vec![None; values.len()],
-        });
-        self.refresh_promise_accounting(target)?;
+        self.replace_promise_driver(
+            target,
+            Some(PromiseDriver::All {
+                remaining: values.len(),
+                values: vec![None; values.len()],
+            }),
+        )?;
         for (index, value) in values.into_iter().enumerate() {
             let promise = self.coerce_to_promise(value)?;
             self.attach_promise_reaction(
@@ -279,14 +278,13 @@ impl Runtime {
             )?;
             return Ok(Value::Promise(target));
         }
-        self.promises
-            .get_mut(target)
-            .ok_or_else(|| MustardError::runtime("promise missing"))?
-            .driver = Some(PromiseDriver::Any {
-            remaining: values.len(),
-            reasons: vec![None; values.len()],
-        });
-        self.refresh_promise_accounting(target)?;
+        self.replace_promise_driver(
+            target,
+            Some(PromiseDriver::Any {
+                remaining: values.len(),
+                reasons: vec![None; values.len()],
+            }),
+        )?;
         for (index, value) in values.into_iter().enumerate() {
             let promise = self.coerce_to_promise(value)?;
             self.attach_promise_reaction(
@@ -310,14 +308,13 @@ impl Runtime {
             self.resolve_promise(target, array)?;
             return Ok(Value::Promise(target));
         }
-        self.promises
-            .get_mut(target)
-            .ok_or_else(|| MustardError::runtime("promise missing"))?
-            .driver = Some(PromiseDriver::AllSettled {
-            remaining: values.len(),
-            results: vec![None; values.len()],
-        });
-        self.refresh_promise_accounting(target)?;
+        self.replace_promise_driver(
+            target,
+            Some(PromiseDriver::AllSettled {
+                remaining: values.len(),
+                results: vec![None; values.len()],
+            }),
+        )?;
         for (index, value) in values.into_iter().enumerate() {
             let promise = self.coerce_to_promise(value)?;
             self.attach_promise_reaction(

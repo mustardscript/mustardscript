@@ -82,13 +82,14 @@ impl Runtime {
         mutable: bool,
     ) -> MustardResult<()> {
         let binding_name = name.clone();
+        let binding_bytes = Self::binding_entry_bytes(&name);
         let cell = self.insert_cell(value, mutable, true)?;
         self.envs
             .get_mut(self.globals)
             .ok_or_else(|| MustardError::runtime("missing globals environment"))?
             .bindings
             .insert(name, cell);
-        self.refresh_env_accounting(self.globals)?;
+        self.apply_env_component_delta(self.globals, 0, binding_bytes)?;
         let value = self
             .cells
             .get(cell)
@@ -115,12 +116,13 @@ impl Runtime {
             return Ok(());
         }
         let cell = self.insert_cell(Value::Undefined, mutable, false)?;
+        let binding_bytes = Self::binding_entry_bytes(&name);
         self.envs
             .get_mut(env)
             .ok_or_else(|| MustardError::runtime("environment missing"))?
             .bindings
             .insert(name, cell);
-        self.refresh_env_accounting(env)?;
+        self.apply_env_component_delta(env, 0, binding_bytes)?;
         Ok(())
     }
 
@@ -187,6 +189,8 @@ impl Runtime {
     ) -> MustardResult<()> {
         let (name, cell_key) = self.resolve_slot_binding(env, depth, slot)?;
         self.infer_closure_name(&value, &name)?;
+        let new_value_bytes = Self::cell_value_bytes(&value);
+        let old_value_bytes;
         {
             let cell = self
                 .cells
@@ -202,9 +206,10 @@ impl Runtime {
                     "TypeError: assignment to constant variable `{name}`"
                 )));
             }
+            old_value_bytes = Self::cell_value_bytes(&cell.value);
             cell.value = value;
         }
-        self.refresh_cell_accounting(cell_key)?;
+        self.apply_cell_component_delta(cell_key, old_value_bytes, new_value_bytes)?;
         if self
             .envs
             .get(self.globals)
@@ -272,6 +277,8 @@ impl Runtime {
             return self.assign_global_name(name, value);
         };
         self.infer_closure_name(&value, name)?;
+        let new_value_bytes = Self::cell_value_bytes(&value);
+        let old_value_bytes;
         {
             let cell = self
                 .cells
@@ -287,9 +294,10 @@ impl Runtime {
                     "TypeError: assignment to constant variable `{name}`"
                 )));
             }
+            old_value_bytes = Self::cell_value_bytes(&cell.value);
             cell.value = value;
         }
-        self.refresh_cell_accounting(cell_key)?;
+        self.apply_cell_component_delta(cell_key, old_value_bytes, new_value_bytes)?;
         if self
             .envs
             .get(self.globals)
@@ -310,6 +318,8 @@ impl Runtime {
     pub(super) fn assign_global_name(&mut self, name: &str, value: Value) -> MustardResult<()> {
         if let Some(cell_key) = self.global_binding_cell(name) {
             self.infer_closure_name(&value, name)?;
+            let new_value_bytes = Self::cell_value_bytes(&value);
+            let old_value_bytes;
             {
                 let cell = self
                     .cells
@@ -325,9 +335,10 @@ impl Runtime {
                         "TypeError: assignment to constant variable `{name}`"
                     )));
                 }
+                old_value_bytes = Self::cell_value_bytes(&cell.value);
                 cell.value = value;
             }
-            self.refresh_cell_accounting(cell_key)?;
+            self.apply_cell_component_delta(cell_key, old_value_bytes, new_value_bytes)?;
             let value = self
                 .cells
                 .get(cell_key)
@@ -360,6 +371,8 @@ impl Runtime {
                 MustardError::runtime(format!("binding `{name}` missing in current scope"))
             })?;
         let mut was_initialized = false;
+        let new_value_bytes = Self::cell_value_bytes(&value);
+        let old_value_bytes;
         {
             let cell = self
                 .cells
@@ -371,14 +384,16 @@ impl Runtime {
                         "TypeError: binding `{name}` was already initialized"
                     )));
                 }
+                old_value_bytes = Self::cell_value_bytes(&cell.value);
                 cell.value = value;
                 was_initialized = true;
             } else {
+                old_value_bytes = Self::cell_value_bytes(&cell.value);
                 cell.value = value;
                 cell.initialized = true;
             }
         }
-        self.refresh_cell_accounting(cell_key)?;
+        self.apply_cell_component_delta(cell_key, old_value_bytes, new_value_bytes)?;
         if env == self.globals {
             let value = self
                 .cells

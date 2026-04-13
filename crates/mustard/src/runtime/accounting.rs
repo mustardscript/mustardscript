@@ -137,6 +137,46 @@ impl Runtime {
         measure_array_slot_bytes(value)
     }
 
+    pub(super) fn value_bytes(value: &Value) -> usize {
+        extra_value_bytes(value)
+    }
+
+    pub(super) fn binding_entry_bytes(name: &str) -> usize {
+        measure_binding_entry_bytes(name)
+    }
+
+    pub(super) fn cell_value_bytes(value: &Value) -> usize {
+        measure_cell_value_bytes(value)
+    }
+
+    pub(super) fn promise_awaiters_bytes(count: usize) -> usize {
+        measure_promise_awaiters_bytes(count)
+    }
+
+    pub(super) fn promise_dependents_bytes(count: usize) -> usize {
+        measure_promise_dependents_bytes(count)
+    }
+
+    pub(super) fn promise_reaction_bytes(reaction: &PromiseReaction) -> usize {
+        measure_promise_reaction_entry_bytes(reaction)
+    }
+
+    pub(super) fn promise_state_bytes(state: &PromiseState) -> usize {
+        measure_promise_state_bytes(state)
+    }
+
+    pub(super) fn promise_driver_bytes(driver: &Option<PromiseDriver>) -> usize {
+        measure_promise_driver_bytes(driver)
+    }
+
+    pub(super) fn promise_settled_result_bytes(result: &PromiseSettledResult) -> usize {
+        measure_promise_settled_result_bytes(result)
+    }
+
+    pub(super) fn promise_dynamic_bytes(promise: &PromiseObject) -> usize {
+        measure_promise_dynamic_bytes(promise)
+    }
+
     pub(super) fn apply_object_component_delta(
         &mut self,
         key: ObjectKey,
@@ -183,6 +223,98 @@ impl Runtime {
             .ok_or_else(|| MustardError::runtime("array missing"))?
             .accounted_bytes = new_bytes;
         Ok(())
+    }
+
+    pub(super) fn apply_env_component_delta(
+        &mut self,
+        key: EnvKey,
+        old_component_bytes: usize,
+        new_component_bytes: usize,
+    ) -> MustardResult<()> {
+        let old_bytes = self
+            .envs
+            .get(key)
+            .ok_or_else(|| MustardError::runtime("environment missing"))?
+            .accounted_bytes;
+        let new_bytes = old_bytes
+            .checked_sub(old_component_bytes)
+            .ok_or_else(|| MustardError::runtime("environment accounting underflow"))?
+            .checked_add(new_component_bytes)
+            .ok_or_else(|| MustardError::runtime("environment accounting overflow"))?;
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.envs
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("environment missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    pub(super) fn apply_cell_component_delta(
+        &mut self,
+        key: CellKey,
+        old_component_bytes: usize,
+        new_component_bytes: usize,
+    ) -> MustardResult<()> {
+        let old_bytes = self
+            .cells
+            .get(key)
+            .ok_or_else(|| MustardError::runtime("binding cell missing"))?
+            .accounted_bytes;
+        let new_bytes = old_bytes
+            .checked_sub(old_component_bytes)
+            .ok_or_else(|| MustardError::runtime("cell accounting underflow"))?
+            .checked_add(new_component_bytes)
+            .ok_or_else(|| MustardError::runtime("cell accounting overflow"))?;
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.cells
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("binding cell missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    pub(super) fn apply_promise_component_delta(
+        &mut self,
+        key: PromiseKey,
+        old_component_bytes: usize,
+        new_component_bytes: usize,
+    ) -> MustardResult<()> {
+        let old_bytes = self
+            .promises
+            .get(key)
+            .ok_or_else(|| MustardError::runtime("promise missing"))?
+            .accounted_bytes;
+        let new_bytes = old_bytes
+            .checked_sub(old_component_bytes)
+            .ok_or_else(|| MustardError::runtime("promise accounting underflow"))?
+            .checked_add(new_component_bytes)
+            .ok_or_else(|| MustardError::runtime("promise accounting overflow"))?;
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.promises
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("promise missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    pub(super) fn replace_promise_driver(
+        &mut self,
+        key: PromiseKey,
+        driver: Option<PromiseDriver>,
+    ) -> MustardResult<()> {
+        let old_driver_bytes = {
+            let promise = self
+                .promises
+                .get(key)
+                .ok_or_else(|| MustardError::runtime("promise missing"))?;
+            Self::promise_driver_bytes(&promise.driver)
+        };
+        let new_driver_bytes = Self::promise_driver_bytes(&driver);
+        self.promises
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("promise missing"))?
+            .driver = driver;
+        self.apply_promise_component_delta(key, old_driver_bytes, new_driver_bytes)
     }
 
     pub(super) fn push_array_element(
@@ -442,6 +574,8 @@ impl Runtime {
         Ok(())
     }
 
+    #[cfg(test)]
+    #[allow(dead_code)]
     pub(super) fn refresh_env_accounting(&mut self, key: EnvKey) -> MustardResult<()> {
         self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
@@ -455,23 +589,6 @@ impl Runtime {
         self.envs
             .get_mut(key)
             .ok_or_else(|| MustardError::runtime("environment missing"))?
-            .accounted_bytes = new_bytes;
-        Ok(())
-    }
-
-    pub(super) fn refresh_cell_accounting(&mut self, key: CellKey) -> MustardResult<()> {
-        self.record_accounting_refresh();
-        let (old_bytes, new_bytes) = {
-            let cell = self
-                .cells
-                .get(key)
-                .ok_or_else(|| MustardError::runtime("binding cell missing"))?;
-            (cell.accounted_bytes, measure_cell_bytes(cell))
-        };
-        self.apply_heap_delta(old_bytes, new_bytes)?;
-        self.cells
-            .get_mut(key)
-            .ok_or_else(|| MustardError::runtime("binding cell missing"))?
             .accounted_bytes = new_bytes;
         Ok(())
     }
@@ -603,23 +720,6 @@ impl Runtime {
         Ok(())
     }
 
-    pub(super) fn refresh_promise_accounting(&mut self, key: PromiseKey) -> MustardResult<()> {
-        self.record_accounting_refresh();
-        let (old_bytes, new_bytes) = {
-            let promise = self
-                .promises
-                .get(key)
-                .ok_or_else(|| MustardError::runtime("promise missing"))?;
-            (promise.accounted_bytes, measure_promise_bytes(promise))
-        };
-        self.apply_heap_delta(old_bytes, new_bytes)?;
-        self.promises
-            .get_mut(key)
-            .ok_or_else(|| MustardError::runtime("promise missing"))?
-            .accounted_bytes = new_bytes;
-        Ok(())
-    }
-
     pub(super) fn recompute_accounting_totals(&mut self) -> Result<(usize, usize), String> {
         let mut heap_bytes_used = 0usize;
         let mut allocation_count = 0usize;
@@ -700,9 +800,19 @@ fn extra_value_bytes(value: &Value) -> usize {
     }
 }
 
+fn measure_binding_entry_bytes(name: &str) -> usize {
+    std::mem::size_of::<(String, CellKey)>() + name.len()
+}
+
+fn measure_cell_value_bytes(value: &Value) -> usize {
+    extra_value_bytes(value)
+}
+
 fn measure_bindings_bytes(bindings: &IndexMap<String, CellKey>) -> usize {
-    bindings.len() * std::mem::size_of::<(String, CellKey)>()
-        + bindings.keys().map(|key| key.len()).sum::<usize>()
+    bindings
+        .keys()
+        .map(|key| measure_binding_entry_bytes(key))
+        .sum::<usize>()
 }
 
 fn measure_property_entry_bytes(key: &str, value: &Value) -> usize {
@@ -721,7 +831,7 @@ fn measure_env_bytes(env: &Env) -> usize {
 }
 
 fn measure_cell_bytes(cell: &Cell) -> usize {
-    std::mem::size_of::<Cell>() + extra_value_bytes(&cell.value)
+    std::mem::size_of::<Cell>() + measure_cell_value_bytes(&cell.value)
 }
 
 fn measure_object_bytes(object: &PlainObject) -> usize {
@@ -793,23 +903,42 @@ fn measure_closure_bytes(closure: &Closure) -> usize {
         + measure_properties_bytes(&closure.properties)
 }
 
-fn measure_promise_bytes(promise: &PromiseObject) -> usize {
-    let state_bytes = match &promise.state {
+fn measure_promise_traceback_bytes(traceback: &[TraceFrameSnapshot]) -> usize {
+    traceback
+        .iter()
+        .map(|frame| frame.function_name.as_ref().map_or(0, String::len))
+        .sum::<usize>()
+}
+
+fn measure_promise_state_bytes(state: &PromiseState) -> usize {
+    match state {
         PromiseState::Pending => 0,
         PromiseState::Fulfilled(value) => extra_value_bytes(value),
         PromiseState::Rejected(rejection) => {
             extra_value_bytes(&rejection.value)
-                + rejection
-                    .traceback
-                    .iter()
-                    .map(|frame| frame.function_name.as_ref().map_or(0, String::len))
-                    .sum::<usize>()
+                + measure_promise_traceback_bytes(&rejection.traceback)
         }
-    };
-    let reaction_bytes = promise
-        .reactions
-        .iter()
-        .map(|reaction| match reaction {
+    }
+}
+
+fn measure_promise_outcome_payload_bytes(outcome: &PromiseOutcome) -> usize {
+    match outcome {
+        PromiseOutcome::Fulfilled(value) => extra_value_bytes(value),
+        PromiseOutcome::Rejected(rejection) => extra_value_bytes(&rejection.value),
+    }
+}
+
+fn measure_promise_awaiters_bytes(count: usize) -> usize {
+    count * std::mem::size_of::<AsyncContinuation>()
+}
+
+fn measure_promise_dependents_bytes(count: usize) -> usize {
+    count * std::mem::size_of::<PromiseKey>()
+}
+
+fn measure_promise_reaction_entry_bytes(reaction: &PromiseReaction) -> usize {
+    std::mem::size_of::<PromiseReaction>()
+        + match reaction {
             PromiseReaction::Then {
                 on_fulfilled,
                 on_rejected,
@@ -824,14 +953,28 @@ fn measure_promise_bytes(promise: &PromiseObject) -> usize {
             }
             PromiseReaction::FinallyPassThrough {
                 original_outcome, ..
-            } => match original_outcome {
-                PromiseOutcome::Fulfilled(value) => extra_value_bytes(value),
-                PromiseOutcome::Rejected(rejection) => extra_value_bytes(&rejection.value),
-            },
+            } => measure_promise_outcome_payload_bytes(original_outcome),
             PromiseReaction::Combinator { .. } => 0,
-        })
-        .sum::<usize>();
-    let driver_bytes = match &promise.driver {
+        }
+}
+
+fn measure_promise_reactions_bytes(reactions: &[PromiseReaction]) -> usize {
+    reactions
+        .iter()
+        .map(measure_promise_reaction_entry_bytes)
+        .sum::<usize>()
+}
+
+fn measure_promise_settled_result_bytes(result: &PromiseSettledResult) -> usize {
+    match result {
+        PromiseSettledResult::Fulfilled(value) | PromiseSettledResult::Rejected(value) => {
+            extra_value_bytes(value)
+        }
+    }
+}
+
+fn measure_promise_driver_bytes(driver: &Option<PromiseDriver>) -> usize {
+    match driver {
         Some(PromiseDriver::Thenable { value }) => extra_value_bytes(value),
         Some(PromiseDriver::All { values, .. }) => values
             .iter()
@@ -841,11 +984,7 @@ fn measure_promise_bytes(promise: &PromiseObject) -> usize {
         Some(PromiseDriver::AllSettled { results, .. }) => results
             .iter()
             .flatten()
-            .map(|result| match result {
-                PromiseSettledResult::Fulfilled(value) | PromiseSettledResult::Rejected(value) => {
-                    extra_value_bytes(value)
-                }
-            })
+            .map(measure_promise_settled_result_bytes)
             .sum::<usize>(),
         Some(PromiseDriver::Any { reasons, .. }) => reasons
             .iter()
@@ -853,12 +992,17 @@ fn measure_promise_bytes(promise: &PromiseObject) -> usize {
             .map(extra_value_bytes)
             .sum::<usize>(),
         None => 0,
-    };
-    std::mem::size_of::<PromiseObject>()
-        + promise.awaiters.len() * std::mem::size_of::<AsyncContinuation>()
-        + promise.dependents.len() * std::mem::size_of::<PromiseKey>()
-        + promise.reactions.len() * std::mem::size_of::<PromiseReaction>()
-        + state_bytes
-        + reaction_bytes
-        + driver_bytes
+    }
+}
+
+fn measure_promise_dynamic_bytes(promise: &PromiseObject) -> usize {
+    measure_promise_awaiters_bytes(promise.awaiters.len())
+        + measure_promise_dependents_bytes(promise.dependents.len())
+        + measure_promise_reactions_bytes(&promise.reactions)
+        + measure_promise_state_bytes(&promise.state)
+        + measure_promise_driver_bytes(&promise.driver)
+}
+
+fn measure_promise_bytes(promise: &PromiseObject) -> usize {
+    std::mem::size_of::<PromiseObject>() + measure_promise_dynamic_bytes(promise)
 }

@@ -137,3 +137,246 @@ fn runtime_debug_metrics_track_gc_and_accounting_refreshes() {
         gc_metrics_before.gc_reclaimed_allocations + stats.reclaimed_allocations as u64
     );
 }
+
+#[test]
+fn lexical_binding_deltas_preserve_cached_totals_without_full_refreshes() {
+    let mut runtime = test_runtime();
+    let frame_env = runtime
+        .new_env(Some(runtime.globals))
+        .expect("frame env should allocate");
+    let baseline_metrics = runtime.debug_metrics();
+
+    runtime
+        .push_frame(0, frame_env, &[], Value::String("self".to_string()), None)
+        .expect("frame push should succeed");
+    runtime
+        .declare_name(frame_env, "value".to_string(), true)
+        .expect("binding should declare");
+    runtime
+        .initialize_name_in_env(frame_env, "value", Value::String("seed".to_string()))
+        .expect("binding should initialize");
+    runtime
+        .assign_name(frame_env, "value", Value::String("payload".to_string()))
+        .expect("binding should assign");
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}
+
+#[test]
+fn promise_accounting_deltas_preserve_cached_totals_without_full_refreshes() {
+    let mut runtime = test_runtime();
+    let source = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("source promise should allocate");
+    let dependent = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("dependent promise should allocate");
+    let reaction_target = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("reaction target should allocate");
+
+    let baseline_metrics = runtime.debug_metrics();
+    runtime
+        .attach_awaiter(source, AsyncContinuation { frames: Vec::new() })
+        .expect("awaiter should attach");
+    runtime
+        .attach_dependent(source, dependent)
+        .expect("dependent should attach");
+    runtime
+        .attach_promise_reaction(
+            source,
+            PromiseReaction::Then {
+                target: reaction_target,
+                on_fulfilled: None,
+                on_rejected: None,
+            },
+        )
+        .expect("reaction should attach");
+    runtime
+        .replace_promise_driver(
+            source,
+            Some(PromiseDriver::Thenable {
+                value: Value::String("thenable".to_string()),
+            }),
+        )
+        .expect("thenable driver should attach");
+
+    let attached_metrics = runtime.debug_metrics();
+    assert_eq!(
+        attached_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+
+    runtime
+        .settle_promise_with_outcome(
+            source,
+            PromiseOutcome::Fulfilled(Value::String("done".to_string())),
+        )
+        .expect("promise should settle");
+
+    let settled_metrics = runtime.debug_metrics();
+    assert_eq!(
+        settled_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+
+    assert_eq!(runtime.microtasks.len(), 2);
+    assert!(matches!(
+        runtime.promise_outcome(source).expect("source outcome should exist"),
+        Some(PromiseOutcome::Fulfilled(Value::String(ref value))) if value == "done"
+    ));
+    assert!(matches!(
+        runtime.promise_outcome(dependent).expect("dependent outcome should exist"),
+        Some(PromiseOutcome::Fulfilled(Value::String(ref value))) if value == "done"
+    ));
+}
+
+#[test]
+fn promise_combinator_completion_moves_driver_buffers_without_full_refreshes() {
+    let mut runtime = test_runtime();
+    let all_target = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("Promise.all target should allocate");
+    let all_settled_target = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("Promise.allSettled target should allocate");
+    let any_target = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("Promise.any target should allocate");
+
+    runtime
+        .replace_promise_driver(
+            all_target,
+            Some(PromiseDriver::All {
+                remaining: 1,
+                values: vec![Some(Value::String("alpha".to_string())), None],
+            }),
+        )
+        .expect("Promise.all driver should attach");
+    runtime
+        .replace_promise_driver(
+            all_settled_target,
+            Some(PromiseDriver::AllSettled {
+                remaining: 1,
+                results: vec![
+                    Some(PromiseSettledResult::Fulfilled(Value::String(
+                        "ok".to_string(),
+                    ))),
+                    None,
+                ],
+            }),
+        )
+        .expect("Promise.allSettled driver should attach");
+    runtime
+        .replace_promise_driver(
+            any_target,
+            Some(PromiseDriver::Any {
+                remaining: 1,
+                reasons: vec![Some(Value::String("first".to_string())), None],
+            }),
+        )
+        .expect("Promise.any driver should attach");
+
+    let baseline_metrics = runtime.debug_metrics();
+    runtime
+        .activate_promise_combinator(
+            all_target,
+            1,
+            PromiseCombinatorKind::All,
+            PromiseOutcome::Fulfilled(Value::String("beta".to_string())),
+        )
+        .expect("Promise.all completion should succeed");
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+    runtime
+        .activate_promise_combinator(
+            all_settled_target,
+            1,
+            PromiseCombinatorKind::AllSettled,
+            PromiseOutcome::Rejected(PromiseRejection {
+                value: Value::String("boom".to_string()),
+                span: None,
+                traceback: Vec::new(),
+            }),
+        )
+        .expect("Promise.allSettled completion should succeed");
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+    runtime
+        .activate_promise_combinator(
+            any_target,
+            1,
+            PromiseCombinatorKind::Any,
+            PromiseOutcome::Rejected(PromiseRejection {
+                value: Value::String("second".to_string()),
+                span: None,
+                traceback: Vec::new(),
+            }),
+        )
+        .expect("Promise.any completion should succeed");
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+
+    let all_result = match runtime
+        .promise_outcome(all_target)
+        .expect("Promise.all outcome should exist")
+    {
+        Some(PromiseOutcome::Fulfilled(Value::Array(array))) => array,
+        other => panic!("expected Promise.all to fulfill to an array, got {other:?}"),
+    };
+    let all_values = runtime
+        .arrays
+        .get(all_result)
+        .expect("Promise.all array should exist")
+        .elements
+        .iter()
+        .map(|value| value.clone().unwrap_or(Value::Undefined))
+        .collect::<Vec<_>>();
+    assert!(matches!(
+        all_values.as_slice(),
+        [Value::String(first), Value::String(second)] if first == "alpha" && second == "beta"
+    ));
+
+    let all_settled_result = match runtime
+        .promise_outcome(all_settled_target)
+        .expect("Promise.allSettled outcome should exist")
+    {
+        Some(PromiseOutcome::Fulfilled(Value::Array(array))) => array,
+        other => panic!("expected Promise.allSettled to fulfill to an array, got {other:?}"),
+    };
+    assert_eq!(
+        runtime
+            .arrays
+            .get(all_settled_result)
+            .expect("Promise.allSettled array should exist")
+            .elements
+            .len(),
+        2
+    );
+
+    assert!(matches!(
+        runtime
+            .promise_outcome(any_target)
+            .expect("Promise.any outcome should exist"),
+        Some(PromiseOutcome::Rejected(PromiseRejection {
+            value: Value::Object(_),
+            ..
+        }))
+    ));
+}

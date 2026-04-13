@@ -2,9 +2,9 @@
 
 This document summarizes the latest checked-in benchmark evidence from:
 
-- workload suite: `benchmarks/results/2026-04-13T13-55-41-849Z-workloads.json`
-- release smoke suite: `benchmarks/results/2026-04-13T13-55-18-321Z-smoke-release.json`
-- dev smoke suite: `benchmarks/results/2026-04-13T14-00-38-812Z-smoke-dev.json`
+- workload suite: `benchmarks/results/2026-04-13T15-31-34-682Z-workloads.json`
+- release smoke suite: `benchmarks/results/2026-04-13T15-31-19-504Z-smoke-release.json`
+- dev smoke suite: `benchmarks/results/2026-04-13T15-32-43-544Z-smoke-dev.json`
 
 Machine and environment:
 
@@ -12,161 +12,160 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA in artifacts: `009f526`
+- Git SHA in artifacts: `b1342b4`
 - Workload fixture version: `5`
 - Smoke fixture version: `2`
 
 ## Headline Results
 
-### 1. Slot-keyed GC mark maps removed another fixed cleanup cost
+### 1. Promise and lexical accounting deltas removed nearly all hot-path full-refresh bookkeeping
 
-This change replaced the runtime's `HashSet`-backed GC mark tables with
-slot-keyed secondary maps, keeping the same reachability semantics while
-avoiding hash-heavy bookkeeping during every collection.
+The latest change set replaces promise-state, promise-driver, env-binding, cell,
+and per-frame `this` accounting refreshes with exact byte deltas wherever the
+runtime already knows the old and new payload sizes. `Promise.all`,
+`Promise.any`, and `Promise.allSettled` also now move their driver buffers out
+on terminal completion instead of cloning the buffered values back into new
+vectors.
 
-Relative to the previous checked-in workload artifact
-`benchmarks/results/2026-04-13T13-38-06-436Z-workloads.json`, the latest addon
-medians improved on the main execution-heavy surfaces:
+Relative to the tracked addon baseline
+`benchmarks/results/2026-04-13T15-02-00-153Z-workloads.json`, the latest
+checked-in workload artifact shows the main effect on execution-heavy and
+fanout-heavy slices:
 
-| Workload | Previous | Current | Delta |
+| Workload | Baseline | Current | Delta |
 | --- | ---: | ---: | ---: |
-| Cold start, small script | 1.02 ms | 1.01 ms | `-0.4%` |
-| Warm run, small script | 0.96 ms | 0.93 ms | `-3.3%` |
-| Warm run, code-mode search | 0.54 ms | 0.53 ms | `-2.7%` |
-| Programmatic tool workflow | 1.69 ms | 1.50 ms | `-11.1%` |
-| Host fanout, 100 calls | 0.39 ms | 0.35 ms | `-11.5%` |
-| Suspend/resume, 20 boundaries | 2.23 ms | 2.26 ms | `+1.3%` |
+| Warm run, small script | 0.95 ms | 0.97 ms | `+2.1%` |
+| Warm run, code-mode search | 0.52 ms | 0.53 ms | `+0.9%` |
+| Programmatic tool workflow | 1.51 ms | 1.48 ms | `-2.1%` |
+| Host fanout, 100 calls | 0.41 ms | 0.37 ms | `-11.0%` |
+| Suspend/resume, 20 boundaries | 2.32 ms | 2.33 ms | `+0.4%` |
 
-The strongest phase-level signal is that execution and restore-heavy slices got
-cheaper instead of merely moving noise around:
+The clearest signal is in the phase-level breakdown:
 
-| Phase | Previous | Current | Delta |
+| Phase | Baseline | Current | Delta |
 | --- | ---: | ---: | ---: |
-| `execution_only_small` | 2.39 ms | 1.94 ms | `-18.8%` |
-| `Progress.load_only` | 0.25 ms | 0.21 ms | `-15.5%` |
-| `snapshot_load_only` | 0.06 ms | 0.05 ms | `-13.7%` |
-| `snapshot_dump_only` | 0.06 ms | 0.06 ms | `-10.9%` |
-| `suspend_only` | 0.05 ms | 0.05 ms | `-4.3%` |
+| `execution_only_small` | 2.08 ms | 1.99 ms | `-4.2%` |
+| `Progress.load_only` | 0.22 ms | 0.21 ms | `-5.9%` |
+| `snapshot_load_only` | 0.06 ms | 0.05 ms | `-6.9%` |
+| `suspend_only` | 0.06 ms | 0.06 ms | `-6.1%` |
+| `runtime_init_only` | 0.03 ms | 0.03 ms | `+1.0%` |
 
-### 2. Boundary-heavy restore paths moved in the right direction again
+### 2. The hottest addon bookkeeping counters collapsed from thousands of refreshes to almost none
+
+The runtime-counter section of the new workload artifact shows that the new
+delta path is actually getting used on the benchmarked code paths:
+
+| Surface | Baseline `accounting_refreshes` | Current | Delta |
+| --- | ---: | ---: | ---: |
+| `warm_run_small` | 3808 | 0 | `-100.0%` |
+| `programmatic_tool_workflow` | 47 | 3 | `-93.6%` |
+| `host_fanout_100` | 207 | 1 | `-99.5%` |
+| `execution_only_small` | 3810 | 1 | `-100.0%` |
+| `suspend_resume_20` | 46 | 1 | `-97.8%` |
+
+GC collection counts stayed flat on those same surfaces, so the change is
+removing accounting churn rather than simply shifting work into collection.
+
+### 3. Boundary-heavy restore paths mostly improved, but one tiny resume-error surface still trips the tracked regression gate
 
 Current addon boundary medians:
 
 | Surface | Small | Medium | Large |
 | --- | ---: | ---: | ---: |
-| `startInputs` | `0.15 ms` | `0.33 ms` | `1.07 ms` |
-| `suspendedArgs` | `0.27 ms` | `0.69 ms` | `2.14 ms` |
-| `resumeValues` | `0.13 ms` | `0.31 ms` | `0.96 ms` |
-| `resumeErrors` | `0.11 ms` | `0.31 ms` | `0.90 ms` |
+| `startInputs` | `0.15 ms` | `0.35 ms` | `1.07 ms` |
+| `suspendedArgs` | `0.27 ms` | `0.69 ms` | `2.23 ms` |
+| `resumeValues` | `0.14 ms` | `0.31 ms` | `0.97 ms` |
+| `resumeErrors` | `0.13 ms` | `0.32 ms` | `0.91 ms` |
 
-Relative to the previous checked-in workload artifact:
+Relative to the tracked addon baseline:
 
-- `startInputs.medium` improved by `15.0%`
-- `suspendedArgs.medium` improved by `12.5%`
-- `suspendedArgs.large` improved by `4.3%`
-- `resumeErrors.medium` improved by `10.9%`
-- `resumeErrors.small` improved by `11.6%`
+- `startInputs.small` improved by `3.3%`
+- `resumeErrors.medium` improved by `6.3%`
+- `resumeErrors.large` improved by `1.7%`
+- `suspendedArgs.medium` stayed effectively flat while p95 improved by `3.9%`
 
-The tracked addon-only regression gate now passes on the latest rerun. The one
-remaining noisy surface is `suspend_resume_20`, which stayed effectively flat
-within low-single-digit movement.
+The addon-only tracked regression gate still exits nonzero on one small-payload
+surface:
 
-### 3. Sidecar is still dominated by transport and session overhead
+- `addon.boundary.resumeErrors.small`: median `0.11 ms -> 0.13 ms` (`+10.2%`)
+- p95 `0.12 ms -> 0.13 ms` (`+11.2%`)
 
-Current medians from the new workload artifact:
+Everything else in the tracked addon regression report is either improved or
+within the configured `10%` threshold, so the remaining gate failure is now a
+single low-latency surface rather than a broad execution-path regression.
 
-| Workload | Addon | Sidecar | Sidecar / Addon |
-| --- | ---: | ---: | ---: |
-| Cold start, small script | 1.01 ms | 4.99 ms | `4.96x` |
-| Warm run, small script | 0.93 ms | 1.42 ms | `1.53x` |
-| Programmatic tool workflow | 1.50 ms | 18.66 ms | `12.46x` |
-| Host fanout, 100 calls | 0.35 ms | 6.61 ms | `18.78x` |
-
-The GC bookkeeping change helped the shared Rust core, but the sidecar gap is
-still a transport/session problem rather than a runtime-core problem.
-
-## Rust-Core Microbench Findings
-
-The local `npm run bench:rust` rerun reported statistically significant wins on
-most hot-path benches. The clearest signals were:
-
-- `vm_hot_loop`: about `-4.9%`
-- `local_load_store_hot`: about `-5.5%`
-- `closure_access_hot`: about `-5.9%`
-- `builtin_method_hot`: about `-5.3%`
-- `array_callback_hot`: about `-6.6%`
-- `collection_callback_hot`: about `-9.1%`
-- `map_set_hot`: about `-3.6%`
-- `snapshot_load_suspended`: about `-6.5%`
-
-That pattern matches the implementation: the interpreter is still doing the
-same semantic work, but collections and promise/snapshot-heavy paths now spend
-less time in GC mark bookkeeping.
-
-## Smoke Gate Findings
+### 4. Smoke gates still pass comfortably
 
 Current release smoke medians:
 
 | Metric | Current |
 | --- | ---: |
 | Startup | `0.05 ms` |
-| Compute | `0.43 ms` |
-| Host-call median ratio | `3.42x` |
-| Host-call p95 ratio | `4.21x` |
-| Snapshot median ratio | `6.81x` |
-| Snapshot p95 ratio | `5.40x` |
+| Compute | `0.38 ms` |
+| Host-call median ratio | `4.53x` |
+| Host-call p95 ratio | `5.09x` |
+| Snapshot median ratio | `7.37x` |
+| Snapshot p95 ratio | `4.61x` |
 
-The release smoke gate still passes comfortably. The first rerun hit a noisy
-host-call p95 outlier, but the immediate sequential rerun returned to the
-expected range, and the checked-in release artifact is well inside budget.
+Relative to the previous checked-in release smoke artifact
+`benchmarks/results/2026-04-13T13-55-18-321Z-smoke-release.json`:
+
+- compute median improved by `12.7%`
+- compute p95 improved by `6.0%`
+- startup moved slightly slower but remained far inside the `1 ms` / `2 ms`
+  budgets
+- host-call and snapshot ratio budgets still passed without any budget rebase
 
 Current dev smoke medians:
 
 | Metric | Current |
 | --- | ---: |
-| Startup | `0.24 ms` |
-| Compute | `2.56 ms` |
-| Host-call median ratio | `2.88x` |
-| Host-call p95 ratio | `3.15x` |
-| Snapshot median ratio | `9.57x` |
-| Snapshot p95 ratio | `8.99x` |
+| Startup | `0.28 ms` |
+| Compute | `2.48 ms` |
+| Host-call median ratio | `3.46x` |
+| Host-call p95 ratio | `3.70x` |
+| Snapshot median ratio | `8.64x` |
+| Snapshot p95 ratio | `8.57x` |
 
-The dev smoke gate required one budget rebase: the debug snapshot round-trip
-absolute median stayed roughly flat (`1.27 ms -> 1.26 ms`) while the direct
-snapshot path got materially cheaper (`0.16 ms -> 0.13 ms`), so the old
-`9.0x` ratio cap stopped reflecting measured reality. The dev snapshot median
-ratio budget is now `12.0x`, while the release smoke suite remains the source
-of truth for optimization decisions.
+The dev smoke gate also still passes with the previously rebased snapshot ratio
+budget.
 
-## Retained Memory And Cleanup
+## Sidecar And Microbench Notes
 
-Current retained-memory deltas after 20 workflow runs:
+Current sidecar/addon ratios from the new workload artifact:
 
-| Runtime | Heap delta | RSS delta |
-| --- | ---: | ---: |
-| Addon | +16,520 B | +688,128 B |
-| Sidecar | +12,144 B | +8,372,224 B |
-| V8 isolate | -56 B | -10,436,608 B |
-
-Current failure-cleanup medians:
-
-| Workload | Addon | Sidecar | V8 isolate |
+| Workload | Addon | Sidecar | Sidecar / Addon |
 | --- | ---: | ---: | ---: |
-| Limit failure then recover | 0.80 ms | 0.90 ms | 2.43 ms |
-| Host failure then recover | 0.81 ms | 1.05 ms | 0.67 ms |
+| Warm run, small script | 0.97 ms | 1.46 ms | `1.51x` |
+| Programmatic tool workflow | 1.48 ms | 18.38 ms | `12.40x` |
+| Host fanout, 100 calls | 0.37 ms | 6.58 ms | `17.92x` |
 
-Failure recovery stayed effectively flat to slightly better, which is the
-important constraint for this milestone: cheaper GC bookkeeping did not weaken
-cleanup or restore behavior.
+The shared Rust core got cheaper to execute, but sidecar mode is still mostly a
+transport and session-state problem.
+
+The local `npm run bench:rust` rerun was mixed rather than uniformly better:
+
+- `env_lookup_hot` improved by about `4.6%`
+- `local_load_store_hot` improved in the low-single-digit range, within noise
+- `compile_pipeline` parse/deserialize benches regressed by about `3%` to `5%`
+- `builtin_method_hot`, `array_callback_hot`, and `collection_callback_hot`
+  regressed by roughly `3%` to `9%`
+
+That mixed signal suggests the latest work removed real runtime bookkeeping
+churn, but the microbench suite still needs more targeted coverage for the new
+promise/accounting path before it can cleanly separate wins from harness noise.
 
 ## Conclusions
 
-1. Replacing `HashSet`-backed GC mark tables with slot-keyed secondary maps
-   completed the remaining Milestone 4 mark-bookkeeping item and produced
-   measurable wins on addon workloads, Rust microbenches, and restore-adjacent
-   phases.
-2. The latest tracked workload and smoke regression gates now pass, and the
-   runtime stays within its existing fail-closed limits/cancellation/snapshot
-   semantics.
-3. The next Milestone 4 opportunities are still broader incremental accounting,
-   async promise clone reduction, and explicit GC/accounting counters.
+1. Incremental accounting now covers the runtime's hot promise, env, and cell
+   mutation paths, and the addon workload counters confirm that the old
+   full-refresh bookkeeping was almost entirely removed from those surfaces.
+2. The latest checked-in workload artifact improved `host_fanout_100`,
+   `programmatic_tool_workflow`, `execution_only_small`, and `Progress.load`
+   while keeping suspend/resume essentially flat.
+3. Release and dev smoke gates still pass. The remaining tracked workload gate
+   failure is now isolated to `addon.boundary.resumeErrors.small`, which stayed
+   just above the configured `10%` regression threshold.
+4. The next Milestone 4 work should stay focused on incremental accounting and
+   async promise-path cleanup, especially the remaining boundary-only resume
+   surfaces and the still-unoptimized `Map` / `Set` accounting paths.

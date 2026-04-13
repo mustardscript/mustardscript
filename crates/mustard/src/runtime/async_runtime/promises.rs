@@ -43,12 +43,13 @@ impl Runtime {
         promise: PromiseKey,
         continuation: AsyncContinuation,
     ) -> MustardResult<()> {
+        let added_bytes = Self::promise_awaiters_bytes(1);
         self.promises
             .get_mut(promise)
             .ok_or_else(|| MustardError::runtime("promise missing"))?
             .awaiters
             .push(continuation);
-        self.refresh_promise_accounting(promise)
+        self.apply_promise_component_delta(promise, 0, added_bytes)
     }
 
     pub(in crate::runtime) fn attach_dependent(
@@ -56,12 +57,13 @@ impl Runtime {
         promise: PromiseKey,
         dependent: PromiseKey,
     ) -> MustardResult<()> {
+        let added_bytes = Self::promise_dependents_bytes(1);
         self.promises
             .get_mut(promise)
             .ok_or_else(|| MustardError::runtime("promise missing"))?
             .dependents
             .push(dependent);
-        self.refresh_promise_accounting(promise)
+        self.apply_promise_component_delta(promise, 0, added_bytes)
     }
 
     pub(in crate::runtime) fn attach_promise_reaction(
@@ -72,12 +74,13 @@ impl Runtime {
         match self.promise_outcome(promise)? {
             Some(outcome) => self.schedule_promise_reaction(reaction, outcome),
             None => {
+                let added_bytes = Self::promise_reaction_bytes(&reaction);
                 self.promises
                     .get_mut(promise)
                     .ok_or_else(|| MustardError::runtime("promise missing"))?
                     .reactions
                     .push(reaction);
-                self.refresh_promise_accounting(promise)
+                self.apply_promise_component_delta(promise, 0, added_bytes)
             }
         }
     }
@@ -97,7 +100,11 @@ impl Runtime {
         promise: PromiseKey,
         outcome: PromiseOutcome,
     ) -> MustardResult<()> {
-        let (awaiters, dependents, reactions) = {
+        let settled_state = match &outcome {
+            PromiseOutcome::Fulfilled(value) => PromiseState::Fulfilled(value.clone()),
+            PromiseOutcome::Rejected(rejection) => PromiseState::Rejected(rejection.clone()),
+        };
+        let (old_dynamic_bytes, new_dynamic_bytes, awaiters, dependents, reactions) = {
             let promise_ref = self
                 .promises
                 .get_mut(promise)
@@ -105,18 +112,22 @@ impl Runtime {
             if !matches!(promise_ref.state, PromiseState::Pending) {
                 return Ok(());
             }
-            promise_ref.state = match &outcome {
-                PromiseOutcome::Fulfilled(value) => PromiseState::Fulfilled(value.clone()),
-                PromiseOutcome::Rejected(rejection) => PromiseState::Rejected(rejection.clone()),
-            };
+            let old_dynamic_bytes = Self::promise_dynamic_bytes(promise_ref);
+            promise_ref.state = settled_state;
             promise_ref.driver = None;
+            let awaiters = std::mem::take(&mut promise_ref.awaiters);
+            let dependents = std::mem::take(&mut promise_ref.dependents);
+            let reactions = std::mem::take(&mut promise_ref.reactions);
+            let new_dynamic_bytes = Self::promise_state_bytes(&promise_ref.state);
             (
-                std::mem::take(&mut promise_ref.awaiters),
-                std::mem::take(&mut promise_ref.dependents),
-                std::mem::take(&mut promise_ref.reactions),
+                old_dynamic_bytes,
+                new_dynamic_bytes,
+                awaiters,
+                dependents,
+                reactions,
             )
         };
-        self.refresh_promise_accounting(promise)?;
+        self.apply_promise_component_delta(promise, old_dynamic_bytes, new_dynamic_bytes)?;
         for continuation in awaiters {
             self.microtasks.push_back(MicrotaskJob::ResumeAsync {
                 continuation,
@@ -191,13 +202,12 @@ impl Runtime {
                     },
                 );
             }
-            self.promises
-                .get_mut(promise)
-                .ok_or_else(|| MustardError::runtime("promise missing"))?
-                .driver = Some(PromiseDriver::Thenable {
-                value: value.clone(),
-            });
-            self.refresh_promise_accounting(promise)?;
+            self.replace_promise_driver(
+                promise,
+                Some(PromiseDriver::Thenable {
+                    value: value.clone(),
+                }),
+            )?;
             let resolve = self.promise_settler(promise, false);
             let reject = self.promise_settler(promise, true);
             self.call_promise_setup_callback(
