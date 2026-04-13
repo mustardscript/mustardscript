@@ -169,6 +169,66 @@ fn lexical_binding_deltas_preserve_cached_totals_without_full_refreshes() {
 }
 
 #[test]
+fn map_and_set_deltas_preserve_cached_totals_without_full_refreshes() {
+    let mut runtime = test_runtime();
+    let map = runtime.insert_map(Vec::new()).expect("map should allocate");
+    let set = runtime.insert_set(Vec::new()).expect("set should allocate");
+    let baseline_metrics = runtime.debug_metrics();
+
+    runtime
+        .call_map_set(
+            Value::Map(map),
+            &[
+                Value::String("alpha".to_string()),
+                Value::String("seed".to_string()),
+            ],
+        )
+        .expect("map insert should succeed");
+    runtime
+        .call_map_set(
+            Value::Map(map),
+            &[
+                Value::String("alpha".to_string()),
+                Value::String("payload".repeat(32)),
+            ],
+        )
+        .expect("map update should succeed");
+    runtime
+        .call_map_set(Value::Map(map), &[Value::Number(1.0), Value::Bool(true)])
+        .expect("second map insert should succeed");
+    runtime
+        .call_map_delete(Value::Map(map), &[Value::Number(1.0)])
+        .expect("map delete should succeed");
+    runtime
+        .call_map_clear(Value::Map(map))
+        .expect("map clear should succeed");
+
+    runtime
+        .call_set_add(Value::Set(set), &[Value::String("beta".repeat(16))])
+        .expect("set insert should succeed");
+    runtime
+        .call_set_add(Value::Set(set), &[Value::String("beta".repeat(16))])
+        .expect("duplicate set insert should be a no-op");
+    runtime
+        .call_set_add(Value::Set(set), &[Value::Number(2.0)])
+        .expect("second set insert should succeed");
+    runtime
+        .call_set_delete(Value::Set(set), &[Value::Number(2.0)])
+        .expect("set delete should succeed");
+    runtime
+        .call_set_clear(Value::Set(set))
+        .expect("set clear should succeed");
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}
+
+#[test]
 fn promise_accounting_deltas_preserve_cached_totals_without_full_refreshes() {
     let mut runtime = test_runtime();
     let source = runtime

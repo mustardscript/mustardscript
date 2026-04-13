@@ -137,6 +137,14 @@ impl Runtime {
         measure_array_slot_bytes(value)
     }
 
+    pub(super) fn map_entry_bytes(entry: &MapEntry) -> usize {
+        measure_map_entry_bytes(entry)
+    }
+
+    pub(super) fn set_entry_bytes(value: &Value) -> usize {
+        measure_set_entry_bytes(value)
+    }
+
     pub(super) fn value_bytes(value: &Value) -> usize {
         extra_value_bytes(value)
     }
@@ -221,6 +229,54 @@ impl Runtime {
         self.arrays
             .get_mut(key)
             .ok_or_else(|| MustardError::runtime("array missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    pub(super) fn apply_map_component_delta(
+        &mut self,
+        key: MapKey,
+        old_component_bytes: usize,
+        new_component_bytes: usize,
+    ) -> MustardResult<()> {
+        let old_bytes = self
+            .maps
+            .get(key)
+            .ok_or_else(|| MustardError::runtime("map missing"))?
+            .accounted_bytes;
+        let new_bytes = old_bytes
+            .checked_sub(old_component_bytes)
+            .ok_or_else(|| MustardError::runtime("map accounting underflow"))?
+            .checked_add(new_component_bytes)
+            .ok_or_else(|| MustardError::runtime("map accounting overflow"))?;
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.maps
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("map missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
+    pub(super) fn apply_set_component_delta(
+        &mut self,
+        key: SetKey,
+        old_component_bytes: usize,
+        new_component_bytes: usize,
+    ) -> MustardResult<()> {
+        let old_bytes = self
+            .sets
+            .get(key)
+            .ok_or_else(|| MustardError::runtime("set missing"))?
+            .accounted_bytes;
+        let new_bytes = old_bytes
+            .checked_sub(old_component_bytes)
+            .ok_or_else(|| MustardError::runtime("set accounting underflow"))?
+            .checked_add(new_component_bytes)
+            .ok_or_else(|| MustardError::runtime("set accounting overflow"))?;
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.sets
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("set missing"))?
             .accounted_bytes = new_bytes;
         Ok(())
     }
@@ -627,40 +683,6 @@ impl Runtime {
         Ok(())
     }
 
-    pub(super) fn refresh_map_accounting(&mut self, key: MapKey) -> MustardResult<()> {
-        self.record_accounting_refresh();
-        let (old_bytes, new_bytes) = {
-            let map = self
-                .maps
-                .get(key)
-                .ok_or_else(|| MustardError::runtime("map missing"))?;
-            (map.accounted_bytes, measure_map_bytes(map))
-        };
-        self.apply_heap_delta(old_bytes, new_bytes)?;
-        self.maps
-            .get_mut(key)
-            .ok_or_else(|| MustardError::runtime("map missing"))?
-            .accounted_bytes = new_bytes;
-        Ok(())
-    }
-
-    pub(super) fn refresh_set_accounting(&mut self, key: SetKey) -> MustardResult<()> {
-        self.record_accounting_refresh();
-        let (old_bytes, new_bytes) = {
-            let set = self
-                .sets
-                .get(key)
-                .ok_or_else(|| MustardError::runtime("set missing"))?;
-            (set.accounted_bytes, measure_set_bytes(set))
-        };
-        self.apply_heap_delta(old_bytes, new_bytes)?;
-        self.sets
-            .get_mut(key)
-            .ok_or_else(|| MustardError::runtime("set missing"))?
-            .accounted_bytes = new_bytes;
-        Ok(())
-    }
-
     pub(super) fn refresh_iterator_accounting(&mut self, key: IteratorKey) -> MustardResult<()> {
         self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
@@ -865,20 +887,32 @@ fn measure_array_slot_bytes(value: Option<&Value>) -> usize {
     std::mem::size_of::<Option<Value>>() + value.map_or(0, extra_value_bytes)
 }
 
+fn measure_map_entry_bytes(entry: &MapEntry) -> usize {
+    std::mem::size_of::<MapEntry>()
+        + extra_value_bytes(&entry.key)
+        + extra_value_bytes(&entry.value)
+}
+
 fn measure_map_bytes(map: &MapObject) -> usize {
     std::mem::size_of::<MapObject>()
-        + map.entries.len() * std::mem::size_of::<MapEntry>()
         + map
             .entries
             .iter()
-            .map(|entry| extra_value_bytes(&entry.key) + extra_value_bytes(&entry.value))
+            .map(measure_map_entry_bytes)
             .sum::<usize>()
+}
+
+fn measure_set_entry_bytes(value: &Value) -> usize {
+    std::mem::size_of::<Value>() + extra_value_bytes(value)
 }
 
 fn measure_set_bytes(set: &SetObject) -> usize {
     std::mem::size_of::<SetObject>()
-        + set.entries.len() * std::mem::size_of::<Value>()
-        + set.entries.iter().map(extra_value_bytes).sum::<usize>()
+        + set
+            .entries
+            .iter()
+            .map(measure_set_entry_bytes)
+            .sum::<usize>()
 }
 
 fn measure_iterator_bytes(iterator: &IteratorObject) -> usize {

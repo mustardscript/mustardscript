@@ -147,22 +147,32 @@ impl Runtime {
 
     fn map_set(&mut self, map: MapKey, key: Value, value: Value) -> MustardResult<()> {
         let key = canonicalize_collection_key(key);
-        {
+        let (old_bytes, new_bytes) = {
             let entries = &mut self
                 .maps
                 .get_mut(map)
                 .ok_or_else(|| MustardError::runtime("map missing"))?
                 .entries;
-            if let Some(entry) = entries
-                .iter_mut()
-                .find(|entry| same_value_zero(&entry.key, &key))
+            if let Some(index) = entries
+                .iter()
+                .position(|entry| same_value_zero(&entry.key, &key))
             {
+                let entry = entries
+                    .get_mut(index)
+                    .ok_or_else(|| MustardError::runtime("map entry missing"))?;
+                let old_bytes = Self::map_entry_bytes(entry);
                 entry.value = value;
+                let new_bytes = Self::map_entry_bytes(entry);
+                (old_bytes, new_bytes)
             } else {
                 entries.push(MapEntry { key, value });
+                let entry = entries
+                    .last()
+                    .ok_or_else(|| MustardError::runtime("map entry missing"))?;
+                (0, Self::map_entry_bytes(entry))
             }
-        }
-        self.refresh_map_accounting(map)
+        };
+        self.apply_map_component_delta(map, old_bytes, new_bytes)
     }
 
     fn adjust_map_iterators_after_delete(&mut self, map: MapKey, removed_index: usize) {
@@ -221,7 +231,7 @@ impl Runtime {
 
     fn map_delete(&mut self, map: MapKey, key: &Value) -> MustardResult<bool> {
         let normalized = canonicalize_collection_key(key.clone());
-        let removed_index = {
+        let removed = {
             let entries = &mut self
                 .maps
                 .get_mut(map)
@@ -231,43 +241,66 @@ impl Runtime {
                 .iter()
                 .position(|entry| same_value_zero(&entry.key, &normalized))
             {
+                let removed_bytes = Self::map_entry_bytes(
+                    entries
+                        .get(index)
+                        .ok_or_else(|| MustardError::runtime("map entry missing"))?,
+                );
                 entries.remove(index);
-                Some(index)
+                Some((index, removed_bytes))
             } else {
                 None
             }
         };
-        if let Some(index) = removed_index {
+        if let Some((index, removed_bytes)) = removed {
             self.adjust_map_iterators_after_delete(map, index);
-            self.refresh_map_accounting(map)?;
+            self.apply_map_component_delta(map, removed_bytes, 0)?;
             return Ok(true);
         }
         Ok(false)
     }
 
     fn map_clear(&mut self, map: MapKey) -> MustardResult<()> {
+        let removed_bytes = {
+            let map_ref = self
+                .maps
+                .get(map)
+                .ok_or_else(|| MustardError::runtime("map missing"))?;
+            map_ref
+                .entries
+                .iter()
+                .map(Self::map_entry_bytes)
+                .sum::<usize>()
+        };
         self.maps
             .get_mut(map)
             .ok_or_else(|| MustardError::runtime("map missing"))?
             .entries
             .clear();
         self.reset_map_iterators_after_clear(map);
-        self.refresh_map_accounting(map)
+        self.apply_map_component_delta(map, removed_bytes, 0)
     }
 
     fn set_add(&mut self, set: SetKey, value: Value) -> MustardResult<()> {
         let value = canonicalize_collection_key(value);
-        {
+        let added_bytes = {
             let entries = &mut self
                 .sets
                 .get_mut(set)
                 .ok_or_else(|| MustardError::runtime("set missing"))?
                 .entries;
-            if !entries.iter().any(|entry| same_value_zero(entry, &value)) {
+            if entries.iter().any(|entry| same_value_zero(entry, &value)) {
+                0
+            } else {
+                let added_bytes = Self::set_entry_bytes(&value);
                 entries.push(value);
+                added_bytes
             }
+        };
+        if added_bytes == 0 {
+            return Ok(());
         }
-        self.refresh_set_accounting(set)
+        self.apply_set_component_delta(set, 0, added_bytes)
     }
 
     fn adjust_set_iterators_after_delete(&mut self, set: SetKey, removed_index: usize) {
@@ -333,7 +366,7 @@ impl Runtime {
 
     fn set_delete(&mut self, set: SetKey, value: &Value) -> MustardResult<bool> {
         let normalized = canonicalize_collection_key(value.clone());
-        let removed_index = {
+        let removed = {
             let entries = &mut self
                 .sets
                 .get_mut(set)
@@ -343,28 +376,44 @@ impl Runtime {
                 .iter()
                 .position(|entry| same_value_zero(entry, &normalized))
             {
+                let removed_bytes = Self::set_entry_bytes(
+                    entries
+                        .get(index)
+                        .ok_or_else(|| MustardError::runtime("set entry missing"))?,
+                );
                 entries.remove(index);
-                Some(index)
+                Some((index, removed_bytes))
             } else {
                 None
             }
         };
-        if let Some(index) = removed_index {
+        if let Some((index, removed_bytes)) = removed {
             self.adjust_set_iterators_after_delete(set, index);
-            self.refresh_set_accounting(set)?;
+            self.apply_set_component_delta(set, removed_bytes, 0)?;
             return Ok(true);
         }
         Ok(false)
     }
 
     fn set_clear(&mut self, set: SetKey) -> MustardResult<()> {
+        let removed_bytes = {
+            let set_ref = self
+                .sets
+                .get(set)
+                .ok_or_else(|| MustardError::runtime("set missing"))?;
+            set_ref
+                .entries
+                .iter()
+                .map(Self::set_entry_bytes)
+                .sum::<usize>()
+        };
         self.sets
             .get_mut(set)
             .ok_or_else(|| MustardError::runtime("set missing"))?
             .entries
             .clear();
         self.reset_set_iterators_after_clear(set);
-        self.refresh_set_accounting(set)
+        self.apply_set_component_delta(set, removed_bytes, 0)
     }
 
     pub(crate) fn call_map_get(&self, this_value: Value, args: &[Value]) -> MustardResult<Value> {
