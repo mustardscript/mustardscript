@@ -23,6 +23,11 @@ test('flattenMetricTree collects nested median/p95 metrics and skips derived sec
       phases: {
         execution_only_small: { medianMs: 1, p95Ms: 2 },
       },
+      boundary: {
+        startInputs: {
+          medium: { medianMs: 0.3, p95Ms: 0.4 },
+        },
+      },
       suspendState: {
         suspend_resume_20: {
           serializedProgramBytes: 512,
@@ -43,6 +48,7 @@ test('flattenMetricTree collects nested median/p95 metrics and skips derived sec
   assert.deepEqual(metrics, {
     'addon.latency.warm_run_small': { medianMs: 10, p95Ms: 12 },
     'addon.phases.execution_only_small': { medianMs: 1, p95Ms: 2 },
+    'addon.boundary.startInputs.medium': { medianMs: 0.3, p95Ms: 0.4 },
   });
 });
 

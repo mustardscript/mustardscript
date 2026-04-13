@@ -9,7 +9,7 @@ This document summarizes the latest local benchmark run from
 
 Reference report:
 
-- `benchmarks/results/2026-04-13T09-59-36-458Z-workloads.json`
+- `benchmarks/results/2026-04-13T10-10-36-682Z-workloads.json`
 
 Machine and environment:
 
@@ -17,8 +17,8 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA: `bd4d52b`
-- Fixture version: `4`
+- Git SHA: `e3714ee`
+- Fixture version: `5`
 
 ## Headline Results
 
@@ -32,11 +32,11 @@ Representative medians:
 
 | Workload | Addon | Sidecar | V8 isolate |
 | --- | ---: | ---: | ---: |
-| Cold start, small script | 9.87 ms | 21.83 ms | 0.51 ms |
-| Warm run, small script | 9.94 ms | 10.18 ms | 0.18 ms |
-| Cold start, code-mode search | 34.62 ms | 39.74 ms | 0.62 ms |
-| Warm run, code-mode search | 35.11 ms | 34.78 ms | 0.21 ms |
-| Programmatic tool workflow | 36.23 ms | 39.42 ms | 0.34 ms |
+| Cold start, small script | 9.96 ms | 23.30 ms | 0.50 ms |
+| Warm run, small script | 9.90 ms | 10.49 ms | 0.19 ms |
+| Cold start, code-mode search | 34.36 ms | 37.20 ms | 0.62 ms |
+| Warm run, code-mode search | 34.13 ms | 35.15 ms | 0.21 ms |
+| Programmatic tool workflow | 34.34 ms | 39.32 ms | 0.36 ms |
 
 The practical read is that `mustard` is not competitive with a V8 isolate on
 pure execution speed for these local fixtures.
@@ -50,10 +50,10 @@ Representative medians:
 
 | Workload | Addon | Sidecar | Sidecar / Addon |
 | --- | ---: | ---: | ---: |
-| Cold start, small script | 9.87 ms | 21.83 ms | 2.21x |
-| Programmatic tool workflow | 36.23 ms | 39.42 ms | 1.09x |
-| Host fanout, 10 calls | 0.60 ms | 0.81 ms | 1.35x |
-| Host fanout, 100 calls | 5.02 ms | 7.32 ms | 1.46x |
+| Cold start, small script | 9.96 ms | 23.30 ms | 2.34x |
+| Programmatic tool workflow | 34.34 ms | 39.32 ms | 1.14x |
+| Host fanout, 10 calls | 0.52 ms | 0.79 ms | 1.51x |
+| Host fanout, 100 calls | 4.70 ms | 7.25 ms | 1.54x |
 
 If low latency matters and the deployment model allows it, addon mode remains
 the better `mustard` path.
@@ -69,9 +69,9 @@ Representative medians:
 
 | Workload | Addon | Sidecar | V8 isolate |
 | --- | ---: | ---: | ---: |
-| Suspend/resume, 1 boundary | 0.19 ms | 0.11 ms | 0.92 ms |
-| Suspend/resume, 5 boundaries | 0.70 ms | 0.37 ms | 2.75 ms |
-| Suspend/resume, 20 boundaries | 2.79 ms | 1.39 ms | 9.90 ms |
+| Suspend/resume, 1 boundary | 0.16 ms | 0.10 ms | 0.94 ms |
+| Suspend/resume, 5 boundaries | 0.69 ms | 0.37 ms | 2.80 ms |
+| Suspend/resume, 20 boundaries | 2.58 ms | 1.38 ms | 10.00 ms |
 
 On this workload shape, `mustard` addon is about 3.4x to 4.8x faster than the
 isolate baseline, and sidecar is faster still.
@@ -84,10 +84,10 @@ harness.
 
 | Workload | Addon | Sidecar | V8 isolate |
 | --- | ---: | ---: | ---: |
-| Host fanout, 1 call | 0.07 ms | 0.13 ms | 0.15 ms |
-| Host fanout, 10 calls | 0.60 ms | 0.81 ms | 0.15 ms |
-| Host fanout, 50 calls | 2.66 ms | 3.83 ms | 0.19 ms |
-| Host fanout, 100 calls | 5.02 ms | 7.32 ms | 0.24 ms |
+| Host fanout, 1 call | 0.07 ms | 0.13 ms | 0.16 ms |
+| Host fanout, 10 calls | 0.52 ms | 0.79 ms | 0.16 ms |
+| Host fanout, 50 calls | 2.41 ms | 3.86 ms | 0.20 ms |
+| Host fanout, 100 calls | 4.70 ms | 7.25 ms | 0.24 ms |
 
 The read is:
 
@@ -107,8 +107,8 @@ Median recovery timings:
 
 | Workload | Addon | Sidecar | V8 isolate |
 | --- | ---: | ---: | ---: |
-| Limit failure then recover | 10.13 ms | 10.24 ms | 2.52 ms |
-| Host failure then recover | 10.31 ms | 10.22 ms | 0.69 ms |
+| Limit failure then recover | 9.86 ms | 10.04 ms | 2.43 ms |
+| Host failure then recover | 9.94 ms | 10.33 ms | 0.68 ms |
 
 The isolate baseline recovers much faster in this harness. For addon and
 sidecar, failure recovery is close to the cost of a normal rerun.
@@ -119,9 +119,9 @@ The benchmark captures post-GC deltas after 20 workflow runs.
 
 | Runtime | Heap delta | RSS delta |
 | --- | ---: | ---: |
-| Addon | +33,776 B | +425,984 B |
-| Sidecar | +25,832 B | +344,064 B |
-| V8 isolate | -3,104 B | -9,912,320 B |
+| Addon | +13,888 B | +98,304 B |
+| Sidecar | +28,880 B | +7,225,344 B |
+| V8 isolate | -7,240 B | -10,223,616 B |
 
 These numbers should be treated cautiously:
 
@@ -142,36 +142,43 @@ clearer:
 | Phase | Median |
 | --- | ---: |
 | `runtime_init_only` | `0.04 ms` |
-| `execution_only_small` | `12.66 ms` |
+| `execution_only_small` | `12.76 ms` |
 | `suspend_only` | `0.05 ms` |
 | `snapshot_dump_only` | `0.00 ms` |
 | `apply_snapshot_policy_only` | `0.01 ms` |
 | `snapshot_load_only` | `0.02 ms` |
-| `Progress.load_only` | `0.09 ms` |
+| `Progress.load_only` | `0.10 ms` |
 
 The practical read is still that the addon is not dominated by snapshot policy
-or `Progress.load(...)` overhead on this fixture. The large fixed cost is still
-core execution itself, but the latest wrapper changes have now removed the
-native `inspectSnapshot(...)` hop from `Progress.load(...)` for current dumps
-and collapsed single-use enforcement onto one shared filesystem claim path
-instead of the older JS-plus-native double registry.
+or `Progress.load(...)` overhead on this fixture. The large fixed cost remains
+core execution itself, and the current suspend/resume bookkeeping overhead is
+still far below the execution-only slice.
 
-The clearest direct signal is in the Rust-core `runtime_core` bench: relative
-to the previous Criterion baseline, `snapshot_dump_suspended` improved by about
-`58%`, `encode_nested_suspend_args` improved by about `3%`, and `vm_hot_loop`
-improved by about `2%`, while `snapshot_load_suspended` stayed effectively
-flat.
+Relative to `2026-04-13T09-59-36-458Z`, the older phase metrics stayed roughly
+in family while this iteration added the missing boundary-only coverage.
+Representative addon medians moved by `warm_run_small -0.4%`, `warm_run_code_mode_search -2.8%`,
+`programmatic_tool_workflow -5.2%`, `host_fanout_100 -6.4%`, and
+`suspend_resume_20 -7.3%`, while `execution_only_small` was effectively flat
+at this sample size (`12.66 ms -> 12.76 ms`, `+0.8%`).
 
-Relative to `2026-04-13T09-45-36-897Z`, the second Milestone 2 cleanup chunk
-produced another small but targeted win on the public load path. Addon
-`Progress.load_only` improved from `0.097 ms` to `0.092 ms` (`-5.9%`) and
-`apply_snapshot_policy_only` improved from `0.015 ms` to `0.013 ms`
-(`-13.7%`), which matches the removal of the extra native single-use registry
-checks. Raw native `snapshot_load_only` stayed flat at about `0.02 ms`.
-Broader throughput stayed roughly in family: `programmatic_tool_workflow`
-regressed slightly (`36.02 ms -> 36.23 ms`, `+0.6%`), `host_fanout_100` stayed
-flat (`5.01 ms -> 5.02 ms`, `+0.2%`), and `suspend_resume_20` regressed
-slightly (`2.73 ms -> 2.79 ms`, `+2.0%`).
+## Boundary-Only Findings
+
+The new `addon.boundary` section isolates structured host-boundary work across
+small, medium, and large nested payloads:
+
+| Surface | Small | Medium | Large |
+| --- | ---: | ---: | ---: |
+| `startInputs` | `0.13 ms` | `0.25 ms` | `0.86 ms` |
+| `suspendedArgs` | `0.38 ms` | `1.79 ms` | `15.30 ms` |
+| `resumeValues` | `0.16 ms` | `0.24 ms` | `0.81 ms` |
+| `resumeErrors` | `0.15 ms` | `0.26 ms` | `0.89 ms` |
+
+The practical read is that host-to-guest decode for start inputs, resume
+values, and resume errors still scales reasonably on this fixture, staying
+sub-millisecond even for the large payload. The obvious outlier is guest-to-host
+encoding of large suspended capability arguments at about `15.30 ms`, which is
+an order of magnitude slower than the other large-payload surfaces and now
+gives Milestone 5 a precise boundary hotspot to optimize.
 
 The new artifact now also records `addon.suspendState`, which gives the first
 checked-in size signal for suspend-heavy fixtures. In the current benchmark
@@ -183,12 +190,13 @@ suspended `Progress` objects retains about `22 KB` of Node heap for the
 heap sample is still slightly negative after GC and should be treated as
 allocator noise at this scale.
 
-The release smoke suite remained within budget versus `2026-04-13T09-45-59-333Z`.
-Startup improved (`0.130 ms -> 0.119 ms`, `-8.7%`), compute regressed slightly
-(`3.15 ms -> 3.21 ms`, `+2.1%`), the host-call median ratio regressed slightly
-(`3.66x -> 3.75x`, `+2.4%`), and the snapshot median ratio improved again
-(`1.28x -> 1.22x`, `-4.8%`), which is directionally consistent with the
-lighter same-process resume/load bookkeeping.
+The release smoke suite still passed its intended budgets versus
+`2026-04-13T09-59-48-548Z-smoke-release.json`, but this rerun was noisier:
+startup regressed from `0.12 ms` to `0.15 ms` (`+30.7%`), compute regressed
+from `3.21 ms` to `3.65 ms` (`+13.7%`), the host-call median ratio improved
+slightly from about `3.75x` to `3.63x`, and the snapshot median ratio stayed
+close to flat (`1.25x -> 1.26x`, `+1.0%`). The useful signal for this
+iteration came from the new workload boundary section rather than smoke.
 
 ## Conclusions
 

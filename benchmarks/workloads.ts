@@ -30,9 +30,14 @@ const {
 } = require('./support.ts');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const FIXTURE_VERSION = 4;
+const FIXTURE_VERSION = 5;
 const SNAPSHOT_KEY = 'benchmark-workloads-snapshot-key';
 const SNAPSHOT_KEY_BASE64 = Buffer.from(SNAPSHOT_KEY, 'utf8').toString('base64');
+const BOUNDARY_VALUE_SIZES = Object.freeze([
+  { name: 'small', itemCount: 6, weightCount: 6, tagCount: 3 },
+  { name: 'medium', itemCount: 24, weightCount: 16, tagCount: 6 },
+  { name: 'large', itemCount: 96, weightCount: 32, tagCount: 12 },
+]);
 
 const DEFAULT_OPTIONS = DEFAULT_MEASURE_OPTIONS;
 const COLD_OPTIONS = Object.freeze({ warmup: 0, iterations: 2 });
@@ -144,6 +149,31 @@ function createImmediateSuspendSource() {
   return 'checkpoint(1);';
 }
 
+function createBoundaryStartInputsSource() {
+  return `
+    checkpoint(payload.items.length + payload.meta.weights.length);
+  `;
+}
+
+function createBoundaryResumeValueSource() {
+  return `
+    const payload = checkpoint(0);
+    payload.items.length + payload.meta.weights.length;
+  `;
+}
+
+function createBoundaryResumeErrorSource() {
+  return `
+    let total = 0;
+    try {
+      checkpoint(0);
+    } catch (error) {
+      total = error.details.items.length + error.details.meta.weights.length;
+    }
+    total;
+  `;
+}
+
 function createExecutionOnlySource() {
   return `
     const seed = checkpoint(1);
@@ -210,6 +240,38 @@ function createWorkflowDataset() {
     l4: 1150,
   };
   return { members, budgets, expenses };
+}
+
+function createBoundaryPayload(size) {
+  const weights = Array.from({ length: size.weightCount }, (_, index) => (index + 1) * 3);
+  const tags = Array.from({ length: size.tagCount }, (_, index) => `${size.name}-tag-${index}`);
+  const items = Array.from({ length: size.itemCount }, (_, index) => ({
+    id: `${size.name}-item-${index}`,
+    metrics: {
+      score: ((index * 7) % 19) + 11,
+      cost: 100 + index * 17,
+      ratio: Number((((index % 9) + 1) / 10).toFixed(2)),
+    },
+    flags: {
+      active: index % 2 === 0,
+      stale: index % 3 === 1,
+      remote: index % 5 === 0,
+    },
+    tags: tags.slice(0, (index % tags.length) + 1),
+  }));
+  return {
+    meta: {
+      region: 'us-west-2',
+      owner: `benchmark-${size.name}`,
+      weights,
+      tags,
+    },
+    items,
+  };
+}
+
+function createBoundarySuspendArgsSource(payload) {
+  return `checkpoint(${JSON.stringify(payload)});`;
 }
 
 function createWorkflowSource() {
@@ -648,6 +710,82 @@ async function benchmarkAddonPhases() {
   return phaseLatency;
 }
 
+async function benchmarkAddonBoundary() {
+  const boundary = {
+    startInputs: {},
+    suspendedArgs: {},
+    resumeValues: {},
+    resumeErrors: {},
+  };
+  const context = new ExecutionContext({
+    capabilities: { checkpoint() {} },
+    limits: {},
+    snapshotKey: SNAPSHOT_KEY,
+  });
+  const startInputsRuntime = new Mustard(createBoundaryStartInputsSource());
+  const resumeValuesRuntime = new Mustard(createBoundaryResumeValueSource());
+  const resumeErrorsRuntime = new Mustard(createBoundaryResumeErrorSource());
+
+  for (const size of BOUNDARY_VALUE_SIZES) {
+    const payload = createBoundaryPayload(size);
+    const expectedCount = size.itemCount + size.weightCount;
+    const suspendedArgsRuntime = new Mustard(createBoundarySuspendArgsSource(payload));
+    const resumeValueFactory = createPhaseProgressFactory(resumeValuesRuntime, context);
+    const resumeErrorFactory = createPhaseProgressFactory(resumeErrorsRuntime, context);
+
+    const startInputs = await measureSamples(`start_inputs_${size.name}`, async () => {
+      const start = performance.now();
+      const progress = startInputsRuntime.start({
+        context,
+        inputs: { payload },
+      });
+      const duration = performance.now() - start;
+      assert.ok(progress instanceof Progress);
+      assert.equal(progress.args[0], expectedCount);
+      return duration;
+    }, DEFAULT_OPTIONS);
+    boundary.startInputs[size.name] = startInputs[1];
+
+    const suspendedArgs = await measureSamples(`suspended_args_${size.name}`, async () => {
+      const start = performance.now();
+      const progress = suspendedArgsRuntime.start({ context });
+      const duration = performance.now() - start;
+      assert.ok(progress instanceof Progress);
+      assert.equal(progress.args[0].items.length, size.itemCount);
+      assert.equal(progress.args[0].meta.weights.length, size.weightCount);
+      return duration;
+    }, DEFAULT_OPTIONS);
+    boundary.suspendedArgs[size.name] = suspendedArgs[1];
+
+    const resumeValues = await measureSamples(`resume_values_${size.name}`, async () => {
+      const progress = resumeValueFactory();
+      const start = performance.now();
+      const result = progress.resume(payload);
+      const duration = performance.now() - start;
+      assert.equal(result, expectedCount);
+      return duration;
+    }, DEFAULT_OPTIONS);
+    boundary.resumeValues[size.name] = resumeValues[1];
+
+    const resumeErrors = await measureSamples(`resume_errors_${size.name}`, async () => {
+      const progress = resumeErrorFactory();
+      const start = performance.now();
+      const result = progress.resumeError({
+        name: 'Error',
+        message: `boundary-${size.name}`,
+        code: `E_BOUNDARY_${size.name.toUpperCase()}`,
+        details: payload,
+      });
+      const duration = performance.now() - start;
+      assert.equal(result, expectedCount);
+      return duration;
+    }, DEFAULT_OPTIONS);
+    boundary.resumeErrors[size.name] = resumeErrors[1];
+  }
+
+  return boundary;
+}
+
 async function benchmarkAddon(fixtures) {
   console.log('Running addon benchmarks...');
   const latency = {};
@@ -663,6 +801,7 @@ async function benchmarkAddon(fixtures) {
     snapshotKey: SNAPSHOT_KEY,
   });
   const phases = await benchmarkAddonPhases();
+  const boundary = await benchmarkAddonBoundary();
 
   Object.assign(latency, Object.fromEntries([
     await measure('cold_start_small', async () => {
@@ -785,7 +924,7 @@ async function benchmarkAddon(fixtures) {
     }, DEFAULT_OPTIONS),
   };
 
-  return { latency, phases, suspendState, memory, failureCleanup };
+  return { latency, phases, boundary, suspendState, memory, failureCleanup };
 }
 
 async function benchmarkSidecar(fixtures, profile) {
@@ -1159,6 +1298,13 @@ function printSummary(results) {
     console.log(`${name}: ${metric.medianMs.toFixed(2)}ms median, ${metric.p95Ms.toFixed(2)}ms p95`);
   }
   console.log('');
+  console.log('Addon boundary-only metrics:');
+  for (const [surface, sizes] of Object.entries(results.addon.boundary)) {
+    for (const [size, metric] of Object.entries(sizes)) {
+      console.log(`${surface}.${size}: ${metric.medianMs.toFixed(2)}ms median, ${metric.p95Ms.toFixed(2)}ms p95`);
+    }
+  }
+  console.log('');
   console.log('Addon suspend-state sizes:');
   for (const [name, metric] of Object.entries(results.addon.suspendState)) {
     console.log(
@@ -1205,6 +1351,8 @@ async function main() {
         'sidecar memory deltas include parent Node process RSS plus the live child sidecar RSS sampled via ps.',
       phaseSplitDefinitions:
         'addon.phases isolates compile-free runtime slices: runtime_init_only uses a precompiled trivial program, execution_only_small resumes pre-created suspended progress, snapshot_load_only uses raw native inspectSnapshot, and Progress.load_only measures the public JS wrapper before cleanup.',
+      boundaryDefinitions:
+        'addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.',
       suspendStateDefinitions:
         'addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.',
     },
