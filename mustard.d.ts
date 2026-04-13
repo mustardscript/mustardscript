@@ -173,6 +173,8 @@ export interface SerializedProgress {
   snapshot_id: string;
   snapshot_key_digest: string;
   token: string;
+  program?: Buffer;
+  program_id?: string;
   suspended_manifest?: string;
   suspended_manifest_token?: string;
 }

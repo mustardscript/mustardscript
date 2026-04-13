@@ -52,13 +52,18 @@ objects instead of alias-expanding them during export.
 - In async guest code, a capability call produces an internal guest promise,
   queues the host request, and suspends at the next runtime checkpoint.
 - `start()` returns a suspension object containing the capability name, the
-  converted arguments, and a resumable snapshot.
+  converted arguments, and a resumable snapshot. In the current addon path,
+  that live snapshot excludes immutable compiled-program bytes and stays bound
+  to the originating program identity instead.
 - Snapshots loaded from bytes must be rebound to explicit host policy before
   their capability metadata is trusted or resume is allowed to continue.
-- Raw native `inspectSnapshot(...)` / `resumeProgram(...)` flows also require a
-  `limits` field plus `snapshot_id`, `snapshot_key_base64`,
-  `snapshot_key_digest`, and matching `snapshot_token` inside the snapshot
-  policy JSON. The token is the HMAC-SHA256 of the detached `snapshot_id`
+- Raw native snapshot restore also requires a `limits` field plus
+  `snapshot_id`, `snapshot_key_base64`, `snapshot_key_digest`, and matching
+  `snapshot_token` inside the snapshot policy JSON. The current addon fast path
+  uses `inspectDetachedSnapshot(program, snapshot, ...)` /
+  `resumeDetachedProgram(program, snapshot, ...)`, while legacy self-contained
+  snapshots still work through `inspectSnapshot(...)` / `resumeProgram(...)`.
+  In both cases, the token is the HMAC-SHA256 of the detached `snapshot_id`
   under the caller-chosen snapshot key, and restore recomputes `snapshot_id`
   from the raw snapshot bytes before inspection or resume. Those fields bind
   raw restore to trusted detached dump metadata, but hosts still need ordinary
@@ -136,10 +141,11 @@ guest-only traceback with guest function names and source spans.
   in the same PID, so unrelated same-process progress churn cannot make an old
   dumped snapshot replayable again.
 - `Progress.dump()` includes detached `snapshot_id`, `snapshot_key_digest`, and
-  `token` metadata authenticated by the configured `snapshotKey`. Current dumps
-  also carry an authenticated suspended-manifest blob for capability metadata,
-  and `Progress.load()` verifies the snapshot bundle before it trusts that
-  manifest or falls back to legacy snapshot inspection.
+  `token` metadata authenticated by the configured `snapshotKey`. Current addon
+  dumps also carry detached `program` bytes plus `program_id`, alongside an
+  authenticated suspended-manifest blob for capability metadata, and
+  `Progress.load()` verifies that bundle before it trusts that manifest or
+  falls back to legacy snapshot inspection.
 - In the Node wrapper, `Progress.load(...)` always requires the host to
   reassert either an `ExecutionContext` or explicit `capabilities` or
   `console`, explicit `limits`, and the original `snapshotKey` before it exposes authoritative

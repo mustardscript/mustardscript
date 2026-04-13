@@ -58,6 +58,42 @@ test('serialization errors do not leak host internals', () => {
   );
 });
 
+test('progress load rejects mismatched detached program bytes', () => {
+  const progress = runtime(`
+    const response = fetch_data(4);
+    response * 2;
+  `).start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data() {},
+    },
+  });
+  const dumped = progress.dump();
+  const forgedProgram = runtime('1 + 1;').dump();
+
+  assert.throws(
+    () =>
+      Progress.load(
+        {
+          ...dumped,
+          program: forgedProgram,
+          program_id: dumped.program_id,
+        },
+        {
+          snapshotKey: SNAPSHOT_KEY,
+          capabilities: {
+            fetch_data() {},
+          },
+          limits: {},
+        },
+      ),
+    isMustardError({
+      kind: 'Serialization',
+      message: /mismatched detached program/,
+    }),
+  );
+});
+
 test('dump and load preserve compiled programs', async () => {
   const copy = Mustard.load(runtime('Math.max(1, 8, 2);').dump());
   const result = await copy.run();

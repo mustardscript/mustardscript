@@ -28,7 +28,7 @@ function cloneJobRecord(record) {
 }
 
 function clonePersistedProgress(progress) {
-  return {
+  const cloned = {
     capability: progress.capability,
     args: structuredClone(progress.args),
     snapshot: Buffer.from(progress.snapshot),
@@ -44,6 +44,13 @@ function clonePersistedProgress(progress) {
         ? progress.suspended_manifest_token
         : undefined,
   };
+  if (Buffer.isBuffer(progress.program) || progress.program instanceof Uint8Array) {
+    cloned.program = Buffer.from(progress.program);
+  }
+  if (typeof progress.program_id === 'string') {
+    cloned.program_id = progress.program_id;
+  }
+  return cloned;
 }
 
 function sanitizeFailure(error) {

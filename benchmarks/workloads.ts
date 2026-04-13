@@ -683,12 +683,18 @@ async function benchmarkAddonPhases() {
   }, DEFAULT_OPTIONS);
   phaseLatency[applyPolicyOnly[0]] = applyPolicyOnly[1];
 
+  const inspectProgramHandle = callNative(
+    native.loadProgram,
+    suspendProgressFactory().dump().program,
+  );
   const inspectDump = queuedFactory(() => suspendProgressFactory().dump());
   const snapshotLoadOnly = await measureSamples('snapshot_load_only', async () => {
     const dumped = inspectDump();
     const policyJson = createAuthenticatedPolicyJson(dumped, loadOptions);
     const start = performance.now();
-    const inspection = JSON.parse(callNative(native.inspectSnapshot, dumped.snapshot, policyJson));
+    const inspection = JSON.parse(
+      callNative(native.inspectDetachedSnapshot, inspectProgramHandle, dumped.snapshot, policyJson),
+    );
     const duration = performance.now() - start;
     assert.equal(inspection.capability, 'checkpoint');
     return duration;
@@ -706,6 +712,8 @@ async function benchmarkAddonPhases() {
     return duration;
   }, DEFAULT_OPTIONS);
   phaseLatency[progressLoadOnly[0]] = progressLoadOnly[1];
+
+  callNative(native.releaseProgram, inspectProgramHandle);
 
   return phaseLatency;
 }
@@ -1350,7 +1358,7 @@ async function main() {
       sidecarMemory:
         'sidecar memory deltas include parent Node process RSS plus the live child sidecar RSS sampled via ps.',
       phaseSplitDefinitions:
-        'addon.phases isolates compile-free runtime slices: runtime_init_only uses a precompiled trivial program, execution_only_small resumes pre-created suspended progress, snapshot_load_only uses raw native inspectSnapshot, and Progress.load_only measures the public JS wrapper before cleanup.',
+        'addon.phases isolates compile-free runtime slices: runtime_init_only uses a precompiled trivial program, execution_only_small resumes pre-created suspended progress, snapshot_load_only uses raw native detached-snapshot inspection, and Progress.load_only measures the public JS wrapper before cleanup.',
       boundaryDefinitions:
         'addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.',
       suspendStateDefinitions:

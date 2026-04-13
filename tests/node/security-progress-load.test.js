@@ -527,6 +527,7 @@ test('raw native snapshot inspect and resume require snapshot authentication', (
   });
 
   const dumped = progress.dump();
+  const programHandle = native.loadProgram(dumped.program);
   const payload = JSON.stringify({ type: 'value', value: { Number: { Finite: 7 } } });
   const authenticatedPolicy = JSON.stringify({
     capabilities: ['fetch_data'],
@@ -537,18 +538,35 @@ test('raw native snapshot inspect and resume require snapshot authentication', (
     snapshot_token: snapshotToken(dumped.snapshot, SNAPSHOT_KEY, dumped.snapshot_id),
   });
 
-  assert.throws(
-    () => native.inspectSnapshot(dumped.snapshot, JSON.stringify({ capabilities: ['fetch_data'], limits: {} })),
-    /raw snapshot restore requires snapshot_id/,
-  );
-  assert.throws(
-    () => native.resumeProgram(dumped.snapshot, payload, JSON.stringify({ capabilities: ['fetch_data'], limits: {} })),
-    /raw snapshot restore requires snapshot_id/,
-  );
+  try {
+    assert.throws(
+      () =>
+        native.inspectDetachedSnapshot(
+          programHandle,
+          dumped.snapshot,
+          JSON.stringify({ capabilities: ['fetch_data'], limits: {} }),
+        ),
+      /raw snapshot restore requires snapshot_id/,
+    );
+    assert.throws(
+      () =>
+        native.resumeDetachedProgram(
+          programHandle,
+          dumped.snapshot,
+          payload,
+          JSON.stringify({ capabilities: ['fetch_data'], limits: {} }),
+        ),
+      /raw snapshot restore requires snapshot_id/,
+    );
 
-  const inspection = JSON.parse(native.inspectSnapshot(dumped.snapshot, authenticatedPolicy));
-  assert.equal(inspection.capability, 'fetch_data');
-  assert.deepEqual(inspection.args, [{ Number: { Finite: 7 } }]);
+    const inspection = JSON.parse(
+      native.inspectDetachedSnapshot(programHandle, dumped.snapshot, authenticatedPolicy),
+    );
+    assert.equal(inspection.capability, 'fetch_data');
+    assert.deepEqual(inspection.args, [{ Number: { Finite: 7 } }]);
+  } finally {
+    native.releaseProgram(programHandle);
+  }
 });
 
 test('progress load requires explicit policy, limits, and snapshotKey', () => {
@@ -625,6 +643,8 @@ test('progress load works across processes when explicit policy and snapshotKey 
             snapshot_id: process.env.SNAPSHOT_ID,
             snapshot_key_digest: process.env.SNAPSHOT_KEY_DIGEST,
             token: process.env.SNAPSHOT_TOKEN,
+            program: Buffer.from(process.env.PROGRAM_BASE64, 'base64'),
+            program_id: process.env.PROGRAM_ID,
           },
           {
             snapshotKey: Buffer.from(process.env.SNAPSHOT_KEY_BASE64, 'base64'),
@@ -648,6 +668,8 @@ test('progress load works across processes when explicit policy and snapshotKey 
         SNAPSHOT_KEY_DIGEST: dumped.snapshot_key_digest,
         SNAPSHOT_TOKEN: dumped.token,
         SNAPSHOT_KEY_BASE64: SNAPSHOT_KEY.toString('base64'),
+        PROGRAM_BASE64: dumped.program.toString('base64'),
+        PROGRAM_ID: dumped.program_id,
       },
       encoding: 'utf8',
     },
@@ -816,6 +838,7 @@ test('raw native snapshot inspect and resume require explicit limits in restore 
   });
 
   const dumped = progress.dump();
+  const programHandle = native.loadProgram(dumped.program);
   const payload = JSON.stringify({ type: 'value', value: { Number: { Finite: 7 } } });
   const missingLimitsPolicy = JSON.stringify({
     capabilities: ['fetch_data'],
@@ -825,14 +848,18 @@ test('raw native snapshot inspect and resume require explicit limits in restore 
     snapshot_token: snapshotToken(dumped.snapshot, SNAPSHOT_KEY, dumped.snapshot_id),
   });
 
-  assert.throws(
-    () => native.inspectSnapshot(dumped.snapshot, missingLimitsPolicy),
-    /raw snapshot restore requires explicit limits/,
-  );
-  assert.throws(
-    () => native.resumeProgram(dumped.snapshot, payload, missingLimitsPolicy),
-    /raw snapshot restore requires explicit limits/,
-  );
+  try {
+    assert.throws(
+      () => native.inspectDetachedSnapshot(programHandle, dumped.snapshot, missingLimitsPolicy),
+      /raw snapshot restore requires explicit limits/,
+    );
+    assert.throws(
+      () => native.resumeDetachedProgram(programHandle, dumped.snapshot, payload, missingLimitsPolicy),
+      /raw snapshot restore requires explicit limits/,
+    );
+  } finally {
+    native.releaseProgram(programHandle);
+  }
 });
 
 test('progress load rejects same-process restore-policy rebinding without an explicit snapshotKey', () => {

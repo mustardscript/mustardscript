@@ -55,12 +55,18 @@ the safety rules they are expected to follow.
 - In the Node wrapper, `start()` and `Progress.dump()` happen before any async
   capability promise is awaited, so JavaScript `Promise` objects never enter the
   serialized snapshot.
+- The public Rust `dump_snapshot()` / `load_snapshot()` format remains
+  self-contained, but current addon-mode suspended steps now serialize detached
+  snapshot state plus an external compiled-program binding. Those detached
+  snapshot bytes carry the originating compiled-program identity, and addon
+  restore fails closed if the supplied detached program does not match.
 - In the Node wrapper, `Progress.dump()` includes detached `snapshot_id`,
   `snapshot_key_digest`, and `token` metadata authenticated by the configured
-  `snapshotKey`. Current dumps also include an authenticated suspended-manifest
-  blob for capability metadata, and `Progress.load(...)` verifies that bundle
-  before it trusts the manifest, falls back to legacy inspection, or resumes a
-  dumped snapshot.
+  `snapshotKey`. Current dumps also include detached `program` bytes plus
+  `program_id`, along with an authenticated suspended-manifest blob for
+  capability metadata, and `Progress.load(...)` verifies that bundle before it
+  trusts the manifest, falls back to legacy inspection, or resumes a dumped
+  snapshot.
 - `Progress.load(...)` always requires explicit `capabilities` or `console`,
   explicit `limits` as an object (use `{}` for defaults), and the original
   `snapshotKey` before inspection or resume. Consumed same-process dumps stay

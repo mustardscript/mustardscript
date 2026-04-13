@@ -8,6 +8,8 @@ export declare function createCancellationToken(): string
 
 export declare function dumpProgram(programHandle: string): Buffer
 
+export declare function inspectDetachedSnapshot(programHandle: string, snapshot: Buffer, policyJson: string): string
+
 export declare function inspectSnapshot(snapshot: Buffer, policyJson: string): string
 
 export declare function loadProgram(program: Buffer): string
@@ -16,7 +18,11 @@ export declare function releaseCancellationToken(tokenId: string): void
 
 export declare function releaseProgram(programHandle: string): void
 
+export declare function resumeDetachedProgram(programHandle: string, snapshot: Buffer, payloadJson: string, policyJson: string, cancellationTokenId?: string | undefined | null): string
+
 export declare function resumeProgram(snapshot: Buffer, payloadJson: string, policyJson: string, cancellationTokenId?: string | undefined | null): string
+
+export declare function retainProgram(programHandle: string): string
 
 export declare function snapshotIdentity(snapshot: Buffer): string
 

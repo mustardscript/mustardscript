@@ -1,6 +1,7 @@
 'use strict';
 
 const { assert, isMustardError, Progress, runtime, test } = require('./support/helpers.js');
+const { programIdentity } = require('../../lib/policy.ts');
 
 const SNAPSHOT_KEY = Buffer.from('progress-test-snapshot-key');
 const PROGRESS_LOAD_OPTIONS = Object.freeze({
@@ -79,7 +80,11 @@ test('progress dump and load preserve suspended execution state', () => {
     },
   });
 
-  const restored = Progress.load(progress.dump(), PROGRESS_LOAD_OPTIONS);
+  const dumped = progress.dump();
+  assert.ok(Buffer.isBuffer(dumped.program));
+  assert.equal(dumped.program_id, programIdentity(dumped.program));
+
+  const restored = Progress.load(dumped, PROGRESS_LOAD_OPTIONS);
   assert.ok(restored instanceof Progress);
   assert.equal(restored.capability, 'fetch_data');
   assert.deepEqual(restored.args, [4]);

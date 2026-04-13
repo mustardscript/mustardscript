@@ -13,7 +13,7 @@ Current audited benchmark inputs and evidence:
 
 - Existing end-to-end harness: `benchmarks/smoke.ts` and `benchmarks/workloads.ts`
 - Latest checked-in workload report:
-  `benchmarks/results/2026-04-13T06-59-51-780Z-workloads.json`
+  `benchmarks/results/2026-04-13T10-41-58-990Z-workloads.json`
 - Latest findings summary: `docs/BENCHMARK_FINDINGS.md`
 - Current smoke gate status on April 13, 2026:
   `npm run bench:smoke:dev` and `npm run bench:smoke:release` both pass with
@@ -23,20 +23,20 @@ Current addon medians from the checked-in workload report:
 
 | Metric | Current |
 | --- | ---: |
-| `cold_start_small` | `16.27 ms` |
-| `warm_run_small` | `16.25 ms` |
-| `cold_start_code_mode_search` | `37.68 ms` |
-| `warm_run_code_mode_search` | `37.71 ms` |
-| `programmatic_tool_workflow` | `42.30 ms` |
-| `host_fanout_10` | `0.74 ms` |
-| `host_fanout_100` | `6.61 ms` |
-| `suspend_resume_20` | `3.65 ms` |
+| `cold_start_small` | `10.18 ms` |
+| `warm_run_small` | `9.69 ms` |
+| `cold_start_code_mode_search` | `34.23 ms` |
+| `warm_run_code_mode_search` | `34.46 ms` |
+| `programmatic_tool_workflow` | `35.23 ms` |
+| `host_fanout_10` | `0.53 ms` |
+| `host_fanout_100` | `4.79 ms` |
+| `suspend_resume_20` | `2.64 ms` |
 
 Current sidecar/addon overhead from the same report:
 
-- `cold_start_small`: `1.67x`
-- `programmatic_tool_workflow`: `1.12x`
-- `host_fanout_100`: `1.42x`
+- `cold_start_small`: `2.19x`
+- `programmatic_tool_workflow`: `1.09x`
+- `host_fanout_100`: `1.50x`
 
 Current relative position versus the isolate baseline:
 
@@ -216,7 +216,7 @@ Action items:
 
 - [x] Stop cloning the whole `Runtime` to create suspension snapshots; freeze or
   otherwise capture suspended state without aliasing bugs.
-- [ ] Externalize immutable `BytecodeProgram` data from snapshots so resume uses
+- [x] Externalize immutable `BytecodeProgram` data from snapshots so resume uses
   `snapshot state + program identity` rather than repeating stable program
   bytes.
 - [ ] Replace raw snapshot round-trips with opaque snapshot handles and cached
@@ -230,7 +230,7 @@ Action items:
 - [ ] Add incremental or cached snapshot-policy and post-load accounting checks
   where possible, with debug-mode full-walk assertions to preserve fail-closed
   behavior.
-- [ ] Add Rust and JS benchmarks for `suspend_only`, `dump_only`, `load_only`,
+- [x] Add Rust and JS benchmarks for `suspend_only`, `dump_only`, `load_only`,
   `policy_only`, and `Progress.load_only`.
 
 ## Milestone 3: Speed Up The Interpreter, Symbol Paths, And Sync Callbacks

@@ -34,6 +34,52 @@ fn round_trips_program_and_snapshot() {
 }
 
 #[test]
+fn round_trips_detached_snapshot_with_external_program() {
+    let source = "const value = fetch_data(1); value + 2;";
+    let program = compile(source).expect("compile should succeed");
+    let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+    let suspension = suspend(source, &["fetch_data"]);
+    let snapshot_bytes =
+        dump_detached_snapshot(&suspension.snapshot).expect("detached snapshot dump should succeed");
+    let loaded_snapshot = load_detached_snapshot(&snapshot_bytes, std::sync::Arc::new(bytecode))
+        .expect("detached snapshot load should succeed");
+    let resumed = resume_with_options(
+        loaded_snapshot,
+        ResumePayload::Value(number(1.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(SnapshotPolicy {
+                capabilities: vec!["fetch_data".to_string()],
+                limits: RuntimeLimits::default(),
+            }),
+        },
+    )
+    .expect("resume should succeed");
+    match resumed {
+        ExecutionStep::Completed(value) => {
+            assert_eq!(value, number(3.0));
+        }
+        other => panic!("expected completion, got {other:?}"),
+    }
+}
+
+#[test]
+fn rejects_detached_snapshot_with_mismatched_program_identity() {
+    let suspension = suspend("const value = fetch_data(1); value + 2;", &["fetch_data"]);
+    let snapshot_bytes =
+        dump_detached_snapshot(&suspension.snapshot).expect("detached snapshot should serialize");
+    let wrong_program = lower_to_bytecode(&compile("1;").expect("compile should succeed"))
+        .expect("lowering should succeed");
+    let error = load_detached_snapshot(&snapshot_bytes, std::sync::Arc::new(wrong_program))
+        .expect_err("mismatched detached program should fail");
+    assert!(
+        error
+            .to_string()
+            .contains("detached snapshot program identity mismatch")
+    );
+}
+
+#[test]
 fn rejects_invalid_jump_targets_before_execution() {
     let program = invalid_program(vec![Instruction::Jump(99), Instruction::Return]);
     let error = start_bytecode(&program, ExecutionOptions::default())

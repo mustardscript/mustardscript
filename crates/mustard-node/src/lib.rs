@@ -14,8 +14,10 @@ use mustard::{
 };
 use mustard_bridge::{
     ResumeDto, SnapshotPolicyDto, StartOptionsDto, decode_program, encode_json,
-    inspect_snapshot_bytes, parse_json, resume_program as bridge_resume_program,
-    start_shared_program as bridge_start_shared_program,
+    inspect_detached_snapshot_bytes, inspect_snapshot_bytes, parse_json,
+    resume_detached_program as bridge_resume_detached_program,
+    resume_program as bridge_resume_program,
+    start_shared_program_detached as bridge_start_shared_program_detached,
 };
 use napi::bindgen_prelude::Buffer;
 use napi::{Error, Result};
@@ -23,13 +25,20 @@ use napi_derive::napi;
 
 type HmacSha256 = Hmac<Sha256>;
 
+#[derive(Debug)]
+struct CompiledProgramEntry {
+    program: Arc<BytecodeProgram>,
+    serialized: Vec<u8>,
+    ref_count: usize,
+}
+
 fn cancellation_tokens() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
     static TOKENS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
     TOKENS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn compiled_programs() -> &'static Mutex<HashMap<String, Arc<BytecodeProgram>>> {
-    static PROGRAMS: OnceLock<Mutex<HashMap<String, Arc<BytecodeProgram>>>> = OnceLock::new();
+fn compiled_programs() -> &'static Mutex<HashMap<String, CompiledProgramEntry>> {
+    static PROGRAMS: OnceLock<Mutex<HashMap<String, CompiledProgramEntry>>> = OnceLock::new();
     PROGRAMS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -42,7 +51,7 @@ fn next_cancellation_token_id(tokens: &HashMap<String, Arc<AtomicBool>>) -> Stri
     }
 }
 
-fn next_program_handle_id(programs: &HashMap<String, Arc<BytecodeProgram>>) -> String {
+fn next_program_handle_id(programs: &HashMap<String, CompiledProgramEntry>) -> String {
     loop {
         let candidate = format!("program-{:032x}", random::<u128>());
         if !programs.contains_key(&candidate) {
@@ -70,7 +79,15 @@ fn insert_program(program: BytecodeProgram) -> Result<String> {
         .lock()
         .map_err(|_| to_napi_error("compiled program registry is poisoned"))?;
     let handle = next_program_handle_id(&programs);
-    programs.insert(handle.clone(), Arc::new(program));
+    let serialized = encode_program_bytes(&program).map_err(to_napi_error)?;
+    programs.insert(
+        handle.clone(),
+        CompiledProgramEntry {
+            program: Arc::new(program),
+            serialized,
+            ref_count: 1,
+        },
+    );
     Ok(handle)
 }
 
@@ -80,7 +97,17 @@ fn lookup_program(handle: &str) -> Result<Arc<BytecodeProgram>> {
         .map_err(|_| to_napi_error("compiled program registry is poisoned"))?;
     programs
         .get(handle)
-        .cloned()
+        .map(|entry| Arc::clone(&entry.program))
+        .ok_or_else(|| to_napi_error(format!("unknown compiled program handle `{handle}`")))
+}
+
+fn lookup_serialized_program(handle: &str) -> Result<Vec<u8>> {
+    let programs = compiled_programs()
+        .lock()
+        .map_err(|_| to_napi_error("compiled program registry is poisoned"))?;
+    programs
+        .get(handle)
+        .map(|entry| entry.serialized.clone())
         .ok_or_else(|| to_napi_error(format!("unknown compiled program handle `{handle}`")))
 }
 
@@ -176,9 +203,24 @@ pub fn load_program(program: Buffer) -> Result<String> {
 
 #[napi]
 pub fn dump_program(program_handle: String) -> Result<Buffer> {
-    let program = lookup_program(&program_handle)?;
-    let bytes = encode_program_bytes(program.as_ref()).map_err(to_napi_error)?;
-    Ok(Buffer::from(bytes))
+    Ok(Buffer::from(lookup_serialized_program(&program_handle)?))
+}
+
+#[napi]
+pub fn retain_program(program_handle: String) -> Result<String> {
+    let mut programs = compiled_programs()
+        .lock()
+        .map_err(|_| to_napi_error("compiled program registry is poisoned"))?;
+    let entry = programs.get_mut(&program_handle).ok_or_else(|| {
+        to_napi_error(format!(
+            "unknown compiled program handle `{program_handle}`"
+        ))
+    })?;
+    entry.ref_count = entry
+        .ref_count
+        .checked_add(1)
+        .ok_or_else(|| to_napi_error("compiled program handle retain count overflow"))?;
+    Ok(program_handle)
 }
 
 #[napi]
@@ -186,7 +228,20 @@ pub fn release_program(program_handle: String) -> Result<()> {
     let mut programs = compiled_programs()
         .lock()
         .map_err(|_| to_napi_error("compiled program registry is poisoned"))?;
-    programs.remove(&program_handle);
+    let should_remove = match programs.get_mut(&program_handle) {
+        Some(entry) => {
+            if entry.ref_count > 1 {
+                entry.ref_count -= 1;
+                false
+            } else {
+                true
+            }
+        }
+        None => false,
+    };
+    if should_remove {
+        programs.remove(&program_handle);
+    }
     Ok(())
 }
 
@@ -235,8 +290,8 @@ pub fn start_program(
     let program = lookup_program(&program_handle)?;
     let options: StartOptionsDto = parse_json(&options_json).map_err(to_napi_error)?;
     let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
-    let step =
-        bridge_start_shared_program(program, options, cancellation_token).map_err(to_napi_error)?;
+    let step = bridge_start_shared_program_detached(program, options, cancellation_token)
+        .map_err(to_napi_error)?;
     encode_json(&step).map_err(to_napi_error)
 }
 
@@ -245,6 +300,20 @@ pub fn inspect_snapshot(snapshot: Buffer, policy_json: String) -> Result<String>
     let policy: SnapshotPolicyDto = parse_json(&policy_json).map_err(to_napi_error)?;
     assert_authenticated_snapshot(snapshot.as_ref(), &policy)?;
     let inspection = inspect_snapshot_bytes(snapshot.as_ref(), policy).map_err(to_napi_error)?;
+    encode_json(&inspection).map_err(to_napi_error)
+}
+
+#[napi]
+pub fn inspect_detached_snapshot(
+    program_handle: String,
+    snapshot: Buffer,
+    policy_json: String,
+) -> Result<String> {
+    let program = lookup_program(&program_handle)?;
+    let policy: SnapshotPolicyDto = parse_json(&policy_json).map_err(to_napi_error)?;
+    assert_authenticated_snapshot(snapshot.as_ref(), &policy)?;
+    let inspection = inspect_detached_snapshot_bytes(snapshot.as_ref(), program, policy)
+        .map_err(to_napi_error)?;
     encode_json(&inspection).map_err(to_napi_error)
 }
 
@@ -261,5 +330,29 @@ pub fn resume_program(
     let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
     let step = bridge_resume_program(snapshot.as_ref(), payload, policy, cancellation_token)
         .map_err(to_napi_error)?;
+    encode_json(&step).map_err(to_napi_error)
+}
+
+#[napi]
+pub fn resume_detached_program(
+    program_handle: String,
+    snapshot: Buffer,
+    payload_json: String,
+    policy_json: String,
+    cancellation_token_id: Option<String>,
+) -> Result<String> {
+    let program = lookup_program(&program_handle)?;
+    let payload: ResumeDto = parse_json(&payload_json).map_err(to_napi_error)?;
+    let policy: SnapshotPolicyDto = parse_json(&policy_json).map_err(to_napi_error)?;
+    assert_authenticated_snapshot(snapshot.as_ref(), &policy)?;
+    let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
+    let step = bridge_resume_detached_program(
+        snapshot.as_ref(),
+        program,
+        payload,
+        policy,
+        cancellation_token,
+    )
+    .map_err(to_napi_error)?;
     encode_json(&step).map_err(to_napi_error)
 }

@@ -92,7 +92,13 @@ function createMustardClass({ native, materializeStep, parseStep }) {
         });
         if (outcome.type === 'cancelled') {
           step = parseStep(
-            callNative(native.resumeProgram, step.snapshot, encodeResumePayloadCancel(), policyJson),
+            callNative(
+              native.resumeDetachedProgram,
+              programHandle,
+              step.snapshot,
+              encodeResumePayloadCancel(),
+              policyJson,
+            ),
           );
           continue;
         }
@@ -101,7 +107,12 @@ function createMustardClass({ native, materializeStep, parseStep }) {
             ? encodeResumePayloadValue(outcome.value)
             : encodeResumePayloadError(outcome.error);
         step = parseStep(
-          withCancellationSignal(native, native.resumeProgram, [step.snapshot, payload, policyJson], signal),
+          withCancellationSignal(
+            native,
+            native.resumeDetachedProgram,
+            [programHandle, step.snapshot, payload, policyJson],
+            signal,
+          ),
         );
       }
       return step.value;
@@ -120,7 +131,7 @@ function createMustardClass({ native, materializeStep, parseStep }) {
           signal,
         ),
       );
-      return materializeStep(step, policy, snapshotKey);
+      return materializeStep(step, policy, snapshotKey, programHandle);
     }
 
     dump() {

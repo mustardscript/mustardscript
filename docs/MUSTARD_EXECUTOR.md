@@ -13,7 +13,8 @@ The executor layer:
 
 - keeps guest/runtime semantics in Rust
 - keeps capability implementations in the host
-- treats progress snapshots as durable queue state
+- treats progress snapshots plus any detached compiled-program bytes as durable
+  queue state
 - reuses the existing snapshot policy and validation model
 
 It does not:
@@ -100,6 +101,8 @@ Workers must preserve these invariants:
   durable state
 - every durable restore uses explicit `capabilities`, `limits`, and
   `snapshotKey`
+- current addon `SerializedProgress` blobs must preserve detached `program` and
+  `program_id` fields exactly when present
 - stored progress must be bound to its owning `jobId`; this implementation
   derives a per-job snapshot key from the configured executor `snapshotKey`
   before every `start()` and `Progress.load(...)`

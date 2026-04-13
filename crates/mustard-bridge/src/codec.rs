@@ -1,6 +1,8 @@
 use anyhow::Result;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use mustard::{BytecodeProgram, ExecutionStep, dump_snapshot, load_program};
+use mustard::{
+    BytecodeProgram, ExecutionStep, dump_detached_snapshot, dump_snapshot, load_program,
+};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::dto::StepDto;
@@ -20,6 +22,17 @@ pub fn encode_step(step: ExecutionStep) -> Result<StepDto> {
             capability: suspension.capability,
             args: suspension.args,
             snapshot_base64: STANDARD.encode(dump_snapshot(&suspension.snapshot)?),
+        },
+    })
+}
+
+pub fn encode_detached_step(step: ExecutionStep) -> Result<StepDto> {
+    Ok(match step {
+        ExecutionStep::Completed(value) => StepDto::Completed { value },
+        ExecutionStep::Suspended(suspension) => StepDto::Suspended {
+            capability: suspension.capability,
+            args: suspension.args,
+            snapshot_base64: STANDARD.encode(dump_detached_snapshot(&suspension.snapshot)?),
         },
     })
 }

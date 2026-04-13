@@ -231,6 +231,10 @@ function snapshotIdentity(snapshot) {
   return callNative(snapshotNative().snapshotIdentity, Buffer.from(snapshot));
 }
 
+function programIdentity(program) {
+  return crypto.createHash('sha256').update(Buffer.from(program)).digest('hex');
+}
+
 function snapshotKeyDigest(snapshotKey) {
   return crypto.createHash('sha256').update(snapshotKey).digest('hex');
 }
@@ -461,6 +465,7 @@ module.exports = {
   parseSuspendedManifest,
   resolveExecutionContext,
   resolveProgressLoadContext,
+  programIdentity,
   snapshotIdentity,
   snapshotKeyDigest,
   snapshotToken,

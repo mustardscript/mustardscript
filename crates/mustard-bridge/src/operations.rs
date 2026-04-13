@@ -3,14 +3,15 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use hmac::{Hmac, Mac};
 use mustard::{
     BytecodeProgram, CancellationToken, ExecutionOptions, ResumeOptions, SnapshotInspection,
-    compile, dump_program, inspect_snapshot as inspect_loaded_snapshot, load_snapshot,
-    lower_to_bytecode, resume_with_options, start_shared_bytecode, start_validated_bytecode,
+    compile, dump_program, inspect_snapshot as inspect_loaded_snapshot, load_detached_snapshot,
+    load_snapshot, lower_to_bytecode, resume_with_options, start_shared_bytecode,
+    start_validated_bytecode,
 };
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 use crate::{
-    codec::encode_step,
+    codec::{encode_detached_step, encode_step},
     dto::{ResumeDto, SnapshotPolicyDto, StartOptionsDto, StepDto},
 };
 
@@ -129,12 +130,40 @@ pub fn start_shared_program(
     encode_step(step)
 }
 
+pub fn start_shared_program_detached(
+    program: Arc<BytecodeProgram>,
+    options: StartOptionsDto,
+    cancellation_token: Option<CancellationToken>,
+) -> Result<StepDto> {
+    let step = start_shared_bytecode(
+        program,
+        ExecutionOptions {
+            inputs: options.inputs.into_iter().collect(),
+            capabilities: options.capabilities,
+            limits: options.limits.into_runtime_limits(),
+            cancellation_token,
+        },
+    )?;
+    encode_detached_step(step)
+}
+
 pub fn inspect_snapshot_bytes(
     snapshot_bytes: &[u8],
     policy: SnapshotPolicyDto,
 ) -> Result<SnapshotInspection> {
     assert_authenticated_snapshot(snapshot_bytes, &policy)?;
     let mut snapshot = load_snapshot(snapshot_bytes)?;
+    let snapshot_policy = policy.into_snapshot_policy()?;
+    inspect_loaded_snapshot(&mut snapshot, snapshot_policy).map_err(Into::into)
+}
+
+pub fn inspect_detached_snapshot_bytes(
+    snapshot_bytes: &[u8],
+    program: Arc<BytecodeProgram>,
+    policy: SnapshotPolicyDto,
+) -> Result<SnapshotInspection> {
+    assert_authenticated_snapshot(snapshot_bytes, &policy)?;
+    let mut snapshot = load_detached_snapshot(snapshot_bytes, program)?;
     let snapshot_policy = policy.into_snapshot_policy()?;
     inspect_loaded_snapshot(&mut snapshot, snapshot_policy).map_err(Into::into)
 }
@@ -157,4 +186,25 @@ pub fn resume_program(
         },
     )?;
     encode_step(step)
+}
+
+pub fn resume_detached_program(
+    snapshot_bytes: &[u8],
+    program: Arc<BytecodeProgram>,
+    payload: ResumeDto,
+    policy: SnapshotPolicyDto,
+    cancellation_token: Option<CancellationToken>,
+) -> Result<StepDto> {
+    assert_authenticated_snapshot(snapshot_bytes, &policy)?;
+    let snapshot = load_detached_snapshot(snapshot_bytes, program)?;
+    let snapshot_policy = policy.into_snapshot_policy()?;
+    let step = resume_with_options(
+        snapshot,
+        payload.into_resume_payload(),
+        ResumeOptions {
+            cancellation_token,
+            snapshot_policy: Some(snapshot_policy),
+        },
+    )?;
+    encode_detached_step(step)
 }
