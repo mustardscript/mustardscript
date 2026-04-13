@@ -719,7 +719,6 @@ test('progress load reapplies explicit host limits before resume', () => {
   );
 });
 
-<<<<<<< HEAD
 test('raw native snapshot inspect and resume require explicit limits in restore policy', () => {
   const native = loadNative();
   const progress = new Jslite('const value = fetch_data(7); value * 2;').start({

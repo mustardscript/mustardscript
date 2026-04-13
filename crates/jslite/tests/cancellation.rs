@@ -41,6 +41,14 @@ fn json_number_array(len: usize) -> String {
     format!("[{}0]", "0,".repeat(len))
 }
 
+fn json_string_literal(len: usize) -> String {
+    format!("\"{}\"", "x".repeat(len))
+}
+
+fn repeated_digits(len: usize) -> String {
+    "9".repeat(len)
+}
+
 fn large_number_array(len: usize) -> StructuredValue {
     StructuredValue::Array(
         (0..len)
@@ -288,6 +296,90 @@ fn json_stringify_helper_observes_instruction_budget() {
 }
 
 #[test]
+fn json_parse_bare_string_respects_heap_limit() {
+    let program = compile("JSON.parse(text);").expect("source should compile");
+    let error = execute(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([(
+                "text".to_string(),
+                StructuredValue::String(json_string_literal(10_000)),
+            )]),
+            limits: RuntimeLimits {
+                heap_limit_bytes: 15_000,
+                ..RuntimeLimits::default()
+            },
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("JSON.parse bare strings should respect the heap limit");
+
+    match error {
+        jslite::JsliteError::Message { kind, message, .. } => {
+            assert_eq!(kind, DiagnosticKind::Limit);
+            assert!(message.contains("heap limit exceeded"));
+        }
+        other => panic!("expected limit error, got {other:?}"),
+    }
+}
+
+#[test]
+fn number_parse_int_observes_instruction_budget() {
+    let program = compile("Number.parseInt(text, 10);").expect("source should compile");
+    let error = execute(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([(
+                "text".to_string(),
+                StructuredValue::String(repeated_digits(20_000)),
+            )]),
+            limits: RuntimeLimits {
+                instruction_budget: 8,
+                ..RuntimeLimits::default()
+            },
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("Number.parseInt should consume instruction budget");
+
+    match error {
+        jslite::JsliteError::Message { kind, message, .. } => {
+            assert_eq!(kind, DiagnosticKind::Limit);
+            assert!(message.contains("instruction budget exhausted"));
+        }
+        other => panic!("expected limit error, got {other:?}"),
+    }
+}
+
+#[test]
+fn number_parse_float_observes_instruction_budget() {
+    let program = compile("Number.parseFloat(text);").expect("source should compile");
+    let error = execute(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([(
+                "text".to_string(),
+                StructuredValue::String(format!("{}.5", repeated_digits(20_000))),
+            )]),
+            limits: RuntimeLimits {
+                instruction_budget: 8,
+                ..RuntimeLimits::default()
+            },
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("Number.parseFloat should consume instruction budget");
+
+    match error {
+        jslite::JsliteError::Message { kind, message, .. } => {
+            assert_eq!(kind, DiagnosticKind::Limit);
+            assert!(message.contains("instruction budget exhausted"));
+        }
+        other => panic!("expected limit error, got {other:?}"),
+    }
+}
+
+#[test]
 fn json_parse_helper_observes_cancellation() {
     let program = compile("JSON.parse(text).length;").expect("source should compile");
 
@@ -314,6 +406,70 @@ fn json_parse_helper_observes_cancellation() {
         },
     )
     .expect_err("JSON.parse should observe cancellation");
+
+    worker.join().expect("canceller thread should finish");
+    assert_cancelled_limit(&error);
+}
+
+#[test]
+fn number_parse_int_observes_cancellation() {
+    let program = compile("Number.parseInt(text, 10);").expect("source should compile");
+
+    let token = CancellationToken::new();
+    let canceller = token.clone();
+    let worker = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(1));
+        canceller.cancel();
+    });
+
+    let error = execute(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([(
+                "text".to_string(),
+                StructuredValue::String(repeated_digits(2_000_000)),
+            )]),
+            limits: RuntimeLimits {
+                instruction_budget: usize::MAX,
+                ..RuntimeLimits::default()
+            },
+            cancellation_token: Some(token),
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("Number.parseInt should observe cancellation");
+
+    worker.join().expect("canceller thread should finish");
+    assert_cancelled_limit(&error);
+}
+
+#[test]
+fn number_parse_float_observes_cancellation() {
+    let program = compile("Number.parseFloat(text);").expect("source should compile");
+
+    let token = CancellationToken::new();
+    let canceller = token.clone();
+    let worker = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(1));
+        canceller.cancel();
+    });
+
+    let error = execute(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([(
+                "text".to_string(),
+                StructuredValue::String(format!("{}.5", repeated_digits(2_000_000))),
+            )]),
+            limits: RuntimeLimits {
+                instruction_budget: usize::MAX,
+                ..RuntimeLimits::default()
+            },
+            cancellation_token: Some(token),
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect_err("Number.parseFloat should observe cancellation");
 
     worker.join().expect("canceller thread should finish");
     assert_cancelled_limit(&error);
