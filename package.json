@@ -20,6 +20,8 @@
     "crates/mustard-node/Cargo.toml",
     "crates/mustard-node/build.rs",
     "crates/mustard-node/src/**",
+    "crates/mustard-wasm/Cargo.toml",
+    "crates/mustard-wasm/src/**",
     "crates/mustard-sidecar/Cargo.toml",
     "crates/mustard-sidecar/src/**"
   ],

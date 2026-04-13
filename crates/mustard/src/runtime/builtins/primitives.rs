@@ -4,12 +4,28 @@ use std::{
 };
 
 use oxc_syntax::number::ToJsString;
+#[cfg(not(target_arch = "wasm32"))]
 use rand::random;
 
 use super::*;
 
 const JSON_HELPER_IO_CHUNK_BYTES: usize = 256;
 const NUMBER_PARSE_HELPER_CHUNK_CHARS: usize = 256;
+
+#[cfg(target_arch = "wasm32")]
+unsafe extern "C" {
+    fn mustard_random_f64() -> f64;
+}
+
+#[cfg(target_arch = "wasm32")]
+fn math_random_f64() -> f64 {
+    unsafe { mustard_random_f64() }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn math_random_f64() -> f64 {
+    random::<f64>()
+}
 
 #[derive(Default)]
 struct JsonStringifyTraversalState {
@@ -598,7 +614,7 @@ impl Runtime {
     }
 
     pub(crate) fn call_math_random(&self) -> Value {
-        Value::Number(random::<f64>())
+        Value::Number(math_random_f64())
     }
 
     pub(crate) fn call_json_stringify(&mut self, args: &[Value]) -> MustardResult<Value> {

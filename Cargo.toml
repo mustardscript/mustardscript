@@ -4,6 +4,7 @@ members = [
   "crates/mustard-bridge",
   "crates/mustard-node",
   "crates/mustard-sidecar",
+  "crates/mustard-wasm",
 ]
 resolver = "2"
 
