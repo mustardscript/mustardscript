@@ -8,7 +8,9 @@ const { COVERAGE, FEATURE_CONTRACT, OUTCOME } = require('./conformance-contract.
 const { assertDifferential } = require('./runtime-oracle.js');
 
 function readRepo(relativePath) {
-  return fs.readFileSync(path.join(__dirname, '../../', relativePath), 'utf8');
+  return fs
+    .readFileSync(path.join(__dirname, '../../', relativePath), 'utf8')
+    .replace(/\r\n/g, '\n');
 }
 
 function assertFileContains(relativePath, pattern) {
