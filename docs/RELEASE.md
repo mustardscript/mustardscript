@@ -8,7 +8,7 @@ maintainers should run before publishing anything.
 - The primary release artifact is the npm package `mustardscript`.
 - The default npm install path still preserves source builds. If no matching
   optional prebuilt package is installed, `npm install` compiles the native
-  addon locally from the bundled Rust sources.
+  addon locally from the bundled Rust sources in release mode.
 - Optional prebuilt `.node` binaries now have a separate release workflow and
   verification path. They do not replace or weaken the source-build path.
 - The Rust crates are implementation crates first. A separate `cargo publish`
@@ -58,12 +58,13 @@ npm run verify:prebuilt
 That command runs the prebuilt smoke coverage in
 `tests/package-smoke.test.js`. It verifies the configured `@napi-rs/cli`
 target metadata, stages a host-matching release binary into a generated npm
-package directory, installs the root tarball plus the matching optional package
-with lifecycle scripts disabled, and then proves `dist/install.js` skips the source
-build when the matching prebuilt package is already present. The loader now
-accepts only validated `.node` artifacts from the expected optional package
-layout; JavaScript `main` fallbacks and arbitrary override module resolution are
-rejected.
+package directory, proves the root package declares the expected
+`optionalDependencies`, installs the root tarball in a consumer with a local
+override for the matching prebuilt package, and then proves `dist/install.js`
+skips the source build when the matching prebuilt package is present. The
+loader now accepts only validated `.node` artifacts from the expected optional
+package layout; JavaScript `main` fallbacks and arbitrary override module
+resolution are rejected.
 
 ### 3. Verify the npm package shape
 
@@ -78,12 +79,13 @@ Check the dry-run output before keeping the generated tarball:
   addon locally: `Cargo.toml`, `crates/mustard/src/**`,
   `crates/mustard/Cargo.toml`, `crates/mustard-node/src/**`,
   `crates/mustard-node/build.rs`, `crates/mustard-node/Cargo.toml`,
-  `crates/mustard-sidecar/src/**`, and
-  `crates/mustard-sidecar/Cargo.toml`.
+  `crates/mustard-sidecar/src/**`, `crates/mustard-sidecar/Cargo.toml`, and
+  `Cargo.lock`.
 - The tarball should include the public JS and type entrypoints plus the
   install/load helpers that preserve the source-build fallback:
   `dist/index.js`, `index.d.ts`, `mustard.d.ts`, `dist/install.js`, and
   `dist/native-loader.js`.
+- The tarball should include `LICENSE` and `SECURITY.md`.
 - The tarball should not include local build products, `.github/`, tests,
   planning documents, or a platform-specific `.node` binary from a maintainer
   machine.

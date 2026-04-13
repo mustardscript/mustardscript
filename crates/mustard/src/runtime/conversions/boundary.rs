@@ -128,10 +128,18 @@ impl Runtime {
                     .objects
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
-                if matches!(object_ref.kind, ObjectKind::Date(_)) {
-                    return Err(MustardError::runtime(
-                        "Date values cannot cross the structured host boundary",
-                    ));
+                match &object_ref.kind {
+                    ObjectKind::Plain => {}
+                    ObjectKind::Date(_) => {
+                        return Err(MustardError::runtime(
+                            "Date values cannot cross the structured host boundary",
+                        ));
+                    }
+                    _ => {
+                        return Err(MustardError::runtime(
+                            "only plain objects can cross the structured host boundary",
+                        ));
+                    }
                 }
                 if !traversal.active_objects.insert(object) {
                     return Err(structured_boundary_cycle_error());

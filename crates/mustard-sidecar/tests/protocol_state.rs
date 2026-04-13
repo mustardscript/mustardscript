@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 const SNAPSHOT_KEY: &[u8] = b"sidecar-protocol-state-key";
+const PROTOCOL_VERSION: u32 = mustard_sidecar::PROTOCOL_VERSION;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -18,6 +19,7 @@ fn request(payload: Value) -> Value {
 
 fn compile_program(source: &str, id: u64) -> String {
     let response = request(json!({
+        "protocol_version": PROTOCOL_VERSION,
         "method": "compile",
         "id": id,
         "source": source,
@@ -68,6 +70,7 @@ fn snapshot_token(snapshot_base64: &str) -> String {
 
 fn start_program(program_base64: &str, capabilities: &[&str], id: u64) -> Value {
     request(json!({
+        "protocol_version": PROTOCOL_VERSION,
         "method": "start",
         "id": id,
         "program_base64": program_base64,
@@ -81,6 +84,7 @@ fn start_program(program_base64: &str, capabilities: &[&str], id: u64) -> Value 
 
 fn resume_snapshot(snapshot_base64: &str, capabilities: &[&str], payload: Value, id: u64) -> Value {
     request(json!({
+        "protocol_version": PROTOCOL_VERSION,
         "method": "resume",
         "id": id,
         "snapshot_base64": snapshot_base64,

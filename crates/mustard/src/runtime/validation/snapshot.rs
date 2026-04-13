@@ -40,6 +40,25 @@ pub(in crate::runtime) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> Mus
     for (promise_key, promise) in &runtime.promises {
         validate_promise_snapshot(runtime, promise_key, promise)?;
         walk::walk_promise_values(promise, &mut |value| validate_runtime_value(runtime, value))?;
+        for continuation in &promise.awaiters {
+            walk::walk_continuation_frames(continuation, &mut |frame| {
+                validate_frame(runtime, frame)?;
+                walk::walk_frame_values(frame, &mut |value| validate_runtime_value(runtime, value))
+            })?;
+        }
+    }
+    for microtask in &runtime.microtasks {
+        walk::walk_microtask_values(
+            microtask,
+            &mut |frame| {
+                validate_frame(runtime, frame)?;
+                walk::walk_frame_values(frame, &mut |value| validate_runtime_value(runtime, value))
+            },
+            &mut |value| validate_runtime_value(runtime, value),
+        )?;
+    }
+    if let Some(exception) = &runtime.pending_internal_exception {
+        validate_runtime_value(runtime, &exception.value)?;
     }
 
     Ok(())

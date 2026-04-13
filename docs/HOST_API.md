@@ -26,6 +26,7 @@ Rejected values:
 - cycles
 - guest-exported arrays or plain objects with shared references
 - class instances
+- boxed primitives, `RegExp`, guest `Error` objects, and other built-in objects
 - accessors
 - custom prototypes
 - host objects

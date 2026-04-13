@@ -5,19 +5,25 @@ use mustard_bridge::{
 };
 use serde::{Deserialize, Serialize};
 
+pub const PROTOCOL_VERSION: u32 = 1;
+pub const MAX_REQUEST_LINE_BYTES: usize = 1024 * 1024;
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case")]
 enum Request {
     Compile {
+        protocol_version: u32,
         id: u64,
         source: String,
     },
     Start {
+        protocol_version: u32,
         id: u64,
         program_base64: String,
         options: StartOptionsDto,
     },
     Resume {
+        protocol_version: u32,
         id: u64,
         snapshot_base64: String,
         policy: Box<SnapshotPolicyDto>,
@@ -27,6 +33,7 @@ enum Request {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Response {
+    protocol_version: u32,
     id: u64,
     ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -46,6 +53,29 @@ fn handle(request: Request) -> Response {
     let id = match &request {
         Request::Compile { id, .. } | Request::Start { id, .. } | Request::Resume { id, .. } => *id,
     };
+    let protocol_version = match &request {
+        Request::Compile {
+            protocol_version, ..
+        }
+        | Request::Start {
+            protocol_version, ..
+        }
+        | Request::Resume {
+            protocol_version, ..
+        } => *protocol_version,
+    };
+
+    if protocol_version != PROTOCOL_VERSION {
+        return Response {
+            protocol_version: PROTOCOL_VERSION,
+            id,
+            ok: false,
+            result: None,
+            error: Some(format!(
+                "unsupported sidecar protocol version {protocol_version}; expected {PROTOCOL_VERSION}"
+            )),
+        };
+    }
 
     let result: Result<ResponsePayload> = match request {
         Request::Compile { source, .. } => (|| {
@@ -77,12 +107,14 @@ fn handle(request: Request) -> Response {
 
     match result {
         Ok(result) => Response {
+            protocol_version: PROTOCOL_VERSION,
             id,
             ok: true,
             result: Some(result),
             error: None,
         },
         Err(error) => Response {
+            protocol_version: PROTOCOL_VERSION,
             id,
             ok: false,
             result: None,

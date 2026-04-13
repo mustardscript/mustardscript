@@ -16,4 +16,19 @@ Security issues include:
 
 ## Reporting
 
-Report security issues privately to the maintainers before public disclosure.
+Report vulnerabilities through GitHub Security Advisories:
+
+- https://github.com/keppoai/mustardscript/security/advisories/new
+
+Do not open public GitHub issues for unpatched security reports.
+
+## Supported Versions
+
+- The latest published npm release
+- `main` before the next release is cut
+
+## Response Expectations
+
+- Initial triage acknowledgment target: 5 business days
+- Coordinated disclosure and fix timing will be handled through the advisory
+  thread

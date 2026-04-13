@@ -29,6 +29,7 @@ const EXPLICIT_LOAD_OPTIONS = Object.freeze({
   snapshotKey: EXPLICIT_SNAPSHOT_KEY,
 });
 const ALLOWLISTED_MODE_DIFFERENCES = Object.freeze(new Map());
+const SIDECAR_PROTOCOL_VERSION = 1;
 
 let sidecarBuildChecked = false;
 
@@ -203,13 +204,16 @@ async function withSidecar(run) {
 async function runSidecar(entry) {
   return withSidecar(async ({ request }) => {
     const compile = await request({
+      protocol_version: SIDECAR_PROTOCOL_VERSION,
       method: 'compile',
       id: 1,
       source: entry.source,
     });
     assert.equal(compile.ok, true, `case \`${entry.id}\` failed to compile via sidecar`);
+    assert.equal(compile.protocol_version, SIDECAR_PROTOCOL_VERSION);
 
     const start = await request({
+      protocol_version: SIDECAR_PROTOCOL_VERSION,
       method: 'start',
       id: 2,
       program_base64: compile.result.program_base64,
@@ -220,6 +224,7 @@ async function runSidecar(entry) {
       },
     });
     assert.equal(start.ok, true, `case \`${entry.id}\` failed to start via sidecar`);
+    assert.equal(start.protocol_version, SIDECAR_PROTOCOL_VERSION);
 
     let step = decodeSidecarStep(start.result.step);
     let index = 0;
@@ -235,6 +240,7 @@ async function runSidecar(entry) {
           ? JSON.parse(encodeResumePayloadError(makeHostError(corpusStep)))
           : JSON.parse(encodeResumePayloadValue(corpusStep.value));
       const resume = await request({
+        protocol_version: SIDECAR_PROTOCOL_VERSION,
         method: 'resume',
         id: 3 + index,
         snapshot_base64: step.snapshotBase64,
@@ -252,6 +258,7 @@ async function runSidecar(entry) {
         payload,
       });
       assert.equal(resume.ok, true, `case \`${entry.id}\` failed to resume via sidecar`);
+      assert.equal(resume.protocol_version, SIDECAR_PROTOCOL_VERSION);
       step = decodeSidecarStep(resume.result.step);
       index += 1;
     }

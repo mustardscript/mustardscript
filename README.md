@@ -90,7 +90,8 @@ tarball, where `npm install` compiles the native addon locally. Optional
 prebuilt binaries now have a separate release flow for the documented target
 matrix, but the loader now only accepts validated `.node` artifacts from the
 expected optional package layout. Source-build fallback remains the baseline
-path and still requires a Rust toolchain plus Node.js on the target machine.
+path, now ships `Cargo.lock`, and builds the addon in release mode. It still
+requires a Rust toolchain plus Node.js on the target machine.
 
 From a clean checkout:
 

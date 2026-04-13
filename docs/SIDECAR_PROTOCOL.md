@@ -8,6 +8,8 @@ This document defines the current `mustard-sidecar` process contract.
 - The host writes exactly one request object per line to stdin.
 - The sidecar writes exactly one response object per line to stdout.
 - Empty input lines are ignored.
+- Request lines longer than 1 MiB are rejected and terminate the sidecar with a
+  non-zero exit before JSON parsing continues.
 
 ## Request Methods
 
@@ -17,14 +19,24 @@ This document defines the current `mustard-sidecar` process contract.
 2. `start`
 3. `resume`
 
-All requests include an integer `id` chosen by the host.
+All requests include:
+
+- `protocol_version`
+- an integer `id` chosen by the host
+
+The current protocol version is `1`.
 The sidecar treats `id` as a correlation token only: it echoes the value back
 verbatim and does not require request IDs to be unique.
 
 ### `compile`
 
 ```json
-{ "method": "compile", "id": 1, "source": "const value = 1; value;" }
+{
+  "protocol_version": 1,
+  "method": "compile",
+  "id": 1,
+  "source": "const value = 1; value;"
+}
 ```
 
 Successful responses return a base64-encoded compiled program blob.
@@ -34,6 +46,7 @@ Successful responses return a base64-encoded compiled program blob.
 ```json
 {
   "method": "start",
+  "protocol_version": 1,
   "id": 2,
   "program_base64": "...",
   "options": {
@@ -53,6 +66,7 @@ Successful responses return either:
 ```json
 {
   "method": "resume",
+  "protocol_version": 1,
   "id": 3,
   "snapshot_base64": "...",
   "policy": {
@@ -87,6 +101,7 @@ are stored or transported.
 
 Every response includes:
 
+- `protocol_version`
 - `id`
 - `ok`
 - `result` on success
@@ -94,6 +109,8 @@ Every response includes:
 
 Failures are rendered as guest-safe or protocol-safe strings and do not expose
 raw host capabilities or internal runtime handles.
+Requests with a missing or unsupported `protocol_version` fail closed with an
+explicit protocol-version error instead of attempting best-effort compatibility.
 
 ## Capability Proxy Model
 

@@ -29,7 +29,8 @@ the safety rules they are expected to follow.
   and checking the serialized version.
 - Compiled-program loads validate root function ids, closure targets, jump
   targets, and stack/scope discipline before execution.
-- Snapshot loads also validate live frame pointers, referenced runtime objects,
+- Snapshot loads also validate live frame pointers across synchronous frames,
+  async continuations, and queued microtasks, plus referenced runtime objects,
   iterator references, promise references, and queued host-call state before
   restore.
 - Loaded snapshots are inert until the host rebinds explicit resume policy.
