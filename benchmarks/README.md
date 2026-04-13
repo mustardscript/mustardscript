@@ -13,12 +13,42 @@ Run them with:
 
 ```sh
 npm run bench:smoke
+npm run bench:workloads
 ```
 
 The thresholds live in `budgets.json`. Cold start and retained heap still use
 broad absolute ceilings, while the host-call and snapshot contracts use ratios
 against a direct in-process baseline so they stay meaningful across different
 development machines.
+
+## Workload Benchmarks
+
+`benchmarks/workloads.ts` is the broader local benchmark runner for measuring
+startup and end-to-end execution latency across representative `mustard`
+workloads. It emits a timestamped JSON report under `benchmarks/results/` with
+machine metadata and latency summaries for:
+
+- addon cold start vs warm run for a small compute script
+- addon cold start vs warm run for a code-mode API search fixture
+- addon host-call fanout at 1, 10, 50, and 100 host boundaries
+- addon programmatic tool-calling workflow over synthetic team/budget/expense data
+- addon suspend/resume chains with snapshot reloads
+- the same workload classes over the sidecar transport
+- the same workload classes over an `isolated-vm` V8 isolate baseline
+- retained parent-process heap/RSS deltas after repeated workflow runs
+- failure-and-recovery timing for runtime-limit and host-failure cases
+
+The runner builds the addon and sidecar in release mode first, then reports
+median, p95, mean, min, and max latency for each workload plus
+cross-runtime ratios.
+
+For the isolate baseline, `suspend_resume_*` is a best-effort comparison that
+re-enters a fresh isolate with explicit host-carried state because this harness
+does not have equivalent continuation snapshotting for V8 isolates.
+
+The retained-memory section is a post-GC delta, not a precise peak-memory
+measurement. Small RSS deltas can be noisy or even negative because OS page
+reclamation and allocator reuse are happening concurrently with the benchmark.
 
 ## Comparative Benchmark Plan: `mustard` vs V8 Isolates
 
