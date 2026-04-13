@@ -3,7 +3,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const readline = require('node:readline');
 const { once } = require('node:events');
 const { performance } = require('node:perf_hooks');
 const { spawn, execFileSync } = require('node:child_process');
@@ -13,6 +12,7 @@ const ivm = require('isolated-vm');
 const { ExecutionContext, Mustard, Progress } = require('../index.ts');
 const { loadNative } = require('../native-loader.ts');
 const { callNative } = require('../lib/errors.ts');
+const { createBinarySidecarClient } = require('../lib/sidecar.ts');
 const {
   decodeStructured,
   encodeResumePayloadValue,
@@ -47,7 +47,7 @@ const BOUNDARY_VALUE_SIZES = Object.freeze([
 const DEFAULT_OPTIONS = DEFAULT_MEASURE_OPTIONS;
 const COLD_OPTIONS = Object.freeze({ warmup: 0, iterations: 2 });
 const MEMORY_RUNS = 20;
-const SIDECAR_PROTOCOL_VERSION = 1;
+const SIDECAR_PROTOCOL_VERSION = 2;
 
 function parseArgs(argv) {
   let profile = 'release';
@@ -356,7 +356,7 @@ function expectedSuspendTotal(boundaryCount) {
   return (boundaryCount * (boundaryCount + 1)) / 2;
 }
 
-function sidecarStepValue(step, result = undefined) {
+function sidecarStepValue(step, result = undefined, blob = undefined) {
   if (step.type === 'completed') {
     return {
       type: 'completed',
@@ -367,7 +367,7 @@ function sidecarStepValue(step, result = undefined) {
     type: 'suspended',
     capability: step.capability,
     args: step.args.map(decodeStructured),
-    snapshotBase64: step.snapshot_base64,
+    snapshot: Buffer.from(blob ?? Buffer.alloc(0)),
     snapshotId: result?.snapshot_id ?? null,
     policyId: result?.policy_id ?? null,
   };
@@ -408,39 +408,37 @@ async function withSidecar(profile, run) {
   child.stderr.on('data', (chunk) => {
     stderr.push(chunk.toString('utf8'));
   });
-  const reader = readline.createInterface({ input: child.stdout });
-  const lines = reader[Symbol.asyncIterator]();
-
-  async function request(payload) {
-    child.stdin.write(`${JSON.stringify(payload)}\n`);
-    const next = await lines.next();
-    if (next.done) {
-      throw new Error(`sidecar closed early\nstderr:\n${stderr.join('')}`);
-    }
-    return JSON.parse(next.value);
-  }
+  const client = createBinarySidecarClient(child);
 
   try {
-    return await run({ child, request });
+    return await run({
+      child,
+      async request(payload, blob = undefined) {
+        try {
+          return await client.request(payload, blob);
+        } catch (error) {
+          throw new Error(`sidecar closed early\nstderr:\n${stderr.join('')}\n${error.message}`);
+        }
+      },
+    });
   } finally {
     child.stdin.end();
-    reader.close();
     const [code] = await once(child, 'close');
     assert.equal(code, 0, `sidecar exited unsuccessfully\nstderr:\n${stderr.join('')}`);
   }
 }
 
 async function compileSidecarSource(request, source) {
-  const compile = await request({
+  const { payload, blob } = await request({
     protocol_version: SIDECAR_PROTOCOL_VERSION,
     method: 'compile',
     id: 1,
     source,
   });
-  assert.equal(compile.ok, true, `sidecar compile failed: ${compile.error}`);
+  assert.equal(payload.ok, true, `sidecar compile failed: ${payload.error}`);
   return {
-    programBase64: compile.result.program_base64,
-    programId: compile.result.program_id ?? null,
+    program: Buffer.from(blob),
+    programId: payload.result.program_id ?? null,
   };
 }
 
@@ -453,8 +451,6 @@ function sidecarStartRequestPayload(program, requestId, options) {
   };
   if (typeof program.programId === 'string' && program.programId.length > 0) {
     payload.program_id = program.programId;
-  } else {
-    payload.program_base64 = program.programBase64;
   }
   return payload;
 }
@@ -463,8 +459,7 @@ function sidecarCapabilityNames(capabilities = undefined) {
   return capabilities ? Object.keys(capabilities) : [];
 }
 
-function sidecarResumeAuth(snapshotBase64) {
-  const snapshot = Buffer.from(snapshotBase64, 'base64');
+function sidecarResumeAuth(snapshot) {
   return {
     snapshot_key_base64: SNAPSHOT_KEY_BASE64,
     snapshot_key_digest: snapshotKeyDigest(Buffer.from(SNAPSHOT_KEY, 'utf8')),
@@ -474,15 +469,18 @@ function sidecarResumeAuth(snapshotBase64) {
 
 async function startSidecarProgram(request, program, capabilities = undefined) {
   const capabilityNames = sidecarCapabilityNames(capabilities);
-  const start = await request(sidecarStartRequestPayload(program, 2, {
-    inputs: {},
-    capabilities: capabilityNames,
-    limits: {},
-  }));
-  assert.equal(start.ok, true, `sidecar start failed: ${start.error}`);
+  const { payload, blob } = await request(
+    sidecarStartRequestPayload(program, 2, {
+      inputs: {},
+      capabilities: capabilityNames,
+      limits: {},
+    }),
+    typeof program.programId === 'string' && program.programId.length > 0 ? undefined : program.program,
+  );
+  assert.equal(payload.ok, true, `sidecar start failed: ${payload.error}`);
   return {
     capabilityNames,
-    step: sidecarStepValue(start.result.step, start.result),
+    step: sidecarStepValue(payload.result.step, payload.result, blob),
   };
 }
 
@@ -494,17 +492,17 @@ async function resumeSidecarSnapshot(
 ) {
   assert.equal(typeof step.snapshotId, 'string', 'sidecar resume requires a cached snapshotId');
   assert.equal(typeof step.policyId, 'string', 'sidecar resume requires a cached policyId');
-  const resume = await request({
+  const { payload, blob } = await request({
     protocol_version: SIDECAR_PROTOCOL_VERSION,
     method: 'resume',
     id: requestId,
     snapshot_id: step.snapshotId,
     policy_id: step.policyId,
-    auth: sidecarResumeAuth(step.snapshotBase64),
+    auth: sidecarResumeAuth(step.snapshot),
     payload: JSON.parse(encodeResumePayloadValue(payloadValue)),
   });
-  assert.equal(resume.ok, true, `sidecar resume failed: ${resume.error}`);
-  return sidecarStepValue(resume.result.step, resume.result);
+  assert.equal(payload.ok, true, `sidecar resume failed: ${payload.error}`);
+  return sidecarStepValue(payload.result.step, payload.result, blob);
 }
 
 async function runSidecarProgram(request, program, capabilities = undefined, resumeValue = undefined) {
@@ -1116,15 +1114,15 @@ async function benchmarkSidecar(fixtures, profile) {
   Object.assign(latency, Object.fromEntries([
     await measure('cold_start_small', async () => {
       await withSidecar(profile, async ({ request }) => {
-        const programBase64 = await compileSidecarSource(request, smallSource);
-        const result = await runSidecarProgram(request, programBase64);
+        const program = await compileSidecarSource(request, smallSource);
+        const result = await runSidecarProgram(request, program);
         assert.equal(typeof result, 'number');
       });
     }, COLD_OPTIONS),
     await measure('cold_start_code_mode_search', async () => {
       await withSidecar(profile, async ({ request }) => {
-        const programBase64 = await compileSidecarSource(request, codeModeSource);
-        const result = await runSidecarProgram(request, programBase64);
+        const program = await compileSidecarSource(request, codeModeSource);
+        const result = await runSidecarProgram(request, program);
         assert.equal(result.count > 0, true);
       });
     }, COLD_OPTIONS),
@@ -1170,9 +1168,9 @@ async function benchmarkSidecar(fixtures, profile) {
     latency[workflowMetric[0]] = workflowMetric[1];
 
     for (const callCount of [1, 10, 50, 100]) {
-      const programBase64 = await compileSidecarSource(request, createFanoutSource(callCount));
+      const program = await compileSidecarSource(request, createFanoutSource(callCount));
       const metric = await measure(`host_fanout_${callCount}`, async () => {
-        const result = await runSidecarProgram(request, programBase64, {
+        const result = await runSidecarProgram(request, program, {
           fetch_value(value) {
             return value;
           },
@@ -1183,9 +1181,9 @@ async function benchmarkSidecar(fixtures, profile) {
     }
 
     for (const boundaryCount of [1, 5, 20]) {
-      const programBase64 = await compileSidecarSource(request, createSuspendResumeSource(boundaryCount));
+      const program = await compileSidecarSource(request, createSuspendResumeSource(boundaryCount));
       const metric = await measure(`suspend_resume_${boundaryCount}`, async () => {
-        const result = await runSidecarProgram(request, programBase64, {
+        const result = await runSidecarProgram(request, program, {
           checkpoint(value) {
             return value;
           },
@@ -1217,28 +1215,35 @@ async function benchmarkSidecar(fixtures, profile) {
     const failureCleanup = {
       limitFailure: await measureFailureCleanup('limit_failure', async () => {
         const failingProgram = await compileSidecarSource(request, fixtures.failureSource);
-        const failure = await request(sidecarStartRequestPayload(failingProgram, 4000, {
-          inputs: {},
-          capabilities: [],
-          limits: {
-            heap_limit_bytes: 512,
-          },
-        }));
+        const { payload: failure } = await request(
+          sidecarStartRequestPayload(failingProgram, 4000, {
+            inputs: {},
+            capabilities: [],
+            limits: {
+              heap_limit_bytes: 512,
+            },
+          }),
+        );
         assert.equal(failure.ok, false);
         const recovered = await runSidecarProgram(request, smallProgram);
         assert.equal(typeof recovered, 'number');
       }, COLD_OPTIONS),
       hostFailure: await measureFailureCleanup('host_failure', async () => {
         const failingProgram = await compileSidecarSource(request, fixtures.hostFailureSource);
-        const start = await request(sidecarStartRequestPayload(failingProgram, 5000, {
-          inputs: {},
-          capabilities: ['fetch_value', 'explode'],
-          limits: {},
-        }));
+        const { payload: start, blob: startBlob } = await request(
+          sidecarStartRequestPayload(failingProgram, 5000, {
+            inputs: {},
+            capabilities: ['fetch_value', 'explode'],
+            limits: {},
+          }),
+          typeof failingProgram.programId === 'string' && failingProgram.programId.length > 0
+            ? undefined
+            : failingProgram.program,
+        );
         assert.equal(start.ok, true);
-        let step = sidecarStepValue(start.result.step, start.result);
+        let step = sidecarStepValue(start.result.step, start.result, startBlob);
         assert.equal(step.capability, 'fetch_value');
-        let response = await request({
+        let { payload: response, blob: responseBlob } = await request({
           protocol_version: SIDECAR_PROTOCOL_VERSION,
           method: 'resume',
           id: 5001,
@@ -1247,14 +1252,14 @@ async function benchmarkSidecar(fixtures, profile) {
           auth: {
             snapshot_key_base64: SNAPSHOT_KEY_BASE64,
             snapshot_key_digest: snapshotKeyDigest(Buffer.from(SNAPSHOT_KEY, 'utf8')),
-            snapshot_token: snapshotToken(Buffer.from(step.snapshotBase64, 'base64'), SNAPSHOT_KEY),
+            snapshot_token: snapshotToken(step.snapshot, SNAPSHOT_KEY),
           },
           payload: JSON.parse(encodeResumePayloadValue(1)),
         });
         assert.equal(response.ok, true);
-        step = sidecarStepValue(response.result.step, response.result);
+        step = sidecarStepValue(response.result.step, response.result, responseBlob);
         assert.equal(step.capability, 'explode');
-        response = await request({
+        ({ payload: response, blob: responseBlob } = await request({
           protocol_version: SIDECAR_PROTOCOL_VERSION,
           method: 'resume',
           id: 5002,
@@ -1263,10 +1268,10 @@ async function benchmarkSidecar(fixtures, profile) {
           auth: {
             snapshot_key_base64: SNAPSHOT_KEY_BASE64,
             snapshot_key_digest: snapshotKeyDigest(Buffer.from(SNAPSHOT_KEY, 'utf8')),
-            snapshot_token: snapshotToken(Buffer.from(step.snapshotBase64, 'base64'), SNAPSHOT_KEY),
+            snapshot_token: snapshotToken(step.snapshot, SNAPSHOT_KEY),
           },
           payload: JSON.parse(encodeResumePayloadValue({ __host_error__: true })),
-        });
+        }));
         assert.equal(response.ok, false);
         const recovered = await runSidecarProgram(request, smallProgram);
         assert.equal(typeof recovered, 'number');

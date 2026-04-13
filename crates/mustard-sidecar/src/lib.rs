@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 use anyhow::{Context, Result, anyhow};
-use mustard::BytecodeProgram;
+use mustard::{BytecodeProgram, StructuredValue};
 use mustard_bridge::{
     ResumeDto, RuntimeLimitsDto, SnapshotPolicyDto, StartOptionsDto, StepDto,
     compile_program_bytes, decode_base64, decode_program, encode_bytes_base64, resume_program,
@@ -11,12 +11,39 @@ use mustard_bridge::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 pub const MAX_REQUEST_LINE_BYTES: usize = 1024 * 1024;
+pub const MAX_REQUEST_FRAME_BYTES: usize = 1024 * 1024;
+
+#[derive(Debug)]
+enum Request {
+    Compile {
+        protocol_version: u32,
+        id: u64,
+        source: String,
+    },
+    Start {
+        protocol_version: u32,
+        id: u64,
+        program_id: Option<String>,
+        program_bytes: Option<Vec<u8>>,
+        options: StartOptionsDto,
+    },
+    Resume {
+        protocol_version: u32,
+        id: u64,
+        snapshot_id: Option<String>,
+        snapshot_bytes: Option<Vec<u8>>,
+        policy: Option<Box<SnapshotPolicyDto>>,
+        policy_id: Option<String>,
+        auth: Option<Box<ResumeAuth>>,
+        payload: Box<ResumeDto>,
+    },
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case")]
-enum Request {
+enum JsonRequest {
     Compile {
         protocol_version: u32,
         id: u64,
@@ -49,19 +76,83 @@ enum Request {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "method", rename_all = "snake_case")]
+enum BinaryRequestHeader {
+    Compile {
+        protocol_version: u32,
+        id: u64,
+        source: String,
+    },
+    Start {
+        protocol_version: u32,
+        id: u64,
+        #[serde(default)]
+        program_id: Option<String>,
+        options: StartOptionsDto,
+    },
+    Resume {
+        protocol_version: u32,
+        id: u64,
+        #[serde(default)]
+        snapshot_id: Option<String>,
+        #[serde(default)]
+        policy: Option<Box<SnapshotPolicyDto>>,
+        #[serde(default)]
+        policy_id: Option<String>,
+        #[serde(default)]
+        auth: Option<Box<ResumeAuth>>,
+        payload: Box<ResumeDto>,
+    },
+}
+
+#[derive(Debug)]
 struct Response {
     protocol_version: u32,
     id: u64,
     ok: bool,
+    result: Option<ResponseBody>,
+    error: Option<String>,
+}
+
+#[derive(Debug)]
+enum ResponseBody {
+    Program {
+        program_bytes: Vec<u8>,
+        program_id: String,
+    },
+    Step {
+        step: StepBody,
+        snapshot_id: Option<String>,
+        policy_id: Option<String>,
+    },
+}
+
+#[derive(Debug)]
+enum StepBody {
+    Completed {
+        value: StructuredValue,
+    },
+    Suspended {
+        capability: String,
+        args: Vec<StructuredValue>,
+        snapshot_bytes: Vec<u8>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct JsonResponse {
+    protocol_version: u32,
+    id: u64,
+    ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<ResponsePayload>,
+    result: Option<JsonResponsePayload>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum ResponsePayload {
+enum JsonResponsePayload {
     Program {
         program_base64: String,
         program_id: String,
@@ -72,6 +163,44 @@ enum ResponsePayload {
         snapshot_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         policy_id: Option<String>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BinaryResponseHeader {
+    protocol_version: u32,
+    id: u64,
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<BinaryResponsePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum BinaryResponsePayload {
+    Program {
+        program_id: String,
+    },
+    Step {
+        step: BinaryStepHeader,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        snapshot_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        policy_id: Option<String>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum BinaryStepHeader {
+    Completed {
+        value: StructuredValue,
+    },
+    Suspended {
+        capability: String,
+        args: Vec<StructuredValue>,
     },
 }
 
@@ -90,6 +219,226 @@ fn digest_hex(bytes: &[u8]) -> String {
         let _ = write!(&mut encoded, "{byte:02x}");
     }
     encoded
+}
+
+fn step_from_dto(step: StepDto) -> Result<StepBody> {
+    Ok(match step {
+        StepDto::Completed { value } => StepBody::Completed { value },
+        StepDto::Suspended {
+            capability,
+            args,
+            snapshot_base64,
+        } => StepBody::Suspended {
+            capability,
+            args,
+            snapshot_bytes: decode_base64(&snapshot_base64)?,
+        },
+    })
+}
+
+fn step_to_json(step: StepBody) -> JsonResponsePayload {
+    match step {
+        StepBody::Completed { value } => JsonResponsePayload::Step {
+            step: StepDto::Completed { value },
+            snapshot_id: None,
+            policy_id: None,
+        },
+        StepBody::Suspended {
+            capability,
+            args,
+            snapshot_bytes,
+        } => JsonResponsePayload::Step {
+            step: StepDto::Suspended {
+                capability,
+                args,
+                snapshot_base64: encode_bytes_base64(&snapshot_bytes),
+            },
+            snapshot_id: None,
+            policy_id: None,
+        },
+    }
+}
+
+fn request_from_json(request: JsonRequest) -> Result<Request> {
+    Ok(match request {
+        JsonRequest::Compile {
+            protocol_version,
+            id,
+            source,
+        } => Request::Compile {
+            protocol_version,
+            id,
+            source,
+        },
+        JsonRequest::Start {
+            protocol_version,
+            id,
+            program_base64,
+            program_id,
+            options,
+        } => Request::Start {
+            protocol_version,
+            id,
+            program_id,
+            program_bytes: program_base64.as_deref().map(decode_base64).transpose()?,
+            options,
+        },
+        JsonRequest::Resume {
+            protocol_version,
+            id,
+            snapshot_base64,
+            snapshot_id,
+            policy,
+            policy_id,
+            auth,
+            payload,
+        } => Request::Resume {
+            protocol_version,
+            id,
+            snapshot_id,
+            snapshot_bytes: snapshot_base64.as_deref().map(decode_base64).transpose()?,
+            policy,
+            policy_id,
+            auth,
+            payload,
+        },
+    })
+}
+
+fn request_from_binary_header(header: BinaryRequestHeader, blob: Vec<u8>) -> Result<Request> {
+    match header {
+        BinaryRequestHeader::Compile {
+            protocol_version,
+            id,
+            source,
+        } => {
+            if !blob.is_empty() {
+                return Err(anyhow!(
+                    "compile requests must not include a binary payload"
+                ));
+            }
+            Ok(Request::Compile {
+                protocol_version,
+                id,
+                source,
+            })
+        }
+        BinaryRequestHeader::Start {
+            protocol_version,
+            id,
+            program_id,
+            options,
+        } => Ok(Request::Start {
+            protocol_version,
+            id,
+            program_id,
+            program_bytes: (!blob.is_empty()).then_some(blob),
+            options,
+        }),
+        BinaryRequestHeader::Resume {
+            protocol_version,
+            id,
+            snapshot_id,
+            policy,
+            policy_id,
+            auth,
+            payload,
+        } => Ok(Request::Resume {
+            protocol_version,
+            id,
+            snapshot_id,
+            snapshot_bytes: (!blob.is_empty()).then_some(blob),
+            policy,
+            policy_id,
+            auth,
+            payload,
+        }),
+    }
+}
+
+fn response_to_json(response: Response) -> JsonResponse {
+    let result = match response.result {
+        Some(ResponseBody::Program {
+            program_bytes,
+            program_id,
+        }) => Some(JsonResponsePayload::Program {
+            program_base64: encode_bytes_base64(&program_bytes),
+            program_id,
+        }),
+        Some(ResponseBody::Step {
+            step,
+            snapshot_id,
+            policy_id,
+        }) => {
+            let mut step_result = step_to_json(step);
+            if let JsonResponsePayload::Step {
+                snapshot_id: step_snapshot_id,
+                policy_id: step_policy_id,
+                ..
+            } = &mut step_result
+            {
+                *step_snapshot_id = snapshot_id;
+                *step_policy_id = policy_id;
+            }
+            Some(step_result)
+        }
+        None => None,
+    };
+    JsonResponse {
+        protocol_version: response.protocol_version,
+        id: response.id,
+        ok: response.ok,
+        result,
+        error: response.error,
+    }
+}
+
+fn response_to_binary_parts(response: Response) -> Result<(Vec<u8>, Vec<u8>)> {
+    let (result, blob) = match response.result {
+        Some(ResponseBody::Program {
+            program_bytes,
+            program_id,
+        }) => (
+            Some(BinaryResponsePayload::Program { program_id }),
+            program_bytes,
+        ),
+        Some(ResponseBody::Step {
+            step,
+            snapshot_id,
+            policy_id,
+        }) => match step {
+            StepBody::Completed { value } => (
+                Some(BinaryResponsePayload::Step {
+                    step: BinaryStepHeader::Completed { value },
+                    snapshot_id,
+                    policy_id,
+                }),
+                Vec::new(),
+            ),
+            StepBody::Suspended {
+                capability,
+                args,
+                snapshot_bytes,
+            } => (
+                Some(BinaryResponsePayload::Step {
+                    step: BinaryStepHeader::Suspended { capability, args },
+                    snapshot_id,
+                    policy_id,
+                }),
+                snapshot_bytes,
+            ),
+        },
+        None => (None, Vec::new()),
+    };
+    let header = BinaryResponseHeader {
+        protocol_version: response.protocol_version,
+        id: response.id,
+        ok: response.ok,
+        result,
+        error: response.error,
+    };
+    let encoded = serde_json::to_vec(&header).context("failed to encode response header")?;
+    Ok((encoded, blob))
 }
 
 #[derive(Debug)]
@@ -165,7 +514,7 @@ impl SidecarSession {
     fn resolve_snapshot(
         &mut self,
         snapshot_id: Option<String>,
-        snapshot_base64: Option<String>,
+        snapshot_bytes: Option<Vec<u8>>,
     ) -> Result<(String, Vec<u8>)> {
         if let Some(snapshot_id) = snapshot_id.as_ref()
             && let Some(snapshot) = self.snapshots.get(snapshot_id)
@@ -173,19 +522,18 @@ impl SidecarSession {
             return Ok((snapshot_id.clone(), snapshot.clone()));
         }
 
-        let Some(snapshot_base64) = snapshot_base64 else {
+        let Some(bytes) = snapshot_bytes else {
             if let Some(snapshot_id) = snapshot_id {
                 return Err(anyhow!("unknown snapshot_id `{snapshot_id}`"));
             }
-            return Err(anyhow!("resume requires snapshot_base64 or snapshot_id"));
+            return Err(anyhow!("resume requires snapshot bytes or snapshot_id"));
         };
 
-        let bytes = decode_base64(&snapshot_base64)?;
         let derived_snapshot_id = digest_hex(&bytes);
         if let Some(snapshot_id) = snapshot_id
             && snapshot_id != derived_snapshot_id
         {
-            return Err(anyhow!("snapshot_id did not match snapshot_base64"));
+            return Err(anyhow!("snapshot_id did not match snapshot bytes"));
         }
         self.snapshots
             .entry(derived_snapshot_id.clone())
@@ -249,25 +597,23 @@ impl SidecarSession {
 
     fn suspended_step_metadata(
         &mut self,
-        step: &StepDto,
+        step: &StepBody,
         policy_id: Option<String>,
     ) -> Result<(Option<String>, Option<String>)> {
-        let StepDto::Suspended {
-            snapshot_base64, ..
-        } = step
-        else {
+        let StepBody::Suspended { snapshot_bytes, .. } = step else {
             return Ok((None, None));
         };
-        let bytes = decode_base64(snapshot_base64)?;
-        let snapshot_id = digest_hex(&bytes);
-        self.snapshots.entry(snapshot_id.clone()).or_insert(bytes);
+        let snapshot_id = digest_hex(snapshot_bytes);
+        self.snapshots
+            .entry(snapshot_id.clone())
+            .or_insert_with(|| snapshot_bytes.clone());
         Ok((Some(snapshot_id), policy_id))
     }
 
     fn resolve_program(
         &mut self,
         program_id: Option<String>,
-        program_base64: Option<String>,
+        program_bytes: Option<Vec<u8>>,
     ) -> Result<Arc<BytecodeProgram>> {
         if let Some(program_id) = program_id.as_ref()
             && let Some(entry) = self.programs.get(program_id)
@@ -275,19 +621,18 @@ impl SidecarSession {
             return entry.resolve();
         }
 
-        let Some(program_base64) = program_base64 else {
+        let Some(bytes) = program_bytes else {
             if let Some(program_id) = program_id {
                 return Err(anyhow!("unknown program_id `{program_id}`"));
             }
-            return Err(anyhow!("start requires program_base64 or program_id"));
+            return Err(anyhow!("start requires program bytes or program_id"));
         };
 
-        let bytes = decode_base64(&program_base64)?;
         let derived_program_id = digest_hex(&bytes);
         if let Some(program_id) = program_id
             && program_id != derived_program_id
         {
-            return Err(anyhow!("program_id did not match program_base64"));
+            return Err(anyhow!("program_id did not match program bytes"));
         }
         let entry = self
             .programs
@@ -326,30 +671,30 @@ impl SidecarSession {
             };
         }
 
-        let result: Result<ResponsePayload> = match request {
+        let result: Result<ResponseBody> = match request {
             Request::Compile { source, .. } => (|| {
                 let bytes = compile_program_bytes(&source)?;
                 let program_id = digest_hex(&bytes);
                 self.programs
                     .entry(program_id.clone())
                     .or_insert_with(|| ProgramEntry::new(bytes.clone()));
-                Ok(ResponsePayload::Program {
-                    program_base64: encode_bytes_base64(&bytes),
+                Ok(ResponseBody::Program {
+                    program_bytes: bytes,
                     program_id,
                 })
             })(),
             Request::Start {
-                program_base64,
+                program_bytes,
                 program_id,
                 options,
                 ..
             } => (|| {
-                let program = self.resolve_program(program_id, program_base64)?;
+                let program = self.resolve_program(program_id, program_bytes)?;
                 let policy_id = self.register_policy(&options.capabilities, &options.limits)?;
-                let step = start_shared_program(program, options, None)?;
+                let step = step_from_dto(start_shared_program(program, options, None)?)?;
                 let (snapshot_id, policy_id) =
                     self.suspended_step_metadata(&step, Some(policy_id))?;
-                Ok(ResponsePayload::Step {
+                Ok(ResponseBody::Step {
                     step,
                     snapshot_id,
                     policy_id,
@@ -357,7 +702,7 @@ impl SidecarSession {
             })(),
             Request::Resume {
                 snapshot_id,
-                snapshot_base64,
+                snapshot_bytes,
                 policy,
                 policy_id,
                 auth,
@@ -365,13 +710,13 @@ impl SidecarSession {
                 ..
             } => (|| {
                 let (snapshot_id, snapshot_bytes) =
-                    self.resolve_snapshot(snapshot_id, snapshot_base64)?;
+                    self.resolve_snapshot(snapshot_id, snapshot_bytes)?;
                 let (policy, policy_id) =
                     self.resolve_resume_policy(policy, policy_id, &snapshot_id, auth)?;
-                let step = resume_program(&snapshot_bytes, *payload, policy, None)?;
+                let step = step_from_dto(resume_program(&snapshot_bytes, *payload, policy, None)?)?;
                 let (next_snapshot_id, policy_id) =
                     self.suspended_step_metadata(&step, policy_id)?;
-                Ok(ResponsePayload::Step {
+                Ok(ResponseBody::Step {
                     step,
                     snapshot_id: next_snapshot_id,
                     policy_id,
@@ -401,10 +746,27 @@ impl SidecarSession {
         if line.trim().is_empty() {
             return Ok(None);
         }
-        let request: Request = serde_json::from_str(line).context("invalid request")?;
-        let response = self.handle(request);
+        let request = request_from_json(serde_json::from_str(line).context("invalid request")?)?;
+        let response = response_to_json(self.handle(request));
         let encoded = serde_json::to_string(&response).context("failed to encode response")?;
         Ok(Some(encoded))
+    }
+
+    pub fn handle_request_frame(
+        &mut self,
+        header_json: &str,
+        blob: &[u8],
+    ) -> Result<Option<(Vec<u8>, Vec<u8>)>> {
+        if header_json.trim().is_empty() && blob.is_empty() {
+            return Ok(None);
+        }
+        let request = request_from_binary_header(
+            serde_json::from_str(header_json).context("invalid request header")?,
+            blob.to_vec(),
+        )?;
+        let response = self.handle(request);
+        let (header, payload) = response_to_binary_parts(response)?;
+        Ok(Some((header, payload)))
     }
 }
 

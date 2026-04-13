@@ -217,14 +217,17 @@ fn hostile_but_well_formed_requests_fail_closed() {
     ];
 
     for request in requests {
-        let line = handle_request_line(&request)
-            .expect("well-formed hostile request should still produce a response")
-            .expect("response line should exist");
-        let response = decode_response(&line);
-        assert!(response["id"].is_number());
-        assert!(response["ok"].is_boolean());
-        if let Some(error) = response["error"].as_str() {
-            assert_host_safe_message(error);
+        match handle_request_line(&request) {
+            Ok(Some(line)) => {
+                let response = decode_response(&line);
+                assert!(response["id"].is_number());
+                assert!(response["ok"].is_boolean());
+                if let Some(error) = response["error"].as_str() {
+                    assert_host_safe_message(error);
+                }
+            }
+            Ok(None) => panic!("hostile request should not be ignored"),
+            Err(error) => assert_host_safe_message(&error.to_string()),
         }
     }
 }

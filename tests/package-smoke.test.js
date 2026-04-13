@@ -19,7 +19,7 @@ const {
   PREBUILT_TARGETS,
   getCurrentPrebuiltTarget,
 } = require(path.join(repoRoot, 'native-loader.ts'));
-const SIDECAR_PROTOCOL_VERSION = 1;
+const SIDECAR_PROTOCOL_VERSION = 2;
 
 function tarballFilenameForPackage(name, version) {
   return `${name.replace(/^@/, '').replace(/\//g, '-')}-${version}.tgz`;
@@ -93,7 +93,7 @@ function runInstalledSidecarSmoke(consumerRoot, source) {
             'debug',
             process.platform === 'win32' ? 'mustard-sidecar.exe' : 'mustard-sidecar'
           );
-          const child = spawn(executable, [], {
+          const child = spawn(executable, ['--jsonl'], {
             cwd: packageRoot,
             stdio: ['pipe', 'pipe', 'pipe'],
           });

@@ -8,6 +8,7 @@ const { Mustard, Progress } = require('../index.ts');
 const repoRoot = path.join(__dirname, '..');
 const corpusRoot = path.join(repoRoot, 'fuzz', 'corpus');
 const snapshotKey = Buffer.from('fuzz-corpus-snapshot-key');
+const SIDECAR_PROTOCOL_VERSION = 2;
 
 const SUPPORTED_SOURCE_SEEDS = Object.freeze([
   {
@@ -152,6 +153,7 @@ function writeSidecarProtocolSeeds() {
     'sidecar_protocol',
     'compile-request.jsonl',
     `${JSON.stringify({
+      protocol_version: SIDECAR_PROTOCOL_VERSION,
       method: 'compile',
       id: 1,
       source: 'const value = fetch_data(5); value + 1;',
@@ -161,6 +163,7 @@ function writeSidecarProtocolSeeds() {
     'sidecar_protocol',
     'start-request.jsonl',
     `${JSON.stringify({
+      protocol_version: SIDECAR_PROTOCOL_VERSION,
       method: 'start',
       id: 2,
       program_base64: programBase64,
@@ -174,6 +177,7 @@ function writeSidecarProtocolSeeds() {
     'sidecar_protocol',
     'resume-request.jsonl',
     `${JSON.stringify({
+      protocol_version: SIDECAR_PROTOCOL_VERSION,
       method: 'resume',
       id: 3,
       snapshot_base64: snapshotBase64,
@@ -195,6 +199,7 @@ function writeSidecarProtocolSeeds() {
     'sidecar_protocol',
     'hostile-invalid-base64.jsonl',
     `${JSON.stringify({
+      protocol_version: SIDECAR_PROTOCOL_VERSION,
       method: 'start',
       id: 4,
       program_base64: '%%%%',

@@ -4,11 +4,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const readline = require('node:readline');
 const { once } = require('node:events');
 const { spawn, spawnSync } = require('node:child_process');
 
 const { Mustard, Progress } = require('../../index.ts');
+const { createBinarySidecarClient } = require('../../lib/sidecar.ts');
 const {
   decodeStructured,
   encodeResumePayloadError,
@@ -29,7 +29,7 @@ const EXPLICIT_LOAD_OPTIONS = Object.freeze({
   snapshotKey: EXPLICIT_SNAPSHOT_KEY,
 });
 const ALLOWLISTED_MODE_DIFFERENCES = Object.freeze(new Map());
-const SIDECAR_PROTOCOL_VERSION = 1;
+const SIDECAR_PROTOCOL_VERSION = 2;
 
 let sidecarBuildChecked = false;
 
@@ -154,7 +154,7 @@ function sidecarExecutablePath() {
   );
 }
 
-function decodeSidecarStep(step) {
+function decodeSidecarStep(step, blob = undefined) {
   if (step.type === 'completed') {
     return {
       type: 'completed',
@@ -165,7 +165,7 @@ function decodeSidecarStep(step) {
     type: 'suspended',
     capability: step.capability,
     args: step.args.map(decodeStructured),
-    snapshotBase64: step.snapshot_base64,
+    snapshot: Buffer.from(blob ?? Buffer.alloc(0)),
   };
 }
 
@@ -179,23 +179,20 @@ async function withSidecar(run) {
   child.stderr.on('data', (chunk) => {
     stderr.push(chunk.toString('utf8'));
   });
-  const reader = readline.createInterface({ input: child.stdout });
-  const lines = reader[Symbol.asyncIterator]();
-
-  async function request(payload) {
-    child.stdin.write(`${JSON.stringify(payload)}\n`);
-    const next = await lines.next();
-    if (next.done) {
-      throw new Error(`sidecar closed early\nstderr:\n${stderr.join('')}`);
-    }
-    return JSON.parse(next.value);
-  }
+  const client = createBinarySidecarClient(child);
 
   try {
-    return await run({ request });
+    return await run({
+      async request(payload, blob = undefined) {
+        try {
+          return await client.request(payload, blob);
+        } catch (error) {
+          throw new Error(`sidecar closed early\nstderr:\n${stderr.join('')}\n${error.message}`);
+        }
+      },
+    });
   } finally {
     child.stdin.end();
-    reader.close();
     const [code] = await once(child, 'close');
     assert.equal(code, 0, `sidecar exited unsuccessfully\nstderr:\n${stderr.join('')}`);
   }
@@ -203,7 +200,7 @@ async function withSidecar(run) {
 
 async function runSidecar(entry) {
   return withSidecar(async ({ request }) => {
-    const compile = await request({
+    const { payload: compile } = await request({
       protocol_version: SIDECAR_PROTOCOL_VERSION,
       method: 'compile',
       id: 1,
@@ -212,7 +209,7 @@ async function runSidecar(entry) {
     assert.equal(compile.ok, true, `case \`${entry.id}\` failed to compile via sidecar`);
     assert.equal(compile.protocol_version, SIDECAR_PROTOCOL_VERSION);
 
-    const start = await request({
+    const { payload: start, blob: startBlob } = await request({
       protocol_version: SIDECAR_PROTOCOL_VERSION,
       method: 'start',
       id: 2,
@@ -226,7 +223,7 @@ async function runSidecar(entry) {
     assert.equal(start.ok, true, `case \`${entry.id}\` failed to start via sidecar`);
     assert.equal(start.protocol_version, SIDECAR_PROTOCOL_VERSION);
 
-    let step = decodeSidecarStep(start.result.step);
+    let step = decodeSidecarStep(start.result.step, startBlob);
     let snapshotId = start.result.snapshot_id ?? null;
     let policyId = start.result.policy_id ?? null;
     let index = 0;
@@ -243,7 +240,7 @@ async function runSidecar(entry) {
         corpusStep.type === 'error'
           ? JSON.parse(encodeResumePayloadError(makeHostError(corpusStep)))
           : JSON.parse(encodeResumePayloadValue(corpusStep.value));
-      const resume = await request({
+      const { payload: resume, blob: resumeBlob } = await request({
         protocol_version: SIDECAR_PROTOCOL_VERSION,
         method: 'resume',
         id: 3 + index,
@@ -252,16 +249,13 @@ async function runSidecar(entry) {
         auth: {
           snapshot_key_base64: EXPLICIT_SNAPSHOT_KEY_BASE64,
           snapshot_key_digest: snapshotKeyDigest(Buffer.from(EXPLICIT_SNAPSHOT_KEY, 'utf8')),
-          snapshot_token: snapshotToken(
-            Buffer.from(step.snapshotBase64, 'base64'),
-            EXPLICIT_SNAPSHOT_KEY,
-          ),
+          snapshot_token: snapshotToken(step.snapshot, EXPLICIT_SNAPSHOT_KEY),
         },
         payload,
       });
       assert.equal(resume.ok, true, `case \`${entry.id}\` failed to resume via sidecar`);
       assert.equal(resume.protocol_version, SIDECAR_PROTOCOL_VERSION);
-      step = decodeSidecarStep(resume.result.step);
+      step = decodeSidecarStep(resume.result.step, resumeBlob);
       snapshotId = resume.result.snapshot_id ?? null;
       policyId = resume.result.policy_id ?? policyId;
       index += 1;
