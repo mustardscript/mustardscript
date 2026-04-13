@@ -271,6 +271,46 @@ fn loaded_snapshots_reapply_allocation_limits_before_resume() {
 }
 
 #[test]
+fn loaded_snapshots_still_reclaim_cyclic_garbage_under_pressure_after_restore() {
+    let source = r#"
+        const seed = fetch_data(1);
+        let total = 0;
+        for (let index = 0; index < 120; index += 1) {
+          const left = {};
+          const right = {};
+          left.peer = right;
+          right.peer = left;
+          total = total + index;
+        }
+        seed + total;
+    "#;
+    let limits = RuntimeLimits {
+        heap_limit_bytes: 24 * 1024,
+        allocation_budget: 256,
+        instruction_budget: 1_000_000,
+        ..RuntimeLimits::default()
+    };
+    let bytes = serialized_suspension(source, limits);
+    let snapshot = load_snapshot(&bytes).expect("snapshot should deserialize");
+    let resumed = resume_with_options(
+        snapshot,
+        ResumePayload::Value(number(1.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(snapshot_policy(&["fetch_data"], limits)),
+        },
+    )
+    .expect("restored execution should still reclaim cyclic garbage under pressure");
+
+    match resumed {
+        ExecutionStep::Completed(value) => assert_eq!(value, number(7141.0)),
+        ExecutionStep::Suspended(other) => {
+            panic!("expected completion after restore, got {other:?}")
+        }
+    }
+}
+
+#[test]
 fn direct_execution_snapshot_deserialize_requires_explicit_policy_before_resume() {
     let source = "const value = fetch_data(1); value + 1;";
     let bytes = {
