@@ -169,6 +169,110 @@ fn lexical_binding_deltas_preserve_cached_totals_without_full_refreshes() {
 }
 
 #[test]
+fn array_length_and_object_from_entries_deltas_preserve_cached_totals() {
+    let mut runtime = test_runtime();
+    let array = runtime
+        .insert_array(
+            vec![
+                Value::String("alpha".repeat(16)),
+                Value::String("beta".repeat(16)),
+                Value::String("gamma".repeat(16)),
+            ],
+            IndexMap::from([("length".to_string(), Value::Number(99.0))]),
+        )
+        .expect("array should allocate");
+    let pair_alpha = runtime
+        .insert_array(
+            vec![Value::String("alpha".to_string()), Value::Number(1.0)],
+            IndexMap::new(),
+        )
+        .expect("pair should allocate");
+    let pair_alpha_update = runtime
+        .insert_array(
+            vec![
+                Value::String("alpha".to_string()),
+                Value::String("payload".repeat(16)),
+            ],
+            IndexMap::new(),
+        )
+        .expect("pair should allocate");
+    let pair_beta = runtime
+        .insert_array(
+            vec![Value::String("beta".to_string()), Value::Bool(true)],
+            IndexMap::new(),
+        )
+        .expect("pair should allocate");
+    let entries = runtime
+        .insert_array(
+            vec![
+                Value::Array(pair_alpha),
+                Value::Array(pair_alpha_update),
+                Value::Array(pair_beta),
+            ],
+            IndexMap::new(),
+        )
+        .expect("entries array should allocate");
+    let frame_env = runtime
+        .new_env(Some(runtime.globals))
+        .expect("frame env should allocate");
+    runtime
+        .push_frame(0, frame_env, &[], Value::Undefined, None)
+        .expect("frame push should succeed");
+    let baseline_metrics = runtime.debug_metrics();
+
+    runtime
+        .set_array_length(array, Value::Number(1.0))
+        .expect("array shrink should succeed");
+    runtime
+        .set_array_length(array, Value::Number(4.0))
+        .expect("array growth should succeed");
+    let after_array_metrics = runtime.debug_metrics();
+    assert_eq!(
+        after_array_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    let built = runtime
+        .call_object_from_entries(&[Value::Array(entries)])
+        .expect("Object.fromEntries should succeed");
+
+    let Value::Object(object) = built else {
+        panic!("Object.fromEntries should return an object");
+    };
+    let object = runtime.objects.get(object).expect("object should exist");
+    assert!(matches!(
+        object.properties.get("alpha"),
+        Some(Value::String(value)) if value == &"payload".repeat(16)
+    ));
+    assert!(matches!(
+        object.properties.get("beta"),
+        Some(Value::Bool(true))
+    ));
+
+    let array = runtime.arrays.get(array).expect("array should exist");
+    assert_eq!(array.elements.len(), 4);
+    assert!(matches!(
+        array.elements[0].as_ref(),
+        Some(Value::String(value)) if value == &"alpha".repeat(16)
+    ));
+    assert!(array.elements[1].is_none());
+    assert!(array.elements[2].is_none());
+    assert!(array.elements[3].is_none());
+    assert!(
+        !array.properties.contains_key("length"),
+        "array writes should not leave a custom length property behind",
+    );
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes + 3,
+        "Object.fromEntries should only refresh iterator accounting for the three consumed entries"
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}
+
+#[test]
 fn map_and_set_deltas_preserve_cached_totals_without_full_refreshes() {
     let mut runtime = test_runtime();
     let map = runtime.insert_map(Vec::new()).expect("map should allocate");

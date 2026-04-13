@@ -318,13 +318,25 @@ impl Runtime {
                     let key = runtime
                         .to_property_key(items.first().cloned().unwrap_or(Value::Undefined))?;
                     let value = items.get(1).cloned().unwrap_or(Value::Undefined);
-                    runtime
-                        .objects
-                        .get_mut(result)
-                        .ok_or_else(|| MustardError::runtime("object missing"))?
-                        .properties
-                        .insert(key, value);
-                    runtime.refresh_object_accounting(result)?;
+                    let new_entry_bytes = Runtime::property_entry_bytes(&key, &value);
+                    let old_entry_bytes = {
+                        let object = runtime
+                            .objects
+                            .get_mut(result)
+                            .ok_or_else(|| MustardError::runtime("object missing"))?;
+                        let old_entry_bytes = object
+                            .properties
+                            .get(&key)
+                            .map(|existing| Runtime::property_entry_bytes(&key, existing))
+                            .unwrap_or(0);
+                        object.properties.insert(key, value);
+                        old_entry_bytes
+                    };
+                    runtime.apply_object_component_delta(
+                        result,
+                        old_entry_bytes,
+                        new_entry_bytes,
+                    )?;
                 }
                 Ok(Value::Object(result))
             },

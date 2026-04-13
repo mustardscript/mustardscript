@@ -188,7 +188,7 @@ impl Runtime {
             }
             Instruction::MakeObject { keys } => {
                 let values = pop_many(&mut self.frames[frame_index].stack, keys.len())?;
-                let mut properties = IndexMap::new();
+                let mut properties = IndexMap::with_capacity(keys.len());
                 for (key, value) in keys.iter().zip(values.into_iter()) {
                     properties.insert(property_name_to_key(key), value);
                 }

@@ -1104,6 +1104,44 @@ test('run updates array length writes and callback traversal semantics', async (
   });
 });
 
+test('run keeps Array.from results aligned with source mutations during mapping', async () => {
+  const result = await runtime(`
+    const shrinking = [1, 2, 3];
+    const shrinkingResult = Array.from(shrinking, (value, index) => {
+      if (index === 0) {
+        shrinking.length = 1;
+      }
+      return value * 10;
+    });
+
+    const growing = [1];
+    const growingResult = Array.from(growing, (value, index) => {
+      if (index === 0) {
+        growing.push(2, 3);
+      }
+      return value + index;
+    });
+
+    ({
+      shrinkingResult,
+      shrinkingKeys: Object.keys(shrinkingResult),
+      shrinkingLength: shrinkingResult.length,
+      growingResult,
+      growingKeys: Object.keys(growingResult),
+      growingLength: growingResult.length,
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    shrinkingResult: [10],
+    shrinkingKeys: ['0'],
+    shrinkingLength: 1,
+    growingResult: [1, 3, 5],
+    growingKeys: ['0', '1', '2'],
+    growingLength: 3,
+  });
+});
+
 test('run truncates Date timestamps to integer milliseconds', async () => {
   const expectedParsed = Date.parse('2026-04-10T14:00:00.123456789Z');
   const result = await runtime(`

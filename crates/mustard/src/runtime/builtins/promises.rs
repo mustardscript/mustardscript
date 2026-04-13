@@ -151,8 +151,9 @@ impl Runtime {
     }
 
     fn collect_iterable_values(&mut self, iterable: Value) -> MustardResult<Vec<Value>> {
+        let length_hint = self.iterable_length_hint(&iterable)?.unwrap_or(0);
         let iterator = self.create_iterator(iterable)?;
-        let mut values = Vec::new();
+        let mut values = Vec::with_capacity(length_hint);
         loop {
             let (value, done) = self.iterator_next(iterator.clone())?;
             if done {

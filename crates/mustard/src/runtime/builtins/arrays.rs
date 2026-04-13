@@ -3,6 +3,35 @@ use std::cmp::Ordering;
 use super::*;
 
 impl Runtime {
+    pub(in crate::runtime) fn iterable_length_hint(
+        &self,
+        value: &Value,
+    ) -> MustardResult<Option<usize>> {
+        match value {
+            Value::Array(array) => Ok(Some(
+                self.arrays
+                    .get(*array)
+                    .ok_or_else(|| MustardError::runtime("array missing"))?
+                    .elements
+                    .len(),
+            )),
+            Value::Map(map) => Ok(Some(
+                self.maps
+                    .get(*map)
+                    .ok_or_else(|| MustardError::runtime("map missing"))?
+                    .live_len,
+            )),
+            Value::Set(set) => Ok(Some(
+                self.sets
+                    .get(*set)
+                    .ok_or_else(|| MustardError::runtime("set missing"))?
+                    .live_len,
+            )),
+            Value::String(value) => Ok(Some(value.chars().count())),
+            _ => Ok(None),
+        }
+    }
+
     pub(crate) fn call_array_ctor(&mut self, args: &[Value]) -> MustardResult<Value> {
         if args.len() == 1
             && let Value::Number(length) = args[0]
@@ -56,14 +85,44 @@ impl Runtime {
             requested as usize
         };
 
-        let array_ref = self
-            .arrays
-            .get_mut(array)
-            .ok_or_else(|| MustardError::runtime("array missing"))?;
-        array_ref.elements.resize(new_length, None);
-        array_ref.properties.shift_remove("length");
-        self.refresh_array_accounting(array)?;
-        Ok(())
+        let empty_slot_bytes = Self::array_slot_bytes(None);
+        let (old_component_bytes, new_component_bytes) = {
+            let array_ref = self
+                .arrays
+                .get_mut(array)
+                .ok_or_else(|| MustardError::runtime("array missing"))?;
+            let old_length = array_ref.elements.len();
+            let removed_length_property_bytes = array_ref
+                .properties
+                .get("length")
+                .map(|existing| Self::property_entry_bytes("length", existing))
+                .unwrap_or(0);
+            let removed_slots_bytes = if new_length < old_length {
+                array_ref.elements[new_length..]
+                    .iter()
+                    .map(|value| Self::array_slot_bytes(value.as_ref()))
+                    .sum::<usize>()
+            } else {
+                0
+            };
+            let added_slots_bytes = if new_length > old_length {
+                new_length
+                    .checked_sub(old_length)
+                    .and_then(|added| added.checked_mul(empty_slot_bytes))
+                    .ok_or_else(|| MustardError::runtime("array accounting overflow"))?
+            } else {
+                0
+            };
+            array_ref.elements.resize(new_length, None);
+            array_ref.properties.shift_remove("length");
+            (
+                removed_length_property_bytes
+                    .checked_add(removed_slots_bytes)
+                    .ok_or_else(|| MustardError::runtime("array accounting overflow"))?,
+                added_slots_bytes,
+            )
+        };
+        self.apply_array_component_delta(array, old_component_bytes, new_component_bytes)
     }
 
     pub(crate) fn call_array_of(&mut self, args: &[Value]) -> MustardResult<Value> {
@@ -74,6 +133,7 @@ impl Runtime {
 
     pub(crate) fn call_array_from(&mut self, args: &[Value]) -> MustardResult<Value> {
         let iterable = args.first().cloned().unwrap_or(Value::Undefined);
+        let length_hint = self.iterable_length_hint(&iterable)?;
         let map_fn = match args.get(1).cloned() {
             Some(Value::Undefined) | None => None,
             Some(value) if is_callable(&value) => Some(value),
@@ -85,7 +145,10 @@ impl Runtime {
         };
         let this_arg = args.get(2).cloned().unwrap_or(Value::Undefined);
         let iterator = self.create_iterator(iterable.clone())?;
-        let result = self.insert_array(Vec::new(), IndexMap::new())?;
+        let result = match length_hint {
+            Some(length) => self.insert_sparse_array(vec![None; length], IndexMap::new())?,
+            None => self.insert_array(Vec::new(), IndexMap::new())?,
+        };
         let mut roots = vec![iterable, iterator.clone(), Value::Array(result)];
         if let Some(map_fn) = &map_fn {
             roots.push(map_fn.clone());
@@ -129,8 +192,25 @@ impl Runtime {
                 } else {
                     value
                 };
-                runtime.push_array_element(result, Some(mapped))?;
+                if length_hint.is_some()
+                    && index
+                        < runtime
+                            .arrays
+                            .get(result)
+                            .ok_or_else(|| MustardError::runtime("array missing"))?
+                            .elements
+                            .len()
+                {
+                    runtime.set_array_element_at(result, index, mapped)?;
+                } else {
+                    runtime.push_array_element(result, Some(mapped))?;
+                }
                 index += 1;
+            }
+            if let Some(expected_length) = length_hint
+                && index != expected_length
+            {
+                runtime.set_array_length(result, Value::Number(index as f64))?;
             }
             Ok(Value::Array(result))
         })

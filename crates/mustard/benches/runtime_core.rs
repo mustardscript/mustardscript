@@ -24,6 +24,8 @@ struct BenchFixtures {
     global_lookup_shared: Arc<BytecodeProgram>,
     property_access_shared: Arc<BytecodeProgram>,
     builtin_method_shared: Arc<BytecodeProgram>,
+    array_from_shared: Arc<BytecodeProgram>,
+    object_from_entries_shared: Arc<BytecodeProgram>,
     array_callback_shared: Arc<BytecodeProgram>,
     collection_callback_shared: Arc<BytecodeProgram>,
     map_set_shared: Arc<BytecodeProgram>,
@@ -56,6 +58,9 @@ impl BenchFixtures {
         let global_lookup_shared = Arc::new(compile_to_bytecode(global_lookup_source()));
         let property_access_shared = Arc::new(compile_to_bytecode(property_access_source()));
         let builtin_method_shared = Arc::new(compile_to_bytecode(builtin_method_source()));
+        let array_from_shared = Arc::new(compile_to_bytecode(array_from_source()));
+        let object_from_entries_shared =
+            Arc::new(compile_to_bytecode(object_from_entries_source()));
         let array_callback_shared = Arc::new(compile_to_bytecode(array_callback_source()));
         let collection_callback_shared =
             Arc::new(compile_to_bytecode(collection_callback_source()));
@@ -94,6 +99,8 @@ impl BenchFixtures {
             global_lookup_shared,
             property_access_shared,
             builtin_method_shared,
+            array_from_shared,
+            object_from_entries_shared,
             array_callback_shared,
             collection_callback_shared,
             map_set_shared,
@@ -398,6 +405,31 @@ fn runtime_execution_benches(c: &mut Criterion) {
                 let step =
                     start_shared_bytecode(Arc::clone(&fixtures.builtin_method_shared), options)
                         .expect("builtin method hot path should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("array_from_hot", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(Arc::clone(&fixtures.array_from_shared), options)
+                    .expect("Array.from hot path should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("object_from_entries_hot", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.object_from_entries_shared),
+                    options,
+                )
+                .expect("Object.fromEntries hot path should execute");
                 consume_completed(step);
             },
             BatchSize::SmallInput,
@@ -726,6 +758,36 @@ fn builtin_method_source() -> &'static str {
       if (map && slice && startsWith && toUpperCase) {
         total += 1;
       }
+    }
+    total;
+    "#
+}
+
+fn array_from_source() -> &'static str {
+    r#"
+    const seed = [];
+    for (let i = 0; i < 256; i += 1) {
+      seed.push(i);
+    }
+    let total = 0;
+    for (let round = 0; round < 128; round += 1) {
+      const mapped = Array.from(seed, (value, index) => value + index + round);
+      total += mapped[round % seed.length];
+    }
+    total;
+    "#
+}
+
+fn object_from_entries_source() -> &'static str {
+    r#"
+    const entries = [];
+    for (let i = 0; i < 256; i += 1) {
+      entries.push(["k" + i, i]);
+    }
+    let total = 0;
+    for (let round = 0; round < 128; round += 1) {
+      const object = Object.fromEntries(entries);
+      total += object["k" + (round % entries.length)];
     }
     total;
     "#
