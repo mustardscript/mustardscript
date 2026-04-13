@@ -2,7 +2,6 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const readline = require('node:readline');
 const { once } = require('node:events');
@@ -12,58 +11,59 @@ const { spawn, execFileSync } = require('node:child_process');
 const ivm = require('isolated-vm');
 
 const { Mustard, Progress } = require('../index.ts');
+const { loadNative } = require('../native-loader.ts');
+const { callNative } = require('../lib/errors.ts');
 const { decodeStructured, encodeResumePayloadValue } = require('../lib/structured.ts');
-const { snapshotIdentity, snapshotKeyDigest, snapshotToken } = require('../lib/policy.ts');
+const {
+  createExecutionPolicy,
+  encodeSnapshotPolicy,
+  resolveProgressLoadContext,
+  snapshotIdentity,
+  snapshotKeyDigest,
+  snapshotToken,
+} = require('../lib/policy.ts');
+const {
+  DEFAULT_MEASURE_OPTIONS,
+  measure,
+  measureSamples,
+  machineMetadata,
+  writeBenchmarkArtifact,
+} = require('./support.ts');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const FIXTURE_VERSION = 3;
+const FIXTURE_VERSION = 4;
 const SNAPSHOT_KEY = 'benchmark-workloads-snapshot-key';
 const SNAPSHOT_KEY_BASE64 = Buffer.from(SNAPSHOT_KEY, 'utf8').toString('base64');
-const SIDE_CAR_PATH = path.join(
-  REPO_ROOT,
-  'target',
-  'release',
-  process.platform === 'win32' ? 'mustard-sidecar.exe' : 'mustard-sidecar',
-);
-const RESULTS_DIR = path.join(REPO_ROOT, 'benchmarks', 'results');
 
-const DEFAULT_OPTIONS = Object.freeze({ warmup: 1, iterations: 3 });
+const DEFAULT_OPTIONS = DEFAULT_MEASURE_OPTIONS;
 const COLD_OPTIONS = Object.freeze({ warmup: 0, iterations: 2 });
 const MEMORY_RUNS = 20;
 const SIDECAR_PROTOCOL_VERSION = 1;
 
-function percentile(sortedValues, ratio) {
-  if (sortedValues.length === 0) {
-    return 0;
+function parseArgs(argv) {
+  let profile = 'release';
+  for (let index = 0; index < argv.length; index += 1) {
+    const value = argv[index];
+    if (value === '--profile') {
+      profile = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    throw new Error(`Unknown benchmark argument: ${value}`);
   }
-  const index = Math.min(sortedValues.length - 1, Math.max(0, Math.ceil(sortedValues.length * ratio) - 1));
-  return sortedValues[index];
+  if (profile !== 'dev' && profile !== 'release') {
+    throw new Error(`Unsupported workloads profile: ${profile}`);
+  }
+  return { profile };
 }
 
-function summarize(samples) {
-  const sorted = [...samples].sort((left, right) => left - right);
-  const total = sorted.reduce((sum, value) => sum + value, 0);
-  return {
-    iterations: sorted.length,
-    minMs: sorted[0],
-    medianMs: percentile(sorted, 0.5),
-    p95Ms: percentile(sorted, 0.95),
-    maxMs: sorted[sorted.length - 1],
-    meanMs: total / sorted.length,
-  };
-}
-
-async function measure(name, fn, options = DEFAULT_OPTIONS) {
-  for (let i = 0; i < options.warmup; i += 1) {
-    await fn();
-  }
-  const samples = [];
-  for (let i = 0; i < options.iterations; i += 1) {
-    const start = performance.now();
-    await fn();
-    samples.push(performance.now() - start);
-  }
-  return [name, summarize(samples)];
+function sidecarPath(profile) {
+  return path.join(
+    REPO_ROOT,
+    'target',
+    profile === 'release' ? 'release' : 'debug',
+    process.platform === 'win32' ? 'mustard-sidecar.exe' : 'mustard-sidecar',
+  );
 }
 
 function wrapIife(body) {
@@ -132,6 +132,28 @@ function createSuspendResumeSource(boundaryCount) {
     let total = 0;
     for (let i = 0; i < ${boundaryCount}; i += 1) {
       total += checkpoint(i + 1);
+    }
+    total;
+  `;
+}
+
+function createRuntimeInitSource() {
+  return '0;';
+}
+
+function createImmediateSuspendSource() {
+  return 'checkpoint(1);';
+}
+
+function createExecutionOnlySource() {
+  return `
+    const seed = checkpoint(1);
+    const values = [1, 2, 3, 4, 5, 6, 7, 8];
+    let total = seed;
+    for (let round = 0; round < 200; round += 1) {
+      for (let index = 0; index < values.length; index += 1) {
+        total += values[index] * (round + 1);
+      }
     }
     total;
   `;
@@ -309,8 +331,8 @@ function subtractMemory(after, before) {
   };
 }
 
-async function withSidecar(run) {
-  const child = spawn(SIDE_CAR_PATH, [], {
+async function withSidecar(profile, run) {
+  const child = spawn(sidecarPath(profile), [], {
     cwd: REPO_ROOT,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -487,6 +509,142 @@ async function measureFailureCleanup(name, failThenRecover, options = DEFAULT_OP
   return summary;
 }
 
+function createPhaseLoadOptions() {
+  return {
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      checkpoint() {},
+    },
+    limits: {},
+  };
+}
+
+function takeProgress(step, label) {
+  assert.ok(step instanceof Progress, `${label} should suspend`);
+  return step;
+}
+
+function createPhaseProgressFactory(runtime) {
+  const startOptions = {
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      checkpoint() {},
+    },
+  };
+  return () => takeProgress(runtime.start(startOptions), 'phase benchmark');
+}
+
+function createAuthenticatedPolicyJson(dumped, loadOptions) {
+  const context = resolveProgressLoadContext(dumped, dumped.snapshot, loadOptions);
+  return encodeSnapshotPolicy(context.policy, {
+    snapshotId: dumped.snapshot_id,
+    snapshotKey: context.snapshotKey,
+    snapshotToken: dumped.token,
+  });
+}
+
+function queuedFactory(factory) {
+  const queue = [];
+  return () => {
+    if (queue.length === 0) {
+      queue.push(factory());
+    }
+    return queue.shift();
+  };
+}
+
+async function benchmarkAddonPhases() {
+  const native = loadNative();
+  const loadOptions = createPhaseLoadOptions();
+  const runtimeInitRuntime = new Mustard(createRuntimeInitSource());
+  const suspendRuntime = new Mustard(createImmediateSuspendSource());
+  const executionRuntime = new Mustard(createExecutionOnlySource());
+
+  const phaseLatency = {};
+  const phaseProgressFactory = createPhaseProgressFactory(executionRuntime);
+  const suspendProgressFactory = createPhaseProgressFactory(suspendRuntime);
+
+  const runtimeInit = await measureSamples('runtime_init_only', async () => {
+    const start = performance.now();
+    const result = await runtimeInitRuntime.run();
+    const duration = performance.now() - start;
+    assert.equal(result, 0);
+    return duration;
+  }, DEFAULT_OPTIONS);
+  phaseLatency[runtimeInit[0]] = runtimeInit[1];
+
+  const executionOnly = await measureSamples('execution_only_small', async () => {
+    const progress = phaseProgressFactory();
+    const start = performance.now();
+    const result = progress.resume(1);
+    const duration = performance.now() - start;
+    assert.equal(typeof result, 'number');
+    return duration;
+  }, DEFAULT_OPTIONS);
+  phaseLatency[executionOnly[0]] = executionOnly[1];
+
+  const suspendOnly = await measureSamples('suspend_only', async () => {
+    const start = performance.now();
+    const progress = suspendRuntime.start({
+      snapshotKey: SNAPSHOT_KEY,
+      capabilities: {
+        checkpoint() {},
+      },
+    });
+    const duration = performance.now() - start;
+    assert.ok(progress instanceof Progress);
+    return duration;
+  }, DEFAULT_OPTIONS);
+  phaseLatency[suspendOnly[0]] = suspendOnly[1];
+
+  const dumpOnly = await measureSamples('snapshot_dump_only', async () => {
+    const progress = suspendProgressFactory();
+    const start = performance.now();
+    const dumped = progress.dump();
+    const duration = performance.now() - start;
+    assert.ok(Buffer.isBuffer(dumped.snapshot));
+    return duration;
+  }, DEFAULT_OPTIONS);
+  phaseLatency[dumpOnly[0]] = dumpOnly[1];
+
+  const applyPolicyOnlyDump = queuedFactory(() => suspendProgressFactory().dump());
+  const applyPolicyOnly = await measureSamples('apply_snapshot_policy_only', async () => {
+    const dumped = applyPolicyOnlyDump();
+    const start = performance.now();
+    const context = resolveProgressLoadContext(dumped, dumped.snapshot, loadOptions);
+    const duration = performance.now() - start;
+    assert.equal(typeof context.policy, 'object');
+    return duration;
+  }, DEFAULT_OPTIONS);
+  phaseLatency[applyPolicyOnly[0]] = applyPolicyOnly[1];
+
+  const inspectDump = queuedFactory(() => suspendProgressFactory().dump());
+  const snapshotLoadOnly = await measureSamples('snapshot_load_only', async () => {
+    const dumped = inspectDump();
+    const policyJson = createAuthenticatedPolicyJson(dumped, loadOptions);
+    const start = performance.now();
+    const inspection = JSON.parse(callNative(native.inspectSnapshot, dumped.snapshot, policyJson));
+    const duration = performance.now() - start;
+    assert.equal(inspection.capability, 'checkpoint');
+    return duration;
+  }, DEFAULT_OPTIONS);
+  phaseLatency[snapshotLoadOnly[0]] = snapshotLoadOnly[1];
+
+  const progressLoadDump = queuedFactory(() => suspendProgressFactory().dump());
+  const progressLoadOnly = await measureSamples('Progress.load_only', async () => {
+    const dumped = progressLoadDump();
+    const start = performance.now();
+    const progress = Progress.load(dumped, loadOptions);
+    const duration = performance.now() - start;
+    assert.equal(progress.capability, 'checkpoint');
+    assert.equal(progress.resume(1), 1);
+    return duration;
+  }, DEFAULT_OPTIONS);
+  phaseLatency[progressLoadOnly[0]] = progressLoadOnly[1];
+
+  return phaseLatency;
+}
+
 async function benchmarkAddon(fixtures) {
   console.log('Running addon benchmarks...');
   const latency = {};
@@ -495,6 +653,7 @@ async function benchmarkAddon(fixtures) {
   const warmCodeModeRuntime = new Mustard(codeModeSource);
   const workflowRuntime = new Mustard(workflowSource);
   const workflowCapabilities = createWorkflowCapabilities(workflowData);
+  const phases = await benchmarkAddonPhases();
 
   Object.assign(latency, Object.fromEntries([
     await measure('cold_start_small', async () => {
@@ -599,24 +758,24 @@ async function benchmarkAddon(fixtures) {
     }, DEFAULT_OPTIONS),
   };
 
-  return { latency, memory, failureCleanup };
+  return { latency, phases, memory, failureCleanup };
 }
 
-async function benchmarkSidecar(fixtures) {
+async function benchmarkSidecar(fixtures, profile) {
   console.log('Running sidecar benchmarks...');
   const latency = {};
   const { smallSource, codeModeSource, workflowSource, workflowData } = fixtures;
 
   Object.assign(latency, Object.fromEntries([
     await measure('cold_start_small', async () => {
-      await withSidecar(async ({ request }) => {
+      await withSidecar(profile, async ({ request }) => {
         const programBase64 = await compileSidecarSource(request, smallSource);
         const result = await runSidecarProgram(request, programBase64);
         assert.equal(typeof result, 'number');
       });
     }, COLD_OPTIONS),
     await measure('cold_start_code_mode_search', async () => {
-      await withSidecar(async ({ request }) => {
+      await withSidecar(profile, async ({ request }) => {
         const programBase64 = await compileSidecarSource(request, codeModeSource);
         const result = await runSidecarProgram(request, programBase64);
         assert.equal(result.count > 0, true);
@@ -626,7 +785,7 @@ async function benchmarkSidecar(fixtures) {
 
   const workflowCapabilities = createWorkflowCapabilities(workflowData);
 
-  await withSidecar(async ({ child, request }) => {
+  await withSidecar(profile, async ({ child, request }) => {
     const smallProgram = await compileSidecarSource(request, smallSource);
     const codeModeProgram = await compileSidecarSource(request, codeModeSource);
     const workflowProgram = await compileSidecarSource(request, workflowSource);
@@ -927,20 +1086,6 @@ async function benchmarkIsolate(fixtures) {
   return { latency, memory, failureCleanup };
 }
 
-function machineMetadata() {
-  return {
-    timestamp: new Date().toISOString(),
-    fixtureVersion: FIXTURE_VERSION,
-    hostname: os.hostname(),
-    platform: `${process.platform} ${os.release()}`,
-    arch: process.arch,
-    nodeVersion: process.version,
-    cpuModel: os.cpus()[0]?.model ?? 'unknown',
-    cpuCount: os.cpus().length,
-    totalMemoryBytes: os.totalmem(),
-  };
-}
-
 function ratioTable(left, right) {
   const ratios = {};
   for (const [name, leftMetric] of Object.entries(left)) {
@@ -970,13 +1115,21 @@ function failureRatioTable(left, right) {
 
 function printSummary(results) {
   console.log(`Machine: ${results.machine.cpuModel} (${results.machine.cpuCount} cores)`);
-  console.log(`Node: ${results.machine.nodeVersion} on ${results.machine.platform}`);
+  console.log(`Node: ${results.machine.nodeVersion} on ${results.machine.platform} [${results.machine.buildProfile}]`);
+  if (results.machine.gitSha) {
+    console.log(`Git SHA: ${results.machine.gitSha}`);
+  }
   console.log('');
   for (const name of Object.keys(results.addon.latency)) {
     const addon = results.addon.latency[name];
     const sidecar = results.sidecar.latency[name];
     const isolate = results.isolate.latency[name];
     console.log(`${name}: addon ${addon.medianMs.toFixed(2)}ms, sidecar ${sidecar.medianMs.toFixed(2)}ms, isolate ${isolate.medianMs.toFixed(2)}ms`);
+  }
+  console.log('');
+  console.log('Addon phase splits:');
+  for (const [name, metric] of Object.entries(results.addon.phases)) {
+    console.log(`${name}: ${metric.medianMs.toFixed(2)}ms median, ${metric.p95Ms.toFixed(2)}ms p95`);
   }
   console.log('');
   console.log(`Memory retained after ${MEMORY_RUNS} workflow runs:`);
@@ -995,23 +1148,29 @@ async function main() {
     throw new Error('benchmarks/workloads.ts requires node --expose-gc');
   }
 
-  fs.mkdirSync(RESULTS_DIR, { recursive: true });
+  const { profile } = parseArgs(process.argv.slice(2));
   const fixtures = benchmarkFixtureSet();
 
   global.gc();
   const addon = await benchmarkAddon(fixtures);
   global.gc();
-  const sidecar = await benchmarkSidecar(fixtures);
+  const sidecar = await benchmarkSidecar(fixtures, profile);
   global.gc();
   const isolate = await benchmarkIsolate(fixtures);
 
   const results = {
-    machine: machineMetadata(),
+    machine: machineMetadata({
+      fixtureVersion: FIXTURE_VERSION,
+      benchmarkKind: 'workloads',
+      buildProfile: profile,
+    }),
     notes: {
       suspendResumeIsolate:
         'isolated-vm cannot snapshot continuations here; suspend_resume_* is measured as repeated isolate re-entry with explicit host-carried state rebuild.',
       sidecarMemory:
         'sidecar memory deltas include parent Node process RSS plus the live child sidecar RSS sampled via ps.',
+      phaseSplitDefinitions:
+        'addon.phases isolates compile-free runtime slices: runtime_init_only uses a precompiled trivial program, execution_only_small resumes pre-created suspended progress, snapshot_load_only uses raw native inspectSnapshot, and Progress.load_only measures the public JS wrapper before cleanup.',
     },
     addon,
     sidecar,
@@ -1030,11 +1189,7 @@ async function main() {
     },
   };
 
-  const reportPath = path.join(
-    RESULTS_DIR,
-    `${results.machine.timestamp.replace(/[:.]/g, '-')}-workloads.json`,
-  );
-  fs.writeFileSync(reportPath, `${JSON.stringify(results, null, 2)}\n`);
+  const reportPath = writeBenchmarkArtifact(results);
   results.reportPath = reportPath;
   printSummary(results);
 }

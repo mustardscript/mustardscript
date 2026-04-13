@@ -13,29 +13,30 @@ Current audited benchmark inputs and evidence:
 
 - Existing end-to-end harness: `benchmarks/smoke.ts` and `benchmarks/workloads.ts`
 - Latest checked-in workload report:
-  `benchmarks/results/2026-04-13T04-35-04-948Z-workloads.json`
+  `benchmarks/results/2026-04-13T06-59-51-780Z-workloads.json`
 - Latest findings summary: `docs/BENCHMARK_FINDINGS.md`
-- Quick local benchmark check on April 12, 2026:
-  `npm run bench:smoke` currently fails because `compute average 52.76ms exceeded 25ms`
+- Current smoke gate status on April 13, 2026:
+  `npm run bench:smoke:dev` and `npm run bench:smoke:release` both pass with
+  profile-specific median/p95 budgets and write result artifacts.
 
 Current addon medians from the checked-in workload report:
 
 | Metric | Current |
 | --- | ---: |
-| `cold_start_small` | `17.81 ms` |
-| `warm_run_small` | `16.89 ms` |
-| `cold_start_code_mode_search` | `39.00 ms` |
-| `warm_run_code_mode_search` | `38.65 ms` |
-| `programmatic_tool_workflow` | `42.47 ms` |
-| `host_fanout_10` | `0.70 ms` |
-| `host_fanout_100` | `6.67 ms` |
-| `suspend_resume_20` | `3.64 ms` |
+| `cold_start_small` | `16.27 ms` |
+| `warm_run_small` | `16.25 ms` |
+| `cold_start_code_mode_search` | `37.68 ms` |
+| `warm_run_code_mode_search` | `37.71 ms` |
+| `programmatic_tool_workflow` | `42.30 ms` |
+| `host_fanout_10` | `0.74 ms` |
+| `host_fanout_100` | `6.61 ms` |
+| `suspend_resume_20` | `3.65 ms` |
 
 Current sidecar/addon overhead from the same report:
 
-- `cold_start_small`: `1.36x`
+- `cold_start_small`: `1.67x`
 - `programmatic_tool_workflow`: `1.12x`
-- `host_fanout_100`: `1.44x`
+- `host_fanout_100`: `1.42x`
 
 Current relative position versus the isolate baseline:
 
@@ -114,16 +115,16 @@ North-star sidecar targets:
   parse/lower, `load_program`, `start_bytecode`, VM hot loops, env lookup,
   property access, `Map`/`Set`, structured boundary encode/decode, and
   snapshot dump/load.
-- [ ] Add phase-split benchmarks for `runtime_init_only`, `execution_only`,
+- [x] Add phase-split benchmarks for `runtime_init_only`, `execution_only`,
   `suspend_only`, `snapshot_dump_only`, `snapshot_load_only`,
   `apply_snapshot_policy_only`, and `Progress.load_only`.
-- [ ] Keep `npm run bench:smoke` as the fast local gate, but stop using current
+- [x] Keep `npm run bench:smoke` as the fast local gate, but stop using current
   dev-profile absolute thresholds as the main optimization signal.
-- [ ] Add a release-profile smoke command and treat release medians as the
+- [x] Add a release-profile smoke command and treat release medians as the
   source of truth for performance decisions.
 - [ ] Require every optimization PR to attach before/after numbers from
   `npm run bench:workloads` plus the new Rust microbench suite.
-- [ ] Record machine metadata, build profile, git SHA, and benchmark fixture
+- [x] Record machine metadata, build profile, git SHA, and benchmark fixture
   version in every result artifact.
 - [ ] Record snapshot byte size, serialized program byte size, and retained live
   heap size for suspend/resume-heavy workloads.
@@ -132,7 +133,7 @@ North-star sidecar targets:
   values.
 - [ ] Fail regression checks on relative regressions against a checked-in
   baseline, not on stale absolute budgets.
-- [ ] Update `docs/BENCHMARK_FINDINGS.md` only after rerunning the full release
+- [x] Update `docs/BENCHMARK_FINDINGS.md` only after rerunning the full release
   benchmark suite.
 
 ## Milestone 0: Stabilize Benchmarking And Baselines
@@ -145,19 +146,19 @@ Target by end of milestone:
 
 Action items:
 
-- [ ] Split benchmark commands into explicit `dev` and `release` variants.
-- [ ] Fix or replace the current smoke budgets so they reflect measured reality;
+- [x] Split benchmark commands into explicit `dev` and `release` variants.
+- [x] Fix or replace the current smoke budgets so they reflect measured reality;
   the current April 12, 2026 smoke run already fails.
-- [ ] Add a simple benchmark comparison script that diff-checks medians and p95
+- [x] Add a simple benchmark comparison script that diff-checks medians and p95
   against the latest baseline JSON.
-- [ ] Capture a fresh release baseline on the current branch and store it under
+- [x] Capture a fresh release baseline on the current branch and store it under
   `benchmarks/results/`.
-- [ ] Extend `benchmarks/workloads.ts` to include a direct "execution only"
+- [x] Extend `benchmarks/workloads.ts` to include a direct "execution only"
   measurement that excludes compile/decode overhead.
-- [ ] Extend `benchmarks/workloads.ts` to include `runtime_init_only`,
+- [x] Extend `benchmarks/workloads.ts` to include `runtime_init_only`,
   `suspend_only`, `snapshot_dump_only`, `snapshot_load_only`,
   `apply_snapshot_policy_only`, and `Progress.load_only` measurements.
-- [ ] Document the benchmark protocol in `benchmarks/README.md`.
+- [x] Document the benchmark protocol in `benchmarks/README.md`.
 
 ## Milestone 1: Remove Structural Start/Run Overhead
 

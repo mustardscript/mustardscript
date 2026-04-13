@@ -1,35 +1,37 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { performance } = require('node:perf_hooks');
 
 const budgets = require('./budgets.json');
 const { Mustard, Progress } = require('../index.ts');
+const {
+  machineMetadata,
+  measure,
+  writeBenchmarkArtifact,
+} = require('./support.ts');
 
 const SNAPSHOT_KEY = Buffer.from('benchmark-snapshot-key');
+const FIXTURE_VERSION = 2;
 
-function average(values) {
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+function parseArgs(argv) {
+  let profile = 'dev';
+  for (let index = 0; index < argv.length; index += 1) {
+    const value = argv[index];
+    if (value === '--profile') {
+      profile = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    throw new Error(`Unknown benchmark argument: ${value}`);
+  }
+  if (profile !== 'dev' && profile !== 'release') {
+    throw new Error(`Unsupported smoke profile: ${profile}`);
+  }
+  return { profile };
 }
 
-async function measure({ iterations, warmup }, fn) {
-  for (let i = 0; i < warmup; i += 1) {
-    await fn();
-  }
-  const samples = [];
-  for (let i = 0; i < iterations; i += 1) {
-    const start = performance.now();
-    await fn();
-    samples.push(performance.now() - start);
-  }
-  return {
-    averageMs: average(samples),
-    maxMs: Math.max(...samples),
-  };
-}
-
-async function benchmarkStartup() {
-  return measure(budgets.startup, async () => {
+async function benchmarkStartup(profileBudgets) {
+  const [, summary] = await measure('startup', async () => {
     const runtime = new Mustard(`
       const values = [1, 2, 3, 4];
       let total = 0;
@@ -40,10 +42,11 @@ async function benchmarkStartup() {
     `);
     const result = await runtime.run();
     assert.equal(result, 10);
-  });
+  }, profileBudgets.startup);
+  return summary;
 }
 
-async function benchmarkCompute() {
+async function benchmarkCompute(profileBudgets) {
   const runtime = new Mustard(`
     function double(value) {
       return value * 2;
@@ -54,13 +57,14 @@ async function benchmarkCompute() {
     }
     total;
   `);
-  return measure(budgets.compute, async () => {
+  const [, summary] = await measure('compute', async () => {
     const result = await runtime.run();
     assert.equal(result, 40000);
-  });
+  }, profileBudgets.compute);
+  return summary;
 }
 
-async function benchmarkHostCallOverhead() {
+async function benchmarkHostCallOverhead(profileBudgets) {
   const guestRuntime = new Mustard(`
     function echo(value) {
       return value;
@@ -79,11 +83,11 @@ async function benchmarkHostCallOverhead() {
     total;
   `);
 
-  const guestBaseline = await measure(budgets.hostCall, async () => {
+  const [, guestBaseline] = await measure('host_baseline_guest', async () => {
     const result = await guestRuntime.run();
     assert.equal(result, 276);
-  });
-  const hostCalls = await measure(budgets.hostCall, async () => {
+  }, profileBudgets.hostCall);
+  const [, hostCalls] = await measure('host_calls', async () => {
     const result = await hostRuntime.run({
       capabilities: {
         fetch_value(value) {
@@ -92,12 +96,13 @@ async function benchmarkHostCallOverhead() {
       },
     });
     assert.equal(result, 276);
-  });
+  }, profileBudgets.hostCall);
 
   return {
     guestBaseline,
     hostCalls,
-    ratio: hostCalls.averageMs / guestBaseline.averageMs,
+    medianRatio: hostCalls.medianMs / guestBaseline.medianMs,
+    p95Ratio: hostCalls.p95Ms / guestBaseline.p95Ms,
   };
 }
 
@@ -127,28 +132,29 @@ function driveSuspension({ reloadSnapshots }) {
   assert.equal(step, 10);
 }
 
-async function benchmarkSnapshotRoundTrip() {
-  const direct = await measure(budgets.snapshot, async () => {
+async function benchmarkSnapshotRoundTrip(profileBudgets) {
+  const [, direct] = await measure('snapshot_direct', async () => {
     driveSuspension({ reloadSnapshots: false });
-  });
-  const snapshotRoundTrip = await measure(budgets.snapshot, async () => {
+  }, profileBudgets.snapshot);
+  const [, snapshotRoundTrip] = await measure('snapshot_round_trip', async () => {
     driveSuspension({ reloadSnapshots: true });
-  });
+  }, profileBudgets.snapshot);
 
   return {
     direct,
     snapshotRoundTrip,
-    ratio: snapshotRoundTrip.averageMs / direct.averageMs,
+    medianRatio: snapshotRoundTrip.medianMs / direct.medianMs,
+    p95Ratio: snapshotRoundTrip.p95Ms / direct.p95Ms,
   };
 }
 
-async function benchmarkMemory() {
+async function benchmarkMemory(profileBudgets) {
   if (typeof global.gc !== 'function') {
     throw new Error('benchmarks/smoke.ts requires node --expose-gc');
   }
   global.gc();
   const before = process.memoryUsage().heapUsed;
-  for (let i = 0; i < budgets.memory.runs; i += 1) {
+  for (let i = 0; i < profileBudgets.memory.runs; i += 1) {
     driveSuspension({ reloadSnapshots: true });
   }
   global.gc();
@@ -159,19 +165,49 @@ async function benchmarkMemory() {
 }
 
 async function main() {
-  const startup = await benchmarkStartup();
-  const compute = await benchmarkCompute();
-  const hostCall = await benchmarkHostCallOverhead();
-  const snapshot = await benchmarkSnapshotRoundTrip();
-  const memory = await benchmarkMemory();
+  const { profile } = parseArgs(process.argv.slice(2));
+  const profileBudgets = budgets[profile];
+  if (!profileBudgets) {
+    throw new Error(`Missing smoke budgets for profile ${profile}`);
+  }
 
-  assert.ok(startup.averageMs <= budgets.startup.averageMsMax, `startup average ${startup.averageMs.toFixed(2)}ms exceeded ${budgets.startup.averageMsMax}ms`);
-  assert.ok(compute.averageMs <= budgets.compute.averageMsMax, `compute average ${compute.averageMs.toFixed(2)}ms exceeded ${budgets.compute.averageMsMax}ms`);
-  assert.ok(hostCall.ratio <= budgets.hostCall.ratioMax, `host-call ratio ${hostCall.ratio.toFixed(2)} exceeded ${budgets.hostCall.ratioMax}`);
-  assert.ok(snapshot.ratio <= budgets.snapshot.ratioMax, `snapshot ratio ${snapshot.ratio.toFixed(2)} exceeded ${budgets.snapshot.ratioMax}`);
-  assert.ok(memory.heapDeltaBytes <= budgets.memory.heapDeltaBytesMax, `heap delta ${memory.heapDeltaBytes} exceeded ${budgets.memory.heapDeltaBytesMax}`);
+  const startup = await benchmarkStartup(profileBudgets);
+  const compute = await benchmarkCompute(profileBudgets);
+  const hostCall = await benchmarkHostCallOverhead(profileBudgets);
+  const snapshot = await benchmarkSnapshotRoundTrip(profileBudgets);
+  const memory = await benchmarkMemory(profileBudgets);
 
-  console.log(JSON.stringify({ startup, compute, hostCall, snapshot, memory }, null, 2));
+  assert.ok(startup.medianMs <= profileBudgets.startup.medianMsMax, `startup median ${startup.medianMs.toFixed(2)}ms exceeded ${profileBudgets.startup.medianMsMax}ms`);
+  assert.ok(startup.p95Ms <= profileBudgets.startup.p95MsMax, `startup p95 ${startup.p95Ms.toFixed(2)}ms exceeded ${profileBudgets.startup.p95MsMax}ms`);
+  assert.ok(compute.medianMs <= profileBudgets.compute.medianMsMax, `compute median ${compute.medianMs.toFixed(2)}ms exceeded ${profileBudgets.compute.medianMsMax}ms`);
+  assert.ok(compute.p95Ms <= profileBudgets.compute.p95MsMax, `compute p95 ${compute.p95Ms.toFixed(2)}ms exceeded ${profileBudgets.compute.p95MsMax}ms`);
+  assert.ok(hostCall.medianRatio <= profileBudgets.hostCall.medianRatioMax, `host-call median ratio ${hostCall.medianRatio.toFixed(2)} exceeded ${profileBudgets.hostCall.medianRatioMax}`);
+  assert.ok(hostCall.p95Ratio <= profileBudgets.hostCall.p95RatioMax, `host-call p95 ratio ${hostCall.p95Ratio.toFixed(2)} exceeded ${profileBudgets.hostCall.p95RatioMax}`);
+  assert.ok(snapshot.medianRatio <= profileBudgets.snapshot.medianRatioMax, `snapshot median ratio ${snapshot.medianRatio.toFixed(2)} exceeded ${profileBudgets.snapshot.medianRatioMax}`);
+  assert.ok(snapshot.p95Ratio <= profileBudgets.snapshot.p95RatioMax, `snapshot p95 ratio ${snapshot.p95Ratio.toFixed(2)} exceeded ${profileBudgets.snapshot.p95RatioMax}`);
+  assert.ok(memory.heapDeltaBytes <= profileBudgets.memory.heapDeltaBytesMax, `heap delta ${memory.heapDeltaBytes} exceeded ${profileBudgets.memory.heapDeltaBytesMax}`);
+
+  const result = {
+    machine: machineMetadata({
+      fixtureVersion: FIXTURE_VERSION,
+      benchmarkKind: 'smoke',
+      buildProfile: profile,
+    }),
+    metrics: {
+      startup,
+      compute,
+      hostCall,
+      snapshot,
+      memory,
+    },
+    budgets: profileBudgets,
+  };
+  const reportPath = writeBenchmarkArtifact(result);
+
+  console.log(JSON.stringify({
+    ...result,
+    reportPath,
+  }, null, 2));
 }
 
 main().catch((error) => {

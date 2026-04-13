@@ -60,13 +60,18 @@
     "test:hardening": "scripts/run-hardening.sh",
     "test:mutation-guards": "npm run build && node --test tests/hardening/**/*.test.js",
     "seed:fuzz-corpus": "node scripts/seed-fuzz-corpus.ts",
-    "bench:smoke": "npm run build && node --expose-gc benchmarks/smoke.ts",
+    "bench:smoke": "npm run bench:smoke:dev",
+    "bench:smoke:dev": "npm run build && node --expose-gc benchmarks/smoke.ts --profile dev",
+    "bench:smoke:release": "node scripts/build-ts-dist.ts && napi build --platform --release --manifest-path crates/mustard-node/Cargo.toml --js-package-name mustardscript --output-dir . --no-js && node --expose-gc benchmarks/smoke.ts --profile release",
     "prebuilt:dirs": "napi create-npm-dirs",
     "prebuilt:artifacts": "napi artifacts --output-dir artifacts",
     "verify:prebuilt": "node scripts/verify-prebuilt.ts",
     "verify:release": "node scripts/release-verify.ts",
     "lint": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings",
-    "bench:workloads": "node scripts/build-ts-dist.ts && napi build --platform --release --manifest-path crates/mustard-node/Cargo.toml --js-package-name mustardscript --output-dir . --no-js && cargo build -q --release -p mustard-sidecar && node --expose-gc benchmarks/workloads.ts"
+    "bench:workloads": "npm run bench:workloads:release",
+    "bench:workloads:dev": "node scripts/build-ts-dist.ts && napi build --platform --manifest-path crates/mustard-node/Cargo.toml --js-package-name mustardscript --output-dir . --no-js && cargo build -q -p mustard-sidecar && node --expose-gc benchmarks/workloads.ts --profile dev",
+    "bench:workloads:release": "node scripts/build-ts-dist.ts && napi build --platform --release --manifest-path crates/mustard-node/Cargo.toml --js-package-name mustardscript --output-dir . --no-js && cargo build -q --release -p mustard-sidecar && node --expose-gc benchmarks/workloads.ts --profile release",
+    "bench:compare": "node scripts/benchmark-compare.ts"
   },
   "repository": {
     "type": "git",

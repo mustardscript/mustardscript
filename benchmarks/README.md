@@ -1,7 +1,36 @@
 # Smoke Benchmarks
 
-These benchmarks are intentionally small and repeatable. They are meant to give
-maintainers a quick signal on regressions in:
+These benchmarks are intentionally small and repeatable. They serve two
+different roles:
+
+- `npm run bench:smoke` is the fast local dev-profile sanity gate.
+- release-profile artifacts are the source of truth for performance decisions
+  and before/after comparisons.
+
+## Command Matrix
+
+Run the benchmark commands explicitly by build profile:
+
+```sh
+npm run bench:smoke:dev
+npm run bench:smoke:release
+npm run bench:workloads:dev
+npm run bench:workloads:release
+```
+
+Convenience aliases:
+
+```sh
+npm run bench:smoke
+npm run bench:workloads
+```
+
+Those aliases currently map to the fast dev smoke run and the release workload
+run respectively.
+
+## Smoke Scope
+
+The smoke suite gives maintainers a quick regression signal on:
 
 - cold startup and compile-and-run latency
 - steady-state synchronous execution cost
@@ -9,21 +38,27 @@ maintainers a quick signal on regressions in:
 - snapshot dump/load overhead relative to direct suspend/resume
 - retained Node heap after repeated snapshot-heavy runs
 
-Run them with:
+The smoke thresholds live in `budgets.json`. They are deliberately broad and
+profile-specific:
 
-```sh
-npm run bench:smoke
-npm run bench:workloads
-```
+- dev smoke thresholds are only there to catch obvious local breakage
+- release smoke thresholds are tighter, but still secondary to the full release
+  workload report
+- host-call and snapshot checks stay ratio-based so the gate remains meaningful
+  across different development machines
 
-The thresholds live in `budgets.json`. Cold start and retained heap still use
-broad absolute ceilings, while the host-call and snapshot contracts use ratios
-against a direct in-process baseline so they stay meaningful across different
-development machines.
+Smoke results now emit timestamped JSON artifacts under `benchmarks/results/`
+with:
+
+- benchmark kind and build profile
+- git SHA
+- fixture version
+- machine metadata
+- median, p95, mean, min, and max timings for each metric
 
 ## Workload Benchmarks
 
-`benchmarks/workloads.ts` is the broader local benchmark runner for measuring
+`benchmarks/workloads.ts` is the broader benchmark runner for measuring
 startup and end-to-end execution latency across representative `mustard`
 workloads. It emits a timestamped JSON report under `benchmarks/results/` with
 machine metadata and latency summaries for:
@@ -33,14 +68,38 @@ machine metadata and latency summaries for:
 - addon host-call fanout at 1, 10, 50, and 100 host boundaries
 - addon programmatic tool-calling workflow over synthetic team/budget/expense data
 - addon suspend/resume chains with snapshot reloads
+- addon phase-split measurements for:
+  - `runtime_init_only`
+  - `execution_only_small`
+  - `suspend_only`
+  - `snapshot_dump_only`
+  - `snapshot_load_only`
+  - `apply_snapshot_policy_only`
+  - `Progress.load_only`
 - the same workload classes over the sidecar transport
 - the same workload classes over an `isolated-vm` V8 isolate baseline
 - retained parent-process heap/RSS deltas after repeated workflow runs
 - failure-and-recovery timing for runtime-limit and host-failure cases
 
-The runner builds the addon and sidecar in release mode first, then reports
-median, p95, mean, min, and max latency for each workload plus
-cross-runtime ratios.
+The release workload artifact is the one to compare in performance writeups,
+plan updates, and optimization commits.
+
+## Comparison Workflow
+
+After capturing a fresh artifact, diff it against the previous checked-in
+baseline with:
+
+```sh
+npm run bench:compare -- --kind workloads --profile release
+```
+
+You can also compare explicit files:
+
+```sh
+npm run bench:compare -- --baseline benchmarks/results/old.json --candidate benchmarks/results/new.json
+```
+
+The comparison script reports median and p95 deltas for every comparable metric.
 
 For the isolate baseline, `suspend_resume_*` is a best-effort comparison that
 re-enters a fresh isolate with explicit host-carried state because this harness
@@ -49,6 +108,22 @@ does not have equivalent continuation snapshotting for V8 isolates.
 The retained-memory section is a post-GC delta, not a precise peak-memory
 measurement. Small RSS deltas can be noisy or even negative because OS page
 reclamation and allocator reuse are happening concurrently with the benchmark.
+
+## Phase Split Definitions
+
+The new addon-only phase metrics are intentionally narrow:
+
+- `runtime_init_only` runs a precompiled trivial program to isolate startup from compile time
+- `execution_only_small` resumes pre-created suspended progress objects so compile/decode work stays out of the timed region
+- `suspend_only` measures reaching the first host boundary and materializing a `Progress`
+- `snapshot_dump_only` measures `Progress.dump()` on an already-suspended execution
+- `apply_snapshot_policy_only` measures the JS-side snapshot authentication and policy rebinding path used by `Progress.load(...)`
+- `snapshot_load_only` measures raw native `inspectSnapshot(...)` on an authenticated snapshot
+- `Progress.load_only` measures the public JS wrapper path before the post-measurement cleanup step
+
+These definitions are not replacements for future Rust microbenches, but they
+do make it possible to tell whether time is going into startup, resume
+execution, or snapshot handling.
 
 ## Comparative Benchmark Plan: `mustard` vs V8 Isolates
 

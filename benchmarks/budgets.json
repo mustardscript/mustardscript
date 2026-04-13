@@ -1,26 +1,62 @@
 {
-  "startup": {
-    "iterations": 20,
-    "warmup": 3,
-    "averageMsMax": 20
+  "dev": {
+    "startup": {
+      "iterations": 20,
+      "warmup": 3,
+      "medianMsMax": 6,
+      "p95MsMax": 10
+    },
+    "compute": {
+      "iterations": 10,
+      "warmup": 2,
+      "medianMsMax": 65,
+      "p95MsMax": 75
+    },
+    "hostCall": {
+      "iterations": 10,
+      "warmup": 2,
+      "medianRatioMax": 6,
+      "p95RatioMax": 8
+    },
+    "snapshot": {
+      "iterations": 20,
+      "warmup": 3,
+      "medianRatioMax": 3,
+      "p95RatioMax": 4
+    },
+    "memory": {
+      "runs": 40,
+      "heapDeltaBytesMax": 1000000
+    }
   },
-  "compute": {
-    "iterations": 10,
-    "warmup": 2,
-    "averageMsMax": 25
-  },
-  "hostCall": {
-    "iterations": 10,
-    "warmup": 2,
-    "ratioMax": 80
-  },
-  "snapshot": {
-    "iterations": 20,
-    "warmup": 3,
-    "ratioMax": 20
-  },
-  "memory": {
-    "runs": 40,
-    "heapDeltaBytesMax": 20000000
+  "release": {
+    "startup": {
+      "iterations": 20,
+      "warmup": 3,
+      "medianMsMax": 1,
+      "p95MsMax": 2
+    },
+    "compute": {
+      "iterations": 10,
+      "warmup": 2,
+      "medianMsMax": 7,
+      "p95MsMax": 10
+    },
+    "hostCall": {
+      "iterations": 10,
+      "warmup": 2,
+      "medianRatioMax": 5,
+      "p95RatioMax": 6
+    },
+    "snapshot": {
+      "iterations": 20,
+      "warmup": 3,
+      "medianRatioMax": 3,
+      "p95RatioMax": 4
+    },
+    "memory": {
+      "runs": 40,
+      "heapDeltaBytesMax": 1000000
+    }
   }
 }
