@@ -108,6 +108,29 @@ impl Runtime {
                 self.assign_slot(env, *depth, *slot, value.clone())?;
                 self.frames[frame_index].stack.push(value);
             }
+            Instruction::StoreNameDiscard(name) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let env = self.frames[frame_index].env;
+                self.assign_name(env, name, value)?;
+            }
+            Instruction::StoreGlobalDiscard(name) => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                self.assign_global_name(name, value)?;
+            }
+            Instruction::StoreSlotDiscard { depth, slot } => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let env = self.frames[frame_index].env;
+                self.assign_slot(env, *depth, *slot, value)?;
+            }
             Instruction::InitializePattern(pattern) => {
                 let value = self.frames[frame_index]
                     .stack
@@ -271,6 +294,32 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 self.set_property(object, property, value.clone())?;
                 self.frames[frame_index].stack.push(value);
+            }
+            Instruction::SetPropStaticDiscard { name } => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let object = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                self.set_property_static(object, name, value)?;
+            }
+            Instruction::SetPropComputedDiscard => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let property = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let object = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                self.set_property(object, property, value)?;
             }
             Instruction::Unary(operator) => {
                 let value = self.frames[frame_index]

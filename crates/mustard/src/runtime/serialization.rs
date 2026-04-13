@@ -22,7 +22,7 @@ use super::{
     validation::validate_bytecode_program,
 };
 
-const SERIAL_FORMAT_VERSION: u32 = 1;
+const SERIAL_FORMAT_VERSION: u32 = 2;
 
 pub fn dump_program(program: &BytecodeProgram) -> MustardResult<Vec<u8>> {
     bincode::serialize(&SerializedProgram {

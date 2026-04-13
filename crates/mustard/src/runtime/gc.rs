@@ -758,6 +758,8 @@ fn instruction_may_allocate(instruction: &Instruction) -> bool {
         instruction,
         Instruction::StoreName(_)
             | Instruction::StoreGlobal(_)
+            | Instruction::StoreNameDiscard(_)
+            | Instruction::StoreGlobalDiscard(_)
             | Instruction::InitializePattern(_)
             | Instruction::PushEnv
             | Instruction::DeclareName { .. }
@@ -770,7 +772,9 @@ fn instruction_may_allocate(instruction: &Instruction) -> bool {
             | Instruction::CopyDataProperties
             | Instruction::CreateIterator
             | Instruction::SetPropStatic { .. }
+            | Instruction::SetPropStaticDiscard { .. }
             | Instruction::SetPropComputed
+            | Instruction::SetPropComputedDiscard
             | Instruction::Call { .. }
             | Instruction::CallWithArray { .. }
             | Instruction::Await

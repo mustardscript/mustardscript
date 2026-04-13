@@ -239,6 +239,51 @@ fn static_object_literals_lower_without_runtime_property_mutation_ops() {
 }
 
 #[test]
+fn assignment_statements_lower_to_discard_store_and_set_opcodes() {
+    let program = compile(
+        r#"
+        let value = 0;
+        const box = { current: 0 };
+        value = 1;
+        box.current = 2;
+        box["next"] = 3;
+        0;
+        "#,
+    )
+    .expect("source should compile");
+
+    let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+    let instructions: Vec<_> = bytecode
+        .functions
+        .iter()
+        .flat_map(|function| function.code.iter())
+        .collect();
+
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::StoreSlotDiscard { .. }))
+    );
+    assert!(instructions.iter().any(|instruction| matches!(
+        instruction,
+        Instruction::SetPropStaticDiscard { name } if name == "current"
+    )));
+    assert!(
+        instructions
+            .iter()
+            .any(|instruction| matches!(instruction, Instruction::SetPropComputedDiscard))
+    );
+    assert!(!instructions.windows(2).any(|window| matches!(
+        window,
+        [Instruction::StoreSlot { .. }, Instruction::Pop]
+            | [Instruction::StoreName(_), Instruction::Pop]
+            | [Instruction::StoreGlobal(_), Instruction::Pop]
+            | [Instruction::SetPropStatic { .. }, Instruction::Pop]
+            | [Instruction::SetPropComputed, Instruction::Pop]
+    )));
+}
+
+#[test]
 fn nested_closures_keep_shadowed_slots_distinct_while_updating_outer_bindings() {
     let program = compile(
         r#"
@@ -299,7 +344,7 @@ fn unresolved_globals_lower_to_fast_path_and_preserve_runtime_behavior() {
     )));
     assert!(instructions.iter().any(|instruction| matches!(
         instruction,
-        Instruction::StoreGlobal(name) if name == "value"
+        Instruction::StoreGlobal(name) | Instruction::StoreGlobalDiscard(name) if name == "value"
     )));
     assert!(instructions.iter().any(|instruction| matches!(
         instruction,

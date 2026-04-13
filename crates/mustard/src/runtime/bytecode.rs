@@ -52,6 +52,12 @@ pub enum Instruction {
     },
     StoreName(String),
     StoreGlobal(String),
+    StoreSlotDiscard {
+        depth: usize,
+        slot: usize,
+    },
+    StoreNameDiscard(String),
+    StoreGlobalDiscard(String),
     InitializePattern(Pattern),
     PushEnv,
     PopEnv,
@@ -85,6 +91,10 @@ pub enum Instruction {
         name: String,
     },
     SetPropComputed,
+    SetPropStaticDiscard {
+        name: String,
+    },
+    SetPropComputedDiscard,
     Unary(UnaryOp),
     Binary(BinaryOp),
     Update(UpdateOp),

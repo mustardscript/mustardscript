@@ -243,6 +243,15 @@ fn apply_validation_effect(
             require_stack(1)?;
             state
         }
+        Instruction::StoreSlotDiscard { .. }
+        | Instruction::StoreNameDiscard(_)
+        | Instruction::StoreGlobalDiscard(_) => {
+            require_stack(1)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                ..state
+            }
+        }
         Instruction::InitializePattern(_) | Instruction::Pop => {
             require_stack(1)?;
             ValidationState {
@@ -341,10 +350,24 @@ fn apply_validation_effect(
                 ..state
             }
         }
+        Instruction::SetPropStaticDiscard { .. } => {
+            require_stack(2)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 2,
+                ..state
+            }
+        }
         Instruction::SetPropComputed => {
             require_stack(3)?;
             ValidationState {
                 stack_depth: state.stack_depth - 2,
+                ..state
+            }
+        }
+        Instruction::SetPropComputedDiscard => {
+            require_stack(3)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 3,
                 ..state
             }
         }

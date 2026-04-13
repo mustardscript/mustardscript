@@ -61,6 +61,7 @@ impl Compiler {
             context.code.push(Instruction::PushUndefined);
         }
         context.code.push(Instruction::Return);
+        let code = Self::optimize_code(context.code);
         let id = self.functions.len();
         self.functions.push(FunctionPrototype {
             name: None,
@@ -70,7 +71,7 @@ impl Compiler {
             param_binding_names: Vec::new(),
             rest: None,
             rest_binding_names: Vec::new(),
-            code: context.code,
+            code,
             is_async: false,
             is_arrow: false,
             span,
@@ -124,6 +125,7 @@ impl Compiler {
         }
         context.code.push(Instruction::PushUndefined);
         context.code.push(Instruction::Return);
+        let code = Self::optimize_code(context.code);
         let id = self.functions.len();
         self.functions.push(FunctionPrototype {
             name: function.name.clone(),
@@ -146,7 +148,7 @@ impl Compiler {
                 .iter()
                 .flat_map(|pattern| pattern_bindings(pattern).into_iter().map(|(name, _)| name))
                 .collect(),
-            code: context.code,
+            code,
             is_async: function.is_async,
             is_arrow: function.is_arrow,
             span: function.span,
@@ -239,6 +241,129 @@ impl Compiler {
             context
                 .code
                 .push(Instruction::StoreGlobal(name.to_string()));
+        }
+    }
+
+    fn optimize_code(code: Vec<Instruction>) -> Vec<Instruction> {
+        if !code.windows(2).any(|window| {
+            matches!(window[1], Instruction::Pop) && Self::supports_discard_peephole(&window[0])
+        }) {
+            return code;
+        }
+
+        let protected_targets = Self::protected_jump_targets(&code);
+        if !code.windows(2).enumerate().any(|(index, window)| {
+            matches!(window[1], Instruction::Pop)
+                && !protected_targets[index + 1]
+                && Self::supports_discard_peephole(&window[0])
+        }) {
+            return code;
+        }
+
+        let mut old_to_new = vec![0; code.len() + 1];
+        let mut optimized = Vec::with_capacity(code.len());
+        let mut index = 0;
+        while index < code.len() {
+            old_to_new[index] = optimized.len();
+            if let Some(instruction) =
+                Self::rewrite_discard_peephole(&code, index, &protected_targets)
+            {
+                optimized.push(instruction);
+                old_to_new[index + 1] = optimized.len();
+                index += 2;
+                continue;
+            }
+            optimized.push(code[index].clone());
+            index += 1;
+        }
+        old_to_new[code.len()] = optimized.len();
+        for instruction in &mut optimized {
+            Self::remap_targets(instruction, &old_to_new);
+        }
+        optimized
+    }
+
+    fn protected_jump_targets(code: &[Instruction]) -> Vec<bool> {
+        let mut targets = vec![false; code.len()];
+        for instruction in code {
+            match instruction {
+                Instruction::Jump(target)
+                | Instruction::JumpIfFalse(target)
+                | Instruction::JumpIfTrue(target)
+                | Instruction::JumpIfNullish(target)
+                | Instruction::EnterFinally { exit: target }
+                | Instruction::PushPendingJump { target, .. } => {
+                    targets[*target] = true;
+                }
+                Instruction::PushHandler { catch, finally } => {
+                    if let Some(target) = catch {
+                        targets[*target] = true;
+                    }
+                    if let Some(target) = finally {
+                        targets[*target] = true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        targets
+    }
+
+    fn supports_discard_peephole(instruction: &Instruction) -> bool {
+        matches!(
+            instruction,
+            Instruction::StoreSlot { .. }
+                | Instruction::StoreName(_)
+                | Instruction::StoreGlobal(_)
+                | Instruction::SetPropStatic { .. }
+                | Instruction::SetPropComputed
+        )
+    }
+
+    fn rewrite_discard_peephole(
+        code: &[Instruction],
+        index: usize,
+        protected_targets: &[bool],
+    ) -> Option<Instruction> {
+        let next = index + 1;
+        if next >= code.len() || !matches!(code[next], Instruction::Pop) || protected_targets[next]
+        {
+            return None;
+        }
+        match &code[index] {
+            Instruction::StoreSlot { depth, slot } => Some(Instruction::StoreSlotDiscard {
+                depth: *depth,
+                slot: *slot,
+            }),
+            Instruction::StoreName(name) => Some(Instruction::StoreNameDiscard(name.clone())),
+            Instruction::StoreGlobal(name) => Some(Instruction::StoreGlobalDiscard(name.clone())),
+            Instruction::SetPropStatic { name } => {
+                Some(Instruction::SetPropStaticDiscard { name: name.clone() })
+            }
+            Instruction::SetPropComputed => Some(Instruction::SetPropComputedDiscard),
+            _ => None,
+        }
+    }
+
+    fn remap_targets(instruction: &mut Instruction, old_to_new: &[usize]) {
+        match instruction {
+            Instruction::Jump(target)
+            | Instruction::JumpIfFalse(target)
+            | Instruction::JumpIfTrue(target)
+            | Instruction::JumpIfNullish(target)
+            | Instruction::EnterFinally { exit: target }
+            | Instruction::PushPendingJump { target, .. } => {
+                *target = old_to_new[*target];
+            }
+            Instruction::PushHandler { catch, finally } => {
+                if let Some(target) = catch {
+                    *target = old_to_new[*target];
+                }
+                if let Some(target) = finally {
+                    *target = old_to_new[*target];
+                }
+            }
+            _ => {}
         }
     }
 }
