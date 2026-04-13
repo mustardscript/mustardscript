@@ -72,7 +72,8 @@ or the request fails closed.
 Successful responses return either:
 
 - a completed value
-- or a suspended step containing `capability`, `args`, and `snapshot_base64`
+- or a suspended step containing `capability`, `args`, `snapshot_base64`,
+  `snapshot_id`, and a session-local `policy_id`
 
 ### `resume`
 
@@ -81,11 +82,9 @@ Successful responses return either:
   "method": "resume",
   "protocol_version": 1,
   "id": 3,
-  "snapshot_base64": "...",
-  "policy": {
-    "capabilities": ["fetch_data"],
-    "limits": {},
-    "snapshot_id": "...",
+  "snapshot_id": "...",
+  "policy_id": "...",
+  "auth": {
     "snapshot_key_base64": "...",
     "snapshot_key_digest": "...",
     "snapshot_token": "..."
@@ -98,17 +97,28 @@ Successful responses return either:
 ```
 
 `payload.type` is `value`, `error`, or `cancelled`.
-`policy` is required. The host must reassert the allowed capability names and
-authoritative runtime limits before the sidecar will inspect or resume a loaded
-snapshot. The `limits` field must be present even when the host intentionally
-wants default limits and therefore sends `{}`. `snapshot_id`,
-`snapshot_key_base64`, `snapshot_key_digest`, and `snapshot_token` are also
-required for loaded snapshots. The token is the lowercase hex HMAC-SHA256 of
-the detached `snapshot_id` under the caller-chosen snapshot key, and the
-sidecar recomputes `snapshot_id` from the raw `snapshot_base64` bytes before
-trusting the snapshot contents. Those fields bind resume to trusted detached
-dump metadata, but hosts still need ordinary integrity controls when snapshots
-are stored or transported.
+`resume` now accepts either:
+
+- the original `snapshot_base64` plus full `policy`
+- or cached `snapshot_id` plus cached `policy_id` plus `auth`
+
+The host must still reassert the authoritative restore policy before the
+sidecar will inspect or resume a loaded snapshot.
+
+- Full `policy` requests work as before: they must include `capabilities`,
+  `limits`, `snapshot_id`, `snapshot_key_base64`, `snapshot_key_digest`, and
+  `snapshot_token`.
+- Cached `policy_id` requests reuse the `capabilities` and `limits` that were
+  seeded from the original `start` request in the same sidecar session, but the
+  host must still supply fresh `auth` metadata for the specific suspended
+  snapshot being resumed.
+
+The token is the lowercase hex HMAC-SHA256 of the detached `snapshot_id` under
+the caller-chosen snapshot key, and the sidecar recomputes `snapshot_id` from
+either the supplied raw `snapshot_base64` bytes or the cached bytes referenced
+by `snapshot_id` before trusting the snapshot contents. Those fields bind
+resume to trusted detached dump metadata, but hosts still need ordinary
+integrity controls when snapshots are stored or transported.
 
 ## Response Shape
 
@@ -145,15 +155,23 @@ shipping host callbacks or JavaScript functions into the sidecar process.
 
 - The sidecar now keeps a session-local compiled-program cache keyed by
   `program_id`.
+- The sidecar now also keeps a session-local suspended-snapshot cache keyed by
+  `snapshot_id`.
+- The sidecar keeps a session-local capability/limits cache keyed by
+  `policy_id`.
 - `compile` seeds that cache and returns both the opaque `program_base64` blob
   and its `program_id`.
 - `start` may reference a cached `program_id` instead of resending
   `program_base64`, but those IDs only remain valid for the lifetime of the
   current sidecar process.
-- The sidecar still keeps no server-side snapshot handle between requests.
-  `snapshot_base64` remains a host-managed opaque blob.
-- Hosts may replay the same snapshot bytes in multiple `resume` requests as
-  long as they preserve or recompute the matching detached `snapshot_id`,
+- Suspended `start` and `resume` responses return `snapshot_id`, so later
+  `resume` requests may reference cached bytes without resending
+  `snapshot_base64`.
+- Suspended `start` responses also return `policy_id`, so later `resume`
+  requests may reference cached capability/limits metadata without resending
+  it on every hop.
+- Hosts may still replay the same snapshot bytes in multiple `resume` requests
+  as long as they preserve or recompute the matching detached `snapshot_id`,
   `snapshot_key_digest`, and `snapshot_token` for the supplied
   `snapshot_key_base64`.
 - Replaying a snapshot re-executes from that suspension point deterministically
@@ -185,5 +203,5 @@ shipping host callbacks or JavaScript functions into the sidecar process.
 - Any in-flight request is lost when the process is killed. To continue work,
   the host starts a fresh sidecar and replays a previously persisted
   compiled-program blob or suspension snapshot, or recompiles from source if no
-  resumable blob was saved. Cached `program_id` values do not survive process
-  termination.
+  resumable blob was saved. Cached `program_id`, `snapshot_id`, and `policy_id`
+  values do not survive process termination.

@@ -14,7 +14,7 @@ const {
   encodeResumePayloadError,
   encodeResumePayloadValue,
 } = require('../../lib/structured.ts');
-const { snapshotIdentity, snapshotKeyDigest, snapshotToken } = require('../../lib/policy.ts');
+const { snapshotKeyDigest, snapshotToken } = require('../../lib/policy.ts');
 const { normalizeValue } = require('./runtime-oracle.js');
 
 const REPO_ROOT = path.join(__dirname, '../..');
@@ -227,12 +227,16 @@ async function runSidecar(entry) {
     assert.equal(start.protocol_version, SIDECAR_PROTOCOL_VERSION);
 
     let step = decodeSidecarStep(start.result.step);
+    let snapshotId = start.result.snapshot_id ?? null;
+    let policyId = start.result.policy_id ?? null;
     let index = 0;
     while (step.type === 'suspended') {
       assert.ok(
         entry.capabilities.includes(step.capability),
         `case \`${entry.id}\` suspended on unexpected capability \`${step.capability}\``,
       );
+      assert.equal(typeof snapshotId, 'string', `case \`${entry.id}\` missing sidecar snapshot_id`);
+      assert.equal(typeof policyId, 'string', `case \`${entry.id}\` missing sidecar policy_id`);
       const corpusStep = entry.steps[index];
       assert.ok(corpusStep, `case \`${entry.id}\` suspended more often than the corpus defines`);
       const payload =
@@ -243,11 +247,9 @@ async function runSidecar(entry) {
         protocol_version: SIDECAR_PROTOCOL_VERSION,
         method: 'resume',
         id: 3 + index,
-        snapshot_base64: step.snapshotBase64,
-        policy: {
-          capabilities: entry.capabilities,
-          limits: {},
-          snapshot_id: snapshotIdentity(Buffer.from(step.snapshotBase64, 'base64')),
+        snapshot_id: snapshotId,
+        policy_id: policyId,
+        auth: {
           snapshot_key_base64: EXPLICIT_SNAPSHOT_KEY_BASE64,
           snapshot_key_digest: snapshotKeyDigest(Buffer.from(EXPLICIT_SNAPSHOT_KEY, 'utf8')),
           snapshot_token: snapshotToken(
@@ -260,6 +262,8 @@ async function runSidecar(entry) {
       assert.equal(resume.ok, true, `case \`${entry.id}\` failed to resume via sidecar`);
       assert.equal(resume.protocol_version, SIDECAR_PROTOCOL_VERSION);
       step = decodeSidecarStep(resume.result.step);
+      snapshotId = resume.result.snapshot_id ?? null;
+      policyId = resume.result.policy_id ?? policyId;
       index += 1;
     }
 

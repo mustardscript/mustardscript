@@ -4,8 +4,9 @@ use std::sync::{Arc, OnceLock};
 use anyhow::{Context, Result, anyhow};
 use mustard::BytecodeProgram;
 use mustard_bridge::{
-    ResumeDto, SnapshotPolicyDto, StartOptionsDto, StepDto, compile_program_bytes, decode_base64,
-    decode_program, encode_bytes_base64, resume_program, start_shared_program,
+    ResumeDto, RuntimeLimitsDto, SnapshotPolicyDto, StartOptionsDto, StepDto,
+    compile_program_bytes, decode_base64, decode_program, encode_bytes_base64, resume_program,
+    start_shared_program,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -33,8 +34,16 @@ enum Request {
     Resume {
         protocol_version: u32,
         id: u64,
-        snapshot_base64: String,
-        policy: Box<SnapshotPolicyDto>,
+        #[serde(default)]
+        snapshot_base64: Option<String>,
+        #[serde(default)]
+        snapshot_id: Option<String>,
+        #[serde(default)]
+        policy: Option<Box<SnapshotPolicyDto>>,
+        #[serde(default)]
+        policy_id: Option<String>,
+        #[serde(default)]
+        auth: Option<Box<ResumeAuth>>,
         payload: Box<ResumeDto>,
     },
 }
@@ -59,7 +68,18 @@ enum ResponsePayload {
     },
     Step {
         step: StepDto,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        snapshot_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        policy_id: Option<String>,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ResumeAuth {
+    snapshot_key_base64: String,
+    snapshot_key_digest: String,
+    snapshot_token: String,
 }
 
 fn digest_hex(bytes: &[u8]) -> String {
@@ -98,14 +118,150 @@ impl ProgramEntry {
     }
 }
 
+#[derive(Debug, Clone)]
+struct PolicyEntry {
+    capabilities: Vec<String>,
+    limits: RuntimeLimitsDto,
+}
+
 #[derive(Default)]
 pub struct SidecarSession {
     programs: HashMap<String, ProgramEntry>,
+    snapshots: HashMap<String, Vec<u8>>,
+    policies: HashMap<String, PolicyEntry>,
 }
 
 impl SidecarSession {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    fn register_policy(
+        &mut self,
+        capabilities: &[String],
+        limits: &RuntimeLimitsDto,
+    ) -> Result<String> {
+        #[derive(Serialize)]
+        struct PolicySeed<'a> {
+            capabilities: &'a [String],
+            limits: &'a RuntimeLimitsDto,
+        }
+
+        let encoded = serde_json::to_vec(&PolicySeed {
+            capabilities,
+            limits,
+        })
+        .context("failed to serialize policy cache seed")?;
+        let policy_id = digest_hex(&encoded);
+        self.policies
+            .entry(policy_id.clone())
+            .or_insert_with(|| PolicyEntry {
+                capabilities: capabilities.to_vec(),
+                limits: limits.clone(),
+            });
+        Ok(policy_id)
+    }
+
+    fn resolve_snapshot(
+        &mut self,
+        snapshot_id: Option<String>,
+        snapshot_base64: Option<String>,
+    ) -> Result<(String, Vec<u8>)> {
+        if let Some(snapshot_id) = snapshot_id.as_ref()
+            && let Some(snapshot) = self.snapshots.get(snapshot_id)
+        {
+            return Ok((snapshot_id.clone(), snapshot.clone()));
+        }
+
+        let Some(snapshot_base64) = snapshot_base64 else {
+            if let Some(snapshot_id) = snapshot_id {
+                return Err(anyhow!("unknown snapshot_id `{snapshot_id}`"));
+            }
+            return Err(anyhow!("resume requires snapshot_base64 or snapshot_id"));
+        };
+
+        let bytes = decode_base64(&snapshot_base64)?;
+        let derived_snapshot_id = digest_hex(&bytes);
+        if let Some(snapshot_id) = snapshot_id
+            && snapshot_id != derived_snapshot_id
+        {
+            return Err(anyhow!("snapshot_id did not match snapshot_base64"));
+        }
+        self.snapshots
+            .entry(derived_snapshot_id.clone())
+            .or_insert_with(|| bytes.clone());
+        Ok((derived_snapshot_id, bytes))
+    }
+
+    fn resolve_resume_policy(
+        &mut self,
+        policy: Option<Box<SnapshotPolicyDto>>,
+        policy_id: Option<String>,
+        snapshot_id: &str,
+        auth: Option<Box<ResumeAuth>>,
+    ) -> Result<(SnapshotPolicyDto, Option<String>)> {
+        match (policy, policy_id) {
+            (Some(policy), Some(policy_id)) => {
+                let registered = self.register_policy(
+                    &policy.capabilities,
+                    policy
+                        .limits
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("raw snapshot restore requires explicit limits"))?,
+                )?;
+                if registered != policy_id {
+                    return Err(anyhow!("policy_id did not match policy"));
+                }
+                Ok(((*policy).clone(), Some(policy_id)))
+            }
+            (Some(policy), None) => {
+                let policy_id = self.register_policy(
+                    &policy.capabilities,
+                    policy
+                        .limits
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("raw snapshot restore requires explicit limits"))?,
+                )?;
+                Ok(((*policy).clone(), Some(policy_id)))
+            }
+            (None, Some(policy_id)) => {
+                let entry = self
+                    .policies
+                    .get(&policy_id)
+                    .ok_or_else(|| anyhow!("unknown policy_id `{policy_id}`"))?;
+                let auth =
+                    auth.ok_or_else(|| anyhow!("resume with policy_id requires auth metadata"))?;
+                Ok((
+                    SnapshotPolicyDto {
+                        capabilities: entry.capabilities.clone(),
+                        limits: Some(entry.limits.clone()),
+                        snapshot_key_base64: Some(auth.snapshot_key_base64),
+                        snapshot_token: Some(auth.snapshot_token),
+                        snapshot_id: Some(snapshot_id.to_string()),
+                        snapshot_key_digest: Some(auth.snapshot_key_digest),
+                    },
+                    Some(policy_id),
+                ))
+            }
+            (None, None) => Err(anyhow!("resume requires policy or policy_id")),
+        }
+    }
+
+    fn suspended_step_metadata(
+        &mut self,
+        step: &StepDto,
+        policy_id: Option<String>,
+    ) -> Result<(Option<String>, Option<String>)> {
+        let StepDto::Suspended {
+            snapshot_base64, ..
+        } = step
+        else {
+            return Ok((None, None));
+        };
+        let bytes = decode_base64(snapshot_base64)?;
+        let snapshot_id = digest_hex(&bytes);
+        self.snapshots.entry(snapshot_id.clone()).or_insert(bytes);
+        Ok((Some(snapshot_id), policy_id))
     }
 
     fn resolve_program(
@@ -189,18 +345,37 @@ impl SidecarSession {
                 ..
             } => (|| {
                 let program = self.resolve_program(program_id, program_base64)?;
+                let policy_id = self.register_policy(&options.capabilities, &options.limits)?;
                 let step = start_shared_program(program, options, None)?;
-                Ok(ResponsePayload::Step { step })
+                let (snapshot_id, policy_id) =
+                    self.suspended_step_metadata(&step, Some(policy_id))?;
+                Ok(ResponsePayload::Step {
+                    step,
+                    snapshot_id,
+                    policy_id,
+                })
             })(),
             Request::Resume {
+                snapshot_id,
                 snapshot_base64,
                 policy,
+                policy_id,
+                auth,
                 payload,
                 ..
             } => (|| {
-                let snapshot_bytes = decode_base64(&snapshot_base64)?;
-                let step = resume_program(&snapshot_bytes, *payload, *policy, None)?;
-                Ok(ResponsePayload::Step { step })
+                let (snapshot_id, snapshot_bytes) =
+                    self.resolve_snapshot(snapshot_id, snapshot_base64)?;
+                let (policy, policy_id) =
+                    self.resolve_resume_policy(policy, policy_id, &snapshot_id, auth)?;
+                let step = resume_program(&snapshot_bytes, *payload, policy, None)?;
+                let (next_snapshot_id, policy_id) =
+                    self.suspended_step_metadata(&step, policy_id)?;
+                Ok(ResponsePayload::Step {
+                    step,
+                    snapshot_id: next_snapshot_id,
+                    policy_id,
+                })
             })(),
         };
 

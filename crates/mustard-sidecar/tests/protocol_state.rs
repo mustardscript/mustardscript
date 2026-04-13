@@ -131,6 +131,32 @@ fn resume_snapshot(
     )
 }
 
+fn resume_snapshot_cached(
+    session: &mut SidecarSession,
+    snapshot_id: &str,
+    snapshot_base64: &str,
+    policy_id: &str,
+    payload: Value,
+    id: u64,
+) -> Value {
+    request(
+        session,
+        json!({
+            "protocol_version": PROTOCOL_VERSION,
+            "method": "resume",
+            "id": id,
+            "snapshot_id": snapshot_id,
+            "policy_id": policy_id,
+            "auth": {
+                "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+                "snapshot_key_digest": snapshot_key_digest(),
+                "snapshot_token": snapshot_token(snapshot_base64),
+            },
+            "payload": payload,
+        }),
+    )
+}
+
 fn finite_number(value: f64) -> Value {
     json!({
         "Number": {
@@ -239,6 +265,61 @@ fn replaying_the_same_snapshot_is_deterministic_because_resume_is_stateless() {
     assert!(first["ok"].as_bool().unwrap_or(false));
     assert!(replay["ok"].as_bool().unwrap_or(false));
     assert_eq!(first["result"]["step"], replay["result"]["step"]);
+}
+
+#[test]
+fn cached_snapshot_and_policy_ids_resume_without_resending_full_state() {
+    let mut session = SidecarSession::new();
+    let (program, _) = compile_program(&mut session, "const value = fetch_data(8); value + 2;", 1);
+    let start = start_program(&mut session, Some(&program), None, &["fetch_data"], 2);
+    let snapshot_base64 = start["result"]["step"]["snapshot_base64"]
+        .as_str()
+        .expect("snapshot should exist");
+    let snapshot_id = start["result"]["snapshot_id"]
+        .as_str()
+        .expect("snapshot_id should exist");
+    let policy_id = start["result"]["policy_id"]
+        .as_str()
+        .expect("policy_id should exist");
+
+    let resumed = resume_snapshot_cached(
+        &mut session,
+        snapshot_id,
+        snapshot_base64,
+        policy_id,
+        json!({
+            "type": "value",
+            "value": finite_number(8.0),
+        }),
+        3,
+    );
+
+    assert!(resumed["ok"].as_bool().unwrap_or(false));
+    assert_eq!(resumed["result"]["step"]["type"], "completed");
+    assert_eq!(resumed["result"]["step"]["value"]["Number"]["Finite"], 10.0);
+}
+
+#[test]
+fn cached_resume_fails_closed_for_unknown_snapshot_or_policy_id() {
+    let mut session = SidecarSession::new();
+    let response = resume_snapshot_cached(
+        &mut session,
+        "missing-snapshot",
+        "AAAA",
+        "missing-policy",
+        json!({
+            "type": "value",
+            "value": finite_number(1.0),
+        }),
+        1,
+    );
+
+    assert!(!response["ok"].as_bool().unwrap_or(true));
+    let error = response["error"].as_str().expect("error should exist");
+    assert!(
+        error.contains("unknown snapshot_id") || error.contains("unknown policy_id"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]

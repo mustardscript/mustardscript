@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow};
 use mustard::{HostError, ResumePayload, RuntimeLimits, SnapshotPolicy, StructuredValue};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StartOptionsDto {
     #[serde(default)]
     pub inputs: BTreeMap<String, StructuredValue>,
@@ -14,7 +14,7 @@ pub struct StartOptionsDto {
     pub limits: RuntimeLimitsDto,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RuntimeLimitsDto {
     pub instruction_budget: Option<usize>,
     pub heap_limit_bytes: Option<usize>,
@@ -40,7 +40,7 @@ impl RuntimeLimitsDto {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotPolicyDto {
     #[serde(default)]
     pub capabilities: Vec<String>,

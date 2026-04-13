@@ -197,6 +197,23 @@ fn hostile_but_well_formed_requests_fail_closed() {
             }
         })
         .to_string(),
+        serde_json::json!({
+            "protocol_version": PROTOCOL_VERSION,
+            "method": "resume",
+            "id": 44,
+            "snapshot_id": "missing-snapshot",
+            "policy_id": "missing-policy",
+            "auth": {
+                "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+                "snapshot_key_digest": snapshot_key_digest(),
+                "snapshot_token": snapshot_token(&snapshot),
+            },
+            "payload": {
+                "type": "value",
+                "value": { "Undefined": null }
+            }
+        })
+        .to_string(),
     ];
 
     for request in requests {

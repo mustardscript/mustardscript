@@ -23,7 +23,6 @@ const {
   encodeSnapshotPolicy,
   resolveExecutionContext,
   resolveProgressLoadContext,
-  snapshotIdentity,
   snapshotKeyDigest,
   snapshotToken,
 } = require('../lib/policy.ts');
@@ -357,7 +356,7 @@ function expectedSuspendTotal(boundaryCount) {
   return (boundaryCount * (boundaryCount + 1)) / 2;
 }
 
-function sidecarStepValue(step) {
+function sidecarStepValue(step, result = undefined) {
   if (step.type === 'completed') {
     return {
       type: 'completed',
@@ -369,6 +368,8 @@ function sidecarStepValue(step) {
     capability: step.capability,
     args: step.args.map(decodeStructured),
     snapshotBase64: step.snapshot_base64,
+    snapshotId: result?.snapshot_id ?? null,
+    policyId: result?.policy_id ?? null,
   };
 }
 
@@ -462,12 +463,9 @@ function sidecarCapabilityNames(capabilities = undefined) {
   return capabilities ? Object.keys(capabilities) : [];
 }
 
-function sidecarSnapshotPolicy(snapshotBase64, capabilityNames) {
+function sidecarResumeAuth(snapshotBase64) {
   const snapshot = Buffer.from(snapshotBase64, 'base64');
   return {
-    capabilities: capabilityNames,
-    limits: {},
-    snapshot_id: snapshotIdentity(snapshot),
     snapshot_key_base64: SNAPSHOT_KEY_BASE64,
     snapshot_key_digest: snapshotKeyDigest(Buffer.from(SNAPSHOT_KEY, 'utf8')),
     snapshot_token: snapshotToken(snapshot, SNAPSHOT_KEY),
@@ -484,31 +482,32 @@ async function startSidecarProgram(request, program, capabilities = undefined) {
   assert.equal(start.ok, true, `sidecar start failed: ${start.error}`);
   return {
     capabilityNames,
-    step: sidecarStepValue(start.result.step),
+    step: sidecarStepValue(start.result.step, start.result),
   };
 }
 
 async function resumeSidecarSnapshot(
   request,
-  snapshotBase64,
-  capabilityNames,
+  step,
   payloadValue,
   requestId = 3,
 ) {
+  assert.equal(typeof step.snapshotId, 'string', 'sidecar resume requires a cached snapshotId');
+  assert.equal(typeof step.policyId, 'string', 'sidecar resume requires a cached policyId');
   const resume = await request({
     protocol_version: SIDECAR_PROTOCOL_VERSION,
     method: 'resume',
     id: requestId,
-    snapshot_base64: snapshotBase64,
-    policy: sidecarSnapshotPolicy(snapshotBase64, capabilityNames),
+    snapshot_id: step.snapshotId,
+    policy_id: step.policyId,
+    auth: sidecarResumeAuth(step.snapshotBase64),
     payload: JSON.parse(encodeResumePayloadValue(payloadValue)),
   });
   assert.equal(resume.ok, true, `sidecar resume failed: ${resume.error}`);
-  return sidecarStepValue(resume.result.step);
+  return sidecarStepValue(resume.result.step, resume.result);
 }
 
 async function runSidecarProgram(request, program, capabilities = undefined, resumeValue = undefined) {
-  const capabilityNames = capabilities ? Object.keys(capabilities) : [];
   let { step } = await startSidecarProgram(request, program, capabilities);
   let requestId = 3;
   while (step.type === 'suspended') {
@@ -516,13 +515,7 @@ async function runSidecarProgram(request, program, capabilities = undefined, res
       typeof resumeValue === 'function'
         ? resumeValue(step)
         : capabilities?.[step.capability]?.(...step.args) ?? step.args[0];
-    step = await resumeSidecarSnapshot(
-      request,
-      step.snapshotBase64,
-      capabilityNames,
-      payloadValue,
-      requestId,
-    );
+    step = await resumeSidecarSnapshot(request, step, payloadValue, requestId);
     requestId += 1;
   }
   return step.value;
@@ -1158,12 +1151,7 @@ async function benchmarkSidecar(fixtures, profile) {
     phases.execution_only_small = warmSmall[1];
 
     const transportResume = await measure('transport_resume_only', async () => {
-      const step = await resumeSidecarSnapshot(
-        request,
-        transportProbe.step.snapshotBase64,
-        transportProbe.capabilityNames,
-        1,
-      );
+      const step = await resumeSidecarSnapshot(request, transportProbe.step, 1);
       assert.equal(step.type, 'completed');
       assert.equal(step.value, 1);
     }, DEFAULT_OPTIONS);
@@ -1248,36 +1236,31 @@ async function benchmarkSidecar(fixtures, profile) {
           limits: {},
         }));
         assert.equal(start.ok, true);
-        let step = sidecarStepValue(start.result.step);
+        let step = sidecarStepValue(start.result.step, start.result);
         assert.equal(step.capability, 'fetch_value');
-        const snapshot = Buffer.from(step.snapshotBase64, 'base64');
         let response = await request({
           protocol_version: SIDECAR_PROTOCOL_VERSION,
           method: 'resume',
           id: 5001,
-          snapshot_base64: step.snapshotBase64,
-          policy: {
-            capabilities: ['fetch_value', 'explode'],
-            limits: {},
-            snapshot_id: snapshotIdentity(snapshot),
+          snapshot_id: step.snapshotId,
+          policy_id: step.policyId,
+          auth: {
             snapshot_key_base64: SNAPSHOT_KEY_BASE64,
             snapshot_key_digest: snapshotKeyDigest(Buffer.from(SNAPSHOT_KEY, 'utf8')),
-            snapshot_token: snapshotToken(snapshot, SNAPSHOT_KEY),
+            snapshot_token: snapshotToken(Buffer.from(step.snapshotBase64, 'base64'), SNAPSHOT_KEY),
           },
           payload: JSON.parse(encodeResumePayloadValue(1)),
         });
         assert.equal(response.ok, true);
-        step = sidecarStepValue(response.result.step);
+        step = sidecarStepValue(response.result.step, response.result);
         assert.equal(step.capability, 'explode');
         response = await request({
           protocol_version: SIDECAR_PROTOCOL_VERSION,
           method: 'resume',
           id: 5002,
-          snapshot_base64: step.snapshotBase64,
-          policy: {
-            capabilities: ['fetch_value', 'explode'],
-            limits: {},
-            snapshot_id: snapshotIdentity(Buffer.from(step.snapshotBase64, 'base64')),
+          snapshot_id: step.snapshotId,
+          policy_id: step.policyId,
+          auth: {
             snapshot_key_base64: SNAPSHOT_KEY_BASE64,
             snapshot_key_digest: snapshotKeyDigest(Buffer.from(SNAPSHOT_KEY, 'utf8')),
             snapshot_token: snapshotToken(Buffer.from(step.snapshotBase64, 'base64'), SNAPSHOT_KEY),

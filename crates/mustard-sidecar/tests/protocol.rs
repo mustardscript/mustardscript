@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use hmac::{Hmac, Mac};
-use serde_json::{Value, json};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 const SNAPSHOT_KEY: &[u8] = b"sidecar-protocol-test-key";
@@ -47,17 +47,6 @@ fn snapshot_token(snapshot_base64: &str) -> String {
         let _ = write!(&mut token, "{byte:02x}");
     }
     token
-}
-
-fn authenticated_policy(snapshot_base64: &str, capabilities: &[&str]) -> Value {
-    json!({
-        "capabilities": capabilities,
-        "limits": {},
-        "snapshot_id": snapshot_id(snapshot_base64),
-        "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
-        "snapshot_key_digest": snapshot_key_digest(),
-        "snapshot_token": snapshot_token(snapshot_base64),
-    })
 }
 
 #[test]
@@ -127,7 +116,14 @@ fn sidecar_compiles_starts_and_resumes() {
         .as_str()
         .expect("snapshot base64 should exist")
         .to_string();
-    let policy = authenticated_policy(&snapshot, &["fetch_data"]);
+    let snapshot_id = start_response["result"]["snapshot_id"]
+        .as_str()
+        .expect("snapshot_id should exist")
+        .to_string();
+    let policy_id = start_response["result"]["policy_id"]
+        .as_str()
+        .expect("policy_id should exist")
+        .to_string();
 
     writeln!(
         stdin,
@@ -136,8 +132,13 @@ fn sidecar_compiles_starts_and_resumes() {
             "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 3,
-            "snapshot_base64": snapshot,
-            "policy": policy,
+            "snapshot_id": snapshot_id,
+            "policy_id": policy_id,
+            "auth": {
+                "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+                "snapshot_key_digest": snapshot_key_digest(),
+                "snapshot_token": snapshot_token(&snapshot),
+            },
             "payload": {
                 "type": "value",
                 "value": { "Number": { "Finite": 5.0 } }
@@ -229,7 +230,14 @@ fn sidecar_accepts_cancelled_resume_payload() {
         .as_str()
         .expect("snapshot base64 should exist")
         .to_string();
-    let policy = authenticated_policy(&snapshot, &["fetch_data"]);
+    let snapshot_id = start_response["result"]["snapshot_id"]
+        .as_str()
+        .expect("snapshot_id should exist")
+        .to_string();
+    let policy_id = start_response["result"]["policy_id"]
+        .as_str()
+        .expect("policy_id should exist")
+        .to_string();
 
     writeln!(
         stdin,
@@ -238,8 +246,13 @@ fn sidecar_accepts_cancelled_resume_payload() {
             "protocol_version": PROTOCOL_VERSION,
             "method": "resume",
             "id": 3,
-            "snapshot_base64": snapshot,
-            "policy": policy,
+            "snapshot_id": snapshot_id,
+            "policy_id": policy_id,
+            "auth": {
+                "snapshot_key_base64": STANDARD.encode(SNAPSHOT_KEY),
+                "snapshot_key_digest": snapshot_key_digest(),
+                "snapshot_token": snapshot_token(&snapshot),
+            },
             "payload": {
                 "type": "cancelled"
             }
