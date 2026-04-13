@@ -32,7 +32,7 @@ function createFakeCargo(root) {
   const outputBinaryPath = path.join(
     root,
     'target',
-    'debug',
+    'release',
     `libjslite_node${nativeLibraryExtension()}`,
   );
   const scriptPath = path.join(root, 'fake-cargo.js');
@@ -120,6 +120,7 @@ test('dist/install.js ignores ancestor-resolved @napi-rs/cli and builds through 
       JSON.parse(fs.readFileSync(fakeCargo.sentinelPath, 'utf8')),
       [
         'build',
+        '--release',
         '--manifest-path',
         'crates/jslite-node/Cargo.toml',
         '--message-format',

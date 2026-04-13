@@ -97,6 +97,7 @@ const cargoOutput = execFileSync(
   cargo,
   [
     'build',
+    '--release',
     '--manifest-path',
     'crates/jslite-node/Cargo.toml',
     '--message-format',

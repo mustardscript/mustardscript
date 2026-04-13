@@ -53,7 +53,10 @@ function verifyPackedFiles() {
 
   const packedFiles = new Set(packed.files.map((entry) => entry.path));
   const requiredFiles = [
+    'Cargo.lock',
     'Cargo.toml',
+    'LICENSE',
+    'SECURITY.md',
     'crates/jslite/Cargo.toml',
     'crates/jslite/src/diagnostic.rs',
     'crates/jslite/src/ir.rs',

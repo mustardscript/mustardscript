@@ -5,7 +5,10 @@
   "main": "dist/index.js",
   "types": "jslite.d.ts",
   "files": [
+    "Cargo.lock",
     "Cargo.toml",
+    "LICENSE",
+    "SECURITY.md",
     "dist",
     "index.d.ts",
     "jslite.d.ts",
@@ -33,6 +36,12 @@
       "aarch64-apple-darwin",
       "x86_64-unknown-linux-gnu"
     ]
+  },
+  "optionalDependencies": {
+    "@keppoai/jslite-darwin-arm64": "0.1.0",
+    "@keppoai/jslite-darwin-x64": "0.1.0",
+    "@keppoai/jslite-linux-x64-gnu": "0.1.0",
+    "@keppoai/jslite-win32-x64-msvc": "0.1.0"
   },
   "scripts": {
     "install": "node -e \"const fs=require('node:fs'); const cp=require('node:child_process'); if (!fs.existsSync('dist/install.js')) { cp.execFileSync(process.execPath, ['scripts/build-ts-dist.ts'], { stdio: 'inherit' }); } cp.execFileSync(process.execPath, ['dist/install.js'], { stdio: 'inherit' });\"",
@@ -70,7 +79,7 @@
     "vm"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "commonjs",
   "devDependencies": {
     "@napi-rs/cli": "^3.3.0",

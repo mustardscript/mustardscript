@@ -19,6 +19,7 @@ const {
   PREBUILT_TARGETS,
   getCurrentPrebuiltTarget,
 } = require(path.join(repoRoot, 'native-loader.ts'));
+const SIDECAR_PROTOCOL_VERSION = 1;
 
 function tarballFilenameForPackage(name, version) {
   return `${name.replace(/^@/, '').replace(/\//g, '-')}-${version}.tgz`;
@@ -52,6 +53,101 @@ function runGuestProgram(consumerRoot, source) {
     ],
     consumerRoot,
   );
+}
+
+function installedPackageRoot(consumerRoot) {
+  return path.join(consumerRoot, 'node_modules', '@keppoai', 'jslite');
+}
+
+function readInstalledPackageManifest(consumerRoot) {
+  return JSON.parse(
+    fs.readFileSync(path.join(installedPackageRoot(consumerRoot), 'package.json'), 'utf8'),
+  );
+}
+
+function assertInstalledReleaseFiles(consumerRoot) {
+  const packageRoot = installedPackageRoot(consumerRoot);
+  for (const file of ['Cargo.lock', 'LICENSE', 'SECURITY.md']) {
+    assert.ok(fs.existsSync(path.join(packageRoot, file)), `${file} should be shipped`);
+  }
+}
+
+function runInstalledSidecarSmoke(consumerRoot, source) {
+  const packageRoot = installedPackageRoot(consumerRoot);
+  run('cargo', ['build', '-q', '-p', 'jslite-sidecar'], packageRoot);
+
+  const response = JSON.parse(
+    run(
+      process.execPath,
+      [
+        '-e',
+        `
+          const path = require('node:path');
+          const readline = require('node:readline');
+          const { spawn } = require('node:child_process');
+
+          const packageRoot = ${JSON.stringify(packageRoot)};
+          const executable = path.join(
+            packageRoot,
+            'target',
+            'debug',
+            process.platform === 'win32' ? 'jslite-sidecar.exe' : 'jslite-sidecar'
+          );
+          const child = spawn(executable, [], {
+            cwd: packageRoot,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          });
+          const reader = readline.createInterface({ input: child.stdout });
+          let stderr = '';
+          child.stderr.on('data', (chunk) => {
+            stderr += chunk.toString('utf8');
+          });
+
+          function readResponse() {
+            return new Promise((resolve, reject) => {
+              reader.once('line', resolve);
+              child.once('error', reject);
+            });
+          }
+
+          (async () => {
+            child.stdin.write(JSON.stringify({
+              protocol_version: ${SIDECAR_PROTOCOL_VERSION},
+              method: 'compile',
+              id: 1,
+              source: ${JSON.stringify(source)},
+            }) + '\\n');
+            const compile = JSON.parse(await readResponse());
+            if (!compile.ok) {
+              throw new Error('compile failed: ' + JSON.stringify(compile));
+            }
+
+            child.stdin.write(JSON.stringify({
+              protocol_version: ${SIDECAR_PROTOCOL_VERSION},
+              method: 'start',
+              id: 2,
+              program_base64: compile.result.program_base64,
+              options: { inputs: {}, capabilities: [], limits: {} },
+            }) + '\\n');
+            const start = JSON.parse(await readResponse());
+            process.stdout.write(JSON.stringify(start));
+            reader.close();
+            child.stdin.end();
+            await new Promise((resolve) => child.once('close', resolve));
+          })().catch((error) => {
+            console.error(error);
+            console.error(stderr);
+            process.exit(1);
+          });
+        `,
+      ],
+      packageRoot,
+    ),
+  );
+
+  assert.equal(response.protocol_version, SIDECAR_PROTOCOL_VERSION);
+  assert.equal(response.ok, true);
+  assert.equal(response.result.step.type, 'completed');
 }
 
 function packTarball(cwd) {
@@ -90,6 +186,12 @@ function verifyPrebuiltPackageMetadata(stagingRoot) {
   assert.deepEqual(
     packageInfo.napi.targets,
     PREBUILT_TARGETS.map((target) => target.triple),
+  );
+  assert.deepEqual(
+    packageInfo.optionalDependencies,
+    Object.fromEntries(
+      PREBUILT_TARGETS.map((target) => [target.packageName, packageInfo.version]),
+    ),
   );
 
   for (const target of PREBUILT_TARGETS) {
@@ -179,10 +281,13 @@ test(
 
     run(npmCommand, ['init', '-y'], consumerRoot);
     run(npmCommand, ['install', tarballPath], consumerRoot);
+    assertInstalledReleaseFiles(consumerRoot);
+    assert.equal(readInstalledPackageManifest(consumerRoot).license, packageInfo.license);
     assert.equal(
       runGuestProgram(consumerRoot, 'const answer = 2; answer + 3;'),
       '5',
     );
+    runInstalledSidecarSmoke(consumerRoot, 'const answer = 40; answer + 2;');
 
     run(npmCommand, ['install', tarballPath], consumerRoot);
     assert.equal(
@@ -228,29 +333,28 @@ test(
       assert.equal(rootTarball.filename, rootTarballName);
       assert.equal(hostTarball.name, hostPrebuiltTarget.packageName);
 
-      run(npmCommand, ['init', '-y'], consumerRoot);
-      run(
-        npmCommand,
-        [
-          'install',
-          '--ignore-scripts',
-          rootTarball.tarballPath,
-          hostTarball.tarballPath,
-        ],
-        consumerRoot,
+      fs.writeFileSync(
+        path.join(consumerRoot, 'package.json'),
+        `${JSON.stringify(
+          {
+            name: 'consumer',
+            private: true,
+            version: '1.0.0',
+            dependencies: {
+              [packageInfo.name]: rootTarball.tarballPath,
+            },
+            overrides: {
+              [hostPrebuiltTarget.packageName]: hostTarball.tarballPath,
+            },
+          },
+          null,
+          2,
+        )}\n`,
       );
 
       const installOutput = run(
-        process.execPath,
-        [
-          path.join(
-            consumerRoot,
-            'node_modules',
-            '@keppoai',
-            'jslite',
-            'dist/install.js',
-          ),
-        ],
+        npmCommand,
+        ['install', '--foreground-scripts'],
         consumerRoot,
         {
           env: {
@@ -260,6 +364,11 @@ test(
         },
       );
       assert.match(installOutput, /using optional prebuilt addon/);
+      assertInstalledReleaseFiles(consumerRoot);
+      assert.deepEqual(
+        readInstalledPackageManifest(consumerRoot).optionalDependencies,
+        packageInfo.optionalDependencies,
+      );
       assert.equal(
         runGuestProgram(consumerRoot, 'let total = 40; total = total + 2; total;'),
         '42',
