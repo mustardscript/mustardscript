@@ -33,12 +33,18 @@ where
     }
     for map in runtime.maps.values() {
         for entry in &map.entries {
+            let Some(entry) = entry else {
+                continue;
+            };
             visit(&entry.key)?;
             visit(&entry.value)?;
         }
     }
     for set in runtime.sets.values() {
         for value in &set.entries {
+            let Some(value) = value else {
+                continue;
+            };
             visit(value)?;
         }
     }

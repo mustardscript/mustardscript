@@ -137,12 +137,16 @@ impl Runtime {
         measure_array_slot_bytes(value)
     }
 
-    pub(super) fn map_entry_bytes(entry: &MapEntry) -> usize {
-        measure_map_entry_bytes(entry)
+    pub(super) fn map_slot_bytes(entry: Option<&MapEntry>) -> usize {
+        measure_map_slot_bytes(entry)
     }
 
-    pub(super) fn set_entry_bytes(value: &Value) -> usize {
-        measure_set_entry_bytes(value)
+    pub(super) fn set_slot_bytes(value: Option<&Value>) -> usize {
+        measure_set_slot_bytes(value)
+    }
+
+    pub(super) fn collection_index_entry_bytes(key: &CollectionIndexKey) -> usize {
+        measure_collection_index_entry_bytes(key)
     }
 
     pub(super) fn value_bytes(value: &Value) -> usize {
@@ -529,20 +533,14 @@ impl Runtime {
     }
 
     pub(super) fn insert_map(&mut self, entries: Vec<MapEntry>) -> MustardResult<MapKey> {
-        let mut map = MapObject {
-            entries,
-            accounted_bytes: 0,
-        };
+        let mut map = MapObject::from_entries(entries);
         map.accounted_bytes = measure_map_bytes(&map);
         self.account_new_allocation(map.accounted_bytes)?;
         Ok(self.maps.insert(map))
     }
 
     pub(super) fn insert_set(&mut self, entries: Vec<Value>) -> MustardResult<SetKey> {
-        let mut set = SetObject {
-            entries,
-            accounted_bytes: 0,
-        };
+        let mut set = SetObject::from_entries(entries);
         set.accounted_bytes = measure_set_bytes(&set);
         self.account_new_allocation(set.accounted_bytes)?;
         Ok(self.sets.insert(set))
@@ -775,6 +773,7 @@ impl Runtime {
             allocation_count += 1;
         }
         for map in self.maps.values_mut() {
+            map.rebuild_lookup();
             map.accounted_bytes = measure_map_bytes(map);
             heap_bytes_used = heap_bytes_used
                 .checked_add(map.accounted_bytes)
@@ -782,6 +781,7 @@ impl Runtime {
             allocation_count += 1;
         }
         for set in self.sets.values_mut() {
+            set.rebuild_lookup();
             set.accounted_bytes = measure_set_bytes(set);
             heap_bytes_used = heap_bytes_used
                 .checked_add(set.accounted_bytes)
@@ -887,10 +887,23 @@ fn measure_array_slot_bytes(value: Option<&Value>) -> usize {
     std::mem::size_of::<Option<Value>>() + value.map_or(0, extra_value_bytes)
 }
 
-fn measure_map_entry_bytes(entry: &MapEntry) -> usize {
-    std::mem::size_of::<MapEntry>()
-        + extra_value_bytes(&entry.key)
-        + extra_value_bytes(&entry.value)
+fn extra_collection_index_key_bytes(key: &CollectionIndexKey) -> usize {
+    match key {
+        CollectionIndexKey::String(value) | CollectionIndexKey::HostFunction(value) => value.len(),
+        CollectionIndexKey::BigInt(value) => value.to_signed_bytes_le().len(),
+        _ => 0,
+    }
+}
+
+fn measure_collection_index_entry_bytes(key: &CollectionIndexKey) -> usize {
+    std::mem::size_of::<(CollectionIndexKey, usize)>() + extra_collection_index_key_bytes(key)
+}
+
+fn measure_map_slot_bytes(entry: Option<&MapEntry>) -> usize {
+    std::mem::size_of::<Option<MapEntry>>()
+        + entry.map_or(0, |entry| {
+            extra_value_bytes(&entry.key) + extra_value_bytes(&entry.value)
+        })
 }
 
 fn measure_map_bytes(map: &MapObject) -> usize {
@@ -898,12 +911,17 @@ fn measure_map_bytes(map: &MapObject) -> usize {
         + map
             .entries
             .iter()
-            .map(measure_map_entry_bytes)
+            .map(|entry| measure_map_slot_bytes(entry.as_ref()))
+            .sum::<usize>()
+        + map
+            .lookup
+            .keys()
+            .map(measure_collection_index_entry_bytes)
             .sum::<usize>()
 }
 
-fn measure_set_entry_bytes(value: &Value) -> usize {
-    std::mem::size_of::<Value>() + extra_value_bytes(value)
+fn measure_set_slot_bytes(value: Option<&Value>) -> usize {
+    std::mem::size_of::<Option<Value>>() + value.map_or(0, extra_value_bytes)
 }
 
 fn measure_set_bytes(set: &SetObject) -> usize {
@@ -911,7 +929,12 @@ fn measure_set_bytes(set: &SetObject) -> usize {
         + set
             .entries
             .iter()
-            .map(measure_set_entry_bytes)
+            .map(|value| measure_set_slot_bytes(value.as_ref()))
+            .sum::<usize>()
+        + set
+            .lookup
+            .keys()
+            .map(measure_collection_index_entry_bytes)
             .sum::<usize>()
 }
 

@@ -271,6 +271,9 @@ impl Runtime {
                     .get(key)
                     .ok_or_else(|| MustardError::runtime("gc encountered missing map"))?;
                 for entry in &map.entries {
+                    let Some(entry) = entry else {
+                        continue;
+                    };
                     self.mark_value(&entry.key, &mut marks, &mut worklist);
                     self.mark_value(&entry.value, &mut marks, &mut worklist);
                 }
@@ -282,6 +285,9 @@ impl Runtime {
                     .get(key)
                     .ok_or_else(|| MustardError::runtime("gc encountered missing set"))?;
                 for value in &set.entries {
+                    let Some(value) = value else {
+                        continue;
+                    };
                     self.mark_value(value, &mut marks, &mut worklist);
                 }
             }

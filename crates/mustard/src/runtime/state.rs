@@ -1,7 +1,11 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 use crate::RuntimeDebugMetrics;
-use indexmap::IndexMap;
+use indexmap::{Equivalent, IndexMap};
 use num_bigint::BigInt;
 
 use serde::{Deserialize, Serialize};
@@ -24,6 +28,8 @@ new_key_type! { pub(super) struct IteratorKey; }
 new_key_type! { pub(super) struct ClosureKey; }
 new_key_type! { pub(super) struct PromiseKey; }
 
+pub(super) const COLLECTION_LOOKUP_PROMOTION_LEN: usize = 32;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(super) enum Value {
     #[default]
@@ -42,6 +48,253 @@ pub(super) enum Value {
     BuiltinFunction(BuiltinFunction),
     HostFunction(String),
     BigInt(BigInt),
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub(super) enum CollectionNumberKey {
+    Finite(u64),
+    Nan,
+}
+
+impl CollectionNumberKey {
+    fn from_f64(value: f64) -> Self {
+        if value.is_nan() {
+            Self::Nan
+        } else if value == 0.0 {
+            Self::Finite(0.0f64.to_bits())
+        } else {
+            Self::Finite(value.to_bits())
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(super) enum CollectionIndexKey {
+    Undefined,
+    Null,
+    Bool(bool),
+    Number(CollectionNumberKey),
+    String(String),
+    Object(ObjectKey),
+    Array(ArrayKey),
+    Map(MapKey),
+    Set(SetKey),
+    Iterator(IteratorKey),
+    Closure(ClosureKey),
+    Promise(PromiseKey),
+    BuiltinFunction(BuiltinFunction),
+    HostFunction(String),
+    BigInt(BigInt),
+}
+
+impl CollectionIndexKey {
+    pub(super) fn from_value(value: &Value) -> Self {
+        match value {
+            Value::Undefined => Self::Undefined,
+            Value::Null => Self::Null,
+            Value::Bool(value) => Self::Bool(*value),
+            Value::Number(value) => Self::Number(CollectionNumberKey::from_f64(*value)),
+            Value::String(value) => Self::String(value.clone()),
+            Value::Object(value) => Self::Object(*value),
+            Value::Array(value) => Self::Array(*value),
+            Value::Map(value) => Self::Map(*value),
+            Value::Set(value) => Self::Set(*value),
+            Value::Iterator(value) => Self::Iterator(*value),
+            Value::Closure(value) => Self::Closure(*value),
+            Value::Promise(value) => Self::Promise(*value),
+            Value::BuiltinFunction(value) => Self::BuiltinFunction(*value),
+            Value::HostFunction(value) => Self::HostFunction(value.clone()),
+            Value::BigInt(value) => Self::BigInt(value.clone()),
+        }
+    }
+}
+
+impl Hash for CollectionIndexKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Undefined => 0u8.hash(state),
+            Self::Null => 1u8.hash(state),
+            Self::Bool(value) => {
+                2u8.hash(state);
+                value.hash(state);
+            }
+            Self::Number(value) => {
+                3u8.hash(state);
+                value.hash(state);
+            }
+            Self::String(value) => {
+                4u8.hash(state);
+                value.hash(state);
+            }
+            Self::Object(value) => {
+                5u8.hash(state);
+                value.hash(state);
+            }
+            Self::Array(value) => {
+                6u8.hash(state);
+                value.hash(state);
+            }
+            Self::Map(value) => {
+                7u8.hash(state);
+                value.hash(state);
+            }
+            Self::Set(value) => {
+                8u8.hash(state);
+                value.hash(state);
+            }
+            Self::Iterator(value) => {
+                9u8.hash(state);
+                value.hash(state);
+            }
+            Self::Closure(value) => {
+                10u8.hash(state);
+                value.hash(state);
+            }
+            Self::Promise(value) => {
+                11u8.hash(state);
+                value.hash(state);
+            }
+            Self::BuiltinFunction(value) => {
+                12u8.hash(state);
+                value.hash(state);
+            }
+            Self::HostFunction(value) => {
+                13u8.hash(state);
+                value.hash(state);
+            }
+            Self::BigInt(value) => {
+                14u8.hash(state);
+                value.hash(state);
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum CollectionLookupKey<'a> {
+    Undefined,
+    Null,
+    Bool(bool),
+    Number(CollectionNumberKey),
+    String(&'a str),
+    Object(ObjectKey),
+    Array(ArrayKey),
+    Map(MapKey),
+    Set(SetKey),
+    Iterator(IteratorKey),
+    Closure(ClosureKey),
+    Promise(PromiseKey),
+    BuiltinFunction(BuiltinFunction),
+    HostFunction(&'a str),
+    BigInt(&'a BigInt),
+}
+
+impl<'a> CollectionLookupKey<'a> {
+    pub(super) fn from_value(value: &'a Value) -> Self {
+        match value {
+            Value::Undefined => Self::Undefined,
+            Value::Null => Self::Null,
+            Value::Bool(value) => Self::Bool(*value),
+            Value::Number(value) => Self::Number(CollectionNumberKey::from_f64(*value)),
+            Value::String(value) => Self::String(value),
+            Value::Object(value) => Self::Object(*value),
+            Value::Array(value) => Self::Array(*value),
+            Value::Map(value) => Self::Map(*value),
+            Value::Set(value) => Self::Set(*value),
+            Value::Iterator(value) => Self::Iterator(*value),
+            Value::Closure(value) => Self::Closure(*value),
+            Value::Promise(value) => Self::Promise(*value),
+            Value::BuiltinFunction(value) => Self::BuiltinFunction(*value),
+            Value::HostFunction(value) => Self::HostFunction(value),
+            Value::BigInt(value) => Self::BigInt(value),
+        }
+    }
+}
+
+impl Hash for CollectionLookupKey<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Undefined => 0u8.hash(state),
+            Self::Null => 1u8.hash(state),
+            Self::Bool(value) => {
+                2u8.hash(state);
+                value.hash(state);
+            }
+            Self::Number(value) => {
+                3u8.hash(state);
+                value.hash(state);
+            }
+            Self::String(value) => {
+                4u8.hash(state);
+                value.hash(state);
+            }
+            Self::Object(value) => {
+                5u8.hash(state);
+                value.hash(state);
+            }
+            Self::Array(value) => {
+                6u8.hash(state);
+                value.hash(state);
+            }
+            Self::Map(value) => {
+                7u8.hash(state);
+                value.hash(state);
+            }
+            Self::Set(value) => {
+                8u8.hash(state);
+                value.hash(state);
+            }
+            Self::Iterator(value) => {
+                9u8.hash(state);
+                value.hash(state);
+            }
+            Self::Closure(value) => {
+                10u8.hash(state);
+                value.hash(state);
+            }
+            Self::Promise(value) => {
+                11u8.hash(state);
+                value.hash(state);
+            }
+            Self::BuiltinFunction(value) => {
+                12u8.hash(state);
+                value.hash(state);
+            }
+            Self::HostFunction(value) => {
+                13u8.hash(state);
+                value.hash(state);
+            }
+            Self::BigInt(value) => {
+                14u8.hash(state);
+                value.hash(state);
+            }
+        }
+    }
+}
+
+impl Equivalent<CollectionIndexKey> for CollectionLookupKey<'_> {
+    fn equivalent(&self, key: &CollectionIndexKey) -> bool {
+        match (self, key) {
+            (Self::Undefined, CollectionIndexKey::Undefined)
+            | (Self::Null, CollectionIndexKey::Null) => true,
+            (Self::Bool(left), CollectionIndexKey::Bool(right)) => left == right,
+            (Self::Number(left), CollectionIndexKey::Number(right)) => left == right,
+            (Self::String(left), CollectionIndexKey::String(right)) => *left == right,
+            (Self::Object(left), CollectionIndexKey::Object(right)) => left == right,
+            (Self::Array(left), CollectionIndexKey::Array(right)) => left == right,
+            (Self::Map(left), CollectionIndexKey::Map(right)) => left == right,
+            (Self::Set(left), CollectionIndexKey::Set(right)) => left == right,
+            (Self::Iterator(left), CollectionIndexKey::Iterator(right)) => left == right,
+            (Self::Closure(left), CollectionIndexKey::Closure(right)) => left == right,
+            (Self::Promise(left), CollectionIndexKey::Promise(right)) => left == right,
+            (Self::BuiltinFunction(left), CollectionIndexKey::BuiltinFunction(right)) => {
+                left == right
+            }
+            (Self::HostFunction(left), CollectionIndexKey::HostFunction(right)) => *left == right,
+            (Self::BigInt(left), CollectionIndexKey::BigInt(right)) => *left == right,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -323,7 +576,13 @@ pub(super) struct ArrayObject {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct MapObject {
-    pub(super) entries: Vec<MapEntry>,
+    pub(super) entries: Vec<Option<MapEntry>>,
+    #[serde(default)]
+    pub(super) live_len: usize,
+    #[serde(default)]
+    pub(super) clear_epoch: u64,
+    #[serde(skip, default)]
+    pub(super) lookup: IndexMap<CollectionIndexKey, usize>,
     #[serde(skip, default)]
     pub(super) accounted_bytes: usize,
 }
@@ -336,7 +595,13 @@ pub(super) struct MapEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct SetObject {
-    pub(super) entries: Vec<Value>,
+    pub(super) entries: Vec<Option<Value>>,
+    #[serde(default)]
+    pub(super) live_len: usize,
+    #[serde(default)]
+    pub(super) clear_epoch: u64,
+    #[serde(skip, default)]
+    pub(super) lookup: IndexMap<CollectionIndexKey, usize>,
     #[serde(skip, default)]
     pub(super) accounted_bytes: usize,
 }
@@ -348,7 +613,7 @@ pub(super) struct IteratorObject {
     pub(super) accounted_bytes: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) enum IteratorState {
     Array(ArrayIteratorState),
     ArrayKeys(ArrayIteratorState),
@@ -361,28 +626,114 @@ pub(super) enum IteratorState {
     SetValues(SetIteratorState),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) struct ArrayIteratorState {
     pub(super) array: ArrayKey,
     pub(super) next_index: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) struct StringIteratorState {
     pub(super) value: String,
     pub(super) next_index: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) struct MapIteratorState {
     pub(super) map: MapKey,
     pub(super) next_index: usize,
+    #[serde(default)]
+    pub(super) observed_clear_epoch: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(super) struct SetIteratorState {
     pub(super) set: SetKey,
     pub(super) next_index: usize,
+    #[serde(default)]
+    pub(super) observed_clear_epoch: u64,
+}
+
+impl MapObject {
+    pub(super) fn from_entries(entries: Vec<MapEntry>) -> Self {
+        let mut map = Self {
+            entries: entries.into_iter().map(Some).collect(),
+            live_len: 0,
+            clear_epoch: 0,
+            lookup: IndexMap::new(),
+            accounted_bytes: 0,
+        };
+        map.rebuild_lookup();
+        map
+    }
+
+    pub(super) fn rebuild_lookup(&mut self) {
+        self.lookup.clear();
+        self.live_len = 0;
+        for (index, entry) in self.entries.iter().enumerate() {
+            let Some(entry) = entry else {
+                continue;
+            };
+            self.live_len += 1;
+            if self.live_len >= COLLECTION_LOOKUP_PROMOTION_LEN {
+                self.lookup
+                    .insert(CollectionIndexKey::from_value(&entry.key), index);
+            }
+        }
+        if self.live_len < COLLECTION_LOOKUP_PROMOTION_LEN {
+            self.lookup.clear();
+        } else if self.lookup.len() < self.live_len {
+            self.lookup.clear();
+            for (index, entry) in self.entries.iter().enumerate() {
+                let Some(entry) = entry else {
+                    continue;
+                };
+                self.lookup
+                    .insert(CollectionIndexKey::from_value(&entry.key), index);
+            }
+        }
+    }
+}
+
+impl SetObject {
+    pub(super) fn from_entries(entries: Vec<Value>) -> Self {
+        let mut set = Self {
+            entries: entries.into_iter().map(Some).collect(),
+            live_len: 0,
+            clear_epoch: 0,
+            lookup: IndexMap::new(),
+            accounted_bytes: 0,
+        };
+        set.rebuild_lookup();
+        set
+    }
+
+    pub(super) fn rebuild_lookup(&mut self) {
+        self.lookup.clear();
+        self.live_len = 0;
+        for (index, value) in self.entries.iter().enumerate() {
+            let Some(value) = value else {
+                continue;
+            };
+            self.live_len += 1;
+            if self.live_len >= COLLECTION_LOOKUP_PROMOTION_LEN {
+                self.lookup
+                    .insert(CollectionIndexKey::from_value(value), index);
+            }
+        }
+        if self.live_len < COLLECTION_LOOKUP_PROMOTION_LEN {
+            self.lookup.clear();
+        } else if self.lookup.len() < self.live_len {
+            self.lookup.clear();
+            for (index, value) in self.entries.iter().enumerate() {
+                let Some(value) = value else {
+                    continue;
+                };
+                self.lookup
+                    .insert(CollectionIndexKey::from_value(value), index);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

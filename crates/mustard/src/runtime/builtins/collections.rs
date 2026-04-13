@@ -133,131 +133,208 @@ impl Runtime {
         Ok(Value::Object(result))
     }
 
-    fn map_get(&self, map: MapKey, key: &Value) -> MustardResult<Option<MapEntry>> {
-        let normalized = canonicalize_collection_key(key.clone());
-        Ok(self
+    pub(in crate::runtime) fn next_map_entry_from_state(
+        &self,
+        map: MapKey,
+        next_index: &mut usize,
+        observed_clear_epoch: &mut u64,
+    ) -> MustardResult<Option<MapEntry>> {
+        let map_ref = self
             .maps
             .get(map)
-            .ok_or_else(|| MustardError::runtime("map missing"))?
+            .ok_or_else(|| MustardError::runtime("map missing"))?;
+        if *observed_clear_epoch != map_ref.clear_epoch {
+            *observed_clear_epoch = map_ref.clear_epoch;
+            *next_index = 0;
+        }
+        while let Some(entry) = map_ref.entries.get(*next_index) {
+            *next_index += 1;
+            if let Some(entry) = entry.clone() {
+                return Ok(Some(entry));
+            }
+        }
+        Ok(None)
+    }
+
+    pub(in crate::runtime) fn next_set_value_from_state(
+        &self,
+        set: SetKey,
+        next_index: &mut usize,
+        observed_clear_epoch: &mut u64,
+    ) -> MustardResult<Option<Value>> {
+        let set_ref = self
+            .sets
+            .get(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?;
+        if *observed_clear_epoch != set_ref.clear_epoch {
+            *observed_clear_epoch = set_ref.clear_epoch;
+            *next_index = 0;
+        }
+        while let Some(value) = set_ref.entries.get(*next_index) {
+            *next_index += 1;
+            if let Some(value) = value.clone() {
+                return Ok(Some(value));
+            }
+        }
+        Ok(None)
+    }
+
+    fn map_lookup_bytes(map: &MapObject) -> usize {
+        map.lookup
+            .keys()
+            .map(Self::collection_index_entry_bytes)
+            .sum()
+    }
+
+    fn set_lookup_bytes(set: &SetObject) -> usize {
+        set.lookup
+            .keys()
+            .map(Self::collection_index_entry_bytes)
+            .sum()
+    }
+
+    fn map_slot_by_key(map: &MapObject, key: &Value) -> Option<usize> {
+        if map.lookup.is_empty() {
+            map.entries.iter().enumerate().find_map(|(index, entry)| {
+                entry
+                    .as_ref()
+                    .is_some_and(|entry| same_value_zero(&entry.key, key))
+                    .then_some(index)
+            })
+        } else {
+            map.lookup
+                .get(&CollectionLookupKey::from_value(key))
+                .copied()
+        }
+    }
+
+    fn set_slot_by_value(set: &SetObject, value: &Value) -> Option<usize> {
+        if set.lookup.is_empty() {
+            set.entries.iter().enumerate().find_map(|(index, entry)| {
+                entry
+                    .as_ref()
+                    .is_some_and(|entry| same_value_zero(entry, value))
+                    .then_some(index)
+            })
+        } else {
+            set.lookup
+                .get(&CollectionLookupKey::from_value(value))
+                .copied()
+        }
+    }
+
+    fn map_get(&self, map: MapKey, key: &Value) -> MustardResult<Option<MapEntry>> {
+        let map_ref = self
+            .maps
+            .get(map)
+            .ok_or_else(|| MustardError::runtime("map missing"))?;
+        let Some(slot) = Self::map_slot_by_key(map_ref, key) else {
+            return Ok(None);
+        };
+        let entry = map_ref
             .entries
-            .iter()
-            .find(|entry| same_value_zero(&entry.key, &normalized))
-            .cloned())
+            .get(slot)
+            .and_then(|entry| entry.clone())
+            .ok_or_else(|| MustardError::runtime("map entry missing"))?;
+        Ok(Some(entry))
     }
 
     fn map_set(&mut self, map: MapKey, key: Value, value: Value) -> MustardResult<()> {
         let key = canonicalize_collection_key(key);
+        let index_key = CollectionIndexKey::from_value(&key);
+        let existing_slot = {
+            let map_ref = self
+                .maps
+                .get(map)
+                .ok_or_else(|| MustardError::runtime("map missing"))?;
+            Self::map_slot_by_key(map_ref, &key)
+        };
         let (old_bytes, new_bytes) = {
-            let entries = &mut self
+            let map_ref = self
                 .maps
                 .get_mut(map)
-                .ok_or_else(|| MustardError::runtime("map missing"))?
-                .entries;
-            if let Some(index) = entries
-                .iter()
-                .position(|entry| same_value_zero(&entry.key, &key))
-            {
-                let entry = entries
-                    .get_mut(index)
+                .ok_or_else(|| MustardError::runtime("map missing"))?;
+            let old_lookup_bytes = Self::map_lookup_bytes(map_ref);
+            if let Some(slot) = existing_slot {
+                let entry = map_ref
+                    .entries
+                    .get_mut(slot)
                     .ok_or_else(|| MustardError::runtime("map entry missing"))?;
-                let old_bytes = Self::map_entry_bytes(entry);
+                let old_bytes = Self::map_slot_bytes(entry.as_ref());
+                let entry = entry
+                    .as_mut()
+                    .ok_or_else(|| MustardError::runtime("map entry missing"))?;
                 entry.value = value;
-                let new_bytes = Self::map_entry_bytes(entry);
+                let new_bytes = Self::map_slot_bytes(Some(entry));
                 (old_bytes, new_bytes)
             } else {
-                entries.push(MapEntry { key, value });
-                let entry = entries
+                map_ref.entries.push(Some(MapEntry { key, value }));
+                map_ref.live_len = map_ref
+                    .live_len
+                    .checked_add(1)
+                    .ok_or_else(|| MustardError::runtime("map size overflow"))?;
+                if map_ref.lookup.is_empty() && map_ref.live_len >= COLLECTION_LOOKUP_PROMOTION_LEN
+                {
+                    map_ref.rebuild_lookup();
+                } else if !map_ref.lookup.is_empty() {
+                    let slot = map_ref
+                        .entries
+                        .len()
+                        .checked_sub(1)
+                        .ok_or_else(|| MustardError::runtime("map entry missing"))?;
+                    map_ref.lookup.insert(index_key, slot);
+                }
+                let new_lookup_bytes = Self::map_lookup_bytes(map_ref);
+                let entry = map_ref
+                    .entries
                     .last()
+                    .and_then(|entry| entry.as_ref())
                     .ok_or_else(|| MustardError::runtime("map entry missing"))?;
-                (0, Self::map_entry_bytes(entry))
+                let new_bytes = Self::map_slot_bytes(Some(entry))
+                    + new_lookup_bytes.saturating_sub(old_lookup_bytes);
+                (0, new_bytes)
             }
         };
         self.apply_map_component_delta(map, old_bytes, new_bytes)
     }
 
-    fn adjust_map_iterators_after_delete(&mut self, map: MapKey, removed_index: usize) {
-        let iterator_keys: Vec<_> = self
-            .iterators
-            .iter()
-            .filter_map(|(key, iterator)| match &iterator.state {
-                IteratorState::MapEntries(state)
-                | IteratorState::MapKeys(state)
-                | IteratorState::MapValues(state)
-                    if state.map == map && removed_index < state.next_index =>
-                {
-                    Some(key)
-                }
-                _ => None,
-            })
-            .collect();
-        for key in iterator_keys {
-            if let Some(iterator) = self.iterators.get_mut(key) {
-                match &mut iterator.state {
-                    IteratorState::MapEntries(state)
-                    | IteratorState::MapKeys(state)
-                    | IteratorState::MapValues(state) => state.next_index -= 1,
-                    _ => unreachable!("filtered iterator kind changed unexpectedly"),
-                }
-            }
-        }
-    }
-
-    fn reset_map_iterators_after_clear(&mut self, map: MapKey) {
-        let iterator_keys: Vec<_> = self
-            .iterators
-            .iter()
-            .filter_map(|(key, iterator)| match &iterator.state {
-                IteratorState::MapEntries(state)
-                | IteratorState::MapKeys(state)
-                | IteratorState::MapValues(state)
-                    if state.map == map =>
-                {
-                    Some(key)
-                }
-                _ => None,
-            })
-            .collect();
-        for key in iterator_keys {
-            if let Some(iterator) = self.iterators.get_mut(key) {
-                match &mut iterator.state {
-                    IteratorState::MapEntries(state)
-                    | IteratorState::MapKeys(state)
-                    | IteratorState::MapValues(state) => state.next_index = 0,
-                    _ => unreachable!("filtered iterator kind changed unexpectedly"),
-                }
-            }
-        }
-    }
-
     fn map_delete(&mut self, map: MapKey, key: &Value) -> MustardResult<bool> {
-        let normalized = canonicalize_collection_key(key.clone());
-        let removed = {
-            let entries = &mut self
+        let slot = {
+            let map_ref = self
+                .maps
+                .get(map)
+                .ok_or_else(|| MustardError::runtime("map missing"))?;
+            Self::map_slot_by_key(map_ref, key)
+        };
+        let Some(slot) = slot else {
+            return Ok(false);
+        };
+        let (old_bytes, new_bytes) = {
+            let map_ref = self
                 .maps
                 .get_mut(map)
-                .ok_or_else(|| MustardError::runtime("map missing"))?
-                .entries;
-            if let Some(index) = entries
-                .iter()
-                .position(|entry| same_value_zero(&entry.key, &normalized))
-            {
-                let removed_bytes = Self::map_entry_bytes(
-                    entries
-                        .get(index)
-                        .ok_or_else(|| MustardError::runtime("map entry missing"))?,
-                );
-                entries.remove(index);
-                Some((index, removed_bytes))
-            } else {
-                None
-            }
+                .ok_or_else(|| MustardError::runtime("map missing"))?;
+            let old_lookup_bytes = Self::map_lookup_bytes(map_ref);
+            let entry = map_ref
+                .entries
+                .get_mut(slot)
+                .ok_or_else(|| MustardError::runtime("map entry missing"))?;
+            let removed_key = entry
+                .as_ref()
+                .map(|entry| CollectionIndexKey::from_value(&entry.key))
+                .ok_or_else(|| MustardError::runtime("map entry missing"))?;
+            let old_bytes = Self::map_slot_bytes(entry.as_ref()) + old_lookup_bytes;
+            *entry = None;
+            map_ref.lookup.swap_remove(&removed_key);
+            map_ref.live_len = map_ref
+                .live_len
+                .checked_sub(1)
+                .ok_or_else(|| MustardError::runtime("map size underflow"))?;
+            let new_bytes = Self::map_slot_bytes(None) + Self::map_lookup_bytes(map_ref);
+            (old_bytes, new_bytes)
         };
-        if let Some((index, removed_bytes)) = removed {
-            self.adjust_map_iterators_after_delete(map, index);
-            self.apply_map_component_delta(map, removed_bytes, 0)?;
-            return Ok(true);
-        }
-        Ok(false)
+        self.apply_map_component_delta(map, old_bytes, new_bytes)?;
+        Ok(true)
     }
 
     fn map_clear(&mut self, map: MapKey) -> MustardResult<()> {
@@ -269,32 +346,64 @@ impl Runtime {
             map_ref
                 .entries
                 .iter()
-                .map(Self::map_entry_bytes)
+                .map(|entry| Self::map_slot_bytes(entry.as_ref()))
                 .sum::<usize>()
+                + Self::map_lookup_bytes(map_ref)
         };
-        self.maps
+        let map_ref = self
+            .maps
             .get_mut(map)
-            .ok_or_else(|| MustardError::runtime("map missing"))?
-            .entries
-            .clear();
-        self.reset_map_iterators_after_clear(map);
+            .ok_or_else(|| MustardError::runtime("map missing"))?;
+        map_ref.entries.clear();
+        map_ref.lookup.clear();
+        map_ref.live_len = 0;
+        map_ref.clear_epoch = map_ref.clear_epoch.wrapping_add(1);
         self.apply_map_component_delta(map, removed_bytes, 0)
     }
 
     fn set_add(&mut self, set: SetKey, value: Value) -> MustardResult<()> {
         let value = canonicalize_collection_key(value);
+        let index_key = CollectionIndexKey::from_value(&value);
+        let existing_slot = {
+            let set_ref = self
+                .sets
+                .get(set)
+                .ok_or_else(|| MustardError::runtime("set missing"))?;
+            Self::set_slot_by_value(set_ref, &value)
+        };
         let added_bytes = {
-            let entries = &mut self
+            let set_ref = self
                 .sets
                 .get_mut(set)
-                .ok_or_else(|| MustardError::runtime("set missing"))?
-                .entries;
-            if entries.iter().any(|entry| same_value_zero(entry, &value)) {
+                .ok_or_else(|| MustardError::runtime("set missing"))?;
+            let old_lookup_bytes = Self::set_lookup_bytes(set_ref);
+            if existing_slot.is_some() {
                 0
             } else {
-                let added_bytes = Self::set_entry_bytes(&value);
-                entries.push(value);
-                added_bytes
+                set_ref.entries.push(Some(value));
+                set_ref.live_len = set_ref
+                    .live_len
+                    .checked_add(1)
+                    .ok_or_else(|| MustardError::runtime("set size overflow"))?;
+                if set_ref.lookup.is_empty() && set_ref.live_len >= COLLECTION_LOOKUP_PROMOTION_LEN
+                {
+                    set_ref.rebuild_lookup();
+                } else if !set_ref.lookup.is_empty() {
+                    let slot = set_ref
+                        .entries
+                        .len()
+                        .checked_sub(1)
+                        .ok_or_else(|| MustardError::runtime("set entry missing"))?;
+                    set_ref.lookup.insert(index_key, slot);
+                }
+                let new_lookup_bytes = Self::set_lookup_bytes(set_ref);
+                let value = set_ref
+                    .entries
+                    .last()
+                    .and_then(|value| value.as_ref())
+                    .ok_or_else(|| MustardError::runtime("set entry missing"))?;
+                Self::set_slot_bytes(Some(value))
+                    + new_lookup_bytes.saturating_sub(old_lookup_bytes)
             }
         };
         if added_bytes == 0 {
@@ -303,96 +412,61 @@ impl Runtime {
         self.apply_set_component_delta(set, 0, added_bytes)
     }
 
-    fn adjust_set_iterators_after_delete(&mut self, set: SetKey, removed_index: usize) {
-        let iterator_keys: Vec<_> = self
-            .iterators
-            .iter()
-            .filter_map(|(key, iterator)| match &iterator.state {
-                IteratorState::SetEntries(state) | IteratorState::SetValues(state)
-                    if state.set == set && removed_index < state.next_index =>
-                {
-                    Some(key)
-                }
-                _ => None,
-            })
-            .collect();
-        for key in iterator_keys {
-            if let Some(iterator) = self.iterators.get_mut(key) {
-                match &mut iterator.state {
-                    IteratorState::SetEntries(state) | IteratorState::SetValues(state) => {
-                        state.next_index -= 1
-                    }
-                    _ => unreachable!("filtered iterator kind changed unexpectedly"),
-                }
-            }
-        }
-    }
-
-    fn reset_set_iterators_after_clear(&mut self, set: SetKey) {
-        let iterator_keys: Vec<_> = self
-            .iterators
-            .iter()
-            .filter_map(|(key, iterator)| match &iterator.state {
-                IteratorState::SetEntries(state) | IteratorState::SetValues(state)
-                    if state.set == set =>
-                {
-                    Some(key)
-                }
-                _ => None,
-            })
-            .collect();
-        for key in iterator_keys {
-            if let Some(iterator) = self.iterators.get_mut(key) {
-                match &mut iterator.state {
-                    IteratorState::SetEntries(state) | IteratorState::SetValues(state) => {
-                        state.next_index = 0
-                    }
-                    _ => unreachable!("filtered iterator kind changed unexpectedly"),
-                }
-            }
-        }
-    }
-
     fn set_contains(&self, set: SetKey, value: &Value) -> MustardResult<bool> {
-        let normalized = canonicalize_collection_key(value.clone());
-        Ok(self
+        let set_ref = self
             .sets
             .get(set)
-            .ok_or_else(|| MustardError::runtime("set missing"))?
+            .ok_or_else(|| MustardError::runtime("set missing"))?;
+        let Some(slot) = Self::set_slot_by_value(set_ref, value) else {
+            return Ok(false);
+        };
+        let present = set_ref
             .entries
-            .iter()
-            .any(|entry| same_value_zero(entry, &normalized)))
+            .get(slot)
+            .is_some_and(|value| value.is_some());
+        if !present {
+            return Err(MustardError::runtime("set entry missing"));
+        }
+        Ok(true)
     }
 
     fn set_delete(&mut self, set: SetKey, value: &Value) -> MustardResult<bool> {
-        let normalized = canonicalize_collection_key(value.clone());
-        let removed = {
-            let entries = &mut self
+        let slot = {
+            let set_ref = self
+                .sets
+                .get(set)
+                .ok_or_else(|| MustardError::runtime("set missing"))?;
+            Self::set_slot_by_value(set_ref, value)
+        };
+        let Some(slot) = slot else {
+            return Ok(false);
+        };
+        let (old_bytes, new_bytes) = {
+            let set_ref = self
                 .sets
                 .get_mut(set)
-                .ok_or_else(|| MustardError::runtime("set missing"))?
-                .entries;
-            if let Some(index) = entries
-                .iter()
-                .position(|entry| same_value_zero(entry, &normalized))
-            {
-                let removed_bytes = Self::set_entry_bytes(
-                    entries
-                        .get(index)
-                        .ok_or_else(|| MustardError::runtime("set entry missing"))?,
-                );
-                entries.remove(index);
-                Some((index, removed_bytes))
-            } else {
-                None
-            }
+                .ok_or_else(|| MustardError::runtime("set missing"))?;
+            let old_lookup_bytes = Self::set_lookup_bytes(set_ref);
+            let entry = set_ref
+                .entries
+                .get_mut(slot)
+                .ok_or_else(|| MustardError::runtime("set entry missing"))?;
+            let removed_key = entry
+                .as_ref()
+                .map(CollectionIndexKey::from_value)
+                .ok_or_else(|| MustardError::runtime("set entry missing"))?;
+            let old_bytes = Self::set_slot_bytes(entry.as_ref()) + old_lookup_bytes;
+            *entry = None;
+            set_ref.lookup.swap_remove(&removed_key);
+            set_ref.live_len = set_ref
+                .live_len
+                .checked_sub(1)
+                .ok_or_else(|| MustardError::runtime("set size underflow"))?;
+            let new_bytes = Self::set_slot_bytes(None) + Self::set_lookup_bytes(set_ref);
+            (old_bytes, new_bytes)
         };
-        if let Some((index, removed_bytes)) = removed {
-            self.adjust_set_iterators_after_delete(set, index);
-            self.apply_set_component_delta(set, removed_bytes, 0)?;
-            return Ok(true);
-        }
-        Ok(false)
+        self.apply_set_component_delta(set, old_bytes, new_bytes)?;
+        Ok(true)
     }
 
     fn set_clear(&mut self, set: SetKey) -> MustardResult<()> {
@@ -404,15 +478,18 @@ impl Runtime {
             set_ref
                 .entries
                 .iter()
-                .map(Self::set_entry_bytes)
+                .map(|value| Self::set_slot_bytes(value.as_ref()))
                 .sum::<usize>()
+                + Self::set_lookup_bytes(set_ref)
         };
-        self.sets
+        let set_ref = self
+            .sets
             .get_mut(set)
-            .ok_or_else(|| MustardError::runtime("set missing"))?
-            .entries
-            .clear();
-        self.reset_set_iterators_after_clear(set);
+            .ok_or_else(|| MustardError::runtime("set missing"))?;
+        set_ref.entries.clear();
+        set_ref.lookup.clear();
+        set_ref.live_len = 0;
+        set_ref.clear_epoch = set_ref.clear_epoch.wrapping_add(1);
         self.apply_set_component_delta(set, removed_bytes, 0)
     }
 
@@ -461,22 +538,49 @@ impl Runtime {
 
     pub(crate) fn call_map_entries(&mut self, this_value: Value) -> MustardResult<Value> {
         let map = self.map_receiver(this_value, "entries")?;
+        let observed_clear_epoch = self
+            .maps
+            .get(map)
+            .ok_or_else(|| MustardError::runtime("map missing"))?
+            .clear_epoch;
         Ok(Value::Iterator(self.insert_iterator(
-            IteratorState::MapEntries(MapIteratorState { map, next_index: 0 }),
+            IteratorState::MapEntries(MapIteratorState {
+                map,
+                next_index: 0,
+                observed_clear_epoch,
+            }),
         )?))
     }
 
     pub(crate) fn call_map_keys(&mut self, this_value: Value) -> MustardResult<Value> {
         let map = self.map_receiver(this_value, "keys")?;
+        let observed_clear_epoch = self
+            .maps
+            .get(map)
+            .ok_or_else(|| MustardError::runtime("map missing"))?
+            .clear_epoch;
         Ok(Value::Iterator(self.insert_iterator(
-            IteratorState::MapKeys(MapIteratorState { map, next_index: 0 }),
+            IteratorState::MapKeys(MapIteratorState {
+                map,
+                next_index: 0,
+                observed_clear_epoch,
+            }),
         )?))
     }
 
     pub(crate) fn call_map_values(&mut self, this_value: Value) -> MustardResult<Value> {
         let map = self.map_receiver(this_value, "values")?;
+        let observed_clear_epoch = self
+            .maps
+            .get(map)
+            .ok_or_else(|| MustardError::runtime("map missing"))?
+            .clear_epoch;
         Ok(Value::Iterator(self.insert_iterator(
-            IteratorState::MapValues(MapIteratorState { map, next_index: 0 }),
+            IteratorState::MapValues(MapIteratorState {
+                map,
+                next_index: 0,
+                observed_clear_epoch,
+            }),
         )?))
     }
 
@@ -487,38 +591,28 @@ impl Runtime {
     ) -> MustardResult<Value> {
         let map = self.map_receiver(this_value, "forEach")?;
         let (callback, this_arg) = self.collection_callback("Map.prototype.forEach", args)?;
-        let mut index = 0usize;
-        while index
-            < self
-                .maps
-                .get(map)
-                .ok_or_else(|| MustardError::runtime("map missing"))?
-                .entries
-                .len()
+        let mut next_index = 0usize;
+        let mut observed_clear_epoch = self
+            .maps
+            .get(map)
+            .ok_or_else(|| MustardError::runtime("map missing"))?
+            .clear_epoch;
+        while let Some(entry) =
+            self.next_map_entry_from_state(map, &mut next_index, &mut observed_clear_epoch)?
         {
             self.charge_native_helper_work(1)?;
-            if let Some(entry) = self
-                .maps
-                .get(map)
-                .ok_or_else(|| MustardError::runtime("map missing"))?
-                .entries
-                .get(index)
-                .cloned()
-            {
-                self.with_temporary_roots(
-                    &[Value::Map(map), callback.clone(), this_arg.clone()],
-                    |runtime| {
-                        runtime.call_collection_callback(
-                            "Map.prototype.forEach",
-                            callback.clone(),
-                            this_arg.clone(),
-                            &[entry.value, entry.key, Value::Map(map)],
-                        )?;
-                        Ok(())
-                    },
-                )?;
-            }
-            index += 1;
+            self.with_temporary_roots(
+                &[Value::Map(map), callback.clone(), this_arg.clone()],
+                |runtime| {
+                    runtime.call_collection_callback(
+                        "Map.prototype.forEach",
+                        callback.clone(),
+                        this_arg.clone(),
+                        &[entry.value, entry.key, Value::Map(map)],
+                    )?;
+                    Ok(())
+                },
+            )?;
         }
         Ok(Value::Undefined)
     }
@@ -558,22 +652,49 @@ impl Runtime {
 
     pub(crate) fn call_set_entries(&mut self, this_value: Value) -> MustardResult<Value> {
         let set = self.set_receiver(this_value, "entries")?;
+        let observed_clear_epoch = self
+            .sets
+            .get(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?
+            .clear_epoch;
         Ok(Value::Iterator(self.insert_iterator(
-            IteratorState::SetEntries(SetIteratorState { set, next_index: 0 }),
+            IteratorState::SetEntries(SetIteratorState {
+                set,
+                next_index: 0,
+                observed_clear_epoch,
+            }),
         )?))
     }
 
     pub(crate) fn call_set_keys(&mut self, this_value: Value) -> MustardResult<Value> {
         let set = self.set_receiver(this_value, "keys")?;
+        let observed_clear_epoch = self
+            .sets
+            .get(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?
+            .clear_epoch;
         Ok(Value::Iterator(self.insert_iterator(
-            IteratorState::SetValues(SetIteratorState { set, next_index: 0 }),
+            IteratorState::SetValues(SetIteratorState {
+                set,
+                next_index: 0,
+                observed_clear_epoch,
+            }),
         )?))
     }
 
     pub(crate) fn call_set_values(&mut self, this_value: Value) -> MustardResult<Value> {
         let set = self.set_receiver(this_value, "values")?;
+        let observed_clear_epoch = self
+            .sets
+            .get(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?
+            .clear_epoch;
         Ok(Value::Iterator(self.insert_iterator(
-            IteratorState::SetValues(SetIteratorState { set, next_index: 0 }),
+            IteratorState::SetValues(SetIteratorState {
+                set,
+                next_index: 0,
+                observed_clear_epoch,
+            }),
         )?))
     }
 
@@ -584,38 +705,28 @@ impl Runtime {
     ) -> MustardResult<Value> {
         let set = self.set_receiver(this_value, "forEach")?;
         let (callback, this_arg) = self.collection_callback("Set.prototype.forEach", args)?;
-        let mut index = 0usize;
-        while index
-            < self
-                .sets
-                .get(set)
-                .ok_or_else(|| MustardError::runtime("set missing"))?
-                .entries
-                .len()
+        let mut next_index = 0usize;
+        let mut observed_clear_epoch = self
+            .sets
+            .get(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?
+            .clear_epoch;
+        while let Some(value) =
+            self.next_set_value_from_state(set, &mut next_index, &mut observed_clear_epoch)?
         {
             self.charge_native_helper_work(1)?;
-            if let Some(value) = self
-                .sets
-                .get(set)
-                .ok_or_else(|| MustardError::runtime("set missing"))?
-                .entries
-                .get(index)
-                .cloned()
-            {
-                self.with_temporary_roots(
-                    &[Value::Set(set), callback.clone(), this_arg.clone()],
-                    |runtime| {
-                        runtime.call_collection_callback(
-                            "Set.prototype.forEach",
-                            callback.clone(),
-                            this_arg.clone(),
-                            &[value.clone(), value, Value::Set(set)],
-                        )?;
-                        Ok(())
-                    },
-                )?;
-            }
-            index += 1;
+            self.with_temporary_roots(
+                &[Value::Set(set), callback.clone(), this_arg.clone()],
+                |runtime| {
+                    runtime.call_collection_callback(
+                        "Set.prototype.forEach",
+                        callback.clone(),
+                        this_arg.clone(),
+                        &[value.clone(), value, Value::Set(set)],
+                    )?;
+                    Ok(())
+                },
+            )?;
         }
         Ok(Value::Undefined)
     }

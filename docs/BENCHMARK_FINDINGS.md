@@ -2,9 +2,9 @@
 
 This document summarizes the latest checked-in benchmark evidence from:
 
-- workload suite: `benchmarks/results/2026-04-13T16-35-07-798Z-workloads.json`
-- release smoke suite: `benchmarks/results/2026-04-13T16-34-56-941Z-smoke-release.json`
-- dev smoke suite: `benchmarks/results/2026-04-13T16-35-03-175Z-smoke-dev.json`
+- workload suite: `benchmarks/results/2026-04-13T18-10-20-254Z-workloads.json`
+- release smoke suite: `benchmarks/results/2026-04-13T18-20-21-238Z-smoke-release.json`
+- dev smoke suite: `benchmarks/results/2026-04-13T18-20-23-929Z-smoke-dev.json`
 
 Machine and environment:
 
@@ -12,110 +12,102 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA in artifacts: `c52b26a`
+- Git SHA in artifacts: `ecc7269`
 - Workload fixture version: `5`
 - Smoke fixture version: `2`
 
 ## Headline Results
 
-### 1. Native execution-context handles now keep policy and capability state in the addon
+### 1. Keyed collections now use tombstoned slots plus promoted hashed lookup caches
 
-The latest addon change promotes JS `ExecutionContext` reuse into explicit
-native execution-context handles. Repeated `run()`, `start()`, and
-`Progress.load()` calls now keep the parsed capability list and limits in the
-addon instead of re-sending and reparsing the same policy JSON on every call.
+`Map` and `Set` no longer stay purely vector-backed for all sizes. The runtime
+now keeps order-preserving slot arrays with tombstones on delete, promotes large
+collections onto `IndexMap` lookup caches once they cross the live-entry
+threshold, and tracks per-collection clear epochs so iterator invalidation no
+longer scans the live iterator set on `delete()` or `clear()`.
 
-Regression coverage now proves one `ExecutionContext` reuses a single native
-handle across repeated starts and detached-snapshot loads.
+Regression coverage now also includes snapshot/resume of active keyed-collection
+iterators across `clear()` and reinsertion, which is the new failure mode this
+representation had to preserve.
 
-### 2. Boundary-heavy addon medians improved across repeated start/load paths
+### 2. Large keyed-collection Rust microbenches improved materially
 
-Relative to the tracked addon workload baseline
-`benchmarks/results/2026-04-13T16-21-44-968Z-workloads.json`, the latest
-checked-in workload artifact shows the intended boundary-side wins:
+Relative to the large-collection baseline added at `97edb31`, the new
+`npm run bench:rust` medians improved as follows:
 
-| Workload | Baseline | Current | Delta |
+| Microbench | Baseline | Current | Delta |
 | --- | ---: | ---: | ---: |
-| Warm run, small script | 0.90 ms | 0.88 ms | `-2.9%` |
-| Warm run, code-mode search | 0.50 ms | 0.49 ms | `-2.1%` |
-| Programmatic tool workflow | 1.47 ms | 1.38 ms | `-6.1%` |
-| Host fanout, 100 calls | 0.39 ms | 0.39 ms | `-0.4%` |
-| Cold start, small script | 0.98 ms | 0.95 ms | `-2.7%` |
+| `map_get_large` | `~16.6 ms` | `~5.95 ms` | `-64%` |
+| `map_has_large` | `~17.1 ms` | `~6.35 ms` | `-63%` |
+| `map_set_large` | `~10.2 ms` | `~6.51 ms` | `-36%` |
+| `set_has_large` | `~16.5 ms` | `~5.66 ms` | `-66%` |
+| `set_add_large` | `~5.1 ms` | `~3.28 ms` | `-36%` |
+| `set_delete_large` | `~5.95 ms` | `~5.00 ms` | `-16%` |
+| `iterator_throughput_large` | `~41.6 ms` | `~41.5 ms` | flat |
 
-The clearest direct signals are on the boundary-only and public restore paths:
+The strongest direct win is the intended one: large keyed-collection lookups are
+now much cheaper. Update paths improved too, but not yet enough to satisfy the
+full Milestone 6 stretch target.
+
+### 3. Broader addon workloads were roughly neutral on a same-machine control rerun
+
+Comparing the landed candidate against a clean same-machine `ecc7269` control
+rerun isolates this keyed-collection change from older branch-level drift. The
+result is mostly neutral rather than dramatically positive:
+
+| Workload | Control | Current | Delta |
+| --- | ---: | ---: | ---: |
+| Warm run, small script | `0.95 ms` | `0.96 ms` | `+0.6%` |
+| Warm run, code-mode search | `0.52 ms` | `0.54 ms` | `+3.2%` |
+| Programmatic tool workflow | `1.50 ms` | `1.52 ms` | `+1.3%` |
+| Host fanout, 100 calls | `0.42 ms` | `0.39 ms` | `-7.8%` |
+| `execution_only_small` | `2.12 ms` | `2.38 ms` | `+12.0%` |
+| `startInputs.small` | `0.17 ms` | `0.15 ms` | `-9.6%` |
+
+That same control comparison suggests the large keyed-collection win is real,
+but it does not yet translate into broad addon-latency wins across the public
+workload suite. The tracked checked-in workload baseline from
+`2026-04-13T16-35-07-798Z` looks much worse on many addon boundary and phase
+metrics, which indicates older branch drift and benchmark noise are still mixed
+into the raw before/after picture.
+
+### 4. Smoke budgets still pass and stayed flat to slightly better
+
+Relative to the previous checked-in release smoke artifact
+`benchmarks/results/2026-04-13T16-34-56-941Z-smoke-release.json`, the latest
+release smoke run stayed within budget and mostly improved:
 
 | Surface | Baseline | Current | Delta |
 | --- | ---: | ---: | ---: |
-| `startInputs.small` | 0.14 ms | 0.13 ms | `-7.3%` |
-| `startInputs.medium` | 0.28 ms | 0.25 ms | `-10.1%` |
-| `resumeValues.small` | 0.13 ms | 0.12 ms | `-10.1%` |
-| `resumeErrors.small` | 0.11 ms | 0.10 ms | `-10.2%` |
-| `Progress.load_only` | 0.19 ms | 0.18 ms | `-1.8%` |
+| Startup median | `0.06 ms` | `0.06 ms` | `-3.4%` |
+| Compute median | `0.44 ms` | `0.44 ms` | `-0.9%` |
+| Host-call median | `0.25 ms` | `0.24 ms` | `-4.9%` |
+| Snapshot direct median | `0.07 ms` | `0.07 ms` | `-7.5%` |
+| Snapshot round-trip median | `0.45 ms` | `0.45 ms` | `+1.4%` |
 
-The boundary wins did not materially move `host_fanout_100`, which is expected:
-that workload is dominated by the remaining JS structured-value DTO path and
-the still-open typed/binary boundary work.
-
-### 3. Rust-core microbenches stayed mostly flat, which matches the scope of the change
-
-`npm run bench:rust` stayed effectively flat on the core VM and startup benches,
-which is the expected outcome for a mostly addon-boundary optimization. A few
-non-targeted benches moved within noise, while the hot runtime loops and lookup
-paths showed no meaningful regressions.
-
-That separation is useful evidence: the win came from caching addon execution
-context metadata, not from changing Rust guest semantics or the core VM.
-
-### 4. Release smoke budgets still pass, but the relative smoke regression gate is noisy
-
-Current release smoke medians:
+Current release smoke medians remain comfortably inside the configured budgets:
 
 | Metric | Current |
 | --- | ---: |
 | Startup | `0.06 ms` |
 | Compute | `0.44 ms` |
-| Host-call median ratio | `4.48x` |
-| Host-call p95 ratio | `5.42x` |
-| Snapshot median ratio | `6.25x` |
-| Snapshot p95 ratio | `2.50x` |
-
-Relative to the previous tracked release smoke artifact
-`benchmarks/results/2026-04-13T16-22-10-011Z-smoke-release.json`:
-
-- the smoke budgets still pass comfortably
-- `npm run bench:regress:smoke` currently exits nonzero on tiny-sample p95-only
-  noise, especially `metrics.snapshot.direct` p95 (`0.11 ms -> 0.23 ms`)
-- the public smoke gate remains useful, but the relative regression command is
-  currently noisier than the workload suite on these sub-millisecond samples
-
-## Sidecar And Gate Notes
-
-Current sidecar/addon ratios from the new workload artifact remain dominated by
-transport and session-state overhead:
-
-| Workload | Addon | Sidecar | Sidecar / Addon |
-| --- | ---: | ---: | ---: |
-| Warm run, small script | 0.88 ms | 1.50 ms | `1.70x` |
-| Programmatic tool workflow | 1.38 ms | 21.45 ms | `15.49x` |
-| Host fanout, 100 calls | 0.39 ms | 7.28 ms | `18.67x` |
-
-`npm run bench:regress:workloads` still exits nonzero, but the remaining issue
-has narrowed to a small p95-only phase surface:
-
-- `addon.phases.apply_snapshot_policy_only` p95: `0.04 ms -> 0.04 ms`
-  (`+20.8%` on tiny absolute timings)
+| Host-call median ratio | `4.33x` |
+| Host-call p95 ratio | `4.73x` |
+| Snapshot median ratio | `6.84x` |
+| Snapshot p95 ratio | `5.73x` |
 
 ## Conclusions
 
-1. Native execution-context handles are now real addon state, not just JS-side
-   caching, and repeated `ExecutionContext` workloads no longer reparse the
-   same capability/limit policy on every start or load.
-2. The main addon gains landed where expected: repeated start/load boundary
-   medians improved, `programmatic_tool_workflow` improved by about `6.1%`, and
-   `warm_run_small` improved by about `2.9%`.
-3. The remaining open Milestone 5 work is still the typed/binary structured
-   boundary path; `host_fanout_100` stayed effectively flat because the JS DTO
-   path still dominates there.
-4. The next concrete paths remain the still-open boundary/runtime-wide items:
-   typed or binary start/resume payloads, deeper string/key interning, and then
-   later sidecar/session-state reductions.
+1. This lands the first two Milestone 6 internal collection items: hashed
+   lookup/update paths for large `Map` / `Set` workloads, and iterator
+   invalidation that no longer repairs live iterator indices by scanning the
+   iterator set.
+2. The performance signal is good but narrow. Large keyed-collection lookups
+   improved by about `2.7x` to `2.9x`, update paths improved by about `1.2x`
+   to `1.6x`, and iterator throughput stayed flat.
+3. The milestone itself remains open because the broader addon workload suite is
+   only roughly neutral so far, and the plan’s `5x` large-collection target is
+   not yet met across both membership and update paths.
+4. The next high-leverage Milestone 6 paths remain static-property fast paths,
+   capacity-aware builders/bulk mutation, the remaining globals cleanup, and
+   builtin allocation/cloning audits.

@@ -895,15 +895,27 @@ impl Runtime {
                 }))?
             }
             Value::Map(map) => {
+                let observed_clear_epoch = self
+                    .maps
+                    .get(map)
+                    .ok_or_else(|| MustardError::runtime("map missing"))?
+                    .clear_epoch;
                 self.insert_iterator(IteratorState::MapEntries(MapIteratorState {
                     map,
                     next_index: 0,
+                    observed_clear_epoch,
                 }))?
             }
             Value::Set(set) => {
+                let observed_clear_epoch = self
+                    .sets
+                    .get(set)
+                    .ok_or_else(|| MustardError::runtime("set missing"))?
+                    .clear_epoch;
                 self.insert_iterator(IteratorState::SetValues(SetIteratorState {
                     set,
                     next_index: 0,
+                    observed_clear_epoch,
                 }))?
             }
             Value::Iterator(iterator) => iterator,
@@ -929,21 +941,47 @@ impl Runtime {
             .state
             .clone();
 
-        let value = match state {
-            IteratorState::Array(state) => self
-                .arrays
-                .get(state.array)
-                .ok_or_else(|| MustardError::runtime("array missing"))?
-                .elements
-                .get(state.next_index)
-                .map(|value| value.clone().unwrap_or(Value::Undefined)),
-            IteratorState::ArrayKeys(state) => self
-                .arrays
-                .get(state.array)
-                .ok_or_else(|| MustardError::runtime("array missing"))?
-                .elements
-                .get(state.next_index)
-                .map(|_| Value::Number(state.next_index as f64)),
+        let (value, next_state) = match state {
+            IteratorState::Array(state) => (
+                self.arrays
+                    .get(state.array)
+                    .ok_or_else(|| MustardError::runtime("array missing"))?
+                    .elements
+                    .get(state.next_index)
+                    .map(|value| value.clone().unwrap_or(Value::Undefined)),
+                IteratorState::Array(ArrayIteratorState {
+                    array: state.array,
+                    next_index: state.next_index
+                        + usize::from(
+                            self.arrays
+                                .get(state.array)
+                                .ok_or_else(|| MustardError::runtime("array missing"))?
+                                .elements
+                                .get(state.next_index)
+                                .is_some(),
+                        ),
+                }),
+            ),
+            IteratorState::ArrayKeys(state) => (
+                self.arrays
+                    .get(state.array)
+                    .ok_or_else(|| MustardError::runtime("array missing"))?
+                    .elements
+                    .get(state.next_index)
+                    .map(|_| Value::Number(state.next_index as f64)),
+                IteratorState::ArrayKeys(ArrayIteratorState {
+                    array: state.array,
+                    next_index: state.next_index
+                        + usize::from(
+                            self.arrays
+                                .get(state.array)
+                                .ok_or_else(|| MustardError::runtime("array missing"))?
+                                .elements
+                                .get(state.next_index)
+                                .is_some(),
+                        ),
+                }),
+            ),
             IteratorState::ArrayEntries(state) => {
                 let value = self
                     .arrays
@@ -952,85 +990,104 @@ impl Runtime {
                     .elements
                     .get(state.next_index)
                     .map(|value| value.clone().unwrap_or(Value::Undefined));
-                match value {
+                let has_value = value.is_some();
+                let produced = match value {
                     Some(value) => Some(Value::Array(self.insert_array(
                         vec![Value::Number(state.next_index as f64), value],
                         IndexMap::new(),
                     )?)),
                     None => None,
-                }
+                };
+                (
+                    produced,
+                    IteratorState::ArrayEntries(ArrayIteratorState {
+                        array: state.array,
+                        next_index: state.next_index + usize::from(has_value),
+                    }),
+                )
             }
             IteratorState::String(state) => {
                 let chars = state.value.chars().collect::<Vec<_>>();
-                chars
+                let value = chars
                     .get(state.next_index)
-                    .map(|ch| Value::String(ch.to_string()))
+                    .map(|ch| Value::String(ch.to_string()));
+                (
+                    value,
+                    IteratorState::String(StringIteratorState {
+                        value: state.value,
+                        next_index: state.next_index
+                            + usize::from(chars.get(state.next_index).is_some()),
+                    }),
+                )
             }
-            IteratorState::MapEntries(state) => {
-                let entry = self
-                    .maps
-                    .get(state.map)
-                    .ok_or_else(|| MustardError::runtime("map missing"))?
-                    .entries
-                    .get(state.next_index)
-                    .cloned();
-                match entry {
+            IteratorState::MapEntries(mut state) => {
+                let entry = self.next_map_entry_from_state(
+                    state.map,
+                    &mut state.next_index,
+                    &mut state.observed_clear_epoch,
+                )?;
+                let value = match entry {
                     Some(entry) => Some(Value::Array(
                         self.insert_array(vec![entry.key, entry.value], IndexMap::new())?,
                     )),
                     None => None,
-                }
+                };
+                (value, IteratorState::MapEntries(state))
             }
-            IteratorState::MapKeys(state) => self
-                .maps
-                .get(state.map)
-                .ok_or_else(|| MustardError::runtime("map missing"))?
-                .entries
-                .get(state.next_index)
-                .map(|entry| entry.key.clone()),
-            IteratorState::MapValues(state) => self
-                .maps
-                .get(state.map)
-                .ok_or_else(|| MustardError::runtime("map missing"))?
-                .entries
-                .get(state.next_index)
-                .map(|entry| entry.value.clone()),
-            IteratorState::SetEntries(state) => self
-                .sets
-                .get(state.set)
-                .ok_or_else(|| MustardError::runtime("set missing"))?
-                .entries
-                .get(state.next_index)
-                .cloned()
-                .map(|value| {
-                    self.insert_array(vec![value.clone(), value], IndexMap::new())
-                        .map(Value::Array)
-                })
-                .transpose()?,
-            IteratorState::SetValues(state) => self
-                .sets
-                .get(state.set)
-                .ok_or_else(|| MustardError::runtime("set missing"))?
-                .entries
-                .get(state.next_index)
-                .cloned(),
+            IteratorState::MapKeys(mut state) => {
+                let entry = self.next_map_entry_from_state(
+                    state.map,
+                    &mut state.next_index,
+                    &mut state.observed_clear_epoch,
+                )?;
+                let value = entry.map(|entry| entry.key);
+                (value, IteratorState::MapKeys(state))
+            }
+            IteratorState::MapValues(mut state) => {
+                let entry = self.next_map_entry_from_state(
+                    state.map,
+                    &mut state.next_index,
+                    &mut state.observed_clear_epoch,
+                )?;
+                let value = entry.map(|entry| entry.value);
+                (value, IteratorState::MapValues(state))
+            }
+            IteratorState::SetEntries(mut state) => {
+                let value = self.next_set_value_from_state(
+                    state.set,
+                    &mut state.next_index,
+                    &mut state.observed_clear_epoch,
+                )?;
+                let produced = value
+                    .map(|value: Value| {
+                        self.insert_array(vec![value.clone(), value], IndexMap::new())
+                            .map(Value::Array)
+                    })
+                    .transpose()?;
+                (produced, IteratorState::SetEntries(state))
+            }
+            IteratorState::SetValues(mut state) => {
+                let value = self.next_set_value_from_state(
+                    state.set,
+                    &mut state.next_index,
+                    &mut state.observed_clear_epoch,
+                )?;
+                (value, IteratorState::SetValues(state))
+            }
         };
 
-        if value.is_some() {
-            if let Some(iterator) = self.iterators.get_mut(key) {
-                match &mut iterator.state {
-                    IteratorState::Array(state)
-                    | IteratorState::ArrayKeys(state)
-                    | IteratorState::ArrayEntries(state) => state.next_index += 1,
-                    IteratorState::String(state) => state.next_index += 1,
-                    IteratorState::MapEntries(state)
-                    | IteratorState::MapKeys(state)
-                    | IteratorState::MapValues(state) => state.next_index += 1,
-                    IteratorState::SetEntries(state) | IteratorState::SetValues(state) => {
-                        state.next_index += 1
-                    }
-                }
-            }
+        let state_changed = self
+            .iterators
+            .get(key)
+            .ok_or_else(|| MustardError::runtime("iterator missing"))?
+            .state
+            != next_state;
+
+        if state_changed {
+            self.iterators
+                .get_mut(key)
+                .ok_or_else(|| MustardError::runtime("iterator missing"))?
+                .state = next_state;
             self.refresh_iterator_accounting(key)?;
         }
 
@@ -1444,7 +1501,7 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("map missing"))?;
                 match key {
                     "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::MapCtor)),
-                    "size" => Ok(Value::Number(map.entries.len() as f64)),
+                    "size" => Ok(Value::Number(map.live_len as f64)),
                     "get" => Ok(Value::BuiltinFunction(BuiltinFunction::MapGet)),
                     "set" => Ok(Value::BuiltinFunction(BuiltinFunction::MapSet)),
                     "has" => Ok(Value::BuiltinFunction(BuiltinFunction::MapHas)),
@@ -1464,7 +1521,7 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("set missing"))?;
                 match key {
                     "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::SetCtor)),
-                    "size" => Ok(Value::Number(set.entries.len() as f64)),
+                    "size" => Ok(Value::Number(set.live_len as f64)),
                     "add" => Ok(Value::BuiltinFunction(BuiltinFunction::SetAdd)),
                     "has" => Ok(Value::BuiltinFunction(BuiltinFunction::SetHas)),
                     "delete" => Ok(Value::BuiltinFunction(BuiltinFunction::SetDelete)),

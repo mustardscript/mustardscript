@@ -282,6 +282,79 @@ test('Map and Set iterators can continue after clear followed by new entries', a
   });
 });
 
+test('progress snapshots preserve active keyed-collection iterators across clear and reinsert', () => {
+  const runtime = new Mustard(`
+    const map = new Map([
+      ['alpha', 1],
+      ['omega', 2],
+    ]);
+    const seen = [];
+    for (const [key, value] of map) {
+      seen[seen.length] = [key, value];
+      const next = fetch_data(key);
+      if (key === 'alpha') {
+        map.clear();
+        map.set(next, next);
+      }
+    }
+
+    const set = new Set(['alpha', 'omega']);
+    const setSeen = [];
+    for (const value of set) {
+      setSeen[setSeen.length] = value;
+      const next = fetch_data(value);
+      if (value === 'alpha') {
+        set.clear();
+        set.add(next);
+      }
+    }
+
+    ({ seen, finalMap: Array.from(map.entries()), setSeen, finalSet: Array.from(set.values()) });
+  `);
+
+  const first = runtime.start({
+    snapshotKey: SNAPSHOT_KEY,
+    capabilities: {
+      fetch_data(value) {
+        return value === 'alpha' ? 'tail' : 'done';
+      },
+    },
+  });
+
+  assert.ok(first instanceof Progress);
+  assert.equal(first.capability, 'fetch_data');
+  assert.deepEqual(first.args, ['alpha']);
+
+  const restored = Progress.load(first.dump(), PROGRESS_LOAD_OPTIONS);
+  assert.ok(restored instanceof Progress);
+
+  const second = restored.resume('tail');
+  assert.ok(second instanceof Progress);
+  assert.equal(second.capability, 'fetch_data');
+  assert.deepEqual(second.args, ['tail']);
+
+  const third = second.resume('done');
+  assert.ok(third instanceof Progress);
+  assert.equal(third.capability, 'fetch_data');
+  assert.deepEqual(third.args, ['alpha']);
+
+  const fourth = third.resume('tail');
+  assert.ok(fourth instanceof Progress);
+  assert.equal(fourth.capability, 'fetch_data');
+  assert.deepEqual(fourth.args, ['tail']);
+
+  const result = fourth.resume('done');
+  assert.deepEqual(result, {
+    seen: [
+      ['alpha', 1],
+      ['tail', 'tail'],
+    ],
+    finalMap: [['tail', 'tail']],
+    setSeen: ['alpha', 'tail'],
+    finalSet: ['tail'],
+  });
+});
+
 test('Map.prototype.forEach and Set.prototype.forEach support callback iteration', async () => {
   const runtime = new Mustard(`
     const map = new Map([
