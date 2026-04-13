@@ -57,28 +57,30 @@ impl Runtime {
         let baseline_bytes = self.heap_bytes_used;
         let baseline_allocations = self.allocation_count;
         let marks = self.mark_reachable_heap()?;
+        let mut stats = GarbageCollectionStats::default();
 
-        self.sweep_unreachable_envs(&marks);
-        self.sweep_unreachable_cells(&marks);
-        self.sweep_unreachable_objects(&marks);
-        self.sweep_unreachable_arrays(&marks);
-        self.sweep_unreachable_maps(&marks);
-        self.sweep_unreachable_sets(&marks);
-        self.sweep_unreachable_iterators(&marks);
-        self.sweep_unreachable_closures(&marks);
-        self.sweep_unreachable_promises(&marks);
+        self.sweep_unreachable_envs(&marks, &mut stats)?;
+        self.sweep_unreachable_cells(&marks, &mut stats)?;
+        self.sweep_unreachable_objects(&marks, &mut stats)?;
+        self.sweep_unreachable_arrays(&marks, &mut stats)?;
+        self.sweep_unreachable_maps(&marks, &mut stats)?;
+        self.sweep_unreachable_sets(&marks, &mut stats)?;
+        self.sweep_unreachable_iterators(&marks, &mut stats)?;
+        self.sweep_unreachable_closures(&marks, &mut stats)?;
+        self.sweep_unreachable_promises(&marks, &mut stats)?;
 
-        let (heap_bytes_used, allocation_count) = self
-            .recompute_accounting_totals()
-            .map_err(MustardError::runtime)?;
-        self.heap_bytes_used = heap_bytes_used;
-        self.allocation_count = allocation_count;
+        self.heap_bytes_used = baseline_bytes
+            .checked_sub(stats.reclaimed_bytes)
+            .ok_or_else(|| MustardError::runtime("gc heap accounting underflow"))?;
+        self.allocation_count = baseline_allocations
+            .checked_sub(stats.reclaimed_allocations)
+            .ok_or_else(|| MustardError::runtime("gc allocation accounting underflow"))?;
+
+        #[cfg(debug_assertions)]
+        self.debug_assert_cached_accounting_matches_full_walk();
+
         self.reset_gc_debt();
-
-        Ok(GarbageCollectionStats {
-            reclaimed_bytes: baseline_bytes.saturating_sub(heap_bytes_used),
-            reclaimed_allocations: baseline_allocations.saturating_sub(allocation_count),
-        })
+        Ok(stats)
     }
 
     pub(super) fn mark_reachable_heap(&self) -> MustardResult<GarbageCollectionMarks> {
@@ -501,103 +503,199 @@ impl Runtime {
         }
     }
 
-    pub(super) fn sweep_unreachable_envs(&mut self, marks: &GarbageCollectionMarks) {
+    fn record_reclaimed_item(
+        stats: &mut GarbageCollectionStats,
+        accounted_bytes: usize,
+    ) -> MustardResult<()> {
+        stats.reclaimed_bytes = stats
+            .reclaimed_bytes
+            .checked_add(accounted_bytes)
+            .ok_or_else(|| MustardError::runtime("gc reclaimed byte overflow"))?;
+        stats.reclaimed_allocations = stats
+            .reclaimed_allocations
+            .checked_add(1)
+            .ok_or_else(|| MustardError::runtime("gc reclaimed allocation overflow"))?;
+        Ok(())
+    }
+
+    pub(super) fn sweep_unreachable_envs(
+        &mut self,
+        marks: &GarbageCollectionMarks,
+        stats: &mut GarbageCollectionStats,
+    ) -> MustardResult<()> {
         let dead: Vec<_> = self
             .envs
             .keys()
             .filter(|key| !marks.envs.contains(key))
             .collect();
         for key in dead {
-            self.envs.remove(key);
+            let env = self
+                .envs
+                .remove(key)
+                .ok_or_else(|| MustardError::runtime("gc encountered missing environment"))?;
+            Self::record_reclaimed_item(stats, env.accounted_bytes)?;
         }
+        Ok(())
     }
 
-    pub(super) fn sweep_unreachable_cells(&mut self, marks: &GarbageCollectionMarks) {
+    pub(super) fn sweep_unreachable_cells(
+        &mut self,
+        marks: &GarbageCollectionMarks,
+        stats: &mut GarbageCollectionStats,
+    ) -> MustardResult<()> {
         let dead: Vec<_> = self
             .cells
             .keys()
             .filter(|key| !marks.cells.contains(key))
             .collect();
         for key in dead {
-            self.cells.remove(key);
+            let cell = self
+                .cells
+                .remove(key)
+                .ok_or_else(|| MustardError::runtime("gc encountered missing binding cell"))?;
+            Self::record_reclaimed_item(stats, cell.accounted_bytes)?;
         }
+        Ok(())
     }
 
-    pub(super) fn sweep_unreachable_objects(&mut self, marks: &GarbageCollectionMarks) {
+    pub(super) fn sweep_unreachable_objects(
+        &mut self,
+        marks: &GarbageCollectionMarks,
+        stats: &mut GarbageCollectionStats,
+    ) -> MustardResult<()> {
         let dead: Vec<_> = self
             .objects
             .keys()
             .filter(|key| !marks.objects.contains(key))
             .collect();
         for key in dead {
-            self.objects.remove(key);
+            let object = self
+                .objects
+                .remove(key)
+                .ok_or_else(|| MustardError::runtime("gc encountered missing object"))?;
+            Self::record_reclaimed_item(stats, object.accounted_bytes)?;
         }
+        Ok(())
     }
 
-    pub(super) fn sweep_unreachable_arrays(&mut self, marks: &GarbageCollectionMarks) {
+    pub(super) fn sweep_unreachable_arrays(
+        &mut self,
+        marks: &GarbageCollectionMarks,
+        stats: &mut GarbageCollectionStats,
+    ) -> MustardResult<()> {
         let dead: Vec<_> = self
             .arrays
             .keys()
             .filter(|key| !marks.arrays.contains(key))
             .collect();
         for key in dead {
-            self.arrays.remove(key);
+            let array = self
+                .arrays
+                .remove(key)
+                .ok_or_else(|| MustardError::runtime("gc encountered missing array"))?;
+            Self::record_reclaimed_item(stats, array.accounted_bytes)?;
         }
+        Ok(())
     }
 
-    pub(super) fn sweep_unreachable_maps(&mut self, marks: &GarbageCollectionMarks) {
+    pub(super) fn sweep_unreachable_maps(
+        &mut self,
+        marks: &GarbageCollectionMarks,
+        stats: &mut GarbageCollectionStats,
+    ) -> MustardResult<()> {
         let dead: Vec<_> = self
             .maps
             .keys()
             .filter(|key| !marks.maps.contains(key))
             .collect();
         for key in dead {
-            self.maps.remove(key);
+            let map = self
+                .maps
+                .remove(key)
+                .ok_or_else(|| MustardError::runtime("gc encountered missing map"))?;
+            Self::record_reclaimed_item(stats, map.accounted_bytes)?;
         }
+        Ok(())
     }
 
-    pub(super) fn sweep_unreachable_sets(&mut self, marks: &GarbageCollectionMarks) {
+    pub(super) fn sweep_unreachable_sets(
+        &mut self,
+        marks: &GarbageCollectionMarks,
+        stats: &mut GarbageCollectionStats,
+    ) -> MustardResult<()> {
         let dead: Vec<_> = self
             .sets
             .keys()
             .filter(|key| !marks.sets.contains(key))
             .collect();
         for key in dead {
-            self.sets.remove(key);
+            let set = self
+                .sets
+                .remove(key)
+                .ok_or_else(|| MustardError::runtime("gc encountered missing set"))?;
+            Self::record_reclaimed_item(stats, set.accounted_bytes)?;
         }
+        Ok(())
     }
 
-    pub(super) fn sweep_unreachable_iterators(&mut self, marks: &GarbageCollectionMarks) {
+    pub(super) fn sweep_unreachable_iterators(
+        &mut self,
+        marks: &GarbageCollectionMarks,
+        stats: &mut GarbageCollectionStats,
+    ) -> MustardResult<()> {
         let dead: Vec<_> = self
             .iterators
             .keys()
             .filter(|key| !marks.iterators.contains(key))
             .collect();
         for key in dead {
-            self.iterators.remove(key);
+            let iterator = self
+                .iterators
+                .remove(key)
+                .ok_or_else(|| MustardError::runtime("gc encountered missing iterator"))?;
+            Self::record_reclaimed_item(stats, iterator.accounted_bytes)?;
         }
+        Ok(())
     }
 
-    pub(super) fn sweep_unreachable_closures(&mut self, marks: &GarbageCollectionMarks) {
+    pub(super) fn sweep_unreachable_closures(
+        &mut self,
+        marks: &GarbageCollectionMarks,
+        stats: &mut GarbageCollectionStats,
+    ) -> MustardResult<()> {
         let dead: Vec<_> = self
             .closures
             .keys()
             .filter(|key| !marks.closures.contains(key))
             .collect();
         for key in dead {
-            self.closures.remove(key);
+            let closure = self
+                .closures
+                .remove(key)
+                .ok_or_else(|| MustardError::runtime("gc encountered missing closure"))?;
+            Self::record_reclaimed_item(stats, closure.accounted_bytes)?;
         }
+        Ok(())
     }
 
-    pub(super) fn sweep_unreachable_promises(&mut self, marks: &GarbageCollectionMarks) {
+    pub(super) fn sweep_unreachable_promises(
+        &mut self,
+        marks: &GarbageCollectionMarks,
+        stats: &mut GarbageCollectionStats,
+    ) -> MustardResult<()> {
         let dead: Vec<_> = self
             .promises
             .keys()
             .filter(|key| !marks.promises.contains(key))
             .collect();
         for key in dead {
-            self.promises.remove(key);
+            let promise = self
+                .promises
+                .remove(key)
+                .ok_or_else(|| MustardError::runtime("gc encountered missing promise"))?;
+            Self::record_reclaimed_item(stats, promise.accounted_bytes)?;
         }
+        Ok(())
     }
 
     pub(super) fn mark_promise(

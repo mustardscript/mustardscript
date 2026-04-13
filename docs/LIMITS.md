@@ -49,7 +49,10 @@ Cooperative cancellation is controlled separately through:
   execution boundaries only when recent allocation debt or current budget
   pressure makes collection worthwhile, and it still forces a collection before
   failing heap or allocation pressure, so unreachable cycles can be reclaimed
-  without changing handle identities.
+  without changing handle identities. Collections now subtract reclaimed cached
+  accounting totals during sweep instead of rewalking the whole heap after
+  every pass; full recounts are reserved for snapshot load and debug-only
+  assertions.
 - Snapshot load recomputes heap accounting once before policy is rebound so
   serialized inputs cannot bypass the configured heap and allocation budgets,
   and later restore-policy application reuses those verified totals instead of

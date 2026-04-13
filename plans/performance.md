@@ -13,7 +13,7 @@ Current audited benchmark inputs and evidence:
 
 - Existing end-to-end harness: `benchmarks/smoke.ts` and `benchmarks/workloads.ts`
 - Latest checked-in workload report:
-  `benchmarks/results/2026-04-13T13-20-51-960Z-workloads.json`
+  `benchmarks/results/2026-04-13T13-38-06-436Z-workloads.json`
 - Latest findings summary: `docs/BENCHMARK_FINDINGS.md`
 - Current smoke gate status on April 13, 2026:
   `npm run bench:smoke:dev` and `npm run bench:smoke:release` both pass with
@@ -23,20 +23,20 @@ Current addon medians from the checked-in workload report:
 
 | Metric | Current |
 | --- | ---: |
-| `cold_start_small` | `1.03 ms` |
-| `warm_run_small` | `0.97 ms` |
-| `cold_start_code_mode_search` | `0.96 ms` |
-| `warm_run_code_mode_search` | `0.55 ms` |
-| `programmatic_tool_workflow` | `1.77 ms` |
+| `cold_start_small` | `1.02 ms` |
+| `warm_run_small` | `0.96 ms` |
+| `cold_start_code_mode_search` | `0.95 ms` |
+| `warm_run_code_mode_search` | `0.54 ms` |
+| `programmatic_tool_workflow` | `1.69 ms` |
 | `host_fanout_10` | `0.05 ms` |
-| `host_fanout_100` | `0.41 ms` |
-| `suspend_resume_20` | `2.32 ms` |
+| `host_fanout_100` | `0.39 ms` |
+| `suspend_resume_20` | `2.23 ms` |
 
 Current sidecar/addon overhead from the same report:
 
-- `cold_start_small`: `9.92x`
-- `programmatic_tool_workflow`: `10.67x`
-- `host_fanout_100`: `16.27x`
+- `cold_start_small`: `10.49x`
+- `programmatic_tool_workflow`: `11.15x`
+- `host_fanout_100`: `17.05x`
 
 Current relative position versus the isolate baseline:
 
@@ -75,8 +75,6 @@ cost:
   through promise machinery even when host suspension is forbidden.
 - `crates/mustard/src/runtime/gc.rs` also uses `HashSet`-heavy marking, making
   each individual collection more expensive than it needs to be.
-- `crates/mustard/src/runtime/gc.rs` still recomputes whole-heap totals after
-  every collection, even though most mutations now have exact local byte deltas.
 - `crates/mustard/src/runtime/accounting.rs` frequently remeasures whole
   objects/arrays/maps/sets after local mutations instead of applying deltas.
 - `crates/mustard/src/runtime/env.rs` resolves names by walking env chains and
@@ -293,7 +291,7 @@ Action items:
 - [x] Keep limit enforcement fail-closed even when GC is deferred.
 - [ ] Convert array/object/map/set/env/promise accounting from full remeasure to
   incremental deltas wherever the exact byte delta is knowable.
-- [ ] Avoid full heap-total recomputation on every collection; reserve full
+- [x] Avoid full heap-total recomputation on every collection; reserve full
   recounts for snapshot load, validation repair, or debug assertions.
 - [ ] Reduce async clone amplification in promise settlement, awaiter
   scheduling, and reaction dispatch, especially for `Promise.all` and other
@@ -465,3 +463,4 @@ Action items:
 | 2026-04-13T12:18:14Z | `94c010c` | Completed the Milestone 3 lexical-slot item by adding `LoadSlot` / `StoreSlot` bytecode, compiler binding-scope resolution across root/block/function scopes so nested closures can capture outer cells by depth+slot, runtime slot lookup/assignment support that preserves TDZ and `const` diagnostics, and Rust regression coverage for nested closures with shadowed bindings. Refreshed `docs/BENCHMARK_FINDINGS.md`, updated the bytecode golden, and checked in `benchmarks/results/2026-04-13T12-17-33-931Z-workloads.json` plus `2026-04-13T12-17-37-072Z-smoke-release.json`. Relative to `2026-04-13T11-51-16-063Z`, addon release medians improved on `warm_run_small -52.3%` (`10.13 ms -> 4.83 ms`), `programmatic_tool_workflow -22.5%` (`21.63 ms -> 16.77 ms`), `host_fanout_100 -25.4%` (`0.97 ms -> 0.72 ms`), and `execution_only_small -35.0%` (`13.41 ms -> 8.72 ms`), while `warm_run_code_mode_search -2.6%`, `suspend_resume_20 -1.2%`, and `runtime_init_only -3.9%` were effectively flat. The Rust-core benches showed the direct hot-path signal: `local_load_store_hot ~-77%`, `env_lookup_hot ~-68%`, `vm_hot_loop ~-58%`, `closure_access_hot ~-50%`, `property_access_hot ~-50%`, `array_callback_hot ~-28%`, and `collection_callback_hot ~-18%`. | Verification passed (`cargo test --workspace`, `npm test`, `npm run lint`, `npm run bench:rust`, `npm run bench:workloads:release`, `npm run bench:smoke:release`, `npm run bench:regress:smoke`). `npm run bench:regress:workloads` still exits nonzero because multiple small/medium boundary and phase metrics regress by more than `10%` versus the tracked baseline (`addon.boundary.suspendedArgs.small +34.7%`, `addon.boundary.startInputs.medium +27.7%`, `addon.phases.Progress.load_only +39.2%`, and related small-payload surfaces) even though the main execution-path medians improved sharply. No external blocker identified. The next earliest feasible path remains Milestone 3 string/key interning or the remaining fast-path work for globals/properties. |
 | 2026-04-13T12:59:07Z | `223d5ad` | Completed the remaining Milestone 3 global/property fast-path item and started the Milestone 4 accounting path by adding `LoadGlobal` / `StoreGlobal` bytecode, routing static property get/set through string-key helpers instead of per-op `Value::String(...)` construction, and replacing full array/object remeasurement on common local mutations with exact accounting deltas for object property writes, array index writes, array push/pop, and array-helper result builders. Added Rust regression coverage for unresolved global lowering plus exact heap-accounting recounts after local mutations, refreshed `docs/BENCHMARK_FINDINGS.md`, and checked in `benchmarks/results/2026-04-13T12-54-09-301Z-workloads.json` plus `2026-04-13T12-54-22-790Z-smoke-release.json`. Relative to `2026-04-13T12-17-33-931Z`, addon release medians improved on `cold_start_small -5.0%` (`4.76 ms -> 4.52 ms`), `warm_run_small -5.0%` (`4.83 ms -> 4.59 ms`), `cold_start_code_mode_search -3.9%` (`34.26 ms -> 32.93 ms`), `warm_run_code_mode_search -3.4%` (`33.82 ms -> 32.68 ms`), and `programmatic_tool_workflow -1.1%` (`16.77 ms -> 16.59 ms`), while `execution_only_small` regressed slightly (`8.72 ms -> 8.81 ms`, `+1.1%`). The Rust-core benches showed the direct signal: `global_lookup_hot ~-3.7%`, `property_access_hot ~-4.1%`, `builtin_method_hot ~-3.4%`, `vm_hot_loop ~-4.0%`, `local_load_store_hot ~-3.2%`, `closure_access_hot ~-4.9%`, and `map_set_hot ~-3.2%`. | Verification passed (`cargo test --workspace`, `npm test`, `npm run lint`, `npm run bench:rust`, `npm run bench:workloads:release`, `npm run bench:smoke:release`, `npm run bench:regress:smoke`). `npm run bench:regress:workloads` still exits nonzero because the tracked relative gate flags a tiny phase-only regression on `addon.phases.runtime_init_only` (`0.04 ms -> 0.05 ms`, `+20.2%`) even though the main execution-path medians above improved and the boundary/failure surfaces are flat to slightly better overall. No external blocker identified. The next earliest feasible path remains Milestone 3 string/key interning or deeper Milestone 4 GC/accounting work (`collect_garbage` trigger policy and broader incremental accounting beyond the common array/object mutation cases). |
 | 2026-04-13T13:27:27Z | `3423728` | Completed the first concrete Milestone 4 GC-trigger chunk by replacing eager per-op GC with debt/pressure-triggered collection, forcing a collection before actual heap/allocation-limit failures, skipping the pointless root-entry collection on fresh runtimes, and adding internal runtime tests that prove low-pressure allocations do not collect immediately while allocation pressure still reclaims garbage before limit failures. Refreshed `docs/LIMITS.md`, rewrote `docs/BENCHMARK_FINDINGS.md`, rebased noisy smoke ratio budgets, and checked in `benchmarks/results/2026-04-13T13-20-51-960Z-workloads.json`, `2026-04-13T13-22-53-049Z-smoke-release.json`, and `2026-04-13T13-23-23-466Z-smoke-dev.json`. Relative to `2026-04-13T12-54-09-301Z`, addon release medians improved on `cold_start_small -77.3%` (`4.52 ms -> 1.03 ms`), `warm_run_small -78.8%` (`4.59 ms -> 0.97 ms`), `programmatic_tool_workflow -89.3%` (`16.59 ms -> 1.77 ms`), `host_fanout_100 -42.3%` (`0.71 ms -> 0.41 ms`), and `execution_only_small -72.8%` (`8.81 ms -> 2.40 ms`), while suspend/snapshot-adjacent phases regressed (`Progress.load_only +65.2%`, `snapshot_load_only +62.3%`, `snapshot_dump_only +55.2%`). Release smoke versus `2026-04-13T12-54-22-790Z` improved startup (`0.09 ms -> 0.05 ms`, `-47.5%`) and compute (`2.73 ms -> 0.43 ms`, `-84.3%`) but regressed snapshot direct/round-trip medians (`0.05/0.33 ms -> 0.07/0.47 ms`). | Verification passed (`cargo test --workspace`, `npm test`, `npm run lint`, `npm run bench:rust`, `npm run bench:workloads:release`, `npm run bench:smoke:release`, `npm run bench:smoke`). `npm run bench:regress:smoke` still exits nonzero because the tracked release smoke baseline sees `metrics.snapshot.direct` and `metrics.snapshot.snapshotRoundTrip` regress by about `39%` to `57%` even after the main execution path got faster. `npm run bench:regress:workloads` still exits nonzero because several addon boundary and snapshot-adjacent metrics regress by more than `10%` versus the tracked baseline (`startInputs.*`, `resumeValues.*`, `resumeErrors.*`, `Progress.load_only`, `snapshot_load_only`, `snapshot_dump_only`). No external blocker identified. The next feasible path is still Milestone 3 string/key interning or the remaining Milestone 4 GC/accounting work to recover the boundary/snapshot regressions. |
+| 2026-04-13T13:42:48Z | `b55f15c` (worktree dirty) | Completed the next Milestone 4 GC/accounting chunk by removing the post-sweep full-heap recount from `collect_garbage()`, subtracting reclaimed cached accounting totals during sweep, keeping snapshot-load recounts and debug-only full-walk assertions, adding active GC regression coverage for cached totals and zero-reclaim follow-up collections, refreshing `docs/LIMITS.md` plus `docs/BENCHMARK_FINDINGS.md`, and checking in `benchmarks/results/2026-04-13T13-38-06-436Z-workloads.json`, `2026-04-13T13-38-09-400Z-smoke-release.json`, and `2026-04-13T13-38-19-895Z-smoke-dev.json`. Relative to `2026-04-13T13-20-51-960Z`, addon release medians improved on `programmatic_tool_workflow -4.7%` (`1.77 ms -> 1.69 ms`), `host_fanout_100 -4.3%` (`0.41 ms -> 0.39 ms`), `suspend_resume_20 -3.5%` (`2.32 ms -> 2.23 ms`), `warm_run_small -1.7%` (`0.97 ms -> 0.96 ms`), and `Progress.load_only -3.1%` (`0.26 ms -> 0.25 ms`), while release smoke improved on startup (`0.05 ms -> 0.04 ms`, `-13.2%`), host calls (`0.26 ms -> 0.22 ms`, `-13.7%`), and direct snapshots (`0.07 ms -> 0.06 ms`, `-14.0%`). | Verification passed (`cargo test --workspace`, `npm test`, `npm run lint`, `npm run bench:rust`, `npm run bench:workloads:release`, `npm run bench:smoke:release`, `npm run bench:smoke`, `npm run bench:regress:smoke`). `npm run bench:regress:workloads` still exits nonzero because two addon p95 surfaces remain above the tracked `10%` regression threshold (`addon.boundary.suspendedArgs.medium +14.0%` and `addon.latency.host_fanout_1 +14.1%`) even though the main addon medians improved and the smoke regression gate now passes. No external blocker identified. The next feasible path remains the remaining Milestone 4 GC/accounting work or the earlier Milestone 3 string/key interning path. |

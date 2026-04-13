@@ -681,7 +681,7 @@ pub(super) struct GarbageCollectionWorklist {
     pub(super) promises: Vec<PromiseKey>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(super) struct GarbageCollectionStats {
     pub(super) reclaimed_bytes: usize,
     pub(super) reclaimed_allocations: usize,

@@ -20,7 +20,7 @@ impl Runtime {
     }
 
     #[cfg(debug_assertions)]
-    fn debug_assert_cached_accounting_matches_full_walk(&mut self) {
+    pub(super) fn debug_assert_cached_accounting_matches_full_walk(&mut self) {
         let cached_totals = (self.heap_bytes_used, self.allocation_count);
         let measured_totals = self
             .recompute_accounting_totals()
