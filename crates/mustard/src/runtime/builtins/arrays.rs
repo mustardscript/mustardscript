@@ -60,6 +60,33 @@ impl Runtime {
             .clone())
     }
 
+    pub(in crate::runtime) fn array_entry_pair(
+        &self,
+        entry: Value,
+        invalid_entry_message: &'static str,
+    ) -> MustardResult<(Value, Value)> {
+        let array = match entry {
+            Value::Array(array) => array,
+            _ => return Err(MustardError::runtime(invalid_entry_message)),
+        };
+        let elements = &self
+            .arrays
+            .get(array)
+            .ok_or_else(|| MustardError::runtime("array missing"))?
+            .elements;
+        let key = elements
+            .first()
+            .cloned()
+            .flatten()
+            .unwrap_or(Value::Undefined);
+        let value = elements
+            .get(1)
+            .cloned()
+            .flatten()
+            .unwrap_or(Value::Undefined);
+        Ok((key, value))
+    }
+
     fn array_receiver(&self, value: Value, method: &str) -> MustardResult<ArrayKey> {
         match value {
             Value::Array(key) => Ok(key),

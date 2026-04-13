@@ -20,23 +20,10 @@ impl Runtime {
             if done {
                 break;
             }
-            let items: Vec<Value> = match entry {
-                Value::Array(array) => self
-                    .arrays
-                    .get(array)
-                    .ok_or_else(|| MustardError::runtime("array missing"))?
-                    .elements
-                    .iter()
-                    .map(|value| value.clone().unwrap_or(Value::Undefined))
-                    .collect(),
-                _ => {
-                    return Err(MustardError::runtime(
-                        "TypeError: Map constructor expects an iterable of [key, value] pairs",
-                    ));
-                }
-            };
-            let key = items.first().cloned().unwrap_or(Value::Undefined);
-            let value = items.get(1).cloned().unwrap_or(Value::Undefined);
+            let (key, value) = self.array_entry_pair(
+                entry,
+                "TypeError: Map constructor expects an iterable of [key, value] pairs",
+            )?;
             self.map_set(map, key, value)?;
         }
         if length_hint.is_some() {

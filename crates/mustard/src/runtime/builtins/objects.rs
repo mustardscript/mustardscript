@@ -300,24 +300,11 @@ impl Runtime {
                     if done {
                         break;
                     }
-                    let items: Vec<Value> = match entry {
-                        Value::Array(array) => runtime
-                            .arrays
-                            .get(array)
-                            .ok_or_else(|| MustardError::runtime("array missing"))?
-                            .elements
-                            .iter()
-                            .map(|value| value.clone().unwrap_or(Value::Undefined))
-                            .collect(),
-                        _ => {
-                            return Err(MustardError::runtime(
-                                "TypeError: Object.fromEntries expects an iterable of [key, value] pairs",
-                            ));
-                        }
-                    };
-                    let key = runtime
-                        .to_property_key(items.first().cloned().unwrap_or(Value::Undefined))?;
-                    let value = items.get(1).cloned().unwrap_or(Value::Undefined);
+                    let (key, value) = runtime.array_entry_pair(
+                        entry,
+                        "TypeError: Object.fromEntries expects an iterable of [key, value] pairs",
+                    )?;
+                    let key = runtime.to_property_key(key)?;
                     let new_entry_bytes = Runtime::property_entry_bytes(&key, &value);
                     let old_entry_bytes = {
                         let object = runtime
