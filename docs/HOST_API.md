@@ -53,22 +53,27 @@ objects instead of alias-expanding them during export.
   queues the host request, and suspends at the next runtime checkpoint.
 - `start()` returns a suspension object containing the capability name, the
   converted arguments, and a resumable snapshot. In the current addon path,
-  that live snapshot excludes immutable compiled-program bytes and stays bound
-  to the originating program identity instead.
+  that live snapshot stays in a process-local opaque native handle until the
+  host asks for `progress.snapshot` or `Progress.dump()`. The dumped addon
+  snapshot still excludes immutable compiled-program bytes and stays bound to
+  the originating program identity instead.
 - Snapshots loaded from bytes must be rebound to explicit host policy before
   their capability metadata is trusted or resume is allowed to continue.
 - Raw native snapshot restore also requires a `limits` field plus
   `snapshot_id`, `snapshot_key_base64`, `snapshot_key_digest`, and matching
-  `snapshot_token` inside the snapshot policy JSON. The current addon fast path
-  uses `inspectDetachedSnapshot(program, snapshot, ...)` /
-  `resumeDetachedProgram(program, snapshot, ...)`, while legacy self-contained
+  `snapshot_token` inside the snapshot policy JSON. The current addon wrapper
+  keeps live `start()` / `run()` / `resume()` traffic on opaque snapshot
+  handles, while raw byte restore still uses
+  `inspectDetachedSnapshot(program, snapshot, ...)` /
+  `resumeDetachedProgram(program, snapshot, ...)`, and legacy self-contained
   snapshots still work through `inspectSnapshot(...)` / `resumeProgram(...)`.
-  In both cases, the token is the HMAC-SHA256 of the detached `snapshot_id`
-  under the caller-chosen snapshot key, and restore recomputes `snapshot_id`
-  from the raw snapshot bytes before inspection or resume. Those fields bind
-  raw restore to trusted detached dump metadata, but hosts still need ordinary
-  integrity controls when storing or transporting snapshots. Passing `{}` is
-  the explicit way to request default runtime limits during raw restore.
+  In the raw-restore path, the token is the HMAC-SHA256 of the detached
+  `snapshot_id` under the caller-chosen snapshot key, and restore recomputes
+  `snapshot_id` from the raw snapshot bytes before inspection or resume. Those
+  fields bind raw restore to trusted detached dump metadata, but hosts still
+  need ordinary integrity controls when storing or transporting snapshots.
+  Passing `{}` is the explicit way to request default runtime limits during raw
+  restore.
 - `resume()` accepts either a structured success value or a sanitized host
   error payload. Raw native and sidecar resume transport also accepts an
   explicit `cancelled` payload shape for host-driven cancellation.
@@ -144,8 +149,10 @@ guest-only traceback with guest function names and source spans.
   `token` metadata authenticated by the configured `snapshotKey`. Current addon
   dumps also carry detached `program` bytes plus `program_id`, alongside an
   authenticated suspended-manifest blob for capability metadata, and
-  `Progress.load()` verifies that bundle before it trusts that manifest or
-  falls back to legacy snapshot inspection.
+  `Progress.load()` verifies that bundle, applies the explicit restore policy
+  once when it rebuilds a live native snapshot handle, and only falls back to
+  legacy snapshot inspection when the authenticated suspended manifest is
+  absent.
 - In the Node wrapper, `Progress.load(...)` always requires the host to
   reassert either an `ExecutionContext` or explicit `capabilities` or
   `console`, explicit `limits`, and the original `snapshotKey` before it exposes authoritative

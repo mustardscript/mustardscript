@@ -7,12 +7,7 @@ const {
   throwIfAborted,
   withCancellationSignal,
 } = require('./cancellation.ts');
-const {
-  resolveExecutionContext,
-  encodeSnapshotPolicy,
-  snapshotIdentity,
-  snapshotToken,
-} = require('./policy.ts');
+const { resolveExecutionContext } = require('./policy.ts');
 const {
   encodeResumePayloadCancel,
   encodeResumePayloadError,
@@ -68,52 +63,51 @@ function createMustardClass({ native, materializeStep, parseStep }) {
     async run(options = {}) {
       const signal = getAbortSignal(options, 'run options');
       throwIfAborted(signal);
-      const { hostHandlers, policy, snapshotKey } = resolveExecutionContext(options, 'run options');
+      const { hostHandlers, policy } = resolveExecutionContext(options, 'run options');
       const programHandle = this._ensureProgramHandle();
       let step = parseStep(
         withCancellationSignal(
           native,
-          native.startProgram,
+          native.startProgramWithSnapshotHandle,
           [programHandle, encodeStartOptions(options.inputs, policy)],
           signal,
         ),
       );
       while (step.type === 'suspended') {
-        const capability = hostHandlers[step.capability];
-        if (typeof capability !== 'function') {
-          throw new Error(`Missing capability: ${step.capability}`);
-        }
-        const outcome = await settleCapabilityInvocation(capability, step.args, signal);
-        const snapshotId = snapshotIdentity(step.snapshot);
-        const policyJson = encodeSnapshotPolicy(policy, {
-          snapshotId,
-          snapshotKey,
-          snapshotToken: snapshotToken(step.snapshot, snapshotKey, snapshotId),
-        });
-        if (outcome.type === 'cancelled') {
+        const snapshotHandle = step.snapshotHandle;
+        try {
+          const capability = hostHandlers[step.capability];
+          if (typeof capability !== 'function') {
+            throw new Error(`Missing capability: ${step.capability}`);
+          }
+          const outcome = await settleCapabilityInvocation(capability, step.args, signal);
+          if (outcome.type === 'cancelled') {
+            step = parseStep(
+              callNative(native.resumeSnapshotHandle, snapshotHandle, encodeResumePayloadCancel()),
+            );
+            continue;
+          }
+          const payload =
+            outcome.type === 'value'
+              ? encodeResumePayloadValue(outcome.value)
+              : encodeResumePayloadError(outcome.error);
           step = parseStep(
-            callNative(
-              native.resumeDetachedProgram,
-              programHandle,
-              step.snapshot,
-              encodeResumePayloadCancel(),
-              policyJson,
+            withCancellationSignal(
+              native,
+              native.resumeSnapshotHandle,
+              [snapshotHandle, payload],
+              signal,
             ),
           );
-          continue;
+        } finally {
+          if (typeof snapshotHandle === 'string' && snapshotHandle.length > 0) {
+            try {
+              callNative(native.releaseSnapshotHandle, snapshotHandle);
+            } catch {
+              // Best-effort cleanup only.
+            }
+          }
         }
-        const payload =
-          outcome.type === 'value'
-            ? encodeResumePayloadValue(outcome.value)
-            : encodeResumePayloadError(outcome.error);
-        step = parseStep(
-          withCancellationSignal(
-            native,
-            native.resumeDetachedProgram,
-            [programHandle, step.snapshot, payload, policyJson],
-            signal,
-          ),
-        );
       }
       return step.value;
     }
@@ -126,7 +120,7 @@ function createMustardClass({ native, materializeStep, parseStep }) {
       const step = parseStep(
         withCancellationSignal(
           native,
-          native.startProgram,
+          native.startProgramWithSnapshotHandle,
           [programHandle, encodeStartOptions(options.inputs, policy)],
           signal,
         ),

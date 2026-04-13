@@ -19,8 +19,9 @@ mod vm;
 
 pub use api::{
     ExecutionOptions, ExecutionSnapshot, ExecutionStep, HostError, ResumeOptions, ResumePayload,
-    SnapshotInspection, SnapshotPolicy, Suspension, execute, inspect_snapshot, resume,
-    resume_with_options, start, start_bytecode, start_shared_bytecode, start_validated_bytecode,
+    SnapshotInspection, SnapshotPolicy, Suspension, apply_snapshot_policy, execute,
+    inspect_snapshot, resume, resume_with_options, snapshot_inspection, start, start_bytecode,
+    start_shared_bytecode, start_validated_bytecode,
 };
 pub use bytecode::{BytecodeProgram, FunctionPrototype, Instruction};
 pub use compiler::lower_to_bytecode;

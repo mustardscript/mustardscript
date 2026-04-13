@@ -50,6 +50,10 @@ profile-specific:
   workload report
 - host-call and snapshot checks stay ratio-based so the gate remains meaningful
   across different development machines
+- current snapshot ratio budgets intentionally allow a larger direct-vs-dumped
+  gap because live addon `Progress` objects now resume through opaque native
+  snapshot handles while `Progress.dump()` still measures full byte
+  materialization
 
 Smoke results now emit timestamped JSON artifacts under `benchmarks/results/`
 with:

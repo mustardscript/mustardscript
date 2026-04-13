@@ -114,6 +114,16 @@ function createProgressApi(native) {
           }
         })
       : null;
+  const snapshotHandleRegistry =
+    typeof FinalizationRegistry === 'function'
+      ? new FinalizationRegistry((snapshotHandle) => {
+          try {
+            callNative(native.releaseSnapshotHandle, snapshotHandle);
+          } catch {
+            // Best-effort cleanup only; process shutdown can race native teardown.
+          }
+        })
+      : null;
 
   function assertAuthorizedSuspendedCapability(policy, capability) {
     if (policy.capabilities.includes(capability)) {
@@ -139,25 +149,41 @@ function createProgressApi(native) {
       programHandle = null,
       program = undefined,
       programId = undefined,
+      snapshotHandle = null,
+      snapshotId = undefined,
     ) {
       this.#capability = capability;
       this.#args = structuredClone(args);
       this.capability = this.#capability;
       this.args = structuredClone(this.#args);
-      this.#snapshot = Buffer.from(snapshot);
-      this.#snapshotIdentity = snapshotIdentity(this.#snapshot);
+      this.#snapshot =
+        snapshot === undefined || snapshot === null ? null : Buffer.from(snapshot);
+      this.#snapshotIdentity =
+        typeof snapshotId === 'string' && snapshotId.length > 0
+          ? snapshotId
+          : this.#snapshot !== null
+            ? snapshotIdentity(this.#snapshot)
+            : null;
       this.#snapshotKey = cloneSnapshotKey(snapshotKey);
       this.#snapshotKeyDigest = snapshotKeyDigest(this.#snapshotKey);
-      this.#snapshotToken = token ?? snapshotToken(this.#snapshot, this.#snapshotKey);
+      this.#snapshotToken =
+        typeof token === 'string' && token.length > 0
+          ? token
+          : this.#snapshot !== null
+            ? snapshotToken(this.#snapshot, this.#snapshotKey, this.#snapshotIdentity)
+            : null;
       this.#suspendedManifest =
         suspendedManifest ?? createSuspendedManifest(this.#capability, this.#args);
       this.#suspendedManifestToken =
-        suspendedManifestTokenValue ??
-        suspendedManifestToken(
-          this.#snapshotIdentity,
-          this.#suspendedManifest,
-          this.#snapshotKey,
-        );
+        typeof suspendedManifestTokenValue === 'string' && suspendedManifestTokenValue.length > 0
+          ? suspendedManifestTokenValue
+          : this.#snapshotIdentity === null
+            ? null
+            : suspendedManifestToken(
+                this.#snapshotIdentity,
+                this.#suspendedManifest,
+                this.#snapshotKey,
+              );
       this.#policy = cloneSnapshotPolicy(policy);
       this.#claimState = claimState;
       this.#program = program === undefined || program === null ? null : Buffer.from(program);
@@ -173,6 +199,13 @@ function createProgressApi(native) {
         this.#programHandle = programHandle;
         this.#programHandleToken = {};
         programHandleRegistry?.register(this, programHandle, this.#programHandleToken);
+      }
+      this.#snapshotHandle = null;
+      this.#snapshotHandleToken = null;
+      if (typeof snapshotHandle === 'string' && snapshotHandle.length > 0) {
+        this.#snapshotHandle = snapshotHandle;
+        this.#snapshotHandleToken = {};
+        snapshotHandleRegistry?.register(this, snapshotHandle, this.#snapshotHandleToken);
       }
     }
 
@@ -191,6 +224,51 @@ function createProgressApi(native) {
     #programIdentity;
     #programHandle;
     #programHandleToken;
+    #snapshotHandle;
+    #snapshotHandleToken;
+
+    #clearSnapshotHandle() {
+      if (this.#snapshotHandleToken !== null) {
+        snapshotHandleRegistry?.unregister(this.#snapshotHandleToken);
+      }
+      this.#snapshotHandle = null;
+      this.#snapshotHandleToken = null;
+    }
+
+    #releaseSnapshotHandle() {
+      if (this.#snapshotHandle === null) {
+        return;
+      }
+      const snapshotHandle = this.#snapshotHandle;
+      this.#clearSnapshotHandle();
+      try {
+        callNative(native.releaseSnapshotHandle, snapshotHandle);
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+
+    #ensureSnapshotBytes() {
+      if (this.#snapshot !== null) {
+        return Buffer.from(this.#snapshot);
+      }
+      if (this.#snapshotHandle === null) {
+        throw singleUseRuntimeError();
+      }
+      this.#snapshot = Buffer.from(callNative(native.dumpSnapshotHandle, this.#snapshotHandle));
+      this.#snapshotIdentity ??= snapshotIdentity(this.#snapshot);
+      this.#snapshotToken ??= snapshotToken(
+        this.#snapshot,
+        this.#snapshotKey,
+        this.#snapshotIdentity,
+      );
+      this.#suspendedManifestToken ??= suspendedManifestToken(
+        this.#snapshotIdentity,
+        this.#suspendedManifest,
+        this.#snapshotKey,
+      );
+      return Buffer.from(this.#snapshot);
+    }
 
     #consumeSnapshot() {
       if (this.#claimState === 'consumed') {
@@ -205,6 +283,26 @@ function createProgressApi(native) {
       }
       this.#claimState = 'consumed';
       return Buffer.from(this.#snapshot);
+    }
+
+    #consumeSnapshotHandle() {
+      if (this.#claimState === 'consumed') {
+        throw singleUseRuntimeError();
+      }
+      if (
+        this.#claimState === 'unclaimed' &&
+        this.#snapshotIdentity !== null &&
+        !claimSharedProgressSnapshot(this.#snapshotIdentity)
+      ) {
+        throw singleUseRuntimeError();
+      }
+      if (this.#snapshotHandle === null) {
+        return null;
+      }
+      const snapshotHandle = this.#snapshotHandle;
+      this.#clearSnapshotHandle();
+      this.#claimState = 'consumed';
+      return snapshotHandle;
     }
 
     #ensureProgramHandle() {
@@ -234,18 +332,38 @@ function createProgressApi(native) {
     }
 
     #resumeWithPayload(payload, signal) {
+      const programHandle = this.#ensureProgramHandle();
+      const snapshotHandle = this.#consumeSnapshotHandle();
+      if (snapshotHandle !== null) {
+        try {
+          const nativeArgs = [snapshotHandle, payload];
+          const step = parseStep(
+            signal === undefined
+              ? callNative(native.resumeSnapshotHandle, ...nativeArgs)
+              : withCancellationSignal(native, native.resumeSnapshotHandle, nativeArgs, signal),
+          );
+          return materializeStep(step, this.#policy, this.#snapshotKey, programHandle, this.#program);
+        } finally {
+          try {
+            callNative(native.releaseSnapshotHandle, snapshotHandle);
+          } catch {
+            // Best-effort cleanup only.
+          }
+        }
+      }
+
+      const snapshot = this.#consumeSnapshot();
       const policyJson = encodeSnapshotPolicy(this.#policy, {
         snapshotId: this.#snapshotIdentity,
         snapshotKey: this.#snapshotKey,
         snapshotToken: this.#snapshotToken,
       });
-      const programHandle = this.#ensureProgramHandle();
       const nativeResume =
         programHandle === null ? native.resumeProgram : native.resumeDetachedProgram;
       const nativeArgs =
         programHandle === null
-          ? [this.#consumeSnapshot(), payload, policyJson]
-          : [programHandle, this.#consumeSnapshot(), payload, policyJson];
+          ? [snapshot, payload, policyJson]
+          : [programHandle, snapshot, payload, policyJson];
       const step = parseStep(
         signal === undefined
           ? callNative(nativeResume, ...nativeArgs)
@@ -255,14 +373,22 @@ function createProgressApi(native) {
     }
 
     get snapshot() {
-      return Buffer.from(this.#snapshot);
+      return this.#ensureSnapshotBytes();
     }
 
     dump() {
+      const snapshot = this.#ensureSnapshotBytes();
+      this.#snapshotIdentity ??= snapshotIdentity(snapshot);
+      this.#snapshotToken ??= snapshotToken(snapshot, this.#snapshotKey, this.#snapshotIdentity);
+      this.#suspendedManifestToken ??= suspendedManifestToken(
+        this.#snapshotIdentity,
+        this.#suspendedManifest,
+        this.#snapshotKey,
+      );
       const dumped = {
         capability: this.#capability,
         args: structuredClone(this.#args),
-        snapshot: this.snapshot,
+        snapshot,
         snapshot_id: this.#snapshotIdentity,
         snapshot_key_digest: this.#snapshotKeyDigest,
         token: this.#snapshotToken,
@@ -370,13 +496,44 @@ function createProgressApi(native) {
         context.snapshotKey,
         snapshotIdentityValue,
       );
+      const policyJson = encodeSnapshotPolicy(context.policy, {
+        snapshotId: state.snapshot_id,
+        snapshotKey: context.snapshotKey,
+        snapshotToken: state.token,
+      });
       const releaseClaim = claimSnapshotForLoad(native, snapshotIdentityValue);
       try {
+        let loadedProgramHandle = null;
+        let snapshotHandle = null;
+        const loadSnapshotHandle = () => {
+          if (dumpedProgram === undefined) {
+            return callNative(native.loadSnapshotHandle, snapshot, policyJson);
+          }
+          loadedProgramHandle = callNative(native.loadProgram, Buffer.from(dumpedProgram));
+          return callNative(
+            native.loadDetachedSnapshotHandle,
+            loadedProgramHandle,
+            snapshot,
+            policyJson,
+          );
+        };
         if (suspendedManifest !== null) {
           assertAuthorizedSuspendedCapability(
             context.policy,
             suspendedManifest.capability,
           );
+          try {
+            snapshotHandle = loadSnapshotHandle();
+          } catch (error) {
+            if (loadedProgramHandle !== null) {
+              try {
+                callNative(native.releaseProgram, loadedProgramHandle);
+              } catch {
+                // Best-effort cleanup only.
+              }
+            }
+            throw error;
+          }
           return new Progress(
             snapshot,
             suspendedManifest.capability,
@@ -387,38 +544,18 @@ function createProgressApi(native) {
             'claimed',
             state.suspended_manifest,
             state.suspended_manifest_token,
-            null,
+            loadedProgramHandle,
             dumpedProgram,
             dumpedProgramId,
+            snapshotHandle,
+            state.snapshot_id,
           );
         }
 
-        let loadedProgramHandle = null;
         try {
+          snapshotHandle = loadSnapshotHandle();
           const inspection = parseSnapshotInspection(
-            dumpedProgram === undefined
-              ? callNative(
-                  native.inspectSnapshot,
-                  snapshot,
-                  encodeSnapshotPolicy(context.policy, {
-                    snapshotId: state.snapshot_id,
-                    snapshotKey: context.snapshotKey,
-                    snapshotToken: state.token,
-                  }),
-                )
-              : (() => {
-                  loadedProgramHandle = callNative(native.loadProgram, Buffer.from(dumpedProgram));
-                  return callNative(
-                    native.inspectDetachedSnapshot,
-                    loadedProgramHandle,
-                    snapshot,
-                    encodeSnapshotPolicy(context.policy, {
-                      snapshotId: state.snapshot_id,
-                      snapshotKey: context.snapshotKey,
-                      snapshotToken: state.token,
-                    }),
-                  );
-                })(),
+            callNative(native.inspectSnapshotHandle, snapshotHandle),
           );
           return new Progress(
             snapshot,
@@ -433,8 +570,17 @@ function createProgressApi(native) {
             loadedProgramHandle,
             dumpedProgram,
             dumpedProgramId,
+            snapshotHandle,
+            state.snapshot_id,
           );
         } catch (error) {
+          if (snapshotHandle !== null) {
+            try {
+              callNative(native.releaseSnapshotHandle, snapshotHandle);
+            } catch {
+              // Best-effort cleanup only.
+            }
+          }
           if (loadedProgramHandle !== null) {
             try {
               callNative(native.releaseProgram, loadedProgramHandle);
@@ -463,7 +609,14 @@ function createProgressApi(native) {
       type: 'suspended',
       capability: step.capability,
       args: step.args.map(decodeStructured),
-      snapshot: Buffer.from(step.snapshot_base64, 'base64'),
+      snapshot:
+        typeof step.snapshot_base64 === 'string'
+          ? Buffer.from(step.snapshot_base64, 'base64')
+          : null,
+      snapshotHandle:
+        typeof step.snapshot_handle === 'string' && step.snapshot_handle.length > 0
+          ? step.snapshot_handle
+          : null,
     };
   }
 
@@ -495,6 +648,8 @@ function createProgressApi(native) {
       undefined,
       ownedProgramHandle,
       program,
+      undefined,
+      step.snapshotHandle,
     );
   }
 

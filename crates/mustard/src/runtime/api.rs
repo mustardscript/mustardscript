@@ -192,11 +192,14 @@ pub fn resume_with_options(
     runtime.resume(payload)
 }
 
-pub fn inspect_snapshot(
+pub fn apply_snapshot_policy(
     snapshot: &mut ExecutionSnapshot,
     policy: SnapshotPolicy,
-) -> MustardResult<SnapshotInspection> {
-    snapshot.runtime.apply_snapshot_policy(policy)?;
+) -> MustardResult<()> {
+    snapshot.runtime.apply_snapshot_policy(policy)
+}
+
+pub fn snapshot_inspection(snapshot: &ExecutionSnapshot) -> MustardResult<SnapshotInspection> {
     let request = snapshot
         .runtime
         .suspended_host_call
@@ -211,4 +214,12 @@ pub fn inspect_snapshot(
         capability: request.capability.clone(),
         args: request.args.clone(),
     })
+}
+
+pub fn inspect_snapshot(
+    snapshot: &mut ExecutionSnapshot,
+    policy: SnapshotPolicy,
+) -> MustardResult<SnapshotInspection> {
+    apply_snapshot_policy(snapshot, policy)?;
+    snapshot_inspection(snapshot)
 }

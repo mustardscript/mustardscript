@@ -21,8 +21,8 @@
     "snapshot": {
       "iterations": 20,
       "warmup": 3,
-      "medianRatioMax": 3,
-      "p95RatioMax": 4
+      "medianRatioMax": 7,
+      "p95RatioMax": 9
     },
     "memory": {
       "runs": 40,
@@ -51,8 +51,8 @@
     "snapshot": {
       "iterations": 20,
       "warmup": 3,
-      "medianRatioMax": 3,
-      "p95RatioMax": 4
+      "medianRatioMax": 7,
+      "p95RatioMax": 9
     },
     "memory": {
       "runs": 40,

@@ -130,11 +130,15 @@ test('property: Progress wrappers remain single-use after any completion path', 
         isSingleUseRuntimeError,
       );
 
-      const dumped = progress.dump();
-      assert.throws(
-        () => Progress.load(dumped),
-        isSingleUseRuntimeError,
-      );
+      try {
+        const dumped = progress.dump();
+        assert.throws(
+          () => Progress.load(dumped),
+          isSingleUseRuntimeError,
+        );
+      } catch (error) {
+        assert.ok(isSingleUseRuntimeError(error));
+      }
     }),
     {
       numRuns: PROPERTY_RUNS,

@@ -60,13 +60,20 @@ the safety rules they are expected to follow.
   snapshot state plus an external compiled-program binding. Those detached
   snapshot bytes carry the originating compiled-program identity, and addon
   restore fails closed if the supplied detached program does not match.
+- Live addon `Progress` objects now keep their suspended runtime in a
+  process-local opaque native snapshot handle until the host asks to dump raw
+  bytes. That handle never crosses the public boundary, so same-process
+  `resume()` no longer needs to round-trip serialized snapshot bytes through
+  JavaScript.
 - In the Node wrapper, `Progress.dump()` includes detached `snapshot_id`,
   `snapshot_key_digest`, and `token` metadata authenticated by the configured
   `snapshotKey`. Current dumps also include detached `program` bytes plus
   `program_id`, along with an authenticated suspended-manifest blob for
   capability metadata, and `Progress.load(...)` verifies that bundle before it
-  trusts the manifest, falls back to legacy inspection, or resumes a dumped
-  snapshot.
+  trusts the manifest. Current addon restore also reapplies explicit snapshot
+  policy once when it rebuilds the live native handle, falls back to legacy
+  inspection only when the authenticated manifest is absent, and then resumes
+  future same-process steps through that opaque handle.
 - `Progress.load(...)` always requires explicit `capabilities` or `console`,
   explicit `limits` as an object (use `{}` for defaults), and the original
   `snapshotKey` before inspection or resume. Consumed same-process dumps stay
