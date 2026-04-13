@@ -2,16 +2,14 @@
 
 This document is the project-level threat model for `mustard`. It complements:
 
-- [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) for the short normative
+- [SECURITY_MODEL.md](SECURITY_MODEL.md) for the short normative contract
+- [HOST_API.md](HOST_API.md) for the host boundary
+- [SERIALIZATION.md](SERIALIZATION.md) for compiled-program and snapshot rules
+- [LIMITS.md](LIMITS.md) for runtime budgets and cancellation
+- [SIDECAR_PROTOCOL.md](SIDECAR_PROTOCOL.md) for the current sidecar wire
   contract
-- [docs/HOST_API.md](docs/HOST_API.md) for the host boundary
-- [docs/SERIALIZATION.md](docs/SERIALIZATION.md) for compiled-program and
-  snapshot rules
-- [docs/LIMITS.md](docs/LIMITS.md) for runtime budgets and cancellation
-- [docs/SIDECAR_PROTOCOL.md](docs/SIDECAR_PROTOCOL.md) for the current
-  sidecar wire contract
-- [docs/HARDENING.md](docs/HARDENING.md) for hostile-input and fuzzing evidence
-- [SECURITY.md](SECURITY.md) for disclosure and reporting
+- [HARDENING.md](HARDENING.md) for hostile-input and fuzzing evidence
+- [../SECURITY.md](../SECURITY.md) for disclosure and reporting
 
 The purpose of this file is not to restate every API detail. It is to make the
 security posture explicit: what `mustard` is defending, what it is not
@@ -201,7 +199,7 @@ Main threats:
 Current controls:
 
 - explicit parse -> validate -> lower -> bytecode pipeline
-- documented supported subset and forbidden forms in [docs/LANGUAGE.md](docs/LANGUAGE.md)
+- documented supported subset and forbidden forms in [LANGUAGE.md](LANGUAGE.md)
 - hostile-source tests and fuzz targets for parser and IR lowering
 
 Residual risk:
@@ -587,11 +585,8 @@ documentation:
 - `fuzz/fuzz_targets/snapshot_load.rs`
 - `fuzz/fuzz_targets/sidecar_protocol.rs`
 
-The historical record of fixed security findings also lives in
-[SECURITY_ISSUES.md](SECURITY_ISSUES.md). That file is not the normative
-contract, but it documents the attack classes the project already considers
-security-relevant, including boundary smuggling, unmetered runtime paths, and
-snapshot/policy forgery.
+Historical security reviews informed this threat model, but this document and
+the normative security docs are the maintained source of truth.
 
 ## What Counts As A Security Issue
 

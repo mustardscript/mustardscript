@@ -1,6 +1,7 @@
 # Use Case Examples
 
-This file expands the three primary use cases called out in [`README.md`](README.md):
+This file expands the three primary use cases called out in
+[`README.md`](../README.md):
 
 - server-side code mode with a compact tool surface
 - programmatic multi-tool execution with local reduction

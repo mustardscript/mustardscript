@@ -67,9 +67,9 @@ The current implementation already supports:
 
 ## Reference Docs
 
-- [Security Threat Model](SECURITY_THREAT_MODEL.md)
+- [Security Threat Model](docs/SECURITY_THREAT_MODEL.md)
 - [Security Model](docs/SECURITY_MODEL.md)
-- [Use Case Gaps](USE_CASE_GAPS.md)
+- [Use Case Gaps](docs/USE_CASE_GAPS.md)
 - [Language Contract](docs/LANGUAGE.md)
 - [Host API](docs/HOST_API.md)
 - [Serialization](docs/SERIALIZATION.md)
@@ -756,7 +756,7 @@ For hosts managing a large backlog of resumable jobs, the Node wrapper also
 exports `MustardExecutor` plus `InMemoryMustardExecutorStore` as a thin
 queue-oriented layer over `start()` / `Progress.dump()` / `Progress.load()`.
 The design and invariants for that layer are documented in
-[MUSTARD_EXECUTOR.md](MUSTARD_EXECUTOR.md).
+[docs/MUSTARD_EXECUTOR.md](docs/MUSTARD_EXECUTOR.md).
 
 Native failures are surfaced in Node as typed JavaScript errors:
 `MustardParseError`, `MustardValidationError`, `MustardRuntimeError`,
