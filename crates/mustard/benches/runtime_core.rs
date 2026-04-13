@@ -18,9 +18,13 @@ struct BenchFixtures {
     small_compute_shared: Arc<BytecodeProgram>,
     serialized_small_compute_program: Vec<u8>,
     vm_hot_loop_shared: Arc<BytecodeProgram>,
+    local_load_store_shared: Arc<BytecodeProgram>,
+    closure_access_shared: Arc<BytecodeProgram>,
     env_lookup_shared: Arc<BytecodeProgram>,
     property_access_shared: Arc<BytecodeProgram>,
+    builtin_method_shared: Arc<BytecodeProgram>,
     array_callback_shared: Arc<BytecodeProgram>,
+    collection_callback_shared: Arc<BytecodeProgram>,
     map_set_shared: Arc<BytecodeProgram>,
     boundary_decode_shared: Arc<BytecodeProgram>,
     boundary_encode_shared: Arc<BytecodeProgram>,
@@ -38,9 +42,14 @@ impl BenchFixtures {
             dump_program(&small_compute_program).expect("small compute program should serialize");
         let small_compute_shared = Arc::new(small_compute_program.clone());
         let vm_hot_loop_shared = Arc::new(compile_to_bytecode(vm_hot_loop_source()));
+        let local_load_store_shared = Arc::new(compile_to_bytecode(local_load_store_source()));
+        let closure_access_shared = Arc::new(compile_to_bytecode(closure_access_source()));
         let env_lookup_shared = Arc::new(compile_to_bytecode(env_lookup_source()));
         let property_access_shared = Arc::new(compile_to_bytecode(property_access_source()));
+        let builtin_method_shared = Arc::new(compile_to_bytecode(builtin_method_source()));
         let array_callback_shared = Arc::new(compile_to_bytecode(array_callback_source()));
+        let collection_callback_shared =
+            Arc::new(compile_to_bytecode(collection_callback_source()));
         let map_set_shared = Arc::new(compile_to_bytecode(map_set_source()));
         let boundary_decode_shared = Arc::new(compile_to_bytecode(boundary_decode_source()));
         let boundary_encode_shared = Arc::new(compile_to_bytecode(boundary_encode_source()));
@@ -62,9 +71,13 @@ impl BenchFixtures {
             small_compute_shared,
             serialized_small_compute_program,
             vm_hot_loop_shared,
+            local_load_store_shared,
+            closure_access_shared,
             env_lookup_shared,
             property_access_shared,
+            builtin_method_shared,
             array_callback_shared,
+            collection_callback_shared,
             map_set_shared,
             boundary_decode_shared,
             boundary_encode_shared,
@@ -276,6 +289,30 @@ fn runtime_execution_benches(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    group.bench_function("local_load_store_hot", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.local_load_store_shared), options)
+                        .expect("local load/store hot path should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("closure_access_hot", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.closure_access_shared), options)
+                        .expect("closure access hot path should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
     group.bench_function("env_lookup_hot", |b| {
         b.iter_batched(
             hot_runtime_options,
@@ -299,6 +336,18 @@ fn runtime_execution_benches(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    group.bench_function("builtin_method_hot", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.builtin_method_shared), options)
+                        .expect("builtin method hot path should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
     group.bench_function("array_callback_hot", |b| {
         b.iter_batched(
             hot_runtime_options,
@@ -306,6 +355,20 @@ fn runtime_execution_benches(c: &mut Criterion) {
                 let step =
                     start_shared_bytecode(Arc::clone(&fixtures.array_callback_shared), options)
                         .expect("array callback hot path should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("collection_callback_hot", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.collection_callback_shared),
+                    options,
+                )
+                .expect("collection callback hot path should execute");
                 consume_completed(step);
             },
             BatchSize::SmallInput,
@@ -410,6 +473,48 @@ fn vm_hot_loop_source() -> &'static str {
     "#
 }
 
+fn local_load_store_source() -> &'static str {
+    r#"
+    let alpha = 1;
+    let beta = 2;
+    let gamma = 3;
+    let delta = 4;
+    let total = 0;
+    for (let outer = 0; outer < 240; outer += 1) {
+      for (let inner = 0; inner < 48; inner += 1) {
+        alpha = alpha + 1;
+        beta = beta + alpha + inner;
+        gamma = gamma + beta - outer;
+        delta = delta + gamma + alpha;
+        total += alpha + beta + gamma + delta;
+      }
+    }
+    total;
+    "#
+}
+
+fn closure_access_source() -> &'static str {
+    r#"
+    function makeCounter(seed) {
+      let alpha = 1;
+      let beta = 2;
+      let gamma = 3;
+      return function(step) {
+        alpha = alpha + 1;
+        beta = beta + alpha + step;
+        gamma = gamma + beta + seed;
+        return alpha + beta + gamma + seed;
+      };
+    }
+    const counter = makeCounter(5);
+    let total = 0;
+    for (let round = 0; round < 2400; round += 1) {
+      total += counter(round % 11);
+    }
+    total;
+    "#
+}
+
 fn env_lookup_source() -> &'static str {
     r#"
     const seed = 7;
@@ -447,6 +552,24 @@ fn property_access_source() -> &'static str {
     "#
 }
 
+fn builtin_method_source() -> &'static str {
+    r#"
+    const values = [1, 2, 3, 4, 5, 6, 7, 8];
+    const text = "mustardscript";
+    let total = 0;
+    for (let round = 0; round < 2400; round += 1) {
+      const map = values.map;
+      const slice = values.slice;
+      const startsWith = text.startsWith;
+      const toUpperCase = text.toUpperCase;
+      if (map && slice && startsWith && toUpperCase) {
+        total += 1;
+      }
+    }
+    total;
+    "#
+}
+
 fn array_callback_source() -> &'static str {
     r#"
     const values = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -456,6 +579,28 @@ fn array_callback_source() -> &'static str {
       values.forEach((value, index) => {
         bias += 1;
         total += (value * bias) + index + round;
+      });
+    }
+    total;
+    "#
+}
+
+fn collection_callback_source() -> &'static str {
+    r#"
+    const map = new Map([
+      ["alpha", 1],
+      ["beta", 2],
+      ["gamma", 3],
+      ["delta", 4],
+    ]);
+    const set = new Set(["alpha", "beta", "gamma", "delta"]);
+    let total = 0;
+    for (let round = 0; round < 240; round += 1) {
+      map.forEach((value, key) => {
+        total += value + key.length + round;
+      });
+      set.forEach((value) => {
+        total += value.length + round;
       });
     }
     total;
