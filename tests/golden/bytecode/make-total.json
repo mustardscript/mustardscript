@@ -24,7 +24,16 @@
           }
         }
       ],
+      "param_binding_names": [
+        [
+          "\u0000mustard_param_0"
+        ],
+        [
+          "\u0000mustard_param_1"
+        ]
+      ],
       "rest": null,
+      "rest_binding_names": [],
       "code": [
         {
           "DeclareName": {
@@ -147,7 +156,9 @@
       "length": 0,
       "display_source": "",
       "params": [],
+      "param_binding_names": [],
       "rest": null,
+      "rest_binding_names": [],
       "code": [
         {
           "DeclareName": {

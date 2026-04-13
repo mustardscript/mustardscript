@@ -65,7 +65,9 @@ impl Compiler {
             length: 0,
             display_source: String::new(),
             params: Vec::new(),
+            param_binding_names: Vec::new(),
             rest: None,
+            rest_binding_names: Vec::new(),
             code: context.code,
             is_async: false,
             is_arrow: false,
@@ -110,7 +112,22 @@ impl Compiler {
             length: function.length,
             display_source: function.display_source.clone(),
             params: function.params.clone(),
+            param_binding_names: function
+                .params
+                .iter()
+                .map(|pattern| {
+                    pattern_bindings(pattern)
+                        .into_iter()
+                        .map(|(name, _)| name)
+                        .collect()
+                })
+                .collect(),
             rest: function.rest.clone(),
+            rest_binding_names: function
+                .rest
+                .iter()
+                .flat_map(|pattern| pattern_bindings(pattern).into_iter().map(|(name, _)| name))
+                .collect(),
             code: context.code,
             is_async: function.is_async,
             is_arrow: function.is_arrow,

@@ -20,6 +20,7 @@ struct BenchFixtures {
     vm_hot_loop_shared: Arc<BytecodeProgram>,
     env_lookup_shared: Arc<BytecodeProgram>,
     property_access_shared: Arc<BytecodeProgram>,
+    array_callback_shared: Arc<BytecodeProgram>,
     map_set_shared: Arc<BytecodeProgram>,
     boundary_decode_shared: Arc<BytecodeProgram>,
     boundary_encode_shared: Arc<BytecodeProgram>,
@@ -39,6 +40,7 @@ impl BenchFixtures {
         let vm_hot_loop_shared = Arc::new(compile_to_bytecode(vm_hot_loop_source()));
         let env_lookup_shared = Arc::new(compile_to_bytecode(env_lookup_source()));
         let property_access_shared = Arc::new(compile_to_bytecode(property_access_source()));
+        let array_callback_shared = Arc::new(compile_to_bytecode(array_callback_source()));
         let map_set_shared = Arc::new(compile_to_bytecode(map_set_source()));
         let boundary_decode_shared = Arc::new(compile_to_bytecode(boundary_decode_source()));
         let boundary_encode_shared = Arc::new(compile_to_bytecode(boundary_encode_source()));
@@ -62,6 +64,7 @@ impl BenchFixtures {
             vm_hot_loop_shared,
             env_lookup_shared,
             property_access_shared,
+            array_callback_shared,
             map_set_shared,
             boundary_decode_shared,
             boundary_encode_shared,
@@ -296,6 +299,18 @@ fn runtime_execution_benches(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    group.bench_function("array_callback_hot", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.array_callback_shared), options)
+                        .expect("array callback hot path should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
     group.bench_function("map_set_hot", |b| {
         b.iter_batched(
             hot_runtime_options,
@@ -427,6 +442,21 @@ fn property_access_source() -> &'static str {
       total += record.alpha + record.beta + record.gamma;
       record.delta = record.delta + values[round % values.length];
       total += record.delta;
+    }
+    total;
+    "#
+}
+
+fn array_callback_source() -> &'static str {
+    r#"
+    const values = [1, 2, 3, 4, 5, 6, 7, 8];
+    let total = 0;
+    let bias = 3;
+    for (let round = 0; round < 240; round += 1) {
+      values.forEach((value, index) => {
+        bias += 1;
+        total += (value * bias) + index + round;
+      });
     }
     total;
     "#

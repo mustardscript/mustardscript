@@ -661,11 +661,10 @@ impl Runtime {
         async_promise: Option<PromiseKey>,
     ) -> MustardResult<()> {
         self.check_call_depth()?;
-        let (params, rest) = self
-            .program
+        let program = Arc::clone(&self.program);
+        let function = program
             .functions
             .get(function_id)
-            .map(|function| (function.params.clone(), function.rest.clone()))
             .ok_or_else(|| MustardError::runtime("function not found"))?;
         let this_cell = self.insert_cell(this_value, true, true)?;
         self.envs
@@ -674,21 +673,21 @@ impl Runtime {
             .bindings
             .insert("this".to_string(), this_cell);
         self.refresh_env_accounting(env)?;
-        for pattern in &params {
-            for (name, _) in pattern_bindings(pattern) {
-                self.declare_name(env, name, true)?;
+        for binding_names in &function.param_binding_names {
+            for name in binding_names {
+                self.declare_name(env, name.clone(), true)?;
             }
         }
-        for (index, pattern) in params.iter().enumerate() {
+        for (index, pattern) in function.params.iter().enumerate() {
             let arg = args.get(index).cloned().unwrap_or(Value::Undefined);
             self.initialize_pattern(env, pattern, arg)?;
         }
-        if let Some(rest) = &rest {
-            for (name, _) in pattern_bindings(rest) {
-                self.declare_name(env, name, true)?;
+        if let Some(rest) = &function.rest {
+            for name in &function.rest_binding_names {
+                self.declare_name(env, name.clone(), true)?;
             }
             let rest_array = self.insert_array(
-                args.iter().skip(params.len()).cloned().collect(),
+                args.iter().skip(function.params.len()).cloned().collect(),
                 IndexMap::new(),
             )?;
             self.initialize_pattern(env, rest, Value::Array(rest_array))?;

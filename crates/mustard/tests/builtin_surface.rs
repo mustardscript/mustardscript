@@ -87,6 +87,49 @@ fn array_callback_helpers_cover_transform_search_and_reduction() {
 }
 
 #[test]
+fn array_callback_throws_are_catchable_and_later_helpers_still_run() {
+    let program = compile(
+        r#"
+        const seen = [];
+        let recovered;
+        try {
+          [1, 2, 3].map((value, index) => {
+            seen[seen.length] = [value, index];
+            if (value === 2) {
+              throw new Error("boom");
+            }
+            return value;
+          });
+        } catch (error) {
+          recovered = [
+            error.name,
+            error.message,
+            [4, 5].map((value) => value + 1),
+          ];
+        }
+        [seen, recovered];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![
+                StructuredValue::Array(vec![number(1.0), number(0.0)]),
+                StructuredValue::Array(vec![number(2.0), number(1.0)]),
+            ]),
+            StructuredValue::Array(vec![
+                StructuredValue::String("Error".to_string()),
+                StructuredValue::String("boom".to_string()),
+                StructuredValue::Array(vec![number(5.0), number(6.0)]),
+            ]),
+        ])
+    );
+}
+
+#[test]
 fn array_find_helpers_visit_sparse_holes_as_undefined() {
     let program = compile(
         r#"

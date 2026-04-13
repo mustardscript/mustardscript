@@ -17,7 +17,11 @@ pub struct FunctionPrototype {
     pub length: usize,
     pub display_source: String,
     pub params: Vec<Pattern>,
+    #[serde(default)]
+    pub param_binding_names: Vec<Vec<String>>,
     pub rest: Option<Pattern>,
+    #[serde(default)]
+    pub rest_binding_names: Vec<String>,
     pub code: Vec<Instruction>,
     pub is_async: bool,
     pub is_arrow: bool,

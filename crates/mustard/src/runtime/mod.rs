@@ -24,7 +24,6 @@ pub use api::{
 };
 pub use bytecode::{BytecodeProgram, FunctionPrototype, Instruction};
 pub use compiler::lower_to_bytecode;
-use compiler::pattern_bindings;
 pub use serialization::{
     canonical_snapshot_auth_bytes, dump_program, dump_snapshot, load_program, load_snapshot,
 };
@@ -175,7 +174,9 @@ impl Runtime {
                 length: 0,
                 display_source: String::new(),
                 params: Vec::new(),
+                param_binding_names: Vec::new(),
                 rest: None,
+                rest_binding_names: Vec::new(),
                 code: vec![Instruction::PushUndefined, Instruction::Return],
                 is_async: false,
                 is_arrow: false,
@@ -281,7 +282,6 @@ impl Runtime {
                     .cloned()
                     .ok_or_else(|| MustardError::runtime("closure not found"))?;
                 let env = self.new_env(Some(closure.env))?;
-                let had_async_boundary = self.current_async_boundary_index().is_some();
                 let (is_async, is_arrow, function_id) = self
                     .program
                     .functions
@@ -293,6 +293,7 @@ impl Runtime {
                 } else {
                     this_arg
                 };
+                let had_async_boundary = self.current_async_boundary_index().is_some();
                 if is_async {
                     let promise = self.insert_promise(PromiseState::Pending)?;
                     self.push_frame(function_id, env, args, frame_this, Some(promise))?;

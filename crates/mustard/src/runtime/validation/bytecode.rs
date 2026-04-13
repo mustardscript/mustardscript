@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::compiler::pattern_bindings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ValidationState {
@@ -38,6 +39,43 @@ fn validate_function(
     function_id: usize,
     function: &FunctionPrototype,
 ) -> MustardResult<()> {
+    if function.param_binding_names.len() != function.params.len() {
+        return Err(MustardError::validation(
+            format!(
+                "bytecode validation failed: function {function_id} parameter binding metadata length {} does not match parameter count {}",
+                function.param_binding_names.len(),
+                function.params.len()
+            ),
+            None,
+        ));
+    }
+    for (index, pattern) in function.params.iter().enumerate() {
+        let expected: Vec<String> = pattern_bindings(pattern)
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+        if function.param_binding_names[index] != expected {
+            return Err(MustardError::validation(
+                format!(
+                    "bytecode validation failed: function {function_id} parameter {index} binding metadata does not match the destructuring pattern"
+                ),
+                None,
+            ));
+        }
+    }
+    let expected_rest: Vec<String> = function
+        .rest
+        .iter()
+        .flat_map(|pattern| pattern_bindings(pattern).into_iter().map(|(name, _)| name))
+        .collect();
+    if function.rest_binding_names != expected_rest {
+        return Err(MustardError::validation(
+            format!(
+                "bytecode validation failed: function {function_id} rest binding metadata does not match the destructuring pattern"
+            ),
+            None,
+        ));
+    }
     if function.code.is_empty() {
         return Err(MustardError::validation(
             format!("bytecode validation failed: function {function_id} has no instructions"),

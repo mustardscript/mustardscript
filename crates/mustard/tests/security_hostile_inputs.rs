@@ -31,7 +31,9 @@ fn simple_function(code: Vec<Instruction>) -> FunctionPrototype {
         length: 0,
         display_source: String::new(),
         params: Vec::new(),
+        param_binding_names: Vec::new(),
         rest: None,
+        rest_binding_names: Vec::new(),
         code,
         is_async: false,
         is_arrow: false,
@@ -289,6 +291,30 @@ fn crafted_bytecode_inputs_fail_validation_before_execution() {
                 },
                 Instruction::Return,
             ])],
+            root: 0,
+        },
+        BytecodeProgram {
+            functions: vec![FunctionPrototype {
+                params: vec![mustard::ir::Pattern::Identifier {
+                    name: "value".to_string(),
+                    span: mustard::span::SourceSpan::new(0, 0),
+                }],
+                param_binding_names: vec![vec!["other".to_string()]],
+                code: vec![Instruction::PushUndefined, Instruction::Return],
+                ..simple_function(Vec::new())
+            }],
+            root: 0,
+        },
+        BytecodeProgram {
+            functions: vec![FunctionPrototype {
+                rest: Some(mustard::ir::Pattern::Identifier {
+                    name: "rest".to_string(),
+                    span: mustard::span::SourceSpan::new(0, 0),
+                }),
+                rest_binding_names: vec!["wrong".to_string()],
+                code: vec![Instruction::PushUndefined, Instruction::Return],
+                ..simple_function(Vec::new())
+            }],
             root: 0,
         },
     ];
