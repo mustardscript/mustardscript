@@ -111,7 +111,7 @@ North-star sidecar targets:
 
 ## Measurement Rules
 
-- [ ] Add a Rust-core microbenchmark suite under `crates/mustard/benches` for:
+- [x] Add a Rust-core microbenchmark suite under `crates/mustard/benches` for:
   parse/lower, `load_program`, `start_bytecode`, VM hot loops, env lookup,
   property access, `Map`/`Set`, structured boundary encode/decode, and
   snapshot dump/load.
@@ -122,7 +122,7 @@ North-star sidecar targets:
   dev-profile absolute thresholds as the main optimization signal.
 - [x] Add a release-profile smoke command and treat release medians as the
   source of truth for performance decisions.
-- [ ] Require every optimization PR to attach before/after numbers from
+- [x] Require every optimization PR to attach before/after numbers from
   `npm run bench:workloads` plus the new Rust microbench suite.
 - [x] Record machine metadata, build profile, git SHA, and benchmark fixture
   version in every result artifact.
@@ -189,9 +189,9 @@ Action items:
   globals env and the global object on hot startup and assignment paths.
 - [ ] Validate bytecode once at compile/load boundaries and skip redundant
   validation for trusted in-process compiled handles.
-- [ ] Separate "compile + validate", "deserialize + validate", and "execute"
+- [x] Separate "compile + validate", "deserialize + validate", and "execute"
   benchmarks so the win is visible in isolation.
-- [ ] Add explicit `runtime_init_empty`, `runtime_init_with_capabilities`, and
+- [x] Add explicit `runtime_init_empty`, `runtime_init_with_capabilities`, and
   `runtime_init_with_inputs` microbenches.
 - [ ] Re-run addon, sidecar, and Rust-core benchmarks and store the before/after
   result set.
@@ -443,3 +443,4 @@ Action items:
 | --- | --- | --- | --- |
 | 2026-04-13T06:44:27Z | `fac215a` (worktree dirty) | Audited the benchmark/runtime/boundary hot paths, wrote the initial performance roadmap, and folded parallel sub-agent review findings into the milestone structure. | `npm run bench:smoke` currently fails with `compute average 52.76ms exceeded 25ms`; no external blocker identified. |
 | 2026-04-13T07:17:00Z | `125fcb6`, `2b5bf99` | Completed Milestone 0 benchmark stabilization: added explicit dev/release benchmark commands, artifact metadata, release smoke coverage, phase-split addon metrics, a benchmark diff script, a fresh checked-in release baseline, and updated findings/docs. Then started Milestone 1 by switching addon execution to validated native program handles plus shared `Arc<BytecodeProgram>` state so in-process runs stop re-deserializing and re-cloning program bytecode on every start path. | Full verification passed (`npm test`, `cargo test --workspace`, `npm run lint`, smoke/workload benchmark commands). Release workload deltas for the Milestone 1 groundwork were small and mixed (`programmatic_tool_workflow -1.8%`, `host_fanout_100 -1.9%`, `warm_run_small +1.0%` versus the new baseline), so the next concrete path is reusable runtime-image/startup-state work. A temporary `bench:smoke`/`bench:workloads` parallel rerun hit a local `scripts/build-ts-dist.ts` `ENOTEMPTY` race on `dist/`; rerunning sequentially resolved it. |
+| 2026-04-13T07:30:55Z | `a6ec42d` | Added the Rust-core microbenchmark suite under `crates/mustard/benches/runtime_core.rs`, wired `npm run bench:rust`, documented the required workload-plus-Rust perf evidence workflow, and covered compile/lower, deserialize/validate, runtime init variants, start-vs-execute, VM hot paths, structured boundary encode/decode, and snapshot dump/load. | Verification passed (`npm run bench:rust`, `cargo test --workspace`, `npm test`, `npm run lint`). `npm test` initially failed in `tests/package-smoke.test.js` because the packed source tarball omitted `crates/mustard/benches/runtime_core.rs` while `crates/mustard/Cargo.toml` declared the bench; fixed by adding `crates/mustard/benches/**` to `package.json` `files`. |
