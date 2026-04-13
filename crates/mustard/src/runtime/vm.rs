@@ -494,9 +494,7 @@ impl Runtime {
                             Suspension {
                                 capability,
                                 args,
-                                snapshot: ExecutionSnapshot {
-                                    runtime: self.clone(),
-                                },
+                                snapshot: ExecutionSnapshot::capture(self),
                             },
                         ))));
                     }
@@ -556,9 +554,7 @@ impl Runtime {
                             Suspension {
                                 capability,
                                 args,
-                                snapshot: ExecutionSnapshot {
-                                    runtime: self.clone(),
-                                },
+                                snapshot: ExecutionSnapshot::capture(self),
                             },
                         ))));
                     }

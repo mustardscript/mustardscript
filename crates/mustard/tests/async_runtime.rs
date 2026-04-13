@@ -1,8 +1,9 @@
 use indexmap::IndexMap;
 
 use mustard::{
-    ExecutionOptions, ExecutionStep, HostError, ResumePayload, RuntimeLimits, StructuredValue,
-    compile, execute, resume, start,
+    ExecutionOptions, ExecutionStep, HostError, ResumeOptions, ResumePayload, RuntimeLimits,
+    SnapshotPolicy, StructuredValue, compile, dump_snapshot, execute, load_snapshot, resume,
+    resume_with_options, start,
 };
 
 fn number(value: f64) -> StructuredValue {
@@ -83,6 +84,54 @@ fn suspends_and_resumes_async_host_calls() {
         .expect("resume should succeed");
     match resumed {
         ExecutionStep::Completed(value) => assert_eq!(value, number(42.0)),
+        ExecutionStep::Suspended(_) => panic!("expected completion after resume"),
+    }
+}
+
+#[test]
+fn async_host_snapshots_round_trip_through_dump_and_load() {
+    let program = compile(
+        r#"
+        async function load(value) {
+          const resolved = await fetch_data(value);
+          return resolved + 3;
+        }
+        load(4);
+        "#,
+    )
+    .expect("source should compile");
+
+    let suspended = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+
+    let snapshot_bytes = dump_snapshot(&suspended.snapshot).expect("snapshot dump should succeed");
+    let loaded_snapshot = load_snapshot(&snapshot_bytes).expect("snapshot load should succeed");
+    let resumed = resume_with_options(
+        loaded_snapshot,
+        ResumePayload::Value(number(4.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(SnapshotPolicy {
+                capabilities: vec!["fetch_data".to_string()],
+                limits: RuntimeLimits::default(),
+            }),
+        },
+    )
+    .expect("resume should succeed");
+    match resumed {
+        ExecutionStep::Completed(value) => assert_eq!(value, number(7.0)),
         ExecutionStep::Suspended(_) => panic!("expected completion after resume"),
     }
 }

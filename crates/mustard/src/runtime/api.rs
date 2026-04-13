@@ -99,6 +99,13 @@ struct DeserializableExecutionSnapshot {
 }
 
 impl ExecutionSnapshot {
+    pub(in crate::runtime) fn capture(runtime: &mut Runtime) -> Self {
+        let placeholder = Runtime::blank(Arc::clone(&runtime.program), runtime.limits, None);
+        Self {
+            runtime: std::mem::replace(runtime, placeholder),
+        }
+    }
+
     pub(in crate::runtime) fn restore_loaded_runtime(runtime: Runtime) -> MustardResult<Self> {
         let mut snapshot = Self { runtime };
         validate_snapshot(&snapshot)?;

@@ -65,9 +65,7 @@ impl Runtime {
         ExecutionStep::Suspended(Box::new(Suspension {
             capability,
             args,
-            snapshot: ExecutionSnapshot {
-                runtime: self.clone(),
-            },
+            snapshot: ExecutionSnapshot::capture(self),
         }))
     }
 

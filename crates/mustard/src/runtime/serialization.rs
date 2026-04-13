@@ -46,9 +46,9 @@ pub fn load_program(bytes: &[u8]) -> MustardResult<BytecodeProgram> {
 }
 
 pub fn dump_snapshot(snapshot: &ExecutionSnapshot) -> MustardResult<Vec<u8>> {
-    bincode::serialize(&SerializedSnapshot {
+    bincode::serialize(&SerializedSnapshotRef {
         version: SERIAL_FORMAT_VERSION,
-        runtime: snapshot.runtime.clone(),
+        runtime: &snapshot.runtime,
     })
     .map_err(|error| MustardError::Message {
         kind: DiagnosticKind::Serialization,
@@ -118,6 +118,12 @@ pub fn canonical_snapshot_auth_bytes(bytes: &[u8]) -> MustardResult<Vec<u8>> {
 struct SerializedProgram {
     version: u32,
     program: BytecodeProgram,
+}
+
+#[derive(Debug, Serialize)]
+struct SerializedSnapshotRef<'a> {
+    version: u32,
+    runtime: &'a Runtime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
