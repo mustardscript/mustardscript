@@ -402,7 +402,7 @@ impl Runtime {
         marks: &mut GarbageCollectionMarks,
         worklist: &mut GarbageCollectionWorklist,
     ) {
-        if marks.envs.insert(key) {
+        if marks.envs.insert(key, ()).is_none() {
             worklist.envs.push(key);
         }
     }
@@ -413,7 +413,7 @@ impl Runtime {
         marks: &mut GarbageCollectionMarks,
         worklist: &mut GarbageCollectionWorklist,
     ) {
-        if marks.cells.insert(key) {
+        if marks.cells.insert(key, ()).is_none() {
             worklist.cells.push(key);
         }
     }
@@ -458,32 +458,32 @@ impl Runtime {
     ) {
         match value {
             Value::Object(key) => {
-                if marks.objects.insert(*key) {
+                if marks.objects.insert(*key, ()).is_none() {
                     worklist.objects.push(*key);
                 }
             }
             Value::Array(key) => {
-                if marks.arrays.insert(*key) {
+                if marks.arrays.insert(*key, ()).is_none() {
                     worklist.arrays.push(*key);
                 }
             }
             Value::Map(key) => {
-                if marks.maps.insert(*key) {
+                if marks.maps.insert(*key, ()).is_none() {
                     worklist.maps.push(*key);
                 }
             }
             Value::Set(key) => {
-                if marks.sets.insert(*key) {
+                if marks.sets.insert(*key, ()).is_none() {
                     worklist.sets.push(*key);
                 }
             }
             Value::Iterator(key) => {
-                if marks.iterators.insert(*key) {
+                if marks.iterators.insert(*key, ()).is_none() {
                     worklist.iterators.push(*key);
                 }
             }
             Value::Closure(key) => {
-                if marks.closures.insert(*key) {
+                if marks.closures.insert(*key, ()).is_none() {
                     worklist.closures.push(*key);
                 }
             }
@@ -526,7 +526,7 @@ impl Runtime {
         let dead: Vec<_> = self
             .envs
             .keys()
-            .filter(|key| !marks.envs.contains(key))
+            .filter(|key| !marks.envs.contains_key(*key))
             .collect();
         for key in dead {
             let env = self
@@ -546,7 +546,7 @@ impl Runtime {
         let dead: Vec<_> = self
             .cells
             .keys()
-            .filter(|key| !marks.cells.contains(key))
+            .filter(|key| !marks.cells.contains_key(*key))
             .collect();
         for key in dead {
             let cell = self
@@ -566,7 +566,7 @@ impl Runtime {
         let dead: Vec<_> = self
             .objects
             .keys()
-            .filter(|key| !marks.objects.contains(key))
+            .filter(|key| !marks.objects.contains_key(*key))
             .collect();
         for key in dead {
             let object = self
@@ -586,7 +586,7 @@ impl Runtime {
         let dead: Vec<_> = self
             .arrays
             .keys()
-            .filter(|key| !marks.arrays.contains(key))
+            .filter(|key| !marks.arrays.contains_key(*key))
             .collect();
         for key in dead {
             let array = self
@@ -606,7 +606,7 @@ impl Runtime {
         let dead: Vec<_> = self
             .maps
             .keys()
-            .filter(|key| !marks.maps.contains(key))
+            .filter(|key| !marks.maps.contains_key(*key))
             .collect();
         for key in dead {
             let map = self
@@ -626,7 +626,7 @@ impl Runtime {
         let dead: Vec<_> = self
             .sets
             .keys()
-            .filter(|key| !marks.sets.contains(key))
+            .filter(|key| !marks.sets.contains_key(*key))
             .collect();
         for key in dead {
             let set = self
@@ -646,7 +646,7 @@ impl Runtime {
         let dead: Vec<_> = self
             .iterators
             .keys()
-            .filter(|key| !marks.iterators.contains(key))
+            .filter(|key| !marks.iterators.contains_key(*key))
             .collect();
         for key in dead {
             let iterator = self
@@ -666,7 +666,7 @@ impl Runtime {
         let dead: Vec<_> = self
             .closures
             .keys()
-            .filter(|key| !marks.closures.contains(key))
+            .filter(|key| !marks.closures.contains_key(*key))
             .collect();
         for key in dead {
             let closure = self
@@ -686,7 +686,7 @@ impl Runtime {
         let dead: Vec<_> = self
             .promises
             .keys()
-            .filter(|key| !marks.promises.contains(key))
+            .filter(|key| !marks.promises.contains_key(*key))
             .collect();
         for key in dead {
             let promise = self
@@ -704,7 +704,7 @@ impl Runtime {
         marks: &mut GarbageCollectionMarks,
         worklist: &mut GarbageCollectionWorklist,
     ) {
-        if marks.promises.insert(key) {
+        if marks.promises.insert(key, ()).is_none() {
             worklist.promises.push(key);
         }
     }

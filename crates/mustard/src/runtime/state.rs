@@ -1,12 +1,9 @@
-use std::{
-    collections::{HashSet, VecDeque},
-    sync::Arc,
-};
+use std::{collections::VecDeque, sync::Arc};
 
 use indexmap::IndexMap;
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
-use slotmap::{SlotMap, new_key_type};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
 use crate::{
     cancellation::CancellationToken, limits::RuntimeLimits, span::SourceSpan,
@@ -657,15 +654,15 @@ pub(super) enum StepAction {
 
 #[derive(Debug, Default)]
 pub(super) struct GarbageCollectionMarks {
-    pub(super) envs: HashSet<EnvKey>,
-    pub(super) cells: HashSet<CellKey>,
-    pub(super) objects: HashSet<ObjectKey>,
-    pub(super) arrays: HashSet<ArrayKey>,
-    pub(super) maps: HashSet<MapKey>,
-    pub(super) sets: HashSet<SetKey>,
-    pub(super) iterators: HashSet<IteratorKey>,
-    pub(super) closures: HashSet<ClosureKey>,
-    pub(super) promises: HashSet<PromiseKey>,
+    pub(super) envs: SecondaryMap<EnvKey, ()>,
+    pub(super) cells: SecondaryMap<CellKey, ()>,
+    pub(super) objects: SecondaryMap<ObjectKey, ()>,
+    pub(super) arrays: SecondaryMap<ArrayKey, ()>,
+    pub(super) maps: SecondaryMap<MapKey, ()>,
+    pub(super) sets: SecondaryMap<SetKey, ()>,
+    pub(super) iterators: SecondaryMap<IteratorKey, ()>,
+    pub(super) closures: SecondaryMap<ClosureKey, ()>,
+    pub(super) promises: SecondaryMap<PromiseKey, ()>,
 }
 
 #[derive(Debug, Default)]
