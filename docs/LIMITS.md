@@ -49,8 +49,10 @@ Cooperative cancellation is controlled separately through:
   execution boundaries and on resume before failing heap or allocation
   pressure, so unreachable cycles can be reclaimed without changing handle
   identities.
-- Snapshot load recomputes heap accounting before resuming so serialized inputs
-  cannot bypass the configured heap and allocation budgets.
+- Snapshot load recomputes heap accounting once before policy is rebound so
+  serialized inputs cannot bypass the configured heap and allocation budgets,
+  and later restore-policy application reuses those verified totals instead of
+  rewalking the whole heap again.
 - Loaded snapshots do not get to keep serialized runtime limits. Resume policy
   must reassert explicit host limits, and restored execution fails closed if the
   snapshot is already over the host's configured heap, allocation, depth,

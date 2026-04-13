@@ -1,6 +1,36 @@
 use super::*;
 
 impl Runtime {
+    fn enforce_loaded_accounting_limits(
+        &self,
+        heap_bytes_used: usize,
+        allocation_count: usize,
+    ) -> MustardResult<()> {
+        if heap_bytes_used > self.limits.heap_limit_bytes {
+            return Err(serialization_error(
+                "snapshot validation failed: heap usage exceeds configured heap limit",
+            ));
+        }
+        if allocation_count > self.limits.allocation_budget {
+            return Err(serialization_error(
+                "snapshot validation failed: allocation count exceeds configured allocation budget",
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(debug_assertions)]
+    fn debug_assert_cached_accounting_matches_full_walk(&mut self) {
+        let cached_totals = (self.heap_bytes_used, self.allocation_count);
+        let measured_totals = self
+            .recompute_accounting_totals()
+            .unwrap_or_else(|message| panic!("cached accounting recompute failed: {message}"));
+        debug_assert_eq!(
+            cached_totals, measured_totals,
+            "cached runtime accounting diverged from a full heap walk",
+        );
+    }
+
     pub(super) fn ensure_heap_capacity(&self, additional_bytes: usize) -> MustardResult<()> {
         let next = self
             .heap_bytes_used
@@ -336,25 +366,27 @@ impl Runtime {
         Ok(())
     }
 
+    pub(super) fn enforce_loaded_accounting(&mut self) -> MustardResult<()> {
+        if self.accounting_recount_required {
+            return self.recompute_accounting_after_load();
+        }
+
+        #[cfg(debug_assertions)]
+        self.debug_assert_cached_accounting_matches_full_walk();
+
+        self.enforce_loaded_accounting_limits(self.heap_bytes_used, self.allocation_count)
+    }
+
     pub(super) fn recompute_accounting_after_load(&mut self) -> MustardResult<()> {
         let (heap_bytes_used, allocation_count) =
             self.recompute_accounting_totals().map_err(|message| {
                 serialization_error(format!("snapshot validation failed: {message}"))
             })?;
 
-        if heap_bytes_used > self.limits.heap_limit_bytes {
-            return Err(serialization_error(
-                "snapshot validation failed: heap usage exceeds configured heap limit",
-            ));
-        }
-        if allocation_count > self.limits.allocation_budget {
-            return Err(serialization_error(
-                "snapshot validation failed: allocation count exceeds configured allocation budget",
-            ));
-        }
-
+        self.enforce_loaded_accounting_limits(heap_bytes_used, allocation_count)?;
         self.heap_bytes_used = heap_bytes_used;
         self.allocation_count = allocation_count;
+        self.accounting_recount_required = false;
         Ok(())
     }
 

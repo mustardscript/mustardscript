@@ -560,6 +560,10 @@ pub(super) struct ActiveFinallyState {
     pub(super) exit: usize,
 }
 
+fn accounting_recount_required_after_deserialize() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct Runtime {
     pub(super) program: Arc<BytecodeProgram>,
@@ -591,6 +595,8 @@ pub(super) struct Runtime {
     pub(super) heap_bytes_used: usize,
     #[serde(skip, default)]
     pub(super) allocation_count: usize,
+    #[serde(skip, default = "accounting_recount_required_after_deserialize")]
+    pub(super) accounting_recount_required: bool,
     #[serde(skip, default)]
     pub(super) cancellation_token: Option<CancellationToken>,
     #[serde(skip, default)]

@@ -225,6 +225,38 @@ test('progress load requires explicit restore policy even in the same process', 
   );
 });
 
+test('progress load reapplies heap and allocation limits before restore', () => {
+  const source = `
+    const payload = [1, 2, 3, 4];
+    const response = fetch_data(payload.length);
+    response + payload.length;
+  `;
+  const dumpProgress = () =>
+    new Mustard(source).start({
+      snapshotKey: SNAPSHOT_KEY,
+      capabilities: {
+        fetch_data() {},
+      },
+    }).dump();
+
+  assert.throws(
+    () =>
+      Progress.load(
+        dumpProgress(),
+        createLoadOptions(SNAPSHOT_KEY, { fetch_data() {} }, { heapLimitBytes: 0 }),
+      ),
+    /snapshot validation failed: heap usage exceeds configured heap limit/,
+  );
+  assert.throws(
+    () =>
+      Progress.load(
+        dumpProgress(),
+        createLoadOptions(SNAPSHOT_KEY, { fetch_data() {} }, { allocationBudget: 0 }),
+      ),
+    /snapshot validation failed: allocation count exceeds configured allocation budget/,
+  );
+});
+
 test('progress load rejects replay attempts that re-key an already-consumed dump', () => {
   const originalKey = Buffer.from('progress-security-key-a');
   const replayKey = Buffer.from('progress-security-key-b');

@@ -211,6 +211,66 @@ fn loaded_snapshots_reapply_host_limits_before_resume() {
 }
 
 #[test]
+fn loaded_snapshots_reapply_heap_limits_before_resume() {
+    let bytes = serialized_suspension(
+        "const payload = [1, 2, 3, 4]; const value = fetch_data(payload.length); value + payload.length;",
+        RuntimeLimits::default(),
+    );
+    let snapshot = load_snapshot(&bytes).expect("snapshot should deserialize");
+    let error = resume_with_options(
+        snapshot,
+        ResumePayload::Value(number(4.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(snapshot_policy(
+                &["fetch_data"],
+                RuntimeLimits {
+                    heap_limit_bytes: 0,
+                    ..RuntimeLimits::default()
+                },
+            )),
+        },
+    )
+    .expect_err("lower heap limit should fail closed before resume");
+    assert!(
+        error
+            .to_string()
+            .contains("snapshot validation failed: heap usage exceeds configured heap limit"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn loaded_snapshots_reapply_allocation_limits_before_resume() {
+    let bytes = serialized_suspension(
+        "const payload = [1, 2, 3, 4]; const value = fetch_data(payload.length); value + payload.length;",
+        RuntimeLimits::default(),
+    );
+    let snapshot = load_snapshot(&bytes).expect("snapshot should deserialize");
+    let error = resume_with_options(
+        snapshot,
+        ResumePayload::Value(number(4.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(snapshot_policy(
+                &["fetch_data"],
+                RuntimeLimits {
+                    allocation_budget: 0,
+                    ..RuntimeLimits::default()
+                },
+            )),
+        },
+    )
+    .expect_err("lower allocation budget should fail closed before resume");
+    assert!(
+        error.to_string().contains(
+            "snapshot validation failed: allocation count exceeds configured allocation budget"
+        ),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
 fn direct_execution_snapshot_deserialize_requires_explicit_policy_before_resume() {
     let source = "const value = fetch_data(1); value + 1;";
     let bytes = {

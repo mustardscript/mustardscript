@@ -124,6 +124,7 @@ impl Runtime {
             instruction_counter: 0,
             heap_bytes_used: 0,
             allocation_count: 0,
+            accounting_recount_required: false,
             cancellation_token,
             pending_internal_exception: None,
             snapshot_policy_required: false,
@@ -162,6 +163,7 @@ impl Runtime {
             instruction_counter: 0,
             heap_bytes_used: image.heap_bytes_used,
             allocation_count: image.allocation_count,
+            accounting_recount_required: false,
             cancellation_token,
             pending_internal_exception: None,
             snapshot_policy_required: false,
@@ -229,7 +231,7 @@ impl Runtime {
         if self.frames.len() > self.limits.call_depth_limit {
             return Err(limit_error("call depth limit exceeded"));
         }
-        self.recompute_accounting_after_load()?;
+        self.enforce_loaded_accounting()?;
         let outstanding_host_calls =
             self.pending_host_calls.len() + usize::from(self.suspended_host_call.is_some());
         if outstanding_host_calls > self.limits.max_outstanding_host_calls {
