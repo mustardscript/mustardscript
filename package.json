@@ -1,6 +1,6 @@
 {
   "name": "mustardscript",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sandboxed, subset JavaScript runtime for Node services.",
   "main": "dist/index.js",
   "types": "mustard.d.ts",
