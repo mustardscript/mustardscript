@@ -333,6 +333,30 @@ impl Runtime {
         Ok(())
     }
 
+    pub(super) fn apply_closure_component_delta(
+        &mut self,
+        key: ClosureKey,
+        old_component_bytes: usize,
+        new_component_bytes: usize,
+    ) -> MustardResult<()> {
+        let old_bytes = self
+            .closures
+            .get(key)
+            .ok_or_else(|| MustardError::runtime("closure missing"))?
+            .accounted_bytes;
+        let new_bytes = old_bytes
+            .checked_sub(old_component_bytes)
+            .ok_or_else(|| MustardError::runtime("closure accounting underflow"))?
+            .checked_add(new_component_bytes)
+            .ok_or_else(|| MustardError::runtime("closure accounting overflow"))?;
+        self.apply_heap_delta(old_bytes, new_bytes)?;
+        self.closures
+            .get_mut(key)
+            .ok_or_else(|| MustardError::runtime("closure missing"))?
+            .accounted_bytes = new_bytes;
+        Ok(())
+    }
+
     pub(super) fn apply_promise_component_delta(
         &mut self,
         key: PromiseKey,
@@ -627,7 +651,6 @@ impl Runtime {
                 .get_mut(key)
                 .ok_or_else(|| MustardError::runtime("closure missing"))?
                 .prototype = Some(prototype);
-            self.refresh_closure_accounting(key)?;
         }
         Ok(key)
     }
@@ -681,6 +704,7 @@ impl Runtime {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(super) fn refresh_object_accounting(&mut self, key: ObjectKey) -> MustardResult<()> {
         self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
@@ -694,57 +718,6 @@ impl Runtime {
         self.objects
             .get_mut(key)
             .ok_or_else(|| MustardError::runtime("object missing"))?
-            .accounted_bytes = new_bytes;
-        Ok(())
-    }
-
-    pub(super) fn refresh_array_accounting(&mut self, key: ArrayKey) -> MustardResult<()> {
-        self.record_accounting_refresh();
-        let (old_bytes, new_bytes) = {
-            let array = self
-                .arrays
-                .get(key)
-                .ok_or_else(|| MustardError::runtime("array missing"))?;
-            (array.accounted_bytes, measure_array_bytes(array))
-        };
-        self.apply_heap_delta(old_bytes, new_bytes)?;
-        self.arrays
-            .get_mut(key)
-            .ok_or_else(|| MustardError::runtime("array missing"))?
-            .accounted_bytes = new_bytes;
-        Ok(())
-    }
-
-    pub(super) fn refresh_iterator_accounting(&mut self, key: IteratorKey) -> MustardResult<()> {
-        self.record_accounting_refresh();
-        let (old_bytes, new_bytes) = {
-            let iterator = self
-                .iterators
-                .get(key)
-                .ok_or_else(|| MustardError::runtime("iterator missing"))?;
-            (iterator.accounted_bytes, measure_iterator_bytes(iterator))
-        };
-        self.apply_heap_delta(old_bytes, new_bytes)?;
-        self.iterators
-            .get_mut(key)
-            .ok_or_else(|| MustardError::runtime("iterator missing"))?
-            .accounted_bytes = new_bytes;
-        Ok(())
-    }
-
-    pub(super) fn refresh_closure_accounting(&mut self, key: ClosureKey) -> MustardResult<()> {
-        self.record_accounting_refresh();
-        let (old_bytes, new_bytes) = {
-            let closure = self
-                .closures
-                .get(key)
-                .ok_or_else(|| MustardError::runtime("closure missing"))?;
-            (closure.accounted_bytes, measure_closure_bytes(closure))
-        };
-        self.apply_heap_delta(old_bytes, new_bytes)?;
-        self.closures
-            .get_mut(key)
-            .ok_or_else(|| MustardError::runtime("closure missing"))?
             .accounted_bytes = new_bytes;
         Ok(())
     }

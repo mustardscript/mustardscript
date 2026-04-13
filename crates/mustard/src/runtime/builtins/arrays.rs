@@ -290,20 +290,31 @@ impl Runtime {
         } else {
             clamp_index(self.to_integer(args[1].clone())?, length - start)
         };
-        let removed = {
+        let inserted_bytes = args[2..]
+            .iter()
+            .map(|value| Self::array_slot_bytes(Some(value)))
+            .sum::<usize>();
+        let (removed, removed_bytes) = {
             let array_ref = self
                 .arrays
                 .get_mut(array)
                 .ok_or_else(|| MustardError::runtime("array missing"))?;
-            array_ref
+            let removed = array_ref
                 .elements
                 .splice(
                     start..start + delete_count,
                     args[2..].iter().cloned().map(Some),
                 )
-                .collect::<Vec<Option<Value>>>()
+                .collect::<Vec<Option<Value>>>();
+            let removed_bytes = removed
+                .iter()
+                .map(|value| Self::array_slot_bytes(value.as_ref()))
+                .sum::<usize>();
+            (removed, removed_bytes)
         };
-        self.refresh_array_accounting(array)?;
+        if removed_bytes != inserted_bytes {
+            self.apply_array_component_delta(array, removed_bytes, inserted_bytes)?;
+        }
         Ok(Value::Array(
             self.insert_sparse_array(removed, IndexMap::new())?,
         ))
@@ -551,17 +562,29 @@ impl Runtime {
             },
             length,
         );
-        {
+        let new_slot_bytes = Self::array_slot_bytes(Some(&value));
+        let (old_component_bytes, new_component_bytes) = {
             let elements = &mut self
                 .arrays
                 .get_mut(array)
                 .ok_or_else(|| MustardError::runtime("array missing"))?
                 .elements;
+            let mut old_component_bytes = 0usize;
+            let mut new_component_bytes = 0usize;
             for slot in elements.iter_mut().take(end).skip(start) {
+                old_component_bytes = old_component_bytes
+                    .checked_add(Self::array_slot_bytes(slot.as_ref()))
+                    .ok_or_else(|| MustardError::runtime("array accounting overflow"))?;
+                new_component_bytes = new_component_bytes
+                    .checked_add(new_slot_bytes)
+                    .ok_or_else(|| MustardError::runtime("array accounting overflow"))?;
                 *slot = Some(value.clone());
             }
+            (old_component_bytes, new_component_bytes)
+        };
+        if old_component_bytes != new_component_bytes {
+            self.apply_array_component_delta(array, old_component_bytes, new_component_bytes)?;
         }
-        self.refresh_array_accounting(array)?;
         Ok(Value::Array(array))
     }
 
@@ -655,7 +678,6 @@ impl Runtime {
                 .map(Some)
                 .chain(std::iter::repeat_with(|| None).take(holes))
                 .collect();
-            runtime.refresh_array_accounting(array)?;
             Ok(Value::Array(array))
         })
     }

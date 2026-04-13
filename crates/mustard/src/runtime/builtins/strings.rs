@@ -722,7 +722,6 @@ impl Runtime {
             StringSearchPattern::RegExp { object, regex } => {
                 if regex.flags.contains('g') {
                     self.regexp_object_mut(object)?.last_index = 0;
-                    self.refresh_object_accounting(object)?;
                     let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
                     if matches.is_empty() {
                         return Ok(Value::Null);
@@ -769,7 +768,6 @@ impl Runtime {
                     ));
                 }
                 self.regexp_object_mut(object)?.last_index = 0;
-                self.refresh_object_accounting(object)?;
                 self.collect_regexp_matches_from_state(&regex, &value, true)?
             }
         };

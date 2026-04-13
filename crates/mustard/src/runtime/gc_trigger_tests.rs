@@ -264,12 +264,160 @@ fn array_length_and_object_from_entries_deltas_preserve_cached_totals() {
 
     let final_metrics = runtime.debug_metrics();
     assert_eq!(
-        final_metrics.accounting_refreshes,
-        baseline_metrics.accounting_refreshes + 3,
-        "Object.fromEntries should only refresh iterator accounting for the three consumed entries"
+        final_metrics.accounting_refreshes, baseline_metrics.accounting_refreshes,
+        "Array length updates and Object.fromEntries should stay on the incremental accounting path"
     );
     #[cfg(debug_assertions)]
     runtime.debug_assert_cached_accounting_matches_full_walk();
+}
+
+#[test]
+fn hot_path_mutations_preserve_cached_totals_without_full_refreshes() {
+    let mut runtime = test_runtime();
+    let array = runtime
+        .insert_array(
+            vec![
+                Value::String("alpha".to_string()),
+                Value::String("b".to_string()),
+                Value::String("ccc".to_string()),
+            ],
+            IndexMap::new(),
+        )
+        .expect("array should allocate");
+    let closure = runtime
+        .insert_closure(runtime.program.root, runtime.globals, Value::Undefined)
+        .expect("closure should allocate");
+    let regex = match runtime
+        .make_regexp_value("a".to_string(), "g".to_string())
+        .expect("regexp should allocate")
+    {
+        Value::Object(object) => object,
+        other => panic!("expected regexp object, got {other:?}"),
+    };
+    let string_iterator = match runtime
+        .create_iterator(Value::String("ab".to_string()))
+        .expect("string iterator should allocate")
+    {
+        Value::Iterator(iterator) => iterator,
+        other => panic!("expected iterator, got {other:?}"),
+    };
+    let frame_env = runtime
+        .new_env(Some(runtime.globals))
+        .expect("frame env should allocate");
+    runtime
+        .push_frame(0, frame_env, &[], Value::Undefined, None)
+        .expect("frame push should succeed");
+
+    let baseline_metrics = runtime.debug_metrics();
+
+    runtime
+        .call_array_fill(
+            Value::Array(array),
+            &[Value::String("payload".repeat(4)), Value::Number(1.0)],
+        )
+        .expect("array fill should succeed");
+    runtime
+        .call_array_splice(
+            Value::Array(array),
+            &[
+                Value::Number(0.0),
+                Value::Number(1.0),
+                Value::String("zz".to_string()),
+            ],
+        )
+        .expect("array splice should succeed");
+    runtime
+        .call_array_sort(Value::Array(array), &[])
+        .expect("array sort should succeed");
+
+    runtime
+        .define_global("named".to_string(), Value::Closure(closure), true)
+        .expect("define_global should succeed");
+    runtime
+        .set_property_static(
+            Value::Closure(closure),
+            "meta",
+            Value::String("payload".repeat(8)),
+        )
+        .expect("closure custom property should succeed");
+    runtime
+        .set_property_static(
+            Value::BuiltinFunction(BuiltinFunction::ArrayMap),
+            "meta",
+            Value::Bool(true),
+        )
+        .expect("builtin custom property should succeed");
+    runtime
+        .set_property_static(
+            Value::HostFunction("fetch_data".to_string()),
+            "meta",
+            Value::Number(1.0),
+        )
+        .expect("host custom property should succeed");
+
+    runtime
+        .iterator_next(Value::Iterator(string_iterator))
+        .expect("first string iterator step should succeed");
+    runtime
+        .iterator_next(Value::Iterator(string_iterator))
+        .expect("second string iterator step should succeed");
+    runtime
+        .call_regexp_exec(Value::Object(regex), &[Value::String("aba".to_string())])
+        .expect("regexp exec should succeed");
+    runtime
+        .call_string_match(Value::String("aba".to_string()), &[Value::Object(regex)])
+        .expect("string match should succeed");
+    runtime
+        .call_string_match_all(Value::String("aba".to_string()), &[Value::Object(regex)])
+        .expect("string matchAll should succeed");
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+
+    let array_ref = runtime.arrays.get(array).expect("array should exist");
+    let sorted = array_ref
+        .elements
+        .iter()
+        .map(|value| value.clone().unwrap_or(Value::Undefined))
+        .collect::<Vec<_>>();
+    assert!(matches!(
+        sorted.as_slice(),
+        [Value::String(first), Value::String(second), Value::String(third)]
+            if first == "payloadpayloadpayloadpayload"
+                && second == "payloadpayloadpayloadpayload"
+                && third == "zz"
+    ));
+    assert_eq!(
+        runtime
+            .closures
+            .get(closure)
+            .and_then(|closure| closure.name.as_deref()),
+        Some("named")
+    );
+    assert!(matches!(
+        runtime
+            .builtin_function_custom_property(BuiltinFunction::ArrayMap, "meta")
+            .expect("builtin custom property should exist"),
+        Some(Value::Bool(true))
+    ));
+    assert!(matches!(
+        runtime
+            .host_function_custom_property("fetch_data", "meta")
+            .expect("host custom property should exist"),
+        Some(Value::Number(value)) if value == 1.0
+    ));
+    assert_eq!(
+        runtime
+            .regexp_object(regex)
+            .expect("regexp should exist")
+            .last_index,
+        0
+    );
 }
 
 #[test]
