@@ -13,10 +13,13 @@ impl Runtime {
         match job {
             MicrotaskJob::ResumeAsync {
                 continuation,
-                outcome,
+                source,
             } => {
                 self.frames = continuation.frames;
-                match outcome {
+                match self
+                    .promise_outcome(source)?
+                    .ok_or_else(|| MustardError::runtime("resume async microtask source pending"))?
+                {
                     PromiseOutcome::Fulfilled(value) => {
                         let frame = self.frames.last_mut().ok_or_else(|| {
                             MustardError::runtime("async continuation resumed without frames")
@@ -35,7 +38,10 @@ impl Runtime {
                     }
                 }
             }
-            MicrotaskJob::PromiseReaction { reaction, outcome } => {
+            MicrotaskJob::PromiseReaction { reaction, source } => {
+                let outcome = self.promise_outcome(source)?.ok_or_else(|| {
+                    MustardError::runtime("promise reaction microtask source pending")
+                })?;
                 self.activate_promise_reaction(reaction, outcome)?;
             }
             MicrotaskJob::PromiseCombinator {

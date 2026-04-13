@@ -355,6 +355,49 @@ fn promise_reactions_keep_target_promises_alive_for_gc() {
 }
 
 #[test]
+fn queued_promise_reaction_microtasks_keep_settled_sources_alive_for_gc() {
+    let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
+        .expect("lowering should succeed");
+    let mut runtime =
+        Runtime::new(Arc::new(program), ExecutionOptions::default()).expect("runtime init");
+
+    let kept_source = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("source promise should allocate");
+    let kept_target = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("target promise should allocate");
+    runtime
+        .attach_promise_reaction(
+            kept_source,
+            PromiseReaction::Then {
+                target: kept_target,
+                on_fulfilled: None,
+                on_rejected: None,
+            },
+        )
+        .expect("reaction should attach");
+    runtime
+        .settle_promise_with_outcome(
+            kept_source,
+            PromiseOutcome::Fulfilled(Value::String("done".to_string())),
+        )
+        .expect("source promise should settle");
+
+    let garbage_source = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("garbage promise should allocate");
+    runtime
+        .resolve_promise(garbage_source, Value::String("garbage".to_string()))
+        .expect("garbage promise should resolve");
+
+    runtime.collect_garbage().expect("gc should succeed");
+    assert!(runtime.promises.contains_key(kept_source));
+    assert!(runtime.promises.contains_key(kept_target));
+    assert!(!runtime.promises.contains_key(garbage_source));
+}
+
+#[test]
 fn keyed_collections_participate_in_heap_accounting_and_gc() {
     let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
         .expect("lowering should succeed");

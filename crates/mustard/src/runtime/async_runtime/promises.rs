@@ -24,6 +24,17 @@ impl Runtime {
         })
     }
 
+    fn resolve_promise_from_settled_source(
+        &mut self,
+        promise: PromiseKey,
+        source: PromiseKey,
+    ) -> MustardResult<()> {
+        let outcome = self
+            .promise_outcome(source)?
+            .ok_or_else(|| MustardError::runtime("promise source pending"))?;
+        self.resolve_promise_with_outcome(promise, outcome)
+    }
+
     pub(in crate::runtime) fn coerce_to_promise(
         &mut self,
         value: Value,
@@ -92,31 +103,26 @@ impl Runtime {
                 PromiseCombinatorInput::Promise(promise),
             );
         }
-        match if is_pending {
-            None
+        if is_pending {
+            let added_bytes = Self::promise_reaction_bytes(&reaction);
+            self.promises
+                .get_mut(promise)
+                .ok_or_else(|| MustardError::runtime("promise missing"))?
+                .reactions
+                .push(reaction);
+            self.apply_promise_component_delta(promise, 0, added_bytes)
         } else {
-            self.promise_outcome(promise)?
-        } {
-            Some(outcome) => self.schedule_promise_reaction(reaction, outcome),
-            None => {
-                let added_bytes = Self::promise_reaction_bytes(&reaction);
-                self.promises
-                    .get_mut(promise)
-                    .ok_or_else(|| MustardError::runtime("promise missing"))?
-                    .reactions
-                    .push(reaction);
-                self.apply_promise_component_delta(promise, 0, added_bytes)
-            }
+            self.schedule_promise_reaction(reaction, promise)
         }
     }
 
     pub(in crate::runtime) fn schedule_promise_reaction(
         &mut self,
         reaction: PromiseReaction,
-        outcome: PromiseOutcome,
+        source: PromiseKey,
     ) -> MustardResult<()> {
         self.microtasks
-            .push_back(MicrotaskJob::PromiseReaction { reaction, outcome });
+            .push_back(MicrotaskJob::PromiseReaction { reaction, source });
         Ok(())
     }
 
@@ -141,9 +147,9 @@ impl Runtime {
         promise: PromiseKey,
         outcome: PromiseOutcome,
     ) -> MustardResult<()> {
-        let settled_state = match &outcome {
-            PromiseOutcome::Fulfilled(value) => PromiseState::Fulfilled(value.clone()),
-            PromiseOutcome::Rejected(rejection) => PromiseState::Rejected(rejection.clone()),
+        let settled_state = match outcome {
+            PromiseOutcome::Fulfilled(value) => PromiseState::Fulfilled(value),
+            PromiseOutcome::Rejected(rejection) => PromiseState::Rejected(rejection),
         };
         let (old_dynamic_bytes, new_dynamic_bytes, awaiters, dependents, reactions) = {
             let promise_ref = self
@@ -172,11 +178,11 @@ impl Runtime {
         for continuation in awaiters {
             self.microtasks.push_back(MicrotaskJob::ResumeAsync {
                 continuation,
-                outcome: outcome.clone(),
+                source: promise,
             });
         }
         for dependent in dependents {
-            self.resolve_promise_with_outcome(dependent, outcome.clone())?;
+            self.resolve_promise_from_settled_source(dependent, promise)?;
         }
         for reaction in reactions {
             match reaction {
@@ -190,7 +196,7 @@ impl Runtime {
                     kind,
                     PromiseCombinatorInput::Promise(promise),
                 )?,
-                other => self.schedule_promise_reaction(other, outcome.clone())?,
+                other => self.schedule_promise_reaction(other, promise)?,
             }
         }
         Ok(())
@@ -297,12 +303,20 @@ impl Runtime {
         let continuation = AsyncContinuation {
             frames: self.frames.split_off(boundary),
         };
-        match self.promise_outcome(promise)? {
-            Some(outcome) => self.microtasks.push_back(MicrotaskJob::ResumeAsync {
+        let is_settled = !matches!(
+            self.promises
+                .get(promise)
+                .ok_or_else(|| MustardError::runtime("promise missing"))?
+                .state,
+            PromiseState::Pending
+        );
+        if is_settled {
+            self.microtasks.push_back(MicrotaskJob::ResumeAsync {
                 continuation,
-                outcome,
-            }),
-            None => self.attach_awaiter(promise, continuation)?,
+                source: promise,
+            });
+        } else {
+            self.attach_awaiter(promise, continuation)?;
         }
         Ok(())
     }

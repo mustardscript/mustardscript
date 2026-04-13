@@ -345,40 +345,80 @@ fn validate_promise_combinator_target(
 }
 
 fn validate_microtask_snapshot(runtime: &Runtime, microtask: &MicrotaskJob) -> MustardResult<()> {
-    if let MicrotaskJob::PromiseCombinator {
-        target,
-        index,
-        kind,
-        input,
-    } = microtask
-    {
-        if runtime.promises.get(*target).is_none() {
-            return Err(snapshot_error(format!(
-                "promise combinator microtask references missing target {:?}",
-                target
-            )));
-        }
-        validate_promise_combinator_target(
-            runtime,
-            "promise combinator microtask",
-            *target,
-            *index,
-            *kind,
-        )?;
-        if let PromiseCombinatorInput::Promise(source) = input {
-            let source_promise = runtime.promises.get(*source).ok_or_else(|| {
-                snapshot_error(format!(
-                    "promise combinator microtask references missing source {:?}",
-                    source
-                ))
-            })?;
-            if matches!(source_promise.state, PromiseState::Pending) {
+    match microtask {
+        MicrotaskJob::ResumeAsync {
+            continuation: _,
+            source,
+        } => validate_settled_microtask_source(runtime, "resume async microtask", *source)?,
+        MicrotaskJob::PromiseReaction { reaction, source } => {
+            validate_settled_microtask_source(runtime, "promise reaction microtask", *source)?;
+            let target = match reaction {
+                PromiseReaction::Then { target, .. }
+                | PromiseReaction::Finally { target, .. }
+                | PromiseReaction::FinallyPassThrough { target, .. }
+                | PromiseReaction::Combinator { target, .. } => *target,
+            };
+            if runtime.promises.get(target).is_none() {
                 return Err(snapshot_error(format!(
-                    "promise combinator microtask source {:?} is still pending",
-                    source
+                    "promise reaction microtask references missing target {:?}",
+                    target
                 )));
             }
+            if let PromiseReaction::Combinator { index, kind, .. } = reaction {
+                validate_promise_combinator_target(
+                    runtime,
+                    "promise reaction microtask",
+                    target,
+                    *index,
+                    *kind,
+                )?;
+            }
         }
+        MicrotaskJob::PromiseCombinator {
+            target,
+            index,
+            kind,
+            input,
+        } => {
+            if runtime.promises.get(*target).is_none() {
+                return Err(snapshot_error(format!(
+                    "promise combinator microtask references missing target {:?}",
+                    target
+                )));
+            }
+            validate_promise_combinator_target(
+                runtime,
+                "promise combinator microtask",
+                *target,
+                *index,
+                *kind,
+            )?;
+            if let PromiseCombinatorInput::Promise(source) = input {
+                validate_settled_microtask_source(
+                    runtime,
+                    "promise combinator microtask",
+                    *source,
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_settled_microtask_source(
+    runtime: &Runtime,
+    owner: &str,
+    source: PromiseKey,
+) -> MustardResult<()> {
+    let source_promise = runtime
+        .promises
+        .get(source)
+        .ok_or_else(|| snapshot_error(format!("{owner} references missing source {:?}", source)))?;
+    if matches!(source_promise.state, PromiseState::Pending) {
+        return Err(snapshot_error(format!(
+            "{owner} source {:?} is still pending",
+            source
+        )));
     }
     Ok(())
 }

@@ -72,13 +72,23 @@ fn rejects_invalid_microtask_frame_state() {
         .find_map(|promise| promise.awaiters.first().cloned())
         .expect("awaiting async promise continuation should exist");
     continuation.frames[0].ip = 999;
+    let source = suspension
+        .snapshot
+        .runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("settled microtask source should allocate");
+    suspension
+        .snapshot
+        .runtime
+        .resolve_promise(source, Value::Number(1.0))
+        .expect("settled microtask source should resolve");
     suspension
         .snapshot
         .runtime
         .microtasks
         .push_back(MicrotaskJob::ResumeAsync {
             continuation,
-            outcome: PromiseOutcome::Fulfilled(Value::Number(1.0)),
+            source,
         });
 
     let bytes = dump_snapshot(&suspension.snapshot).expect("snapshot should serialize");
@@ -143,6 +153,52 @@ fn rejects_pending_promise_combinator_microtask_source() {
         error
             .to_string()
             .contains("promise combinator microtask source")
+            && error.to_string().contains("pending"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn rejects_pending_promise_reaction_microtask_source() {
+    let mut suspension = suspend_async_host_wait(
+        r#"
+        async function main() {
+          const value = await fetch_data(1);
+          return value + 2;
+        }
+        main();
+        "#,
+    );
+
+    let target = suspension
+        .snapshot
+        .runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("reaction target promise should allocate");
+    let pending_source = suspension
+        .snapshot
+        .runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("pending source promise should allocate");
+    suspension
+        .snapshot
+        .runtime
+        .microtasks
+        .push_back(MicrotaskJob::PromiseReaction {
+            reaction: PromiseReaction::Then {
+                target,
+                on_fulfilled: None,
+                on_rejected: None,
+            },
+            source: pending_source,
+        });
+
+    let bytes = dump_snapshot(&suspension.snapshot).expect("snapshot should serialize");
+    let error = load_snapshot(&bytes).expect_err("pending reaction source should fail validation");
+    assert!(
+        error
+            .to_string()
+            .contains("promise reaction microtask source")
             && error.to_string().contains("pending"),
         "unexpected error: {error}"
     );

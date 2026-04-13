@@ -859,11 +859,11 @@ pub(super) enum PromiseSettledResult {
 pub(super) enum MicrotaskJob {
     ResumeAsync {
         continuation: AsyncContinuation,
-        outcome: PromiseOutcome,
+        source: PromiseKey,
     },
     PromiseReaction {
         reaction: PromiseReaction,
-        outcome: PromiseOutcome,
+        source: PromiseKey,
     },
     PromiseCombinator {
         target: PromiseKey,

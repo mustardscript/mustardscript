@@ -129,26 +129,20 @@ impl Runtime {
             match job {
                 MicrotaskJob::ResumeAsync {
                     continuation,
-                    outcome,
+                    source,
                 } => {
                     for frame in &continuation.frames {
                         self.mark_frame_roots(frame, &mut marks, &mut worklist);
                     }
-                    match outcome {
-                        PromiseOutcome::Fulfilled(value) => {
-                            self.mark_value(value, &mut marks, &mut worklist);
-                        }
-                        PromiseOutcome::Rejected(rejection) => {
-                            self.mark_value(&rejection.value, &mut marks, &mut worklist);
-                        }
-                    }
+                    self.mark_promise(*source, &mut marks, &mut worklist);
                 }
-                MicrotaskJob::PromiseReaction { reaction, outcome } => {
+                MicrotaskJob::PromiseReaction { reaction, source } => {
                     self.mark_promise(
                         self.promise_reaction_target(reaction),
                         &mut marks,
                         &mut worklist,
                     );
+                    self.mark_promise(*source, &mut marks, &mut worklist);
                     match reaction {
                         PromiseReaction::Then {
                             on_fulfilled,
@@ -178,14 +172,6 @@ impl Runtime {
                             }
                         },
                         PromiseReaction::Combinator { .. } => {}
-                    }
-                    match outcome {
-                        PromiseOutcome::Fulfilled(value) => {
-                            self.mark_value(value, &mut marks, &mut worklist);
-                        }
-                        PromiseOutcome::Rejected(rejection) => {
-                            self.mark_value(&rejection.value, &mut marks, &mut worklist);
-                        }
                     }
                 }
                 MicrotaskJob::PromiseCombinator { target, input, .. } => {

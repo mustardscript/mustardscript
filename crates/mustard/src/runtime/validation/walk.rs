@@ -167,46 +167,39 @@ where
     match microtask {
         MicrotaskJob::ResumeAsync {
             continuation,
-            outcome,
+            source: _,
         } => {
             walk_continuation_frames(continuation, visit_frame)?;
-            match outcome {
+        }
+        MicrotaskJob::PromiseReaction {
+            reaction,
+            source: _,
+        } => match reaction {
+            PromiseReaction::Then {
+                on_fulfilled,
+                on_rejected,
+                ..
+            } => {
+                if let Some(handler) = on_fulfilled {
+                    visit_value(handler)?;
+                }
+                if let Some(handler) = on_rejected {
+                    visit_value(handler)?;
+                }
+            }
+            PromiseReaction::Finally { callback, .. } => {
+                if let Some(callback) = callback {
+                    visit_value(callback)?;
+                }
+            }
+            PromiseReaction::FinallyPassThrough {
+                original_outcome, ..
+            } => match original_outcome {
                 PromiseOutcome::Fulfilled(value) => visit_value(value)?,
                 PromiseOutcome::Rejected(rejection) => visit_value(&rejection.value)?,
-            }
-        }
-        MicrotaskJob::PromiseReaction { reaction, outcome } => {
-            match reaction {
-                PromiseReaction::Then {
-                    on_fulfilled,
-                    on_rejected,
-                    ..
-                } => {
-                    if let Some(handler) = on_fulfilled {
-                        visit_value(handler)?;
-                    }
-                    if let Some(handler) = on_rejected {
-                        visit_value(handler)?;
-                    }
-                }
-                PromiseReaction::Finally { callback, .. } => {
-                    if let Some(callback) = callback {
-                        visit_value(callback)?;
-                    }
-                }
-                PromiseReaction::FinallyPassThrough {
-                    original_outcome, ..
-                } => match original_outcome {
-                    PromiseOutcome::Fulfilled(value) => visit_value(value)?,
-                    PromiseOutcome::Rejected(rejection) => visit_value(&rejection.value)?,
-                },
-                PromiseReaction::Combinator { .. } => {}
-            }
-            match outcome {
-                PromiseOutcome::Fulfilled(value) => visit_value(value)?,
-                PromiseOutcome::Rejected(rejection) => visit_value(&rejection.value)?,
-            }
-        }
+            },
+            PromiseReaction::Combinator { .. } => {}
+        },
         MicrotaskJob::PromiseCombinator { input, .. } => {
             if let PromiseCombinatorInput::Fulfilled(value) = input {
                 visit_value(value)?;
