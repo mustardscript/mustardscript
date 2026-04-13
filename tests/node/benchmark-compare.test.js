@@ -131,3 +131,52 @@ test('resolveLatestArtifacts selects the previous matching artifact as the basel
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('resolveLatestArtifacts can pin baseline selection to tracked artifacts only', () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mustard-bench-compare-tracked-'));
+
+  try {
+    const writeArtifact = (name) => {
+      fs.writeFileSync(
+        path.join(tempRoot, name),
+        JSON.stringify({
+          machine: {
+            benchmarkKind: 'workloads',
+            buildProfile: 'release',
+          },
+          addon: {
+            latency: {
+              warm_run_small: { medianMs: 1, p95Ms: 1 },
+            },
+          },
+        }),
+      );
+    };
+
+    writeArtifact('2026-04-10T00-00-00-000Z-workloads.json');
+    writeArtifact('2026-04-11T00-00-00-000Z-workloads.json');
+    writeArtifact('2026-04-12T00-00-00-000Z-workloads.json');
+
+    const trackedOnly = [
+      path.join(tempRoot, '2026-04-10T00-00-00-000Z-workloads.json'),
+      path.join(tempRoot, '2026-04-11T00-00-00-000Z-workloads.json'),
+    ];
+    const resolved = resolveLatestArtifacts({
+      resultsDir: tempRoot,
+      kind: 'workloads',
+      profile: 'release',
+      baselinePaths: trackedOnly,
+    });
+
+    assert.equal(
+      path.basename(resolved.candidatePath),
+      '2026-04-12T00-00-00-000Z-workloads.json',
+    );
+    assert.equal(
+      path.basename(resolved.baselinePath),
+      '2026-04-11T00-00-00-000Z-workloads.json',
+    );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});

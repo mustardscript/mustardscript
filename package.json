@@ -67,6 +67,8 @@
     "prebuilt:dirs": "napi create-npm-dirs",
     "prebuilt:artifacts": "napi artifacts --output-dir artifacts",
     "bench:rust": "cargo bench -p mustard --bench runtime_core -- --noplot",
+    "bench:regress:workloads": "node scripts/benchmark-compare.ts --kind workloads --profile release --tracked-baseline --include-prefix addon. --max-regression-pct 10",
+    "bench:regress:smoke": "node scripts/benchmark-compare.ts --kind smoke --profile release --tracked-baseline --max-regression-pct 50",
     "verify:prebuilt": "node scripts/verify-prebuilt.ts",
     "verify:release": "node scripts/release-verify.ts",
     "lint": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings",

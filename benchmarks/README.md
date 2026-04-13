@@ -134,6 +134,20 @@ npm run bench:compare -- --baseline benchmarks/results/old.json --candidate benc
 
 The comparison script reports median and p95 deltas for every comparable metric.
 
+For fail-on-regression checks against the latest checked-in baseline artifact,
+use:
+
+```sh
+npm run bench:regress:workloads
+npm run bench:regress:smoke
+```
+
+Those commands resolve the candidate artifact from the newest local result, but
+they only choose the baseline from git-tracked artifacts. The workload check is
+scoped to `addon.*` metrics and currently fails above a `10%` regression; the
+release smoke check currently fails above a `50%` regression to absorb the
+known noise on tiny startup/compute samples while still catching large shifts.
+
 For the isolate baseline, `suspend_resume_*` is a best-effort comparison that
 re-enters a fresh isolate with explicit host-carried state because this harness
 does not have equivalent continuation snapshotting for V8 isolates.

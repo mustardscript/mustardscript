@@ -1,9 +1,11 @@
 'use strict';
 
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const { RESULTS_DIR } = require('./support.ts');
+const REPO_ROOT = path.join(__dirname, '..');
 
 function isMetricLeaf(value) {
   return (
@@ -116,7 +118,48 @@ function listArtifacts({ resultsDir = RESULTS_DIR, kind, profile } = {}) {
     .sort();
 }
 
-function resolveLatestArtifacts({ resultsDir = RESULTS_DIR, candidatePath, kind, profile } = {}) {
+function listTrackedArtifacts({ resultsDir = RESULTS_DIR, kind, profile } = {}) {
+  let trackedEntries;
+  try {
+    trackedEntries = execFileSync('git', ['ls-files', 'benchmarks/results/*.json'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+
+  const trackedPaths = trackedEntries
+    .map((entry) => path.resolve(REPO_ROOT, entry))
+    .filter((filePath) => {
+      if (!filePath.startsWith(path.resolve(resultsDir))) {
+        return false;
+      }
+      const identity = artifactIdentity(loadArtifact(filePath), filePath);
+      if (kind && identity.kind !== kind) {
+        return false;
+      }
+      if (profile && identity.profile !== profile) {
+        return false;
+      }
+      return true;
+    })
+    .sort();
+
+  return trackedPaths;
+}
+
+function resolveLatestArtifacts({
+  resultsDir = RESULTS_DIR,
+  candidatePath,
+  kind,
+  profile,
+  baselinePaths = undefined,
+} = {}) {
   const candidates = listArtifacts({ resultsDir, kind, profile });
   if (candidates.length === 0) {
     throw new Error(`No benchmark result artifacts found in ${resultsDir}`);
@@ -125,7 +168,12 @@ function resolveLatestArtifacts({ resultsDir = RESULTS_DIR, candidatePath, kind,
   const resolvedCandidate = candidatePath
     ? path.resolve(candidatePath)
     : candidates[candidates.length - 1];
-  const comparisonPool = candidates.filter((filePath) => path.resolve(filePath) !== resolvedCandidate);
+  const comparisonSource = baselinePaths
+    ? baselinePaths.map((filePath) => path.resolve(filePath))
+    : candidates;
+  const comparisonPool = comparisonSource.filter(
+    (filePath) => path.resolve(filePath) !== resolvedCandidate,
+  );
   if (comparisonPool.length === 0) {
     throw new Error('Need at least two comparable benchmark artifacts to diff results');
   }
@@ -154,4 +202,5 @@ module.exports = {
   listArtifacts,
   loadArtifact,
   resolveLatestArtifacts,
+  listTrackedArtifacts,
 };

@@ -5,6 +5,7 @@ const path = require('node:path');
 const {
   compareArtifacts,
   formatPercent,
+  listTrackedArtifacts,
   loadArtifact,
   resolveLatestArtifacts,
 } = require('../benchmarks/compare.ts');
@@ -17,6 +18,8 @@ function parseArgs(argv) {
     kind: null,
     profile: null,
     maxRegressionPct: null,
+    includePrefixes: [],
+    trackedBaseline: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -52,6 +55,15 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (value === '--include-prefix') {
+      options.includePrefixes.push(next);
+      index += 1;
+      continue;
+    }
+    if (value === '--tracked-baseline') {
+      options.trackedBaseline = true;
+      continue;
+    }
     throw new Error(`Unknown benchmark compare argument: ${value}`);
   }
 
@@ -85,6 +97,15 @@ function hasRegression(comparisons, maxRegressionPct) {
   );
 }
 
+function filterComparisons(comparisons, includePrefixes) {
+  if (!includePrefixes || includePrefixes.length === 0) {
+    return comparisons;
+  }
+  return comparisons.filter((entry) =>
+    includePrefixes.some((prefix) => entry.path.startsWith(prefix)),
+  );
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const resultsDir = options.resultsDir ? path.resolve(options.resultsDir) : undefined;
@@ -92,20 +113,29 @@ function main() {
   let candidatePath = options.candidatePath ? path.resolve(options.candidatePath) : null;
 
   if (!baselinePath || !candidatePath) {
+    const baselinePaths =
+      options.trackedBaseline && !baselinePath
+        ? listTrackedArtifacts({
+            resultsDir,
+            kind: options.kind,
+            profile: options.profile,
+          })
+        : undefined;
     const resolved = resolveLatestArtifacts({
       resultsDir,
       candidatePath,
       kind: options.kind,
       profile: options.profile,
+      baselinePaths,
     });
     candidatePath ??= resolved.candidatePath;
     baselinePath ??= resolved.baselinePath;
   }
 
-  const comparisons = compareArtifacts(
+  const comparisons = filterComparisons(compareArtifacts(
     loadArtifact(baselinePath),
     loadArtifact(candidatePath),
-  );
+  ), options.includePrefixes);
   if (comparisons.length === 0) {
     throw new Error('No comparable median/p95 metrics found between the selected artifacts');
   }
