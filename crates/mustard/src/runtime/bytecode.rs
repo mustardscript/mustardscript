@@ -39,8 +39,16 @@ pub enum Instruction {
         pattern: String,
         flags: String,
     },
+    LoadSlot {
+        depth: usize,
+        slot: usize,
+    },
     LoadName(String),
     LoadGlobalObject,
+    StoreSlot {
+        depth: usize,
+        slot: usize,
+    },
     StoreName(String),
     InitializePattern(Pattern),
     PushEnv,

@@ -230,6 +230,7 @@ fn apply_validation_effect(
         | Instruction::PushBigInt(_)
         | Instruction::PushString(_)
         | Instruction::PushRegExp { .. }
+        | Instruction::LoadSlot { .. }
         | Instruction::LoadName(_)
         | Instruction::LoadGlobalObject
         | Instruction::MakeClosure { .. }
@@ -237,7 +238,7 @@ fn apply_validation_effect(
             stack_depth: state.stack_depth + 1,
             ..state
         },
-        Instruction::StoreName(_) => {
+        Instruction::StoreSlot { .. } | Instruction::StoreName(_) => {
             require_stack(1)?;
             state
         }

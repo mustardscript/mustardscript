@@ -61,6 +61,11 @@ impl Runtime {
                 let value = self.make_regexp_value(pattern.clone(), flags.clone())?;
                 self.frames[frame_index].stack.push(value);
             }
+            Instruction::LoadSlot { depth, slot } => {
+                let env = self.frames[frame_index].env;
+                let value = self.lookup_slot(env, *depth, *slot)?;
+                self.frames[frame_index].stack.push(value);
+            }
             Instruction::LoadName(name) => {
                 let env = self.frames[frame_index].env;
                 let value = self.lookup_name(env, name)?;
@@ -80,6 +85,15 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 let env = self.frames[frame_index].env;
                 self.assign_name(env, name, value.clone())?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::StoreSlot { depth, slot } => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let env = self.frames[frame_index].env;
+                self.assign_slot(env, *depth, *slot, value.clone())?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::InitializePattern(pattern) => {

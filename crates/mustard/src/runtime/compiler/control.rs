@@ -78,13 +78,10 @@ impl Compiler {
                 });
             }
 
-            context.code.push(Instruction::PushEnv);
-            context.scope_depth += 1;
+            self.enter_env_scope(context);
             if let Some(parameter) = &catch_clause.parameter {
                 for (name, mutable) in pattern_bindings(parameter) {
-                    context
-                        .code
-                        .push(Instruction::DeclareName { name, mutable });
+                    self.emit_declare_name(context, name, mutable);
                 }
             }
             context.code.push(Instruction::BeginCatch);
@@ -94,8 +91,7 @@ impl Compiler {
                 context.code.push(Instruction::Pop);
             }
             self.compile_stmt(context, catch_clause.body.as_ref())?;
-            context.scope_depth -= 1;
-            context.code.push(Instruction::PopEnv);
+            self.exit_env_scope(context);
 
             if let Some(region) = finally_region {
                 context.active_handlers.pop();

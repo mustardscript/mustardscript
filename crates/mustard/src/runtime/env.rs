@@ -120,6 +120,104 @@ impl Runtime {
         Ok(())
     }
 
+    fn env_at_depth(&self, env: EnvKey, depth: usize) -> MustardResult<EnvKey> {
+        let mut current = Some(env);
+        for _ in 0..depth {
+            current = current
+                .and_then(|key| self.envs.get(key))
+                .and_then(|env| env.parent);
+        }
+        current.ok_or_else(|| {
+            MustardError::runtime(format!(
+                "environment missing while resolving lexical slot at depth {depth}"
+            ))
+        })
+    }
+
+    fn resolve_slot_binding(
+        &self,
+        env: EnvKey,
+        depth: usize,
+        slot: usize,
+    ) -> MustardResult<(String, CellKey)> {
+        let env = self.env_at_depth(env, depth)?;
+        let (name, cell) = self
+            .envs
+            .get(env)
+            .ok_or_else(|| MustardError::runtime("environment missing"))?
+            .bindings
+            .get_index(slot)
+            .ok_or_else(|| {
+                MustardError::runtime(format!(
+                    "binding slot {slot} missing in environment at depth {depth}"
+                ))
+            })?;
+        Ok((name.clone(), *cell))
+    }
+
+    pub(super) fn lookup_slot(
+        &self,
+        env: EnvKey,
+        depth: usize,
+        slot: usize,
+    ) -> MustardResult<Value> {
+        let (name, cell_key) = self.resolve_slot_binding(env, depth, slot)?;
+        let cell = self
+            .cells
+            .get(cell_key)
+            .ok_or_else(|| MustardError::runtime("binding cell missing"))?;
+        if !cell.initialized {
+            return Err(MustardError::runtime(format!(
+                "ReferenceError: `{name}` accessed before initialization"
+            )));
+        }
+        Ok(cell.value.clone())
+    }
+
+    pub(super) fn assign_slot(
+        &mut self,
+        env: EnvKey,
+        depth: usize,
+        slot: usize,
+        value: Value,
+    ) -> MustardResult<()> {
+        let (name, cell_key) = self.resolve_slot_binding(env, depth, slot)?;
+        self.infer_closure_name(&value, &name)?;
+        {
+            let cell = self
+                .cells
+                .get_mut(cell_key)
+                .ok_or_else(|| MustardError::runtime("binding cell missing"))?;
+            if !cell.initialized {
+                return Err(MustardError::runtime(format!(
+                    "ReferenceError: `{name}` accessed before initialization"
+                )));
+            }
+            if !cell.mutable {
+                return Err(MustardError::runtime(format!(
+                    "TypeError: assignment to constant variable `{name}`"
+                )));
+            }
+            cell.value = value;
+        }
+        self.refresh_cell_accounting(cell_key)?;
+        if self
+            .envs
+            .get(self.globals)
+            .and_then(|globals| globals.bindings.get(name.as_str()))
+            .is_some_and(|bound| *bound == cell_key)
+        {
+            let value = self
+                .cells
+                .get(cell_key)
+                .ok_or_else(|| MustardError::runtime("binding cell missing"))?
+                .value
+                .clone();
+            self.set_global_property_value(name, value)?;
+        }
+        Ok(())
+    }
+
     pub(super) fn lookup_name(&self, env: EnvKey, name: &str) -> MustardResult<Value> {
         let Some(cell) = self.find_cell(env, name) else {
             if let Some(value) = self.global_property_value(name) {

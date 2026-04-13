@@ -17,14 +17,12 @@ impl Compiler {
     ) -> MustardResult<()> {
         match statement {
             Stmt::Block { body, .. } => {
-                context.code.push(Instruction::PushEnv);
-                context.scope_depth += 1;
+                self.enter_env_scope(context);
                 self.emit_block_prologue(context, body, false)?;
                 for statement in body {
                     self.compile_stmt(context, statement)?;
                 }
-                context.scope_depth -= 1;
-                context.code.push(Instruction::PopEnv);
+                self.exit_env_scope(context);
             }
             Stmt::VariableDecl { declarators, .. } => {
                 for declarator in declarators {
@@ -121,8 +119,7 @@ impl Compiler {
                 body,
                 ..
             } => {
-                context.code.push(Instruction::PushEnv);
-                context.scope_depth += 1;
+                self.enter_env_scope(context);
                 if let Some(init) = init {
                     match init {
                         ForInit::VariableDecl {
@@ -131,9 +128,7 @@ impl Compiler {
                         } => {
                             for declarator in declarators {
                                 for (name, mutable) in pattern_bindings(&declarator.pattern) {
-                                    context
-                                        .code
-                                        .push(Instruction::DeclareName { name, mutable });
+                                    self.emit_declare_name(context, name, mutable);
                                 }
                                 if let Some(initializer) = &declarator.initializer {
                                     self.compile_expr(context, initializer)?;
@@ -188,8 +183,7 @@ impl Compiler {
                 for jump in loop_ctx.break_jumps {
                     self.patch_control_transfer(context, jump, loop_end);
                 }
-                context.scope_depth -= 1;
-                context.code.push(Instruction::PopEnv);
+                self.exit_env_scope(context);
             }
             Stmt::ForOf {
                 span,
@@ -198,8 +192,7 @@ impl Compiler {
                 iterable,
                 body,
             } => {
-                context.code.push(Instruction::PushEnv);
-                context.scope_depth += 1;
+                self.enter_env_scope(context);
                 let loop_scope_depth = context.scope_depth;
                 let iterator_binding = self.fresh_internal_name(context, "iter");
                 let assignment_value_binding = match head {
@@ -208,15 +201,9 @@ impl Compiler {
                         Some(self.fresh_internal_name(context, "for_of_value"))
                     }
                 };
-                context.code.push(Instruction::DeclareName {
-                    name: iterator_binding.clone(),
-                    mutable: false,
-                });
+                self.emit_declare_name(context, iterator_binding.clone(), false);
                 if let Some(binding) = &assignment_value_binding {
-                    context.code.push(Instruction::DeclareName {
-                        name: binding.clone(),
-                        mutable: true,
-                    });
+                    self.emit_declare_name(context, binding.clone(), true);
                     context.code.push(Instruction::PushUndefined);
                     context
                         .code
@@ -235,9 +222,7 @@ impl Compiler {
                     }));
 
                 let loop_start = context.code.len();
-                context
-                    .code
-                    .push(Instruction::LoadName(iterator_binding.clone()));
+                self.emit_load_name(context, &iterator_binding);
                 context.code.push(Instruction::IteratorNext);
                 let exit_jump = self.emit_jump(context, Instruction::JumpIfTrue(usize::MAX));
                 context.code.push(Instruction::Pop);
@@ -247,13 +232,9 @@ impl Compiler {
 
                 match head {
                     ForOfHead::Binding { kind, pattern } => {
-                        context.code.push(Instruction::PushEnv);
-                        context.scope_depth += 1;
+                        self.enter_env_scope(context);
                         for (name, _) in pattern_bindings(pattern) {
-                            context.code.push(Instruction::DeclareName {
-                                name,
-                                mutable: *kind == BindingKind::Let,
-                            });
+                            self.emit_declare_name(context, name, *kind == BindingKind::Let);
                         }
                         self.compile_pattern_binding(context, pattern)?;
                     }
@@ -286,8 +267,7 @@ impl Compiler {
                 });
                 self.compile_stmt(context, body)?;
                 if matches!(head, ForOfHead::Binding { .. }) {
-                    context.scope_depth -= 1;
-                    context.code.push(Instruction::PopEnv);
+                    self.exit_env_scope(context);
                 }
                 let continue_target = context.code.len();
                 context.code.push(Instruction::Jump(loop_start));
@@ -306,8 +286,7 @@ impl Compiler {
                     self.patch_control_transfer(context, jump, loop_end);
                 }
 
-                context.scope_depth -= 1;
-                context.code.push(Instruction::PopEnv);
+                self.exit_env_scope(context);
             }
             Stmt::ForIn {
                 span,

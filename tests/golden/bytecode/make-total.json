@@ -42,7 +42,10 @@
           }
         },
         {
-          "LoadName": "\u0000mustard_param_0"
+          "LoadSlot": {
+            "depth": 0,
+            "slot": 1
+          }
         },
         {
           "InitializePattern": {
@@ -62,7 +65,10 @@
           }
         },
         {
-          "LoadName": "\u0000mustard_param_1"
+          "LoadSlot": {
+            "depth": 0,
+            "slot": 2
+          }
         },
         {
           "InitializePattern": {
@@ -82,10 +88,16 @@
           }
         },
         {
-          "LoadName": "left"
+          "LoadSlot": {
+            "depth": 0,
+            "slot": 3
+          }
         },
         {
-          "LoadName": "right"
+          "LoadSlot": {
+            "depth": 0,
+            "slot": 4
+          }
         },
         {
           "MakeArray": {
@@ -110,7 +122,10 @@
         },
         "Dup",
         {
-          "LoadName": "pair"
+          "LoadSlot": {
+            "depth": 0,
+            "slot": 5
+          }
         },
         {
           "PushNumber": 0.0
@@ -121,7 +136,10 @@
           }
         },
         {
-          "LoadName": "pair"
+          "LoadSlot": {
+            "depth": 0,
+            "slot": 5
+          }
         },
         {
           "PushNumber": 1.0
@@ -183,7 +201,10 @@
           }
         },
         {
-          "LoadName": "makeTotal"
+          "LoadSlot": {
+            "depth": 0,
+            "slot": 1
+          }
         },
         {
           "PushNumber": 2.0

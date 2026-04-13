@@ -26,8 +26,8 @@ impl Compiler {
                 pattern: pattern.clone(),
                 flags: flags.clone(),
             }),
-            Expr::Identifier { name, .. } => context.code.push(Instruction::LoadName(name.clone())),
-            Expr::This { .. } => context.code.push(Instruction::LoadName("this".to_string())),
+            Expr::Identifier { name, .. } => self.emit_load_name(context, name),
+            Expr::This { .. } => self.emit_load_name(context, "this"),
             Expr::Array { elements, .. } => {
                 if elements
                     .iter()
@@ -98,7 +98,7 @@ impl Compiler {
             }
             Expr::Function(function) => {
                 context.code.push(Instruction::MakeClosure {
-                    function_id: self.compile_function(function)?,
+                    function_id: self.compile_function(context, function)?,
                 });
             }
             Expr::Unary {

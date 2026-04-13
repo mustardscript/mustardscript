@@ -44,6 +44,8 @@ struct Compiler {
 impl Compiler {
     fn compile_root(&mut self, statements: &[Stmt], span: SourceSpan) -> MustardResult<usize> {
         let mut context = CompileContext::default();
+        context.push_binding_scope();
+        context.declare_binding("this".to_string());
         self.emit_block_prologue(&mut context, statements, true)?;
         let mut produced_result = false;
         for (index, statement) in statements.iter().enumerate() {
@@ -76,20 +78,36 @@ impl Compiler {
         Ok(id)
     }
 
-    fn compile_function(&mut self, function: &FunctionExpr) -> MustardResult<usize> {
-        self.compile_function_body(function)
+    fn compile_function(
+        &mut self,
+        parent_context: &CompileContext,
+        function: &FunctionExpr,
+    ) -> MustardResult<usize> {
+        self.compile_function_body(parent_context, function)
     }
 
-    fn compile_function_body(&mut self, function: &FunctionExpr) -> MustardResult<usize> {
-        let mut context = CompileContext::default();
+    fn compile_function_body(
+        &mut self,
+        parent_context: &CompileContext,
+        function: &FunctionExpr,
+    ) -> MustardResult<usize> {
+        let mut context = CompileContext::with_inherited_bindings(&parent_context.binding_scopes);
+        context.push_binding_scope();
+        context.declare_binding("this".to_string());
+        for pattern in &function.params {
+            let Pattern::Identifier { name, .. } = pattern else {
+                unreachable!("lowered function params should be identifier temporaries");
+            };
+            context.declare_binding(name.clone());
+        }
+        if let Some(Pattern::Identifier { name, .. }) = &function.rest {
+            context.declare_binding(name.clone());
+        }
         for statement in &function.param_init {
             if let Stmt::VariableDecl { declarators, .. } = statement {
                 for declarator in declarators {
                     for (name, _) in pattern_bindings(&declarator.pattern) {
-                        context.code.push(Instruction::DeclareName {
-                            name,
-                            mutable: true,
-                        });
+                        self.emit_declare_name(&mut context, name, true);
                     }
                     if let Some(initializer) = &declarator.initializer {
                         self.compile_expr(&mut context, initializer)?;
@@ -146,21 +164,16 @@ impl Compiler {
         let bindings = collect_block_bindings(statements);
         for (name, mutable) in bindings.lexicals {
             if declared.insert(name.clone()) {
-                context
-                    .code
-                    .push(Instruction::DeclareName { name, mutable });
+                self.emit_declare_name(context, name, mutable);
             }
         }
         for function in bindings.functions {
             let function_name = function.name.clone();
             if declared.insert(function_name.clone()) {
-                context.code.push(Instruction::DeclareName {
-                    name: function_name.clone(),
-                    mutable: false,
-                });
+                self.emit_declare_name(context, function_name.clone(), false);
             }
             context.code.push(Instruction::MakeClosure {
-                function_id: self.compile_function(&function.expr)?,
+                function_id: self.compile_function(context, &function.expr)?,
             });
             context
                 .code
@@ -170,9 +183,7 @@ impl Compiler {
                 }));
             if root_scope {
                 context.code.push(Instruction::LoadGlobalObject);
-                context
-                    .code
-                    .push(Instruction::LoadName(function_name.clone()));
+                self.emit_load_name(context, &function_name);
                 context.code.push(Instruction::SetPropStatic {
                     name: function_name,
                 });
@@ -186,5 +197,46 @@ impl Compiler {
         let name = format!("\0mustard_{prefix}_{}", context.internal_name_counter);
         context.internal_name_counter += 1;
         name
+    }
+
+    fn enter_env_scope(&self, context: &mut CompileContext) {
+        context.code.push(Instruction::PushEnv);
+        context.scope_depth += 1;
+        context.push_binding_scope();
+    }
+
+    fn exit_env_scope(&self, context: &mut CompileContext) {
+        context.scope_depth -= 1;
+        context.pop_binding_scope();
+        context.code.push(Instruction::PopEnv);
+    }
+
+    fn emit_declare_name(&self, context: &mut CompileContext, name: String, mutable: bool) {
+        context.declare_binding(name.clone());
+        context
+            .code
+            .push(Instruction::DeclareName { name, mutable });
+    }
+
+    fn emit_load_name(&self, context: &mut CompileContext, name: &str) {
+        if let Some(binding) = context.resolve_binding(name) {
+            context.code.push(Instruction::LoadSlot {
+                depth: binding.depth,
+                slot: binding.slot,
+            });
+        } else {
+            context.code.push(Instruction::LoadName(name.to_string()));
+        }
+    }
+
+    fn emit_store_name(&self, context: &mut CompileContext, name: &str) {
+        if let Some(binding) = context.resolve_binding(name) {
+            context.code.push(Instruction::StoreSlot {
+                depth: binding.depth,
+                slot: binding.slot,
+            });
+        } else {
+            context.code.push(Instruction::StoreName(name.to_string()));
+        }
     }
 }

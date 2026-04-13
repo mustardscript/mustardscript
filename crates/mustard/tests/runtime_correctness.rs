@@ -205,6 +205,43 @@ fn object_literals_support_computed_keys_methods_and_spread() {
 }
 
 #[test]
+fn nested_closures_keep_shadowed_slots_distinct_while_updating_outer_bindings() {
+    let program = compile(
+        r#"
+        function makeCounter(seed) {
+          let total = seed;
+          return function(step) {
+            let readShadow;
+            {
+              let total = 1000;
+              readShadow = function() {
+                return total + step;
+              };
+            }
+            const apply = function(extra) {
+              total = total + extra;
+              return [readShadow(), total];
+            };
+            return apply(step);
+          };
+        }
+        const counter = makeCounter(1);
+        [counter(2), counter(3)];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            StructuredValue::Array(vec![number(1002.0), number(3.0)]),
+            StructuredValue::Array(vec![number(1003.0), number(6.0)]),
+        ])
+    );
+}
+
+#[test]
 fn sequence_expressions_preserve_left_to_right_side_effects_and_last_value() {
     let program = compile(
         r#"

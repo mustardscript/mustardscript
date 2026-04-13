@@ -11,10 +11,7 @@ use super::bindings::assign_op_to_binary;
 impl Compiler {
     fn declare_internal_binding(&mut self, context: &mut CompileContext, prefix: &str) -> String {
         let name = self.fresh_internal_name(context, prefix);
-        context.code.push(Instruction::DeclareName {
-            name: name.clone(),
-            mutable: true,
-        });
+        self.emit_declare_name(context, name.clone(), true);
         name
     }
 
@@ -52,13 +49,13 @@ impl Compiler {
                 self.store_internal_binding(context, &source, *span);
                 for (index, element) in elements.iter().enumerate() {
                     if let Some(element) = element {
-                        context.code.push(Instruction::LoadName(source.clone()));
+                        self.emit_load_name(context, &source);
                         context.code.push(Instruction::PatternArrayIndex(index));
                         self.compile_pattern_binding(context, element)?;
                     }
                 }
                 if let Some(rest) = rest {
-                    context.code.push(Instruction::LoadName(source));
+                    self.emit_load_name(context, &source);
                     context
                         .code
                         .push(Instruction::PatternArrayRest(elements.len()));
@@ -73,7 +70,7 @@ impl Compiler {
                 let source = self.declare_internal_binding(context, "pattern_object");
                 self.store_internal_binding(context, &source, *span);
                 for property in properties {
-                    context.code.push(Instruction::LoadName(source.clone()));
+                    self.emit_load_name(context, &source);
                     match &property.key {
                         PropertyName::Identifier(name) | PropertyName::String(name) => {
                             context.code.push(Instruction::GetPropStatic {
@@ -100,7 +97,7 @@ impl Compiler {
                             PropertyName::Number(number) => format_number_key(*number),
                         })
                         .collect();
-                    context.code.push(Instruction::LoadName(source));
+                    self.emit_load_name(context, &source);
                     context.code.push(Instruction::PatternObjectRest(excluded));
                     self.compile_pattern_binding(context, rest)?;
                 }
@@ -112,7 +109,7 @@ impl Compiler {
             } => {
                 let source = self.declare_internal_binding(context, "pattern_default");
                 self.store_internal_binding(context, &source, *span);
-                context.code.push(Instruction::LoadName(source.clone()));
+                self.emit_load_name(context, &source);
                 context.code.push(Instruction::PushUndefined);
                 context
                     .code
@@ -124,7 +121,7 @@ impl Compiler {
                 let use_source_ip = context.code.len();
                 self.patch_jump(context, use_source, use_source_ip);
                 context.code.push(Instruction::Pop);
-                context.code.push(Instruction::LoadName(source));
+                self.emit_load_name(context, &source);
                 let end_ip = context.code.len();
                 self.patch_jump(context, end, end_ip);
                 self.compile_pattern_binding(context, target)?;
@@ -160,7 +157,7 @@ impl Compiler {
             } => {
                 let source = self.declare_internal_binding(context, "assign_default");
                 self.store_internal_binding(context, &source, *span);
-                context.code.push(Instruction::LoadName(source.clone()));
+                self.emit_load_name(context, &source);
                 context.code.push(Instruction::PushUndefined);
                 context
                     .code
@@ -172,7 +169,7 @@ impl Compiler {
                 let use_source_ip = context.code.len();
                 self.patch_jump(context, use_source, use_source_ip);
                 context.code.push(Instruction::Pop);
-                context.code.push(Instruction::LoadName(source));
+                self.emit_load_name(context, &source);
                 let end_ip = context.code.len();
                 self.patch_jump(context, end, end_ip);
                 self.compile_assign_target_pattern(context, target)?;
@@ -186,13 +183,13 @@ impl Compiler {
                 self.store_internal_binding(context, &source, *span);
                 for (index, element) in elements.iter().enumerate() {
                     if let Some(element) = element {
-                        context.code.push(Instruction::LoadName(source.clone()));
+                        self.emit_load_name(context, &source);
                         context.code.push(Instruction::PatternArrayIndex(index));
                         self.compile_assign_target_pattern(context, element)?;
                     }
                 }
                 if let Some(rest) = rest {
-                    context.code.push(Instruction::LoadName(source));
+                    self.emit_load_name(context, &source);
                     context
                         .code
                         .push(Instruction::PatternArrayRest(elements.len()));
@@ -207,7 +204,7 @@ impl Compiler {
                 let source = self.declare_internal_binding(context, "assign_object");
                 self.store_internal_binding(context, &source, *span);
                 for property in properties {
-                    context.code.push(Instruction::LoadName(source.clone()));
+                    self.emit_load_name(context, &source);
                     match &property.key {
                         PropertyName::Identifier(name) | PropertyName::String(name) => {
                             context.code.push(Instruction::GetPropStatic {
@@ -234,7 +231,7 @@ impl Compiler {
                             PropertyName::Number(number) => format_number_key(*number),
                         })
                         .collect();
-                    context.code.push(Instruction::LoadName(source));
+                    self.emit_load_name(context, &source);
                     context.code.push(Instruction::PatternObjectRest(excluded));
                     self.compile_assign_target_pattern(context, rest)?;
                 }
@@ -250,7 +247,7 @@ impl Compiler {
         value: &Expr,
         jump_if_eval: Instruction,
     ) -> MustardResult<()> {
-        context.code.push(Instruction::LoadName(name.to_string()));
+        self.emit_load_name(context, name);
         context.code.push(Instruction::Dup);
         let rhs_jump = self.emit_jump(context, jump_if_eval);
         context.code.push(Instruction::Pop);
@@ -260,7 +257,7 @@ impl Compiler {
         context.code.push(Instruction::Pop);
         context.code.push(Instruction::Pop);
         self.compile_expr(context, value)?;
-        context.code.push(Instruction::StoreName(name.to_string()));
+        self.emit_store_name(context, name);
         let end_ip = context.code.len();
         self.patch_jump(context, end_jump, end_ip);
         Ok(())
@@ -276,10 +273,7 @@ impl Compiler {
         jump_if_eval: Instruction,
     ) -> MustardResult<()> {
         let object_binding = self.fresh_internal_name(context, "assign_obj");
-        context.code.push(Instruction::DeclareName {
-            name: object_binding.clone(),
-            mutable: false,
-        });
+        self.emit_declare_name(context, object_binding.clone(), false);
         self.compile_expr(context, object)?;
         context
             .code
@@ -287,9 +281,7 @@ impl Compiler {
                 span: SourceSpan::new(0, 0),
                 name: object_binding.clone(),
             }));
-        context
-            .code
-            .push(Instruction::LoadName(object_binding.clone()));
+        self.emit_load_name(context, &object_binding);
         context.code.push(Instruction::GetPropStatic {
             name: name.clone(),
             optional,
@@ -302,7 +294,7 @@ impl Compiler {
         self.patch_jump(context, rhs_jump, rhs_ip);
         context.code.push(Instruction::Pop);
         context.code.push(Instruction::Pop);
-        context.code.push(Instruction::LoadName(object_binding));
+        self.emit_load_name(context, &object_binding);
         self.compile_expr(context, value)?;
         context.code.push(Instruction::SetPropStatic { name });
         let end_ip = context.code.len();
@@ -322,10 +314,7 @@ impl Compiler {
         let object_binding = self.fresh_internal_name(context, "assign_obj");
         let key_binding = self.fresh_internal_name(context, "assign_key");
         for name in [&object_binding, &key_binding] {
-            context.code.push(Instruction::DeclareName {
-                name: name.clone(),
-                mutable: false,
-            });
+            self.emit_declare_name(context, name.clone(), false);
         }
         self.compile_expr(context, object)?;
         context
@@ -341,12 +330,8 @@ impl Compiler {
                 span: SourceSpan::new(0, 0),
                 name: key_binding.clone(),
             }));
-        context
-            .code
-            .push(Instruction::LoadName(object_binding.clone()));
-        context
-            .code
-            .push(Instruction::LoadName(key_binding.clone()));
+        self.emit_load_name(context, &object_binding);
+        self.emit_load_name(context, &key_binding);
         context.code.push(Instruction::GetPropComputed { optional });
         context.code.push(Instruction::Dup);
         let rhs_jump = self.emit_jump(context, jump_if_eval);
@@ -356,8 +341,8 @@ impl Compiler {
         self.patch_jump(context, rhs_jump, rhs_ip);
         context.code.push(Instruction::Pop);
         context.code.push(Instruction::Pop);
-        context.code.push(Instruction::LoadName(object_binding));
-        context.code.push(Instruction::LoadName(key_binding));
+        self.emit_load_name(context, &object_binding);
+        self.emit_load_name(context, &key_binding);
         self.compile_expr(context, value)?;
         context.code.push(Instruction::SetPropComputed);
         let end_ip = context.code.len();
@@ -379,7 +364,7 @@ impl Compiler {
             self.compile_expr(context, value)?;
             let result = self.declare_internal_binding(context, "assign_result");
             self.store_internal_binding(context, &result, SourceSpan::new(0, 0));
-            context.code.push(Instruction::LoadName(result.clone()));
+            self.emit_load_name(context, &result);
             self.compile_assign_target_pattern(
                 context,
                 match target {
@@ -389,14 +374,14 @@ impl Compiler {
                     _ => unreachable!(),
                 },
             )?;
-            context.code.push(Instruction::LoadName(result));
+            self.emit_load_name(context, &result);
             return Ok(());
         }
         match target {
             AssignTarget::Identifier { name, .. } => {
                 if operator == AssignOp::Assign {
                     self.compile_expr(context, value)?;
-                    context.code.push(Instruction::StoreName(name.clone()));
+                    self.emit_store_name(context, name);
                 } else if operator == AssignOp::OrAssign {
                     self.compile_short_circuit_assignment_identifier(
                         context,
@@ -419,12 +404,12 @@ impl Compiler {
                         Instruction::JumpIfNullish(usize::MAX),
                     )?;
                 } else {
-                    context.code.push(Instruction::LoadName(name.clone()));
+                    self.emit_load_name(context, name);
                     self.compile_expr(context, value)?;
                     context
                         .code
                         .push(Instruction::Binary(assign_op_to_binary(operator)?));
-                    context.code.push(Instruction::StoreName(name.clone()));
+                    self.emit_store_name(context, name);
                 }
             }
             AssignTarget::Member {
@@ -595,12 +580,12 @@ impl Compiler {
     ) -> MustardResult<()> {
         match target {
             AssignTarget::Identifier { name, .. } => {
-                context.code.push(Instruction::LoadName(name.clone()));
+                self.emit_load_name(context, name);
                 if !prefix {
                     context.code.push(Instruction::Dup);
                 }
                 context.code.push(Instruction::Update(operator));
-                context.code.push(Instruction::StoreName(name.clone()));
+                self.emit_store_name(context, name);
                 if !prefix {
                     context.code.push(Instruction::Pop);
                 }
@@ -622,9 +607,7 @@ impl Compiler {
                 } else {
                     None
                 };
-                context
-                    .code
-                    .push(Instruction::LoadName(object_binding.clone()));
+                self.emit_load_name(context, &object_binding);
                 match property {
                     MemberProperty::Static(PropertyName::Identifier(name))
                     | MemberProperty::Static(PropertyName::String(name)) => {
@@ -640,9 +623,13 @@ impl Compiler {
                         });
                     }
                     MemberProperty::Computed(_) => {
-                        context.code.push(Instruction::LoadName(
-                            key_binding.clone().expect("computed update key missing"),
-                        ));
+                        self.emit_load_name(
+                            context,
+                            key_binding
+                                .clone()
+                                .expect("computed update key missing")
+                                .as_str(),
+                        );
                         context.code.push(Instruction::GetPropComputed {
                             optional: *optional,
                         });
@@ -654,26 +641,27 @@ impl Compiler {
                 context.code.push(Instruction::Update(operator));
                 let value_binding = self.declare_internal_binding(context, "update_value");
                 self.store_internal_binding(context, &value_binding, SourceSpan::new(0, 0));
-                context.code.push(Instruction::LoadName(object_binding));
+                self.emit_load_name(context, &object_binding);
                 match property {
                     MemberProperty::Static(PropertyName::Identifier(name))
                     | MemberProperty::Static(PropertyName::String(name)) => {
-                        context.code.push(Instruction::LoadName(value_binding));
+                        self.emit_load_name(context, &value_binding);
                         context
                             .code
                             .push(Instruction::SetPropStatic { name: name.clone() });
                     }
                     MemberProperty::Static(PropertyName::Number(number)) => {
-                        context.code.push(Instruction::LoadName(value_binding));
+                        self.emit_load_name(context, &value_binding);
                         context.code.push(Instruction::SetPropStatic {
                             name: format_number_key(*number),
                         });
                     }
                     MemberProperty::Computed(_) => {
-                        context.code.push(Instruction::LoadName(
-                            key_binding.expect("computed update key missing"),
-                        ));
-                        context.code.push(Instruction::LoadName(value_binding));
+                        self.emit_load_name(
+                            context,
+                            key_binding.expect("computed update key missing").as_str(),
+                        );
+                        self.emit_load_name(context, &value_binding);
                         context.code.push(Instruction::SetPropComputed);
                     }
                 }
