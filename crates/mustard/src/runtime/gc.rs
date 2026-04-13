@@ -188,6 +188,17 @@ impl Runtime {
                         }
                     }
                 }
+                MicrotaskJob::PromiseCombinator { target, input, .. } => {
+                    self.mark_promise(*target, &mut marks, &mut worklist);
+                    match input {
+                        PromiseCombinatorInput::Promise(source) => {
+                            self.mark_promise(*source, &mut marks, &mut worklist);
+                        }
+                        PromiseCombinatorInput::Fulfilled(value) => {
+                            self.mark_value(value, &mut marks, &mut worklist);
+                        }
+                    }
+                }
             }
         }
         for request in &self.pending_host_calls {

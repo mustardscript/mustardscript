@@ -28,6 +28,8 @@ struct BenchFixtures {
     object_from_entries_shared: Arc<BytecodeProgram>,
     array_callback_shared: Arc<BytecodeProgram>,
     collection_callback_shared: Arc<BytecodeProgram>,
+    promise_all_immediate_shared: Arc<BytecodeProgram>,
+    promise_all_settled_immediate_shared: Arc<BytecodeProgram>,
     map_set_shared: Arc<BytecodeProgram>,
     map_ctor_large_shared: Arc<BytecodeProgram>,
     set_ctor_large_shared: Arc<BytecodeProgram>,
@@ -66,6 +68,10 @@ impl BenchFixtures {
         let array_callback_shared = Arc::new(compile_to_bytecode(array_callback_source()));
         let collection_callback_shared =
             Arc::new(compile_to_bytecode(collection_callback_source()));
+        let promise_all_immediate_shared =
+            Arc::new(compile_to_bytecode(promise_all_immediate_source()));
+        let promise_all_settled_immediate_shared =
+            Arc::new(compile_to_bytecode(promise_all_settled_immediate_source()));
         let map_set_shared = Arc::new(compile_to_bytecode(map_set_source()));
         let map_ctor_large_shared = Arc::new(compile_to_bytecode(map_ctor_large_source()));
         let set_ctor_large_shared = Arc::new(compile_to_bytecode(set_ctor_large_source()));
@@ -107,6 +113,8 @@ impl BenchFixtures {
             object_from_entries_shared,
             array_callback_shared,
             collection_callback_shared,
+            promise_all_immediate_shared,
+            promise_all_settled_immediate_shared,
             map_set_shared,
             map_ctor_large_shared,
             set_ctor_large_shared,
@@ -462,6 +470,34 @@ fn runtime_execution_benches(c: &mut Criterion) {
                     options,
                 )
                 .expect("collection callback hot path should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("promise_all_immediate_fanout", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.promise_all_immediate_shared),
+                    options,
+                )
+                .expect("Promise.all immediate fanout should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("promise_all_settled_immediate", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.promise_all_settled_immediate_shared),
+                    options,
+                )
+                .expect("Promise.allSettled immediate bench should execute");
                 consume_completed(step);
             },
             BatchSize::SmallInput,
@@ -857,6 +893,46 @@ fn collection_callback_source() -> &'static str {
       });
     }
     total;
+    "#
+}
+
+fn promise_all_immediate_source() -> &'static str {
+    r#"
+    async function main() {
+      const seed = [];
+      for (let i = 0; i < 128; i += 1) {
+        seed.push(i);
+      }
+      let total = 0;
+      for (let round = 0; round < 64; round += 1) {
+        const values = await Promise.all(seed);
+        total += values[round % seed.length];
+      }
+      return total;
+    }
+    main();
+    "#
+}
+
+fn promise_all_settled_immediate_source() -> &'static str {
+    r#"
+    async function main() {
+      const seed = [];
+      for (let i = 0; i < 96; i += 1) {
+        seed.push(i % 4 === 0 ? Promise.reject("boom:" + i) : i);
+      }
+      let total = 0;
+      for (let round = 0; round < 48; round += 1) {
+        const settled = await Promise.allSettled(seed);
+        for (let index = 0; index < settled.length; index += 1) {
+          if (settled[index].status === "fulfilled") {
+            total += settled[index].value;
+          }
+        }
+      }
+      return total;
+    }
+    main();
     "#
 }
 

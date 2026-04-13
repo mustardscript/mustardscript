@@ -71,7 +71,32 @@ impl Runtime {
         promise: PromiseKey,
         reaction: PromiseReaction,
     ) -> MustardResult<()> {
-        match self.promise_outcome(promise)? {
+        let is_pending = matches!(
+            self.promises
+                .get(promise)
+                .ok_or_else(|| MustardError::runtime("promise missing"))?
+                .state,
+            PromiseState::Pending
+        );
+        if let PromiseReaction::Combinator {
+            target,
+            index,
+            kind,
+        } = reaction
+            && !is_pending
+        {
+            return self.schedule_promise_combinator(
+                target,
+                index,
+                kind,
+                PromiseCombinatorInput::Promise(promise),
+            );
+        }
+        match if is_pending {
+            None
+        } else {
+            self.promise_outcome(promise)?
+        } {
             Some(outcome) => self.schedule_promise_reaction(reaction, outcome),
             None => {
                 let added_bytes = Self::promise_reaction_bytes(&reaction);
@@ -92,6 +117,22 @@ impl Runtime {
     ) -> MustardResult<()> {
         self.microtasks
             .push_back(MicrotaskJob::PromiseReaction { reaction, outcome });
+        Ok(())
+    }
+
+    pub(in crate::runtime) fn schedule_promise_combinator(
+        &mut self,
+        target: PromiseKey,
+        index: usize,
+        kind: PromiseCombinatorKind,
+        input: PromiseCombinatorInput,
+    ) -> MustardResult<()> {
+        self.microtasks.push_back(MicrotaskJob::PromiseCombinator {
+            target,
+            index,
+            kind,
+            input,
+        });
         Ok(())
     }
 
@@ -138,7 +179,19 @@ impl Runtime {
             self.resolve_promise_with_outcome(dependent, outcome.clone())?;
         }
         for reaction in reactions {
-            self.schedule_promise_reaction(reaction, outcome.clone())?;
+            match reaction {
+                PromiseReaction::Combinator {
+                    target,
+                    index,
+                    kind,
+                } => self.schedule_promise_combinator(
+                    target,
+                    index,
+                    kind,
+                    PromiseCombinatorInput::Promise(promise),
+                )?,
+                other => self.schedule_promise_reaction(other, outcome.clone())?,
+            }
         }
         Ok(())
     }

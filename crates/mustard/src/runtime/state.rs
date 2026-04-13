@@ -795,6 +795,12 @@ pub(super) enum PromiseOutcome {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) enum PromiseCombinatorInput {
+    Promise(PromiseKey),
+    Fulfilled(Value),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) enum PromiseReaction {
     Then {
         target: PromiseKey,
@@ -858,6 +864,12 @@ pub(super) enum MicrotaskJob {
     PromiseReaction {
         reaction: PromiseReaction,
         outcome: PromiseOutcome,
+    },
+    PromiseCombinator {
+        target: PromiseKey,
+        index: usize,
+        kind: PromiseCombinatorKind,
+        input: PromiseCombinatorInput,
     },
 }
 

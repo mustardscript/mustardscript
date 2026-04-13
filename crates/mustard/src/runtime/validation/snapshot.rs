@@ -48,6 +48,7 @@ pub(in crate::runtime) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> Mus
         }
     }
     for microtask in &runtime.microtasks {
+        validate_microtask_snapshot(runtime, microtask)?;
         walk::walk_microtask_values(
             microtask,
             &mut |frame| {
@@ -299,6 +300,89 @@ fn validate_pending_host_call_snapshot(
     Ok(())
 }
 
+fn validate_promise_combinator_target(
+    runtime: &Runtime,
+    owner: &str,
+    target: PromiseKey,
+    index: usize,
+    kind: PromiseCombinatorKind,
+) -> MustardResult<()> {
+    let target_promise = runtime.promises.get(target).ok_or_else(|| {
+        snapshot_error(format!(
+            "{owner} combinator reaction references missing target {:?}",
+            target
+        ))
+    })?;
+    let Some(driver) = target_promise.driver.as_ref() else {
+        return Err(snapshot_error(format!(
+            "{owner} combinator target {:?} is missing driver state",
+            target
+        )));
+    };
+    let len = match (kind, driver) {
+        (PromiseCombinatorKind::Race, _) => None,
+        (PromiseCombinatorKind::All, PromiseDriver::All { values, .. }) => Some(values.len()),
+        (PromiseCombinatorKind::AllSettled, PromiseDriver::AllSettled { results, .. }) => {
+            Some(results.len())
+        }
+        (PromiseCombinatorKind::Any, PromiseDriver::Any { reasons, .. }) => Some(reasons.len()),
+        _ => {
+            return Err(snapshot_error(format!(
+                "{owner} combinator reaction kind does not match target {:?} driver",
+                target
+            )));
+        }
+    };
+    if let Some(len) = len
+        && index >= len
+    {
+        return Err(snapshot_error(format!(
+            "{owner} combinator index {} is out of range for target {:?}",
+            index, target
+        )));
+    }
+    Ok(())
+}
+
+fn validate_microtask_snapshot(runtime: &Runtime, microtask: &MicrotaskJob) -> MustardResult<()> {
+    if let MicrotaskJob::PromiseCombinator {
+        target,
+        index,
+        kind,
+        input,
+    } = microtask
+    {
+        if runtime.promises.get(*target).is_none() {
+            return Err(snapshot_error(format!(
+                "promise combinator microtask references missing target {:?}",
+                target
+            )));
+        }
+        validate_promise_combinator_target(
+            runtime,
+            "promise combinator microtask",
+            *target,
+            *index,
+            *kind,
+        )?;
+        if let PromiseCombinatorInput::Promise(source) = input {
+            let source_promise = runtime.promises.get(*source).ok_or_else(|| {
+                snapshot_error(format!(
+                    "promise combinator microtask references missing source {:?}",
+                    source
+                ))
+            })?;
+            if matches!(source_promise.state, PromiseState::Pending) {
+                return Err(snapshot_error(format!(
+                    "promise combinator microtask source {:?} is still pending",
+                    source
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn validate_promise_snapshot(
     runtime: &Runtime,
     promise_key: PromiseKey,
@@ -333,44 +417,13 @@ fn validate_promise_snapshot(
             kind,
         } = reaction
         {
-            let target_promise = runtime.promises.get(*target).ok_or_else(|| {
-                snapshot_error(format!(
-                    "promise {:?} combinator reaction references missing target {:?}",
-                    promise_key, target
-                ))
-            })?;
-            let Some(driver) = target_promise.driver.as_ref() else {
-                return Err(snapshot_error(format!(
-                    "promise {:?} combinator target {:?} is missing driver state",
-                    promise_key, target
-                )));
-            };
-            let len = match (kind, driver) {
-                (PromiseCombinatorKind::Race, _) => None,
-                (PromiseCombinatorKind::All, PromiseDriver::All { values, .. }) => {
-                    Some(values.len())
-                }
-                (PromiseCombinatorKind::AllSettled, PromiseDriver::AllSettled { results, .. }) => {
-                    Some(results.len())
-                }
-                (PromiseCombinatorKind::Any, PromiseDriver::Any { reasons, .. }) => {
-                    Some(reasons.len())
-                }
-                _ => {
-                    return Err(snapshot_error(format!(
-                        "promise {:?} combinator reaction kind does not match target {:?} driver",
-                        promise_key, target
-                    )));
-                }
-            };
-            if let Some(len) = len
-                && *index >= len
-            {
-                return Err(snapshot_error(format!(
-                    "promise {:?} combinator index {} is out of range for target {:?}",
-                    promise_key, index, target
-                )));
-            }
+            validate_promise_combinator_target(
+                runtime,
+                &format!("promise {:?}", promise_key),
+                *target,
+                *index,
+                *kind,
+            )?;
         }
     }
     Ok(())

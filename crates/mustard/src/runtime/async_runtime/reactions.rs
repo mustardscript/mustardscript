@@ -1,6 +1,40 @@
 use super::*;
 
 impl Runtime {
+    fn promise_combinator_outcome(
+        &self,
+        input: PromiseCombinatorInput,
+        kind: PromiseCombinatorKind,
+    ) -> MustardResult<PromiseOutcome> {
+        match input {
+            PromiseCombinatorInput::Fulfilled(value) => Ok(PromiseOutcome::Fulfilled(value)),
+            PromiseCombinatorInput::Promise(source) => {
+                let promise = self
+                    .promises
+                    .get(source)
+                    .ok_or_else(|| MustardError::runtime("promise combinator source missing"))?;
+                match &promise.state {
+                    PromiseState::Pending => {
+                        Err(MustardError::runtime("promise combinator source pending"))
+                    }
+                    PromiseState::Fulfilled(value) => Ok(PromiseOutcome::Fulfilled(value.clone())),
+                    PromiseState::Rejected(rejection) => Ok(PromiseOutcome::Rejected(match kind {
+                        PromiseCombinatorKind::All | PromiseCombinatorKind::Race => {
+                            rejection.clone()
+                        }
+                        PromiseCombinatorKind::AllSettled | PromiseCombinatorKind::Any => {
+                            PromiseRejection {
+                                value: rejection.value.clone(),
+                                span: None,
+                                traceback: Vec::new(),
+                            }
+                        }
+                    })),
+                }
+            }
+        }
+    }
+
     fn promise_combinator_slot_len(
         promise: &PromiseObject,
         kind: PromiseCombinatorKind,
@@ -374,6 +408,17 @@ impl Runtime {
                 Ok(())
             }
         }
+    }
+
+    pub(in crate::runtime) fn activate_promise_combinator_input(
+        &mut self,
+        target: PromiseKey,
+        index: usize,
+        kind: PromiseCombinatorKind,
+        input: PromiseCombinatorInput,
+    ) -> MustardResult<()> {
+        let outcome = self.promise_combinator_outcome(input, kind)?;
+        self.activate_promise_combinator(target, index, kind, outcome)
     }
 
     pub(in crate::runtime) fn activate_promise_reaction(

@@ -38,6 +38,14 @@ impl Runtime {
             MicrotaskJob::PromiseReaction { reaction, outcome } => {
                 self.activate_promise_reaction(reaction, outcome)?;
             }
+            MicrotaskJob::PromiseCombinator {
+                target,
+                index,
+                kind,
+                input,
+            } => {
+                self.activate_promise_combinator_input(target, index, kind, input)?;
+            }
         }
         Ok(())
     }

@@ -91,3 +91,59 @@ fn rejects_invalid_microtask_frame_state() {
         "unexpected error: {error}"
     );
 }
+
+#[test]
+fn rejects_pending_promise_combinator_microtask_source() {
+    let mut suspension = suspend_async_host_wait(
+        r#"
+        async function main() {
+          const value = await fetch_data(1);
+          return value + 2;
+        }
+        main();
+        "#,
+    );
+
+    let target = suspension
+        .snapshot
+        .runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("Promise.all target should allocate");
+    suspension
+        .snapshot
+        .runtime
+        .replace_promise_driver(
+            target,
+            Some(PromiseDriver::All {
+                remaining: 1,
+                values: vec![None],
+            }),
+        )
+        .expect("Promise.all driver should attach");
+    let pending_source = suspension
+        .snapshot
+        .runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("pending source promise should allocate");
+    suspension
+        .snapshot
+        .runtime
+        .microtasks
+        .push_back(MicrotaskJob::PromiseCombinator {
+            target,
+            index: 0,
+            kind: PromiseCombinatorKind::All,
+            input: PromiseCombinatorInput::Promise(pending_source),
+        });
+
+    let bytes = dump_snapshot(&suspension.snapshot).expect("snapshot should serialize");
+    let error =
+        load_snapshot(&bytes).expect_err("pending combinator source should fail validation");
+    assert!(
+        error
+            .to_string()
+            .contains("promise combinator microtask source")
+            && error.to_string().contains("pending"),
+        "unexpected error: {error}"
+    );
+}

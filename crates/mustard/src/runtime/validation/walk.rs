@@ -207,6 +207,11 @@ where
                 PromiseOutcome::Rejected(rejection) => visit_value(&rejection.value)?,
             }
         }
+        MicrotaskJob::PromiseCombinator { input, .. } => {
+            if let PromiseCombinatorInput::Fulfilled(value) = input {
+                visit_value(value)?;
+            }
+        }
     }
     Ok(())
 }

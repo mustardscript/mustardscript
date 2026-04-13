@@ -634,6 +634,109 @@ fn promise_accounting_deltas_preserve_cached_totals_without_full_refreshes() {
 }
 
 #[test]
+fn promise_combinator_fast_paths_avoid_synthetic_promises_for_immediate_inputs() {
+    let mut runtime = test_runtime();
+    let settled_input = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("settled input promise should allocate");
+    runtime
+        .resolve_promise(settled_input, Value::String("ready".to_string()))
+        .expect("settled input promise should resolve");
+
+    let baseline_promises = runtime.promises.len();
+    let baseline_metrics = runtime.debug_metrics();
+    let input_values = Value::Array(
+        runtime
+            .insert_array(
+                vec![
+                    Value::Number(1.0),
+                    Value::Promise(settled_input),
+                    Value::String("tail".to_string()),
+                ],
+                IndexMap::new(),
+            )
+            .expect("input array should allocate"),
+    );
+    let target = match runtime
+        .call_promise_all(&[input_values])
+        .expect("Promise.all should schedule combinators")
+    {
+        Value::Promise(target) => target,
+        other => panic!("expected Promise.all to return a promise, got {other:?}"),
+    };
+
+    assert_eq!(
+        runtime.promises.len(),
+        baseline_promises + 1,
+        "immediate Promise.all inputs should not allocate synthetic settled promises",
+    );
+    let queued = runtime.microtasks.iter().collect::<Vec<_>>();
+    assert_eq!(queued.len(), 3);
+    assert!(matches!(
+        queued.as_slice(),
+        [
+            MicrotaskJob::PromiseCombinator {
+                target: first_target,
+                index: 0,
+                kind: PromiseCombinatorKind::All,
+                input: PromiseCombinatorInput::Fulfilled(Value::Number(1.0)),
+            },
+            MicrotaskJob::PromiseCombinator {
+                target: second_target,
+                index: 1,
+                kind: PromiseCombinatorKind::All,
+                input: PromiseCombinatorInput::Promise(second_source),
+            },
+            MicrotaskJob::PromiseCombinator {
+                target: third_target,
+                index: 2,
+                kind: PromiseCombinatorKind::All,
+                input: PromiseCombinatorInput::Fulfilled(Value::String(tail)),
+            },
+        ] if *first_target == target
+            && *second_target == target
+            && *third_target == target
+            && *second_source == settled_input
+            && tail == "tail"
+    ));
+
+    while let Some(job) = runtime.microtasks.pop_front() {
+        runtime
+            .activate_microtask(job)
+            .expect("queued combinator microtask should execute");
+    }
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+
+    let result_array = match runtime
+        .promise_outcome(target)
+        .expect("Promise.all target outcome should exist")
+    {
+        Some(PromiseOutcome::Fulfilled(Value::Array(array))) => array,
+        other => panic!("expected Promise.all to fulfill to an array, got {other:?}"),
+    };
+    let result_values = runtime
+        .arrays
+        .get(result_array)
+        .expect("Promise.all result array should exist")
+        .elements
+        .iter()
+        .map(|value| value.clone().unwrap_or(Value::Undefined))
+        .collect::<Vec<_>>();
+    assert!(matches!(
+        result_values.as_slice(),
+        [Value::Number(first), Value::String(second), Value::String(third)]
+            if *first == 1.0 && second == "ready" && third == "tail"
+    ));
+}
+
+#[test]
 fn promise_combinator_completion_moves_driver_buffers_without_full_refreshes() {
     let mut runtime = test_runtime();
     let all_target = runtime

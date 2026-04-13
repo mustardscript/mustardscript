@@ -164,6 +164,49 @@ impl Runtime {
         Ok(values)
     }
 
+    fn attach_promise_combinator_input(
+        &mut self,
+        target: PromiseKey,
+        index: usize,
+        kind: PromiseCombinatorKind,
+        value: Value,
+    ) -> MustardResult<()> {
+        match value {
+            Value::Promise(promise) => {
+                let is_pending = matches!(
+                    self.promises
+                        .get(promise)
+                        .ok_or_else(|| MustardError::runtime("promise missing"))?
+                        .state,
+                    PromiseState::Pending
+                );
+                if !is_pending {
+                    self.schedule_promise_combinator(
+                        target,
+                        index,
+                        kind,
+                        PromiseCombinatorInput::Promise(promise),
+                    )
+                } else {
+                    self.attach_promise_reaction(
+                        promise,
+                        PromiseReaction::Combinator {
+                            target,
+                            index,
+                            kind,
+                        },
+                    )
+                }
+            }
+            other => self.schedule_promise_combinator(
+                target,
+                index,
+                kind,
+                PromiseCombinatorInput::Fulfilled(other),
+            ),
+        }
+    }
+
     pub(crate) fn call_promise_then(
         &mut self,
         this_value: Value,
@@ -232,15 +275,7 @@ impl Runtime {
             }),
         )?;
         for (index, value) in values.into_iter().enumerate() {
-            let promise = self.coerce_to_promise(value)?;
-            self.attach_promise_reaction(
-                promise,
-                PromiseReaction::Combinator {
-                    target,
-                    index,
-                    kind: PromiseCombinatorKind::All,
-                },
-            )?;
+            self.attach_promise_combinator_input(target, index, PromiseCombinatorKind::All, value)?;
         }
         Ok(Value::Promise(target))
     }
@@ -250,15 +285,7 @@ impl Runtime {
         for value in
             self.collect_iterable_values(args.first().cloned().unwrap_or(Value::Undefined))?
         {
-            let promise = self.coerce_to_promise(value)?;
-            self.attach_promise_reaction(
-                promise,
-                PromiseReaction::Combinator {
-                    target,
-                    index: 0,
-                    kind: PromiseCombinatorKind::Race,
-                },
-            )?;
+            self.attach_promise_combinator_input(target, 0, PromiseCombinatorKind::Race, value)?;
         }
         Ok(Value::Promise(target))
     }
@@ -287,15 +314,7 @@ impl Runtime {
             }),
         )?;
         for (index, value) in values.into_iter().enumerate() {
-            let promise = self.coerce_to_promise(value)?;
-            self.attach_promise_reaction(
-                promise,
-                PromiseReaction::Combinator {
-                    target,
-                    index,
-                    kind: PromiseCombinatorKind::Any,
-                },
-            )?;
+            self.attach_promise_combinator_input(target, index, PromiseCombinatorKind::Any, value)?;
         }
         Ok(Value::Promise(target))
     }
@@ -317,14 +336,11 @@ impl Runtime {
             }),
         )?;
         for (index, value) in values.into_iter().enumerate() {
-            let promise = self.coerce_to_promise(value)?;
-            self.attach_promise_reaction(
-                promise,
-                PromiseReaction::Combinator {
-                    target,
-                    index,
-                    kind: PromiseCombinatorKind::AllSettled,
-                },
+            self.attach_promise_combinator_input(
+                target,
+                index,
+                PromiseCombinatorKind::AllSettled,
+                value,
             )?;
         }
         Ok(Value::Promise(target))
