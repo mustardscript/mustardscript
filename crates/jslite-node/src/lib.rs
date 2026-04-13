@@ -1,10 +1,11 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use hmac::{Hmac, Mac};
+use rand::random;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::sync::{
     Arc, Mutex, OnceLock,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, Ordering},
 };
 
 use jslite::CancellationToken;
@@ -29,9 +30,13 @@ fn used_progress_snapshots() -> &'static Mutex<HashSet<String>> {
     TOKENS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-fn next_cancellation_token_id() -> String {
-    static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-    format!("cancel-{}", NEXT_ID.fetch_add(1, Ordering::Relaxed))
+fn next_cancellation_token_id(tokens: &HashMap<String, Arc<AtomicBool>>) -> String {
+    loop {
+        let candidate = format!("cancel-{:032x}", random::<u128>());
+        if !tokens.contains_key(&candidate) {
+            return candidate;
+        }
+    }
 }
 
 fn lookup_cancellation_token(token_id: Option<String>) -> Result<Option<CancellationToken>> {
@@ -133,10 +138,10 @@ pub fn compile_program(source: String) -> Result<Buffer> {
 
 #[napi]
 pub fn create_cancellation_token() -> Result<String> {
-    let token_id = next_cancellation_token_id();
     let mut tokens = cancellation_tokens()
         .lock()
         .map_err(|_| to_napi_error("cancellation token registry is poisoned"))?;
+    let token_id = next_cancellation_token_id(&tokens);
     tokens.insert(token_id.clone(), Arc::new(AtomicBool::new(false)));
     Ok(token_id)
 }
@@ -181,6 +186,15 @@ pub fn claim_progress_snapshot(snapshot_identity: String) -> Result<bool> {
         .lock()
         .map_err(|_| to_napi_error("progress snapshot registry is poisoned"))?;
     Ok(tokens.insert(snapshot_identity))
+}
+
+#[napi]
+pub fn release_progress_snapshot(snapshot_identity: String) -> Result<()> {
+    let mut tokens = used_progress_snapshots()
+        .lock()
+        .map_err(|_| to_napi_error("progress snapshot registry is poisoned"))?;
+    tokens.remove(&snapshot_identity);
+    Ok(())
 }
 
 #[napi]

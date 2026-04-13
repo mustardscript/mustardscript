@@ -16,12 +16,11 @@ const explicitLoadOptions = Object.freeze({
   limits: {},
 });
 
-const lifecycleTransportArbitrary = fc.constantFrom('direct', 'same-process-load', 'explicit-load');
+const lifecycleTransportArbitrary = fc.constantFrom('direct', 'explicit-load');
 const lifecycleOutcomeArbitrary = fc.constantFrom('value', 'error');
-const replayLoadActionArbitrary = fc.constantFrom('load-same', 'load-explicit');
+const replayLoadActionArbitrary = fc.constantFrom('load-explicit');
 const replayConsumeActionArbitrary = fc.constantFrom('resume', 'resumeError', 'cancel');
 const replayLifecycleActionArbitrary = fc.constantFrom(
-  'load-same',
   'load-explicit',
   'resume',
   'resumeError',
@@ -73,9 +72,6 @@ async function assertLifecycleProperty({ arbitrary, label, renderCase, runCase, 
 function loadProgress(progress, transport) {
   if (transport === 'direct') {
     return progress;
-  }
-  if (transport === 'same-process-load') {
-    return Progress.load(progress.dump());
   }
   if (transport === 'explicit-load') {
     return Progress.load(progress.dump(), explicitLoadOptions);
@@ -199,9 +195,6 @@ function performReplayAction(progress, action) {
   if (action === 'cancel') {
     return progress.cancel();
   }
-  if (action === 'load-same') {
-    return Progress.load(progress.dump());
-  }
   if (action === 'load-explicit') {
     return Progress.load(progress.dump(), explicitLoadOptions);
   }
@@ -233,10 +226,16 @@ async function assertReplayLifecycleSequence(actions) {
   assert.ok(current instanceof Progress);
 
   let consumed = false;
+  let claimedByLoad = false;
   for (const action of actions) {
-    if (!consumed && (action === 'load-same' || action === 'load-explicit')) {
-      current = performReplayAction(current, action);
-      assert.ok(current instanceof Progress);
+    if (!consumed && action === 'load-explicit') {
+      if (claimedByLoad) {
+        assert.throws(() => performReplayAction(current, action), isSingleUseRuntimeError);
+      } else {
+        current = performReplayAction(current, action);
+        assert.ok(current instanceof Progress);
+        claimedByLoad = true;
+      }
       continue;
     }
 

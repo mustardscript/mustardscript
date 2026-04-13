@@ -17,6 +17,7 @@ jslite-bridge = { path = "../jslite-bridge" }
 hmac.workspace = true
 napi.workspace = true
 napi-derive.workspace = true
+rand.workspace = true
 sha2.workspace = true
 
 [build-dependencies]

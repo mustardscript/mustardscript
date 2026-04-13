@@ -331,9 +331,6 @@ function loadProgress(progress, transport) {
   if (transport === 'direct') {
     return progress;
   }
-  if (transport === 'same-process-load') {
-    return Progress.load(progress.dump());
-  }
   if (transport === 'explicit-load') {
     return Progress.load(progress.dump(), EXPLICIT_LOAD_OPTIONS);
   }
@@ -639,7 +636,7 @@ test('async schedule matrix: promise combinators match Node across exhaustive tw
 });
 
 test('async schedule matrix: run() and start()/load()/resume() agree while pending promise work remains queued', async (t) => {
-  const transports = ['direct', 'same-process-load', 'explicit-load'];
+  const transports = ['direct', 'explicit-load'];
   for (const firstOutcome of ['value', 'error']) {
     for (const secondOutcome of ['value', 'error']) {
       for (const firstTransport of transports) {

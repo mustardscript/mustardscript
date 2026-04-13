@@ -196,7 +196,10 @@ impl Runtime {
             serde_json::Value::Null => Ok(Value::Null),
             serde_json::Value::Bool(value) => Ok(Value::Bool(value)),
             serde_json::Value::Number(number) => Ok(Value::Number(number.as_f64().unwrap_or(0.0))),
-            serde_json::Value::String(value) => Ok(Value::String(value)),
+            serde_json::Value::String(value) => {
+                self.ensure_heap_capacity(value.len())?;
+                Ok(Value::String(value))
+            }
             serde_json::Value::Array(items) => {
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {

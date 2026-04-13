@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { Jslite, JsliteError, Progress } = require('../../index.js');
+const { loadNative } = require('../../native-loader.js');
 
 function isCancelledLimit(error) {
   return (
@@ -20,6 +21,22 @@ test('run rejects immediately when the abort signal is already cancelled', async
 
   const runtime = new Jslite('while (true) {}');
   await assert.rejects(runtime.run({ signal: controller.signal }), isCancelledLimit);
+});
+
+test('start short-circuits already-aborted signals before host boundary traversal', () => {
+  const controller = new AbortController();
+  controller.abort();
+
+  assert.throws(
+    () =>
+      new Jslite('value;').start({
+        inputs: {
+          value: new Array(1_000_001),
+        },
+        signal: controller.signal,
+      }),
+    isCancelledLimit,
+  );
 });
 
 test('progress.cancel aborts suspended execution without guest catch interception', () => {
@@ -102,4 +119,24 @@ test('progress.resume respects already-aborted signals', () => {
     () => progress.resume(1, { signal: controller.signal }),
     isCancelledLimit,
   );
+});
+
+test('native cancellation token ids are unguessable process-local handles', () => {
+  const native = loadNative();
+  const tokenIds = [native.createCancellationToken(), native.createCancellationToken()];
+
+  try {
+    for (const tokenId of tokenIds) {
+      assert.match(tokenId, /^cancel-[0-9a-f]{32}$/);
+    }
+    assert.notEqual(tokenIds[0], tokenIds[1]);
+    assert.throws(
+      () => native.cancelCancellationToken('cancel-1'),
+      /unknown cancellation token/,
+    );
+  } finally {
+    for (const tokenId of tokenIds) {
+      native.releaseCancellationToken(tokenId);
+    }
+  }
 });

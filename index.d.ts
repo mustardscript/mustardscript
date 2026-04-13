@@ -14,6 +14,8 @@ export declare function isProgressSnapshotUsed(snapshotIdentity: string): boolea
 
 export declare function releaseCancellationToken(tokenId: string): void
 
+export declare function releaseProgressSnapshot(snapshotIdentity: string): void
+
 export declare function resumeProgram(snapshot: Buffer, payloadJson: string, policyJson: string, cancellationTokenId?: string | undefined | null): string
 
 export declare function snapshotIdentity(snapshot: Buffer): string

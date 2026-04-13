@@ -6,6 +6,15 @@ const assert = require('node:assert/strict');
 const { Jslite, JsliteError, Progress } = require('../../index.js');
 const { assertDifferential } = require('./runtime-oracle.js');
 
+const SNAPSHOT_KEY = Buffer.from('bigint-snapshot-key');
+const PROGRESS_LOAD_OPTIONS = Object.freeze({
+  snapshotKey: SNAPSHOT_KEY,
+  capabilities: {
+    fetch_step() {},
+  },
+  limits: {},
+});
+
 test('run supports guest-internal BigInt arithmetic and keyed-collection semantics', async () => {
   const runtime = new Jslite(`
     const reserve = 9007199254740993n;
@@ -57,12 +66,13 @@ test('progress dump/load preserve guest BigInt state across suspension', () => {
   `);
 
   const progress = runtime.start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_step() {},
     },
   });
 
-  const restored = Progress.load(progress.dump());
+  const restored = Progress.load(progress.dump(), PROGRESS_LOAD_OPTIONS);
   assert.deepEqual(restored.resume('approved'), {
     status: 'approved',
     total: '9007199254741000',

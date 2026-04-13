@@ -3,6 +3,15 @@ const assert = require('node:assert/strict');
 
 const { Jslite, JsliteError, Progress } = require('../../index.js');
 
+const SNAPSHOT_KEY = Buffer.from('iteration-test-snapshot-key');
+const PROGRESS_LOAD_OPTIONS = Object.freeze({
+  snapshotKey: SNAPSHOT_KEY,
+  capabilities: {
+    fetch_data() {},
+  },
+  limits: {},
+});
+
 test('run supports array for...of with fresh iteration bindings', async () => {
   const runtime = new Jslite(`
     const fns = [];
@@ -77,6 +86,7 @@ test('progress snapshots preserve active array iterators across resumes', () => 
   `);
 
   const first = runtime.start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data(value) {
         return value * 10;
@@ -88,7 +98,7 @@ test('progress snapshots preserve active array iterators across resumes', () => 
   assert.equal(first.capability, 'fetch_data');
   assert.deepEqual(first.args, [1]);
 
-  const restored = Progress.load(first.dump());
+  const restored = Progress.load(first.dump(), PROGRESS_LOAD_OPTIONS);
   assert.ok(restored instanceof Progress);
 
   const second = restored.resume(10);
@@ -144,6 +154,7 @@ test('progress snapshots preserve for await...of assignment-target headers acros
   `);
 
   const first = runtime.start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data() {
         throw new Error('start should suspend before invoking JS handlers');
@@ -155,7 +166,7 @@ test('progress snapshots preserve for await...of assignment-target headers acros
   assert.equal(first.capability, 'fetch_data');
   assert.deepEqual(first.args, [1]);
 
-  const restored = Progress.load(first.dump());
+  const restored = Progress.load(first.dump(), PROGRESS_LOAD_OPTIONS);
   assert.ok(restored instanceof Progress);
 
   const second = restored.resume(1);
@@ -182,6 +193,7 @@ test('progress snapshots preserve assignment-target for...of headers across resu
   `);
 
   const first = runtime.start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data(value) {
         return value * 10;
@@ -193,7 +205,7 @@ test('progress snapshots preserve assignment-target for...of headers across resu
   assert.equal(first.capability, 'fetch_data');
   assert.deepEqual(first.args, [1]);
 
-  const restored = Progress.load(first.dump());
+  const restored = Progress.load(first.dump(), PROGRESS_LOAD_OPTIONS);
   assert.ok(restored instanceof Progress);
 
   const second = restored.resume(10);
@@ -220,6 +232,7 @@ test('progress snapshots preserve active for...in iterators across resumes', () 
   `);
 
   const first = runtime.start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data(value) {
         return value.length;
@@ -231,7 +244,7 @@ test('progress snapshots preserve active for...in iterators across resumes', () 
   assert.equal(first.capability, 'fetch_data');
   assert.deepEqual(first.args, ['beta']);
 
-  const restored = Progress.load(first.dump());
+  const restored = Progress.load(first.dump(), PROGRESS_LOAD_OPTIONS);
   assert.ok(restored instanceof Progress);
 
   const second = restored.resume(10);
@@ -334,6 +347,7 @@ test('progress snapshots preserve for...in assignment-target headers across resu
   `);
 
   const first = runtime.start({
+    snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data(value) {
         return 'seen:' + value;
@@ -345,7 +359,7 @@ test('progress snapshots preserve for...in assignment-target headers across resu
   assert.equal(first.capability, 'fetch_data');
   assert.deepEqual(first.args, ['beta']);
 
-  const restored = Progress.load(first.dump());
+  const restored = Progress.load(first.dump(), PROGRESS_LOAD_OPTIONS);
   assert.ok(restored instanceof Progress);
 
   const second = restored.resume('seen:beta');

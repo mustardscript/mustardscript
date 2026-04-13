@@ -586,7 +586,7 @@ extensions are called out explicitly instead of being implied.
   seedable or reproducible across runs or resumes, and are not a
   cryptographically strong API contract
 - structured host arrays may be sparse; hole positions are preserved across the
-  boundary in both directions
+  boundary in both directions up to 1,000,000 elements
 - direct `Date()` calls, multi-argument `new Date(...)`, locale-specific date
   strings outside the documented `Date` parsing surface, unsupported `Intl`
   locales or options, and returning `Date` values across the structured host
