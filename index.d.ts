@@ -4,15 +4,21 @@ export declare function cancelCancellationToken(tokenId: string): void
 
 export declare function claimProgressSnapshot(snapshotIdentity: string): boolean
 
-export declare function compileProgram(source: string): Buffer
+export declare function compileProgram(source: string): string
 
 export declare function createCancellationToken(): string
+
+export declare function dumpProgram(programHandle: string): Buffer
 
 export declare function inspectSnapshot(snapshot: Buffer, policyJson: string): string
 
 export declare function isProgressSnapshotUsed(snapshotIdentity: string): boolean
 
+export declare function loadProgram(program: Buffer): string
+
 export declare function releaseCancellationToken(tokenId: string): void
+
+export declare function releaseProgram(programHandle: string): void
 
 export declare function releaseProgressSnapshot(snapshotIdentity: string): void
 
@@ -20,4 +26,4 @@ export declare function resumeProgram(snapshot: Buffer, payloadJson: string, pol
 
 export declare function snapshotIdentity(snapshot: Buffer): string
 
-export declare function startProgram(program: Buffer, optionsJson: string, cancellationTokenId?: string | undefined | null): string
+export declare function startProgram(programHandle: string, optionsJson: string, cancellationTokenId?: string | undefined | null): string

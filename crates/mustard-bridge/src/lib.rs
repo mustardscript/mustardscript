@@ -9,4 +9,5 @@ pub use codec::{
 pub use dto::{ResumeDto, RuntimeLimitsDto, SnapshotPolicyDto, StartOptionsDto, StepDto};
 pub use operations::{
     compile_program_bytes, inspect_snapshot_bytes, resume_program, start_program,
+    start_shared_program,
 };

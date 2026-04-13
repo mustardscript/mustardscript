@@ -1,5 +1,6 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::sync::Arc;
 
 use crate::{
     cancellation::CancellationToken,
@@ -152,7 +153,21 @@ pub fn start_bytecode(
     options: ExecutionOptions,
 ) -> MustardResult<ExecutionStep> {
     validate_bytecode_program(program)?;
-    let mut runtime = Runtime::new(program.clone(), options)?;
+    start_validated_bytecode(program, options)
+}
+
+pub fn start_validated_bytecode(
+    program: &BytecodeProgram,
+    options: ExecutionOptions,
+) -> MustardResult<ExecutionStep> {
+    start_shared_bytecode(Arc::new(program.clone()), options)
+}
+
+pub fn start_shared_bytecode(
+    program: Arc<BytecodeProgram>,
+    options: ExecutionOptions,
+) -> MustardResult<ExecutionStep> {
+    let mut runtime = Runtime::new(program, options)?;
     runtime.run_root()
 }
 

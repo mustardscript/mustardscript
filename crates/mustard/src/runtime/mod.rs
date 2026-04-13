@@ -20,7 +20,7 @@ mod vm;
 pub use api::{
     ExecutionOptions, ExecutionSnapshot, ExecutionStep, HostError, ResumeOptions, ResumePayload,
     SnapshotInspection, SnapshotPolicy, Suspension, execute, inspect_snapshot, resume,
-    resume_with_options, start, start_bytecode,
+    resume_with_options, start, start_bytecode, start_shared_bytecode, start_validated_bytecode,
 };
 pub use bytecode::{BytecodeProgram, FunctionPrototype, Instruction};
 pub use compiler::lower_to_bytecode;
@@ -32,6 +32,7 @@ pub use serialization::{
 use indexmap::IndexMap;
 use slotmap::SlotMap;
 use std::collections::{HashSet, VecDeque};
+use std::sync::Arc;
 
 use self::properties::{
     array_index_from_property_key, format_number_key, ordered_own_property_keys,
@@ -53,7 +54,7 @@ use crate::{
 const INTERNAL_CALLBACK_THROW_MARKER: &str = "\0internal-array-callback-throw";
 
 impl Runtime {
-    fn new(program: BytecodeProgram, options: ExecutionOptions) -> MustardResult<Self> {
+    fn new(program: Arc<BytecodeProgram>, options: ExecutionOptions) -> MustardResult<Self> {
         let ExecutionOptions {
             inputs,
             capabilities,

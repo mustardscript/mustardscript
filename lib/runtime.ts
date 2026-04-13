@@ -21,29 +21,60 @@ const {
 } = require('./structured.ts');
 
 function createMustardClass({ native, materializeStep, parseStep }) {
+  const programHandleRegistry =
+    typeof FinalizationRegistry === 'function'
+      ? new FinalizationRegistry((programHandle) => {
+          try {
+            callNative(native.releaseProgram, programHandle);
+          } catch {
+            // Best-effort cleanup only; process shutdown can race native teardown.
+          }
+        })
+      : null;
+
   function compileProgram(code) {
     return callNative(native.compileProgram, code);
   }
 
+  function releaseProgram(programHandle) {
+    callNative(native.releaseProgram, programHandle);
+  }
+
   return class Mustard {
     constructor(code, options = {}) {
-      this._program = compileProgram(code);
+      this._programHandle = compileProgram(code);
+      this._program = null;
       this._inputNames = options.inputs ?? [];
+      this._programHandleToken = {};
+      programHandleRegistry?.register(this, this._programHandle, this._programHandleToken);
     }
 
     static validateProgram(code) {
-      compileProgram(code);
+      const programHandle = compileProgram(code);
+      releaseProgram(programHandle);
+    }
+
+    _ensureProgramHandle() {
+      if (this._programHandle !== null) {
+        return this._programHandle;
+      }
+      const programHandle = callNative(native.loadProgram, this._program);
+      this._programHandle = programHandle;
+      this._programHandleToken = {};
+      programHandleRegistry?.register(this, programHandle, this._programHandleToken);
+      return programHandle;
     }
 
     async run(options = {}) {
       const signal = getAbortSignal(options, 'run options');
       throwIfAborted(signal);
       const { hostHandlers, policy, snapshotKey } = createExecutionPolicy(options);
+      const programHandle = this._ensureProgramHandle();
       let step = parseStep(
         withCancellationSignal(
           native,
           native.startProgram,
-          [this._program, encodeStartOptions(options.inputs, policy)],
+          [programHandle, encodeStartOptions(options.inputs, policy)],
           signal,
         ),
       );
@@ -80,11 +111,12 @@ function createMustardClass({ native, materializeStep, parseStep }) {
       const signal = getAbortSignal(options, 'start options');
       throwIfAborted(signal);
       const { policy, snapshotKey } = createExecutionPolicy(options);
+      const programHandle = this._ensureProgramHandle();
       const step = parseStep(
         withCancellationSignal(
           native,
           native.startProgram,
-          [this._program, encodeStartOptions(options.inputs, policy)],
+          [programHandle, encodeStartOptions(options.inputs, policy)],
           signal,
         ),
       );
@@ -92,13 +124,18 @@ function createMustardClass({ native, materializeStep, parseStep }) {
     }
 
     dump() {
+      if (this._program === null) {
+        this._program = Buffer.from(callNative(native.dumpProgram, this._ensureProgramHandle()));
+      }
       return Buffer.from(this._program);
     }
 
     static load(buffer) {
       const instance = Object.create(Mustard.prototype);
       instance._program = Buffer.from(buffer);
+      instance._programHandle = null;
       instance._inputNames = [];
+      instance._programHandleToken = {};
       return instance;
     }
   };

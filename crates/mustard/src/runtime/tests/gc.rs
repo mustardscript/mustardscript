@@ -1,10 +1,12 @@
+use std::sync::Arc;
+
 use super::*;
 
 #[test]
 fn tracks_heap_growth_and_enforces_heap_limits() {
     let program = lower_to_bytecode(&compile("1;").expect("source should compile"))
         .expect("lowering should succeed");
-    let mut runtime = Runtime::new(program.clone(), ExecutionOptions::default())
+    let mut runtime = Runtime::new(Arc::new(program.clone()), ExecutionOptions::default())
         .expect("runtime should initialize");
 
     let baseline_heap = runtime.heap_bytes_used;
@@ -23,7 +25,7 @@ fn tracks_heap_growth_and_enforces_heap_limits() {
         .expect("array growth should succeed");
     assert!(runtime.heap_bytes_used > array_heap);
 
-    let mut heap_limited = Runtime::new(program.clone(), ExecutionOptions::default())
+    let mut heap_limited = Runtime::new(Arc::new(program.clone()), ExecutionOptions::default())
         .expect("runtime should initialize");
     heap_limited.limits.heap_limit_bytes = heap_limited.heap_bytes_used;
     let error = heap_limited
@@ -31,8 +33,8 @@ fn tracks_heap_growth_and_enforces_heap_limits() {
         .expect_err("next allocation should exceed the heap limit");
     assert!(error.to_string().contains("heap limit exceeded"));
 
-    let mut allocation_limited =
-        Runtime::new(program, ExecutionOptions::default()).expect("runtime should initialize");
+    let mut allocation_limited = Runtime::new(Arc::new(program), ExecutionOptions::default())
+        .expect("runtime should initialize");
     allocation_limited.limits.allocation_budget = allocation_limited.allocation_count;
     let error = allocation_limited
         .insert_object(IndexMap::new(), ObjectKind::Plain)
@@ -44,7 +46,8 @@ fn tracks_heap_growth_and_enforces_heap_limits() {
 fn iterators_participate_in_heap_accounting_and_gc() {
     let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
         .expect("lowering should succeed");
-    let mut runtime = Runtime::new(program, ExecutionOptions::default()).expect("runtime init");
+    let mut runtime =
+        Runtime::new(Arc::new(program), ExecutionOptions::default()).expect("runtime init");
 
     let baseline_heap = runtime.heap_bytes_used;
     let kept_array = runtime
@@ -115,7 +118,8 @@ fn iterators_participate_in_heap_accounting_and_gc() {
 fn map_and_set_iterators_keep_keyed_collections_alive_for_gc() {
     let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
         .expect("lowering should succeed");
-    let mut runtime = Runtime::new(program, ExecutionOptions::default()).expect("runtime init");
+    let mut runtime =
+        Runtime::new(Arc::new(program), ExecutionOptions::default()).expect("runtime init");
 
     let kept_map = runtime.insert_map(Vec::new()).expect("map should allocate");
     runtime
@@ -215,7 +219,8 @@ fn map_and_set_iterators_keep_keyed_collections_alive_for_gc() {
 fn promise_reactions_keep_target_promises_alive_for_gc() {
     let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
         .expect("lowering should succeed");
-    let mut runtime = Runtime::new(program, ExecutionOptions::default()).expect("runtime init");
+    let mut runtime =
+        Runtime::new(Arc::new(program), ExecutionOptions::default()).expect("runtime init");
 
     let kept_source = runtime
         .insert_promise(PromiseState::Pending)
@@ -290,7 +295,8 @@ fn promise_reactions_keep_target_promises_alive_for_gc() {
 fn keyed_collections_participate_in_heap_accounting_and_gc() {
     let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
         .expect("lowering should succeed");
-    let mut runtime = Runtime::new(program, ExecutionOptions::default()).expect("runtime init");
+    let mut runtime =
+        Runtime::new(Arc::new(program), ExecutionOptions::default()).expect("runtime init");
 
     let baseline_heap = runtime.heap_bytes_used;
     let kept_map = runtime.insert_map(Vec::new()).expect("map should allocate");
@@ -369,7 +375,7 @@ fn garbage_collection_marks_runtime_roots_and_collects_cycles() {
     let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
         .expect("lowering should succeed");
     let mut runtime =
-        Runtime::new(program.clone(), ExecutionOptions::default()).expect("runtime init");
+        Runtime::new(Arc::new(program.clone()), ExecutionOptions::default()).expect("runtime init");
 
     let closure_env = runtime
         .new_env(Some(runtime.globals))

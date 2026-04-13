@@ -4,9 +4,10 @@ use hmac::{Hmac, Mac};
 use mustard::{
     BytecodeProgram, CancellationToken, ExecutionOptions, ResumeOptions, SnapshotInspection,
     compile, dump_program, inspect_snapshot as inspect_loaded_snapshot, load_snapshot,
-    lower_to_bytecode, resume_with_options, start_bytecode,
+    lower_to_bytecode, resume_with_options, start_shared_bytecode, start_validated_bytecode,
 };
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
 
 use crate::{
     codec::encode_step,
@@ -99,7 +100,24 @@ pub fn start_program(
     options: StartOptionsDto,
     cancellation_token: Option<CancellationToken>,
 ) -> Result<StepDto> {
-    let step = start_bytecode(
+    let step = start_validated_bytecode(
+        program,
+        ExecutionOptions {
+            inputs: options.inputs.into_iter().collect(),
+            capabilities: options.capabilities,
+            limits: options.limits.into_runtime_limits(),
+            cancellation_token,
+        },
+    )?;
+    encode_step(step)
+}
+
+pub fn start_shared_program(
+    program: Arc<BytecodeProgram>,
+    options: StartOptionsDto,
+    cancellation_token: Option<CancellationToken>,
+) -> Result<StepDto> {
+    let step = start_shared_bytecode(
         program,
         ExecutionOptions {
             inputs: options.inputs.into_iter().collect(),

@@ -1,4 +1,7 @@
-use std::collections::{HashSet, VecDeque};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 
 use indexmap::IndexMap;
 use num_bigint::BigInt;
@@ -559,7 +562,7 @@ pub(super) struct ActiveFinallyState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct Runtime {
-    pub(super) program: BytecodeProgram,
+    pub(super) program: Arc<BytecodeProgram>,
     pub(super) limits: RuntimeLimits,
     pub(super) globals: EnvKey,
     pub(super) envs: SlotMap<EnvKey, Env>,

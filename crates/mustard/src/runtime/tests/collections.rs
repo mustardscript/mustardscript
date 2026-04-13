@@ -1,10 +1,13 @@
+use std::sync::Arc;
+
 use super::*;
 
 #[test]
 fn maps_preserve_insertion_order_and_same_value_zero_updates() {
     let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
         .expect("lowering should succeed");
-    let mut runtime = Runtime::new(program, ExecutionOptions::default()).expect("runtime init");
+    let mut runtime =
+        Runtime::new(Arc::new(program), ExecutionOptions::default()).expect("runtime init");
     let map = runtime.insert_map(Vec::new()).expect("map should allocate");
     let object = runtime
         .insert_object(IndexMap::new(), ObjectKind::Plain)

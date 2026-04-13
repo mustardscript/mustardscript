@@ -8,11 +8,14 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use mustard::CancellationToken;
+use mustard::{
+    BytecodeProgram, CancellationToken, compile, dump_program as encode_program_bytes,
+    lower_to_bytecode,
+};
 use mustard_bridge::{
-    ResumeDto, SnapshotPolicyDto, StartOptionsDto, compile_program_bytes, decode_program,
-    encode_json, inspect_snapshot_bytes, parse_json, resume_program as bridge_resume_program,
-    start_program as bridge_start_program,
+    ResumeDto, SnapshotPolicyDto, StartOptionsDto, decode_program, encode_json,
+    inspect_snapshot_bytes, parse_json, resume_program as bridge_resume_program,
+    start_shared_program as bridge_start_shared_program,
 };
 use napi::bindgen_prelude::Buffer;
 use napi::{Error, Result};
@@ -30,10 +33,24 @@ fn used_progress_snapshots() -> &'static Mutex<HashSet<String>> {
     TOKENS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
+fn compiled_programs() -> &'static Mutex<HashMap<String, Arc<BytecodeProgram>>> {
+    static PROGRAMS: OnceLock<Mutex<HashMap<String, Arc<BytecodeProgram>>>> = OnceLock::new();
+    PROGRAMS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 fn next_cancellation_token_id(tokens: &HashMap<String, Arc<AtomicBool>>) -> String {
     loop {
         let candidate = format!("cancel-{:032x}", random::<u128>());
         if !tokens.contains_key(&candidate) {
+            return candidate;
+        }
+    }
+}
+
+fn next_program_handle_id(programs: &HashMap<String, Arc<BytecodeProgram>>) -> String {
+    loop {
+        let candidate = format!("program-{:032x}", random::<u128>());
+        if !programs.contains_key(&candidate) {
             return candidate;
         }
     }
@@ -51,6 +68,25 @@ fn lookup_cancellation_token(token_id: Option<String>) -> Result<Option<Cancella
         .cloned()
         .ok_or_else(|| to_napi_error(format!("unknown cancellation token `{token_id}`")))?;
     Ok(Some(CancellationToken::from_shared(shared)))
+}
+
+fn insert_program(program: BytecodeProgram) -> Result<String> {
+    let mut programs = compiled_programs()
+        .lock()
+        .map_err(|_| to_napi_error("compiled program registry is poisoned"))?;
+    let handle = next_program_handle_id(&programs);
+    programs.insert(handle.clone(), Arc::new(program));
+    Ok(handle)
+}
+
+fn lookup_program(handle: &str) -> Result<Arc<BytecodeProgram>> {
+    let programs = compiled_programs()
+        .lock()
+        .map_err(|_| to_napi_error("compiled program registry is poisoned"))?;
+    programs
+        .get(handle)
+        .cloned()
+        .ok_or_else(|| to_napi_error(format!("unknown compiled program handle `{handle}`")))
 }
 
 fn to_napi_error(error: impl std::fmt::Display) -> Error {
@@ -131,9 +167,32 @@ fn assert_authenticated_snapshot(snapshot: &[u8], policy: &SnapshotPolicyDto) ->
 }
 
 #[napi]
-pub fn compile_program(source: String) -> Result<Buffer> {
-    let bytes = compile_program_bytes(&source).map_err(to_napi_error)?;
+pub fn compile_program(source: String) -> Result<String> {
+    let parsed = compile(&source).map_err(to_napi_error)?;
+    let bytecode = lower_to_bytecode(&parsed).map_err(to_napi_error)?;
+    insert_program(bytecode)
+}
+
+#[napi]
+pub fn load_program(program: Buffer) -> Result<String> {
+    let program = decode_program(program.as_ref()).map_err(to_napi_error)?;
+    insert_program(program)
+}
+
+#[napi]
+pub fn dump_program(program_handle: String) -> Result<Buffer> {
+    let program = lookup_program(&program_handle)?;
+    let bytes = encode_program_bytes(program.as_ref()).map_err(to_napi_error)?;
     Ok(Buffer::from(bytes))
+}
+
+#[napi]
+pub fn release_program(program_handle: String) -> Result<()> {
+    let mut programs = compiled_programs()
+        .lock()
+        .map_err(|_| to_napi_error("compiled program registry is poisoned"))?;
+    programs.remove(&program_handle);
+    Ok(())
 }
 
 #[napi]
@@ -199,15 +258,15 @@ pub fn release_progress_snapshot(snapshot_identity: String) -> Result<()> {
 
 #[napi]
 pub fn start_program(
-    program: Buffer,
+    program_handle: String,
     options_json: String,
     cancellation_token_id: Option<String>,
 ) -> Result<String> {
-    let program = decode_program(program.as_ref()).map_err(to_napi_error)?;
+    let program = lookup_program(&program_handle)?;
     let options: StartOptionsDto = parse_json(&options_json).map_err(to_napi_error)?;
     let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
     let step =
-        bridge_start_program(&program, options, cancellation_token).map_err(to_napi_error)?;
+        bridge_start_shared_program(program, options, cancellation_token).map_err(to_napi_error)?;
     encode_json(&step).map_err(to_napi_error)
 }
 
