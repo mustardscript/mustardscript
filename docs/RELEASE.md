@@ -238,7 +238,7 @@ Current mechanics:
 - `dist/install.js` preserves the source-build path by only skipping the local Cargo
   build when the matching optional package is already installed for the current
   host.
-- `.github/workflows/prebuilt-binaries.yml` is the manual, explicit prebuilt
+- `.github/workflows/release.yml` is the manual, explicit prebuilt
   workflow. It builds the configured targets, stages them with
   `napi create-npm-dirs` plus `napi artifacts`, runs `npm run verify:prebuilt`,
   and only publishes when `workflow_dispatch` is invoked with `publish=true`.
