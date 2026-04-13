@@ -2,7 +2,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use hmac::{Hmac, Mac};
 use rand::random;
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{
     Arc, Mutex, OnceLock,
     atomic::{AtomicBool, Ordering},
@@ -26,11 +26,6 @@ type HmacSha256 = Hmac<Sha256>;
 fn cancellation_tokens() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
     static TOKENS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
     TOKENS.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn used_progress_snapshots() -> &'static Mutex<HashSet<String>> {
-    static TOKENS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    TOKENS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
 fn compiled_programs() -> &'static Mutex<HashMap<String, Arc<BytecodeProgram>>> {
@@ -229,31 +224,6 @@ pub fn release_cancellation_token(token_id: String) -> Result<()> {
 #[napi]
 pub fn snapshot_identity(snapshot: Buffer) -> Result<String> {
     Ok(snapshot_identity_hex(snapshot.as_ref()))
-}
-
-#[napi]
-pub fn is_progress_snapshot_used(snapshot_identity: String) -> Result<bool> {
-    let tokens = used_progress_snapshots()
-        .lock()
-        .map_err(|_| to_napi_error("progress snapshot registry is poisoned"))?;
-    Ok(tokens.contains(&snapshot_identity))
-}
-
-#[napi]
-pub fn claim_progress_snapshot(snapshot_identity: String) -> Result<bool> {
-    let mut tokens = used_progress_snapshots()
-        .lock()
-        .map_err(|_| to_napi_error("progress snapshot registry is poisoned"))?;
-    Ok(tokens.insert(snapshot_identity))
-}
-
-#[napi]
-pub fn release_progress_snapshot(snapshot_identity: String) -> Result<()> {
-    let mut tokens = used_progress_snapshots()
-        .lock()
-        .map_err(|_| to_napi_error("progress snapshot registry is poisoned"))?;
-    tokens.remove(&snapshot_identity);
-    Ok(())
 }
 
 #[napi]

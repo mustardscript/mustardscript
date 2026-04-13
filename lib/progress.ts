@@ -77,39 +77,23 @@ function singleUseRuntimeError() {
 }
 
 function releaseClaimedSnapshot(native, snapshotIdentityValue) {
-  try {
-    callNative(native.releaseProgressSnapshot, snapshotIdentityValue);
-  } finally {
-    releaseSharedProgressSnapshot(snapshotIdentityValue);
-  }
+  void native;
+  releaseSharedProgressSnapshot(snapshotIdentityValue);
 }
 
 function claimSnapshotForLoad(native, snapshotIdentityValue) {
+  void native;
   if (!claimSharedProgressSnapshot(snapshotIdentityValue)) {
     throw singleUseRuntimeError();
   }
-  try {
-    if (!callNative(native.claimProgressSnapshot, snapshotIdentityValue)) {
-      releaseSharedProgressSnapshot(snapshotIdentityValue);
-      throw singleUseRuntimeError();
-    }
-  } catch (error) {
-    if (!(error instanceof MustardError)) {
-      releaseSharedProgressSnapshot(snapshotIdentityValue);
-    }
-    throw error;
-  }
-
   return () => {
     releaseClaimedSnapshot(native, snapshotIdentityValue);
   };
 }
 
 function assertSnapshotNotUsed(native, snapshotIdentityValue) {
-  if (
-    isSharedProgressSnapshotUsed(snapshotIdentityValue) ||
-    callNative(native.isProgressSnapshotUsed, snapshotIdentityValue)
-  ) {
+  void native;
+  if (isSharedProgressSnapshotUsed(snapshotIdentityValue)) {
     throw singleUseRuntimeError();
   }
 }
@@ -181,17 +165,6 @@ function createProgressApi(native) {
       }
       if (!claimSharedProgressSnapshot(this.#snapshotIdentity)) {
         throw singleUseRuntimeError();
-      }
-      try {
-        if (!callNative(native.claimProgressSnapshot, this.#snapshotIdentity)) {
-          releaseSharedProgressSnapshot(this.#snapshotIdentity);
-          throw singleUseRuntimeError();
-        }
-      } catch (error) {
-        if (!(error instanceof MustardError)) {
-          releaseSharedProgressSnapshot(this.#snapshotIdentity);
-        }
-        throw error;
       }
       this.#claimState = 'consumed';
       return Buffer.from(this.#snapshot);

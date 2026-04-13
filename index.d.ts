@@ -2,8 +2,6 @@
 /* eslint-disable */
 export declare function cancelCancellationToken(tokenId: string): void
 
-export declare function claimProgressSnapshot(snapshotIdentity: string): boolean
-
 export declare function compileProgram(source: string): string
 
 export declare function createCancellationToken(): string
@@ -12,15 +10,11 @@ export declare function dumpProgram(programHandle: string): Buffer
 
 export declare function inspectSnapshot(snapshot: Buffer, policyJson: string): string
 
-export declare function isProgressSnapshotUsed(snapshotIdentity: string): boolean
-
 export declare function loadProgram(program: Buffer): string
 
 export declare function releaseCancellationToken(tokenId: string): void
 
 export declare function releaseProgram(programHandle: string): void
-
-export declare function releaseProgressSnapshot(snapshotIdentity: string): void
 
 export declare function resumeProgram(snapshot: Buffer, payloadJson: string, policyJson: string, cancellationTokenId?: string | undefined | null): string
 
