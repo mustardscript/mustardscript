@@ -31,13 +31,21 @@ impl Runtime {
         let Some(global_object) = self.global_object_key() else {
             return Ok(());
         };
-        self.objects
-            .get_mut(global_object)
-            .ok_or_else(|| MustardError::runtime("global object missing"))?
-            .properties
-            .insert(name, value);
-        self.refresh_object_accounting(global_object)?;
-        Ok(())
+        let new_entry_bytes = Self::property_entry_bytes(&name, &value);
+        let old_entry_bytes = {
+            let object = self
+                .objects
+                .get_mut(global_object)
+                .ok_or_else(|| MustardError::runtime("global object missing"))?;
+            let old_entry_bytes = object
+                .properties
+                .get(&name)
+                .map(|existing| Self::property_entry_bytes(&name, existing))
+                .unwrap_or(0);
+            object.properties.insert(name, value);
+            old_entry_bytes
+        };
+        self.apply_object_component_delta(global_object, old_entry_bytes, new_entry_bytes)
     }
 
     pub(super) fn infer_closure_name(&mut self, value: &Value, name: &str) -> MustardResult<()> {
@@ -57,8 +65,7 @@ impl Runtime {
             .get_mut(*closure)
             .ok_or_else(|| MustardError::runtime("closure missing"))?
             .name = Some(name.to_string());
-        self.refresh_closure_accounting(*closure)?;
-        Ok(())
+        self.apply_closure_component_delta(*closure, 0, name.len())
     }
 
     pub(super) fn new_env(&mut self, parent: Option<EnvKey>) -> MustardResult<EnvKey> {

@@ -11,6 +11,31 @@ fn test_runtime() -> Runtime {
     Runtime::new(Arc::new(program), ExecutionOptions::default()).expect("runtime init")
 }
 
+fn test_runtime_with_capabilities(capabilities: &[&str]) -> Runtime {
+    let program = lower_to_bytecode(&compile("0;").expect("source should compile"))
+        .expect("lowering should succeed");
+    Runtime::new(
+        Arc::new(program),
+        ExecutionOptions {
+            capabilities: capabilities
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect(),
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect("runtime init")
+}
+
+fn push_dummy_frame(runtime: &mut Runtime) {
+    let frame_env = runtime
+        .new_env(Some(runtime.globals))
+        .expect("frame env should allocate");
+    runtime
+        .push_frame(0, frame_env, &[], Value::Undefined, None)
+        .expect("frame push should succeed");
+}
+
 #[test]
 fn garbage_collection_preflight_skips_low_pressure_cycles() {
     let mut runtime = test_runtime();
@@ -102,6 +127,12 @@ fn runtime_debug_metrics_track_gc_and_accounting_refreshes() {
     let object = runtime
         .insert_object(IndexMap::new(), ObjectKind::Plain)
         .expect("object should allocate");
+    let array = runtime
+        .insert_array(vec![Value::Number(1.0)], IndexMap::new())
+        .expect("array should allocate");
+    let closure = runtime
+        .insert_closure(0, runtime.globals, Value::Undefined)
+        .expect("closure should allocate");
 
     let baseline_metrics = runtime.debug_metrics();
     runtime
@@ -113,11 +144,28 @@ fn runtime_debug_metrics_track_gc_and_accounting_refreshes() {
     runtime
         .refresh_object_accounting(object)
         .expect("object accounting refresh should succeed");
+    runtime
+        .arrays
+        .get_mut(array)
+        .expect("array should exist")
+        .properties
+        .insert("label".to_string(), Value::String("payload".to_string()));
+    runtime
+        .refresh_array_accounting(array)
+        .expect("array accounting refresh should succeed");
+    runtime
+        .closures
+        .get_mut(closure)
+        .expect("closure should exist")
+        .name = Some("worker".to_string());
+    runtime
+        .refresh_closure_accounting(closure)
+        .expect("closure accounting refresh should succeed");
 
     let refreshed_metrics = runtime.debug_metrics();
     assert_eq!(
         refreshed_metrics.accounting_refreshes,
-        baseline_metrics.accounting_refreshes + 1
+        baseline_metrics.accounting_refreshes + 3
     );
 
     let gc_metrics_before = runtime.debug_metrics();
@@ -439,4 +487,214 @@ fn promise_combinator_completion_moves_driver_buffers_without_full_refreshes() {
             ..
         }))
     ));
+}
+
+#[test]
+fn array_helper_deltas_preserve_cached_totals_without_full_refreshes() {
+    let mut runtime = test_runtime();
+    push_dummy_frame(&mut runtime);
+    let array = runtime
+        .insert_sparse_array(
+            vec![
+                Some(Value::String("seed".to_string())),
+                None,
+                Some(Value::String("tail".to_string())),
+                Some(Value::Number(4.0)),
+            ],
+            IndexMap::new(),
+        )
+        .expect("array should allocate");
+    let baseline_metrics = runtime.debug_metrics();
+
+    runtime
+        .set_array_length(array, Value::Number(6.0))
+        .expect("array growth should succeed");
+    runtime
+        .call_array_splice(
+            Value::Array(array),
+            &[
+                Value::Number(1.0),
+                Value::Number(2.0),
+                Value::String("inserted".repeat(2)),
+                Value::String("z".to_string()),
+            ],
+        )
+        .expect("array splice should succeed");
+    runtime
+        .call_array_fill(
+            Value::Array(array),
+            &[
+                Value::String("payload".repeat(2)),
+                Value::Number(1.0),
+                Value::Number(4.0),
+            ],
+        )
+        .expect("array fill should succeed");
+    runtime
+        .call_array_sort(Value::Array(array), &[])
+        .expect("array sort should succeed");
+    runtime
+        .set_array_length(array, Value::Number(3.0))
+        .expect("array shrink should succeed");
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}
+
+#[test]
+fn property_and_object_deltas_preserve_cached_totals_without_full_refreshes() {
+    let mut runtime = test_runtime_with_capabilities(&["fetch_data"]);
+    push_dummy_frame(&mut runtime);
+    let baseline_metrics = runtime.debug_metrics();
+
+    let closure = runtime
+        .insert_closure(0, runtime.globals, Value::Undefined)
+        .expect("closure should allocate");
+    runtime
+        .define_global("worker".to_string(), Value::Closure(closure), true)
+        .expect("global closure binding should define");
+    runtime
+        .set_property_static(
+            Value::Closure(closure),
+            "meta",
+            Value::String("payload".repeat(3)),
+        )
+        .expect("closure property write should succeed");
+    runtime
+        .set_property_static(
+            Value::BuiltinFunction(BuiltinFunction::ArrayPush),
+            "label",
+            Value::String("fast-path".to_string()),
+        )
+        .expect("builtin function property write should succeed");
+    runtime
+        .set_property_static(
+            Value::HostFunction("fetch_data".to_string()),
+            "label",
+            Value::String("remote".to_string()),
+        )
+        .expect("host function property write should succeed");
+
+    let property_metrics = runtime.debug_metrics();
+    assert_eq!(
+        property_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+
+    let entry_a = runtime
+        .insert_array(
+            vec![
+                Value::String("alpha".to_string()),
+                Value::String("one".to_string()),
+            ],
+            IndexMap::new(),
+        )
+        .expect("entry array should allocate");
+    let entry_b = runtime
+        .insert_array(
+            vec![
+                Value::String("beta".to_string()),
+                Value::String("two".repeat(2)),
+            ],
+            IndexMap::new(),
+        )
+        .expect("entry array should allocate");
+    let iterable = runtime
+        .insert_array(
+            vec![Value::Array(entry_a), Value::Array(entry_b)],
+            IndexMap::new(),
+        )
+        .expect("iterable should allocate");
+    let rebuilt = runtime
+        .call_object_from_entries(&[Value::Array(iterable)])
+        .expect("Object.fromEntries should succeed");
+    assert!(matches!(rebuilt, Value::Object(_)));
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        property_metrics.accounting_refreshes + 2
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}
+
+#[test]
+fn regexp_last_index_updates_preserve_cached_totals_without_full_refreshes() {
+    let mut runtime = test_runtime();
+    let regex = runtime
+        .construct_regexp(&[
+            Value::String("a".to_string()),
+            Value::String("g".to_string()),
+        ])
+        .expect("regexp should construct");
+    let regex_key = match regex.clone() {
+        Value::Object(key) => key,
+        other => panic!("expected regexp object, got {other:?}"),
+    };
+    let baseline_metrics = runtime.debug_metrics();
+
+    let first = runtime
+        .call_regexp_exec(regex.clone(), &[Value::String("a a".to_string())])
+        .expect("first exec should succeed");
+    assert!(matches!(first, Value::Array(_)));
+    assert_eq!(
+        runtime
+            .regexp_object(regex_key)
+            .expect("regexp should exist")
+            .last_index,
+        1
+    );
+
+    let second = runtime
+        .call_regexp_exec(regex.clone(), &[Value::String("a a".to_string())])
+        .expect("second exec should succeed");
+    assert!(matches!(second, Value::Array(_)));
+    assert_eq!(
+        runtime
+            .regexp_object(regex_key)
+            .expect("regexp should exist")
+            .last_index,
+        3
+    );
+
+    let global_match = runtime
+        .call_string_match(
+            Value::String("aba".to_string()),
+            std::slice::from_ref(&regex),
+        )
+        .expect("String.prototype.match should succeed");
+    assert!(matches!(global_match, Value::Array(_)));
+    assert_eq!(
+        runtime
+            .regexp_object(regex_key)
+            .expect("regexp should exist")
+            .last_index,
+        0
+    );
+
+    let match_all = runtime
+        .call_string_match_all(Value::String("aba".to_string()), &[regex])
+        .expect("String.prototype.matchAll should succeed");
+    assert!(matches!(match_all, Value::Iterator(_)));
+    assert_eq!(
+        runtime
+            .regexp_object(regex_key)
+            .expect("regexp should exist")
+            .last_index,
+        0
+    );
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
 }
