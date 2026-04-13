@@ -317,6 +317,7 @@ impl Runtime {
                 }
             });
             self.regexp_object_mut(regex_key)?.last_index = next_index;
+            self.refresh_object_accounting(regex_key)?;
         }
         Ok(matched)
     }

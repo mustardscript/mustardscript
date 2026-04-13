@@ -92,21 +92,13 @@ impl Runtime {
                 "TypeError: cannot assign to read-only function metadata",
             ));
         }
-        let new_entry_bytes = Self::property_entry_bytes(&key, &value);
-        let old_entry_bytes = {
-            let closure_ref = self
-                .closures
-                .get_mut(closure)
-                .ok_or_else(|| MustardError::runtime("closure missing"))?;
-            let old_entry_bytes = closure_ref
-                .properties
-                .get(&key)
-                .map(|existing| Self::property_entry_bytes(&key, existing))
-                .unwrap_or(0);
-            closure_ref.properties.insert(key, value);
-            old_entry_bytes
-        };
-        self.apply_closure_component_delta(closure, old_entry_bytes, new_entry_bytes)
+        self.closures
+            .get_mut(closure)
+            .ok_or_else(|| MustardError::runtime("closure missing"))?
+            .properties
+            .insert(key, value);
+        self.refresh_closure_accounting(closure)?;
+        Ok(())
     }
 
     pub(super) fn builtin_function_custom_property(
@@ -191,21 +183,13 @@ impl Runtime {
                 object
             }
         };
-        let new_entry_bytes = Self::property_entry_bytes(&key, &value);
-        let old_entry_bytes = {
-            let object_ref = self
-                .objects
-                .get_mut(object)
-                .ok_or_else(|| MustardError::runtime("object missing"))?;
-            let old_entry_bytes = object_ref
-                .properties
-                .get(&key)
-                .map(|existing| Self::property_entry_bytes(&key, existing))
-                .unwrap_or(0);
-            object_ref.properties.insert(key, value);
-            old_entry_bytes
-        };
-        self.apply_object_component_delta(object, old_entry_bytes, new_entry_bytes)
+        self.objects
+            .get_mut(object)
+            .ok_or_else(|| MustardError::runtime("object missing"))?
+            .properties
+            .insert(key, value);
+        self.refresh_object_accounting(object)?;
+        Ok(())
     }
 
     fn set_host_function_property(
@@ -227,21 +211,13 @@ impl Runtime {
                 object
             }
         };
-        let new_entry_bytes = Self::property_entry_bytes(&key, &value);
-        let old_entry_bytes = {
-            let object_ref = self
-                .objects
-                .get_mut(object)
-                .ok_or_else(|| MustardError::runtime("object missing"))?;
-            let old_entry_bytes = object_ref
-                .properties
-                .get(&key)
-                .map(|existing| Self::property_entry_bytes(&key, existing))
-                .unwrap_or(0);
-            object_ref.properties.insert(key, value);
-            old_entry_bytes
-        };
-        self.apply_object_component_delta(object, old_entry_bytes, new_entry_bytes)
+        self.objects
+            .get_mut(object)
+            .ok_or_else(|| MustardError::runtime("object missing"))?
+            .properties
+            .insert(key, value);
+        self.refresh_object_accounting(object)?;
+        Ok(())
     }
 
     fn builtin_function_name(function: BuiltinFunction) -> &'static str {

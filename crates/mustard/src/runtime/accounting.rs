@@ -353,30 +353,6 @@ impl Runtime {
         Ok(())
     }
 
-    pub(super) fn apply_closure_component_delta(
-        &mut self,
-        key: ClosureKey,
-        old_component_bytes: usize,
-        new_component_bytes: usize,
-    ) -> MustardResult<()> {
-        let old_bytes = self
-            .closures
-            .get(key)
-            .ok_or_else(|| MustardError::runtime("closure missing"))?
-            .accounted_bytes;
-        let new_bytes = old_bytes
-            .checked_sub(old_component_bytes)
-            .ok_or_else(|| MustardError::runtime("closure accounting underflow"))?
-            .checked_add(new_component_bytes)
-            .ok_or_else(|| MustardError::runtime("closure accounting overflow"))?;
-        self.apply_heap_delta(old_bytes, new_bytes)?;
-        self.closures
-            .get_mut(key)
-            .ok_or_else(|| MustardError::runtime("closure missing"))?
-            .accounted_bytes = new_bytes;
-        Ok(())
-    }
-
     pub(super) fn replace_promise_driver(
         &mut self,
         key: PromiseKey,
@@ -619,6 +595,7 @@ impl Runtime {
                 .get_mut(key)
                 .ok_or_else(|| MustardError::runtime("closure missing"))?
                 .prototype = Some(prototype);
+            self.refresh_closure_accounting(key)?;
         }
         Ok(key)
     }
@@ -672,7 +649,6 @@ impl Runtime {
         Ok(())
     }
 
-    #[cfg(test)]
     pub(super) fn refresh_object_accounting(&mut self, key: ObjectKey) -> MustardResult<()> {
         self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
@@ -690,7 +666,6 @@ impl Runtime {
         Ok(())
     }
 
-    #[cfg(test)]
     pub(super) fn refresh_array_accounting(&mut self, key: ArrayKey) -> MustardResult<()> {
         self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
@@ -725,7 +700,6 @@ impl Runtime {
         Ok(())
     }
 
-    #[cfg(test)]
     pub(super) fn refresh_closure_accounting(&mut self, key: ClosureKey) -> MustardResult<()> {
         self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
