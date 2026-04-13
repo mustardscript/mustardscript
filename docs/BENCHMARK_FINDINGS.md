@@ -9,7 +9,7 @@ This document summarizes the latest local benchmark run from
 
 Reference report:
 
-- `benchmarks/results/2026-04-13T07-55-31-500Z-workloads.json`
+- `benchmarks/results/2026-04-13T08-04-08-003Z-workloads.json`
 
 Machine and environment:
 
@@ -17,7 +17,7 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA: `00510fe`
+- Git SHA: `4005a41`
 - Fixture version: `4`
 
 ## Headline Results
@@ -32,11 +32,11 @@ Representative medians:
 
 | Workload | Addon | Sidecar | V8 isolate |
 | --- | ---: | ---: | ---: |
-| Cold start, small script | 10.69 ms | 23.22 ms | 0.50 ms |
-| Warm run, small script | 10.68 ms | 10.64 ms | 0.17 ms |
-| Cold start, code-mode search | 35.95 ms | 40.15 ms | 0.63 ms |
-| Warm run, code-mode search | 34.92 ms | 35.81 ms | 0.20 ms |
-| Programmatic tool workflow | 37.06 ms | 41.93 ms | 0.34 ms |
+| Cold start, small script | 10.26 ms | 22.77 ms | 0.50 ms |
+| Warm run, small script | 10.33 ms | 10.18 ms | 0.18 ms |
+| Cold start, code-mode search | 35.73 ms | 37.79 ms | 0.63 ms |
+| Warm run, code-mode search | 34.65 ms | 35.16 ms | 0.20 ms |
+| Programmatic tool workflow | 36.52 ms | 41.18 ms | 0.34 ms |
 
 The practical read is that `mustard` is not competitive with a V8 isolate on
 pure execution speed for these local fixtures.
@@ -50,10 +50,10 @@ Representative medians:
 
 | Workload | Addon | Sidecar | Sidecar / Addon |
 | --- | ---: | ---: | ---: |
-| Cold start, small script | 10.69 ms | 23.22 ms | 2.17x |
-| Programmatic tool workflow | 37.06 ms | 41.93 ms | 1.13x |
-| Host fanout, 10 calls | 0.57 ms | 0.88 ms | 1.54x |
-| Host fanout, 100 calls | 5.15 ms | 7.82 ms | 1.52x |
+| Cold start, small script | 10.26 ms | 22.77 ms | 2.22x |
+| Programmatic tool workflow | 36.52 ms | 41.18 ms | 1.13x |
+| Host fanout, 10 calls | 0.58 ms | 0.87 ms | 1.51x |
+| Host fanout, 100 calls | 5.17 ms | 7.77 ms | 1.50x |
 
 If low latency matters and the deployment model allows it, addon mode remains
 the better `mustard` path.
@@ -69,9 +69,9 @@ Representative medians:
 
 | Workload | Addon | Sidecar | V8 isolate |
 | --- | ---: | ---: | ---: |
-| Suspend/resume, 1 boundary | 0.20 ms | 0.11 ms | 0.95 ms |
-| Suspend/resume, 5 boundaries | 0.80 ms | 0.41 ms | 2.85 ms |
-| Suspend/resume, 20 boundaries | 3.15 ms | 1.51 ms | 10.29 ms |
+| Suspend/resume, 1 boundary | 0.19 ms | 0.11 ms | 0.93 ms |
+| Suspend/resume, 5 boundaries | 0.79 ms | 0.39 ms | 2.81 ms |
+| Suspend/resume, 20 boundaries | 3.15 ms | 1.49 ms | 9.97 ms |
 
 On this workload shape, `mustard` addon is about 2.5x to 3.6x faster than the
 isolate baseline, and sidecar is faster still.
@@ -84,10 +84,10 @@ harness.
 
 | Workload | Addon | Sidecar | V8 isolate |
 | --- | ---: | ---: | ---: |
-| Host fanout, 1 call | 0.08 ms | 0.13 ms | 0.15 ms |
-| Host fanout, 10 calls | 0.57 ms | 0.88 ms | 0.16 ms |
-| Host fanout, 50 calls | 2.75 ms | 4.11 ms | 0.19 ms |
-| Host fanout, 100 calls | 5.15 ms | 7.82 ms | 0.24 ms |
+| Host fanout, 1 call | 0.07 ms | 0.13 ms | 0.15 ms |
+| Host fanout, 10 calls | 0.58 ms | 0.87 ms | 0.16 ms |
+| Host fanout, 50 calls | 2.76 ms | 4.05 ms | 0.20 ms |
+| Host fanout, 100 calls | 5.17 ms | 7.77 ms | 0.25 ms |
 
 The read is:
 
@@ -107,8 +107,8 @@ Median recovery timings:
 
 | Workload | Addon | Sidecar | V8 isolate |
 | --- | ---: | ---: | ---: |
-| Limit failure then recover | 10.68 ms | 10.94 ms | 2.46 ms |
-| Host failure then recover | 10.78 ms | 11.37 ms | 0.67 ms |
+| Limit failure then recover | 10.17 ms | 10.23 ms | 2.43 ms |
+| Host failure then recover | 10.57 ms | 10.44 ms | 0.68 ms |
 
 The isolate baseline recovers much faster in this harness. For addon and
 sidecar, failure recovery is close to the cost of a normal rerun.
@@ -119,9 +119,9 @@ The benchmark captures post-GC deltas after 20 workflow runs.
 
 | Runtime | Heap delta | RSS delta |
 | --- | ---: | ---: |
-| Addon | +1,504 B | +458,752 B |
-| Sidecar | +18,960 B | +540,672 B |
-| V8 isolate | -4,024 B | -10,108,928 B |
+| Addon | +1,760 B | +344,064 B |
+| Sidecar | +18,264 B | +393,216 B |
+| V8 isolate | -3,608 B | -10,338,304 B |
 
 These numbers should be treated cautiously:
 
@@ -142,10 +142,10 @@ clearer:
 | Phase | Median |
 | --- | ---: |
 | `runtime_init_only` | `0.07 ms` |
-| `execution_only_small` | `13.74 ms` |
+| `execution_only_small` | `13.83 ms` |
 | `suspend_only` | `0.06 ms` |
 | `snapshot_dump_only` | `0.00 ms` |
-| `apply_snapshot_policy_only` | `0.02 ms` |
+| `apply_snapshot_policy_only` | `0.01 ms` |
 | `snapshot_load_only` | `0.02 ms` |
 | `Progress.load_only` | `0.12 ms` |
 
@@ -154,11 +154,14 @@ policy or `Progress.load(...)` overhead on this fixture. The large fixed cost is
 still in core execution itself, which supports prioritizing Milestone 1 runtime
 start/run work before deeper snapshot or bridge surgery.
 
-The latest Rust-core `runtime_core` bench shows the new cached startup image
-cutting `runtime_init_empty` by roughly 37%, `runtime_init_with_capabilities`
-by roughly 35%, and `runtime_init_with_inputs` by roughly 24% versus the prior
-Criterion baseline. The end-to-end workload suite moved only modestly because
-`execution_only_small` is still the dominant fixed cost.
+The latest Rust-core `runtime_core` bench now reflects two performance-focused
+Milestone 1/3 cuts in sequence: the cached startup image plus borrowed
+instruction dispatch. Relative to the previous Criterion baselines, startup and
+core execution benches improved across the board, including roughly `-9.0%` on
+`runtime_init_empty`, `-6.7%` on `runtime_init_with_capabilities`, `-8.4%` on
+`execute_shared_small_compute`, `-8.8%` on `vm_hot_loop`, and `-6.4%` on
+`env_lookup_hot`. The end-to-end workload suite still moved more modestly
+because `execution_only_small` remains the dominant fixed cost.
 
 ## Conclusions
 

@@ -1,5 +1,6 @@
 use super::*;
 use num_bigint::BigInt;
+use std::sync::Arc;
 
 impl Runtime {
     pub(super) fn run_root(&mut self) -> MustardResult<ExecutionStep> {
@@ -28,40 +29,41 @@ impl Runtime {
             .ok_or_else(|| MustardError::runtime("vm lost all frames"))?;
         let function_id = self.frames[frame_index].function_id;
         let ip = self.frames[frame_index].ip;
-        let instruction = self
-            .program
+        let program = Arc::clone(&self.program);
+        let instruction = program
             .functions
             .get(function_id)
             .and_then(|function| function.code.get(ip))
-            .cloned()
             .ok_or_else(|| MustardError::runtime("instruction pointer out of range"))?;
         self.frames[frame_index].ip += 1;
         self.bump_instruction_budget()?;
-        self.collect_garbage_before_instruction(&instruction)?;
+        self.collect_garbage_before_instruction(instruction)?;
         match instruction {
             Instruction::PushUndefined => {
                 self.frames[frame_index].stack.push(Value::Undefined);
             }
             Instruction::PushNull => self.frames[frame_index].stack.push(Value::Null),
-            Instruction::PushBool(value) => self.frames[frame_index].stack.push(Value::Bool(value)),
+            Instruction::PushBool(value) => {
+                self.frames[frame_index].stack.push(Value::Bool(*value))
+            }
             Instruction::PushNumber(value) => {
-                self.frames[frame_index].stack.push(Value::Number(value))
+                self.frames[frame_index].stack.push(Value::Number(*value))
             }
             Instruction::PushBigInt(value) => {
                 let value = BigInt::parse_bytes(value.as_bytes(), 10)
                     .ok_or_else(|| MustardError::runtime("invalid BigInt literal in bytecode"))?;
                 self.frames[frame_index].stack.push(Value::BigInt(value));
             }
-            Instruction::PushString(value) => {
-                self.frames[frame_index].stack.push(Value::String(value))
-            }
+            Instruction::PushString(value) => self.frames[frame_index]
+                .stack
+                .push(Value::String(value.clone())),
             Instruction::PushRegExp { pattern, flags } => {
-                let value = self.make_regexp_value(pattern, flags)?;
+                let value = self.make_regexp_value(pattern.clone(), flags.clone())?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::LoadName(name) => {
                 let env = self.frames[frame_index].env;
-                let value = self.lookup_name(env, &name)?;
+                let value = self.lookup_name(env, name)?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::LoadGlobalObject => {
@@ -77,7 +79,7 @@ impl Runtime {
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 let env = self.frames[frame_index].env;
-                self.assign_name(env, &name, value.clone())?;
+                self.assign_name(env, name, value.clone())?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::InitializePattern(pattern) => {
@@ -86,7 +88,7 @@ impl Runtime {
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 let env = self.frames[frame_index].env;
-                self.initialize_pattern(env, &pattern, value)?;
+                self.initialize_pattern(env, pattern, value)?;
             }
             Instruction::PushEnv => {
                 let current_env = self.frames[frame_index].env;
@@ -103,16 +105,16 @@ impl Runtime {
             }
             Instruction::DeclareName { name, mutable } => {
                 let env = self.frames[frame_index].env;
-                self.declare_name(env, name, mutable)?;
+                self.declare_name(env, name.clone(), *mutable)?;
             }
             Instruction::MakeClosure { function_id } => {
                 let env = self.frames[frame_index].env;
                 let this_value = self.lookup_name(env, "this").unwrap_or(Value::Undefined);
-                let closure = self.insert_closure(function_id, env, this_value)?;
+                let closure = self.insert_closure(*function_id, env, this_value)?;
                 self.frames[frame_index].stack.push(Value::Closure(closure));
             }
             Instruction::MakeArray { count } => {
-                let values = pop_many(&mut self.frames[frame_index].stack, count)?;
+                let values = pop_many(&mut self.frames[frame_index].stack, *count)?;
                 let array = self.insert_array(values, IndexMap::new())?;
                 self.frames[frame_index].stack.push(Value::Array(array));
             }
@@ -171,8 +173,8 @@ impl Runtime {
             Instruction::MakeObject { keys } => {
                 let values = pop_many(&mut self.frames[frame_index].stack, keys.len())?;
                 let mut properties = IndexMap::new();
-                for (key, value) in keys.into_iter().zip(values.into_iter()) {
-                    properties.insert(property_name_to_key(&key), value);
+                for (key, value) in keys.iter().zip(values.into_iter()) {
+                    properties.insert(property_name_to_key(key), value);
                 }
                 let object = self.insert_object(properties, ObjectKind::Plain)?;
                 self.frames[frame_index].stack.push(Value::Object(object));
@@ -211,7 +213,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let value = self.get_property(object, Value::String(name), optional)?;
+                let value = self.get_property(object, Value::String(name.clone()), *optional)?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::GetPropComputed { optional } => {
@@ -223,7 +225,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let value = self.get_property(object, property, optional)?;
+                let value = self.get_property(object, property, *optional)?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::SetPropStatic { name } => {
@@ -235,7 +237,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                self.set_property(object, Value::String(name), value.clone())?;
+                self.set_property(object, Value::String(name.clone()), value.clone())?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::SetPropComputed => {
@@ -259,7 +261,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let result = self.apply_unary(operator, value)?;
+                let result = self.apply_unary(*operator, value)?;
                 self.frames[frame_index].stack.push(result);
             }
             Instruction::Binary(operator) => {
@@ -271,7 +273,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let result = self.apply_binary(operator, left, right)?;
+                let result = self.apply_binary(*operator, left, right)?;
                 self.frames[frame_index].stack.push(result);
             }
             Instruction::Update(operator) => {
@@ -279,7 +281,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let result = self.apply_update(operator, value)?;
+                let result = self.apply_update(*operator, value)?;
                 self.frames[frame_index].stack.push(result);
             }
             Instruction::PatternArrayIndex(index) => {
@@ -287,7 +289,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let result = self.pattern_array_index(value, index)?;
+                let result = self.pattern_array_index(value, *index)?;
                 self.frames[frame_index].stack.push(result);
             }
             Instruction::PatternArrayRest(start) => {
@@ -295,7 +297,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let result = self.pattern_array_rest(value, start)?;
+                let result = self.pattern_array_rest(value, *start)?;
                 self.frames[frame_index].stack.push(result);
             }
             Instruction::PatternObjectRest(excluded) => {
@@ -303,7 +305,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let result = self.pattern_object_rest(value, &excluded)?;
+                let result = self.pattern_object_rest(value, excluded)?;
                 self.frames[frame_index].stack.push(result);
             }
             Instruction::Pop => {
@@ -330,8 +332,8 @@ impl Runtime {
             Instruction::PushHandler { catch, finally } => {
                 let frame = &mut self.frames[frame_index];
                 frame.handlers.push(ExceptionHandler {
-                    catch,
-                    finally,
+                    catch: *catch,
+                    finally: *finally,
                     env: frame.env,
                     scope_stack_len: frame.scope_stack.len(),
                     stack_len: frame.stack.len(),
@@ -353,7 +355,7 @@ impl Runtime {
                     .active_finally
                     .push(ActiveFinallyState {
                         completion_index,
-                        exit,
+                        exit: *exit,
                     });
             }
             Instruction::BeginCatch => {
@@ -368,7 +370,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                return self.raise_exception(value, Some(span));
+                return self.raise_exception(value, Some(*span));
             }
             Instruction::PushPendingJump {
                 target,
@@ -378,9 +380,9 @@ impl Runtime {
                 self.store_completion(
                     frame_index,
                     CompletionRecord::Jump {
-                        target,
-                        target_handler_depth,
-                        target_scope_depth,
+                        target: *target,
+                        target_handler_depth: *target_handler_depth,
+                        target_scope_depth: *target_scope_depth,
                     },
                 )?;
             }
@@ -413,7 +415,7 @@ impl Runtime {
                     .remove(marker.completion_index);
                 return self.resume_completion(completion);
             }
-            Instruction::Jump(target) => self.frames[frame_index].ip = target,
+            Instruction::Jump(target) => self.frames[frame_index].ip = *target,
             Instruction::JumpIfFalse(target) => {
                 let value = self.frames[frame_index]
                     .stack
@@ -421,7 +423,7 @@ impl Runtime {
                     .cloned()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 if !is_truthy(&value) {
-                    self.frames[frame_index].ip = target;
+                    self.frames[frame_index].ip = *target;
                 }
             }
             Instruction::JumpIfTrue(target) => {
@@ -431,7 +433,7 @@ impl Runtime {
                     .cloned()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 if is_truthy(&value) {
-                    self.frames[frame_index].ip = target;
+                    self.frames[frame_index].ip = *target;
                 }
             }
             Instruction::JumpIfNullish(target) => {
@@ -441,7 +443,7 @@ impl Runtime {
                     .cloned()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 if matches!(value, Value::Null | Value::Undefined) {
-                    self.frames[frame_index].ip = target;
+                    self.frames[frame_index].ip = *target;
                 }
             }
             Instruction::Call {
@@ -449,12 +451,12 @@ impl Runtime {
                 with_this,
                 optional,
             } => {
-                let args = pop_many(&mut self.frames[frame_index].stack, argc)?;
+                let args = pop_many(&mut self.frames[frame_index].stack, *argc)?;
                 let callee = self.frames[frame_index]
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let this_value = if with_this {
+                let this_value = if *with_this {
                     self.frames[frame_index]
                         .stack
                         .pop()
@@ -462,7 +464,7 @@ impl Runtime {
                 } else {
                     Value::Undefined
                 };
-                if optional && matches!(callee, Value::Undefined | Value::Null) {
+                if *optional && matches!(callee, Value::Undefined | Value::Null) {
                     self.frames[frame_index].stack.push(Value::Undefined);
                     return Ok(StepAction::Continue);
                 }
@@ -516,7 +518,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let this_value = if with_this {
+                let this_value = if *with_this {
                     self.frames[frame_index]
                         .stack
                         .pop()
@@ -524,7 +526,7 @@ impl Runtime {
                 } else {
                     Value::Undefined
                 };
-                if optional && matches!(callee, Value::Undefined | Value::Null) {
+                if *optional && matches!(callee, Value::Undefined | Value::Null) {
                     self.frames[frame_index].stack.push(Value::Undefined);
                     return Ok(StepAction::Continue);
                 }
@@ -563,7 +565,7 @@ impl Runtime {
                 }
             }
             Instruction::Construct { argc } => {
-                let args = pop_many(&mut self.frames[frame_index].stack, argc)?;
+                let args = pop_many(&mut self.frames[frame_index].stack, *argc)?;
                 let callee = self.frames[frame_index]
                     .stack
                     .pop()
