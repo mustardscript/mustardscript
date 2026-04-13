@@ -133,9 +133,12 @@ function useScrollStep(refs: React.RefObject<HTMLDivElement | null>[]): Step {
   }, [refs])
 
   useEffect(() => {
-    update()
+    const frame = window.requestAnimationFrame(update)
     window.addEventListener('scroll', update, { passive: true })
-    return () => window.removeEventListener('scroll', update)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', update)
+    }
   }, [update])
 
   return step

@@ -4,10 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/build-playground-wasm.mjs --profile dev",
     "dev": "vite",
+    "prebuild": "node scripts/build-playground-wasm.mjs --profile release",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:playwright": "node --test tests/playground.browser.test.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",

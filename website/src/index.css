@@ -127,6 +127,25 @@
   line-height: 1.75;
 }
 
+.playground-panel {
+  background:
+    linear-gradient(180deg, rgba(28, 21, 8, 0.95), rgba(17, 12, 4, 0.98)),
+    radial-gradient(circle at top right, rgba(245, 213, 99, 0.18), transparent 45%);
+  border: 1px solid rgba(28, 25, 23, 0.12);
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow:
+    0 24px 80px rgba(120, 53, 15, 0.18),
+    0 8px 30px rgba(0, 0, 0, 0.18);
+}
+
+.playground-editor {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 100% 2rem, 2rem 100%;
+}
+
 /* ── Tabs ───────────────────────────────────────────────── */
 .tab-active {
   background: var(--color-mustard);
