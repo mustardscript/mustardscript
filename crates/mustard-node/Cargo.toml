@@ -15,6 +15,7 @@ base64 = "0.22.1"
 mustard = { path = "../mustard" }
 mustard-bridge = { path = "../mustard-bridge" }
 hmac.workspace = true
+indexmap.workspace = true
 napi.workspace = true
 napi-derive.workspace = true
 rand.workspace = true

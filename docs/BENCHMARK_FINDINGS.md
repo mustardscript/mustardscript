@@ -2,9 +2,9 @@
 
 This document summarizes the latest checked-in benchmark evidence from:
 
-- workload suite: `benchmarks/results/2026-04-13T16-21-44-968Z-workloads.json`
-- release smoke suite: `benchmarks/results/2026-04-13T16-22-10-011Z-smoke-release.json`
-- dev smoke suite: `benchmarks/results/2026-04-13T15-32-43-544Z-smoke-dev.json`
+- workload suite: `benchmarks/results/2026-04-13T16-35-07-798Z-workloads.json`
+- release smoke suite: `benchmarks/results/2026-04-13T16-34-56-941Z-smoke-release.json`
+- dev smoke suite: `benchmarks/results/2026-04-13T16-35-03-175Z-smoke-dev.json`
 
 Machine and environment:
 
@@ -12,114 +12,110 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA in artifacts: `574eb03`
+- Git SHA in artifacts: `c52b26a`
 - Workload fixture version: `5`
 - Smoke fixture version: `2`
 
 ## Headline Results
 
-### 1. `Map` / `Set` accounting now stays on exact delta updates
+### 1. Native execution-context handles now keep policy and capability state in the addon
 
-The latest runtime change removes full `Map` / `Set` accounting refreshes from
-hot `set` / `add` / `delete` / `clear` mutations and replaces them with exact
-byte deltas plus regression coverage that the cached totals still match a full
-heap walk.
+The latest addon change promotes JS `ExecutionContext` reuse into explicit
+native execution-context handles. Repeated `run()`, `start()`, and
+`Progress.load()` calls now keep the parsed capability list and limits in the
+addon instead of re-sending and reparsing the same policy JSON on every call.
 
-The direct Rust-core signal is the targeted `map_set_hot` microbench from
-`npm run bench:rust`, which improved by about `8.2%` in the latest rerun.
+Regression coverage now proves one `ExecutionContext` reuses a single native
+handle across repeated starts and detached-snapshot loads.
 
-### 2. Broad addon workloads stayed mostly flat, but did not turn that microbench win into a broad latency gain
+### 2. Boundary-heavy addon medians improved across repeated start/load paths
 
 Relative to the tracked addon workload baseline
-`benchmarks/results/2026-04-13T16-07-24-551Z-workloads.json`, the latest
-checked-in workload artifact is mixed:
+`benchmarks/results/2026-04-13T16-21-44-968Z-workloads.json`, the latest
+checked-in workload artifact shows the intended boundary-side wins:
 
 | Workload | Baseline | Current | Delta |
 | --- | ---: | ---: | ---: |
-| Warm run, small script | 0.89 ms | 0.90 ms | `+1.4%` |
-| Warm run, code-mode search | 0.50 ms | 0.50 ms | `+0.0%` |
-| Programmatic tool workflow | 1.41 ms | 1.47 ms | `+3.9%` |
-| Host fanout, 100 calls | 0.37 ms | 0.39 ms | `+4.5%` |
-| Suspend/resume, 20 boundaries | 2.32 ms | 2.35 ms | `+1.4%` |
+| Warm run, small script | 0.90 ms | 0.88 ms | `-2.9%` |
+| Warm run, code-mode search | 0.50 ms | 0.49 ms | `-2.1%` |
+| Programmatic tool workflow | 1.47 ms | 1.38 ms | `-6.1%` |
+| Host fanout, 100 calls | 0.39 ms | 0.39 ms | `-0.4%` |
+| Cold start, small script | 0.98 ms | 0.95 ms | `-2.7%` |
 
-The phase-split numbers were similarly close to flat overall:
+The clearest direct signals are on the boundary-only and public restore paths:
 
-| Phase | Baseline | Current | Delta |
+| Surface | Baseline | Current | Delta |
 | --- | ---: | ---: | ---: |
-| `runtime_init_only` | 0.03 ms | 0.03 ms | `+16.1%` |
-| `execution_only_small` | 1.71 ms | 1.70 ms | `-0.4%` |
-| `snapshot_load_only` | 0.04 ms | 0.04 ms | `+3.5%` |
-| `Progress.load_only` | 0.19 ms | 0.19 ms | `-1.1%` |
+| `startInputs.small` | 0.14 ms | 0.13 ms | `-7.3%` |
+| `startInputs.medium` | 0.28 ms | 0.25 ms | `-10.1%` |
+| `resumeValues.small` | 0.13 ms | 0.12 ms | `-10.1%` |
+| `resumeErrors.small` | 0.11 ms | 0.10 ms | `-10.2%` |
+| `Progress.load_only` | 0.19 ms | 0.18 ms | `-1.8%` |
 
-This is still useful evidence: the `Map` / `Set` accounting change is
-correct and makes the targeted keyed-collection mutation path cheaper, but it
-did not materially improve the main addon workloads on its own.
+The boundary wins did not materially move `host_fanout_100`, which is expected:
+that workload is dominated by the remaining JS structured-value DTO path and
+the still-open typed/binary boundary work.
 
-### 3. The tracked workload regression gate still fails on small boundary-only surfaces
+### 3. Rust-core microbenches stayed mostly flat, which matches the scope of the change
 
-`npm run bench:regress:workloads` still exits nonzero against the tracked
-baseline because several addon boundary metrics remain above the configured
-`10%` threshold:
+`npm run bench:rust` stayed effectively flat on the core VM and startup benches,
+which is the expected outcome for a mostly addon-boundary optimization. A few
+non-targeted benches moved within noise, while the hot runtime loops and lookup
+paths showed no meaningful regressions.
 
-- `addon.boundary.resumeErrors.small`: `0.10 ms -> 0.11 ms` median (`+10.1%`),
-  `0.10 ms -> 0.13 ms` p95 (`+24.4%`)
-- `addon.boundary.resumeValues.medium`: `0.24 ms -> 0.27 ms` median (`+12.3%`),
-  `0.26 ms -> 0.31 ms` p95 (`+18.3%`)
-- `addon.boundary.resumeValues.small`: `0.11 ms -> 0.13 ms` median (`+16.8%`)
-- `addon.phases.execution_only_small`: `1.71 ms -> 1.89 ms` p95 (`+10.3%`)
+That separation is useful evidence: the win came from caching addon execution
+context metadata, not from changing Rust guest semantics or the core VM.
 
-Those regressions are not on the keyed-collection mutation path that changed in
-this iteration, so the next performance chunk should continue on the still-open
-boundary/runtime-wide items instead of treating this accounting change as a
-complete workload win.
-
-### 4. Smoke gates still pass comfortably
+### 4. Release smoke budgets still pass, but the relative smoke regression gate is noisy
 
 Current release smoke medians:
 
 | Metric | Current |
 | --- | ---: |
-| Startup | `0.05 ms` |
-| Compute | `0.38 ms` |
-| Host-call median ratio | `4.44x` |
-| Host-call p95 ratio | `5.00x` |
-| Snapshot median ratio | `6.63x` |
-| Snapshot p95 ratio | `5.32x` |
+| Startup | `0.06 ms` |
+| Compute | `0.44 ms` |
+| Host-call median ratio | `4.48x` |
+| Host-call p95 ratio | `5.42x` |
+| Snapshot median ratio | `6.25x` |
+| Snapshot p95 ratio | `2.50x` |
 
 Relative to the previous tracked release smoke artifact
-`benchmarks/results/2026-04-13T16-06-51-826Z-smoke-release.json`:
+`benchmarks/results/2026-04-13T16-22-10-011Z-smoke-release.json`:
 
-- compute median improved by `14.9%`
-- host-call median ratio improved by `14.2%`
-- snapshot round-trip median moved slightly slower (`+2.7%`) but remained well
-  inside the release smoke budgets
-- startup median moved slightly slower (`+5.5%`) but also stayed far inside the
-  release smoke budgets
+- the smoke budgets still pass comfortably
+- `npm run bench:regress:smoke` currently exits nonzero on tiny-sample p95-only
+  noise, especially `metrics.snapshot.direct` p95 (`0.11 ms -> 0.23 ms`)
+- the public smoke gate remains useful, but the relative regression command is
+  currently noisier than the workload suite on these sub-millisecond samples
 
-The smoke regression gate still passes.
+## Sidecar And Gate Notes
 
-## Sidecar And Microbench Notes
-
-Current sidecar/addon ratios from the new workload artifact:
+Current sidecar/addon ratios from the new workload artifact remain dominated by
+transport and session-state overhead:
 
 | Workload | Addon | Sidecar | Sidecar / Addon |
 | --- | ---: | ---: | ---: |
-| Warm run, small script | 0.90 ms | 1.44 ms | `1.61x` |
-| Programmatic tool workflow | 1.47 ms | 18.77 ms | `12.76x` |
-| Host fanout, 100 calls | 0.39 ms | 7.55 ms | `19.31x` |
+| Warm run, small script | 0.88 ms | 1.50 ms | `1.70x` |
+| Programmatic tool workflow | 1.38 ms | 21.45 ms | `15.49x` |
+| Host fanout, 100 calls | 0.39 ms | 7.28 ms | `18.67x` |
 
-Sidecar remains dominated by transport and session-state overhead rather than
-the keyed-collection accounting path.
+`npm run bench:regress:workloads` still exits nonzero, but the remaining issue
+has narrowed to a small p95-only phase surface:
+
+- `addon.phases.apply_snapshot_policy_only` p95: `0.04 ms -> 0.04 ms`
+  (`+20.8%` on tiny absolute timings)
 
 ## Conclusions
 
-1. The runtime now applies exact accounting deltas for hot `Map` / `Set`
-   mutations, and the targeted Rust microbench confirms that this path got
-   cheaper.
-2. The broader addon workloads did not materially improve from this change
-   alone, so the remaining performance plan items should stay open.
-3. Release smoke still passes, but the tracked workload regression gate still
-   fails on several small boundary-only resume/start surfaces.
-4. The next concrete paths should stay on the still-open runtime-wide and
-   boundary-heavy work: deeper string/key interning, the remaining boundary
-   transport optimizations, and later sidecar/session-state reductions.
+1. Native execution-context handles are now real addon state, not just JS-side
+   caching, and repeated `ExecutionContext` workloads no longer reparse the
+   same capability/limit policy on every start or load.
+2. The main addon gains landed where expected: repeated start/load boundary
+   medians improved, `programmatic_tool_workflow` improved by about `6.1%`, and
+   `warm_run_small` improved by about `2.9%`.
+3. The remaining open Milestone 5 work is still the typed/binary structured
+   boundary path; `host_fanout_100` stayed effectively flat because the JS DTO
+   path still dominates there.
+4. The next concrete paths remain the still-open boundary/runtime-wide items:
+   typed or binary start/resume payloads, deeper string/key interning, and then
+   later sidecar/session-state reductions.

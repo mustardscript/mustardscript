@@ -6,6 +6,8 @@ export declare function compileProgram(source: string): string
 
 export declare function createCancellationToken(): string
 
+export declare function createExecutionContext(policyJson: string): string
+
 export declare function dumpProgram(programHandle: string): Buffer
 
 export declare function dumpSnapshotHandle(snapshotHandle: string): Buffer
@@ -18,11 +20,17 @@ export declare function inspectSnapshotHandle(snapshotHandle: string): string
 
 export declare function loadDetachedSnapshotHandle(programHandle: string, snapshot: Buffer, policyJson: string): string
 
+export declare function loadDetachedSnapshotHandleWithExecutionContext(programHandle: string, contextHandle: string, snapshot: Buffer, snapshotId: string, snapshotKeyBase64: string, snapshotKeyDigest: string, snapshotToken: string): string
+
 export declare function loadProgram(program: Buffer): string
 
 export declare function loadSnapshotHandle(snapshot: Buffer, policyJson: string): string
 
+export declare function loadSnapshotHandleWithExecutionContext(contextHandle: string, snapshot: Buffer, snapshotId: string, snapshotKeyBase64: string, snapshotKeyDigest: string, snapshotToken: string): string
+
 export declare function releaseCancellationToken(tokenId: string): void
+
+export declare function releaseExecutionContext(contextHandle: string): void
 
 export declare function releaseProgram(programHandle: string): void
 
@@ -39,5 +47,7 @@ export declare function retainProgram(programHandle: string): string
 export declare function snapshotIdentity(snapshot: Buffer): string
 
 export declare function startProgram(programHandle: string, optionsJson: string, cancellationTokenId?: string | undefined | null): string
+
+export declare function startProgramWithExecutionContextHandle(programHandle: string, contextHandle: string, inputsJson: string, cancellationTokenId?: string | undefined | null): string
 
 export declare function startProgramWithSnapshotHandle(programHandle: string, optionsJson: string, cancellationTokenId?: string | undefined | null): string

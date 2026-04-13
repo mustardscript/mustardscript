@@ -7,6 +7,7 @@ const {
   runtime,
   test,
 } = require('./support/helpers.js');
+const { loadNative } = require('../../native-loader.ts');
 
 const SNAPSHOT_KEY = Buffer.from('execution-context-test-snapshot-key');
 
@@ -151,4 +152,68 @@ test('execution contexts do not reuse stale snapshot auth across Progress.load c
   assert.ok(secondNext instanceof Progress);
   assert.deepEqual(secondNext.args, [11]);
   assert.equal(secondNext.resume(12), 12);
+});
+
+test('execution contexts reuse one native handle across repeated start and load calls', async () => {
+  const native = loadNative();
+  const originalCreateExecutionContext = native.createExecutionContext;
+  const originalStartProgramWithExecutionContextHandle =
+    native.startProgramWithExecutionContextHandle;
+  const originalLoadSnapshotHandleWithExecutionContext =
+    native.loadSnapshotHandleWithExecutionContext;
+  const originalLoadDetachedSnapshotHandleWithExecutionContext =
+    native.loadDetachedSnapshotHandleWithExecutionContext;
+  const counts = {
+    createExecutionContext: 0,
+    startProgramWithExecutionContextHandle: 0,
+    loadSnapshotHandleWithExecutionContext: 0,
+    loadDetachedSnapshotHandleWithExecutionContext: 0,
+  };
+  native.createExecutionContext = (...args) => {
+    counts.createExecutionContext += 1;
+    return originalCreateExecutionContext(...args);
+  };
+  native.startProgramWithExecutionContextHandle = (...args) => {
+    counts.startProgramWithExecutionContextHandle += 1;
+    return originalStartProgramWithExecutionContextHandle(...args);
+  };
+  native.loadSnapshotHandleWithExecutionContext = (...args) => {
+    counts.loadSnapshotHandleWithExecutionContext += 1;
+    return originalLoadSnapshotHandleWithExecutionContext(...args);
+  };
+  native.loadDetachedSnapshotHandleWithExecutionContext = (...args) => {
+    counts.loadDetachedSnapshotHandleWithExecutionContext += 1;
+    return originalLoadDetachedSnapshotHandleWithExecutionContext(...args);
+  };
+
+  try {
+    const context = createContext();
+    const program = runtime(`
+      const first = fetch_data(seed);
+      const second = fetch_data(first);
+      second;
+    `);
+
+    assert.equal(await program.run({ context, inputs: { seed: 1 } }), 3);
+    assert.equal(await program.run({ context, inputs: { seed: 5 } }), 7);
+
+    const dumped = program.start({ context, inputs: { seed: 9 } }).dump();
+    const restored = Progress.load(dumped, { context });
+    assert.ok(restored instanceof Progress);
+    assert.deepEqual(restored.args, [9]);
+    assert.equal(restored.resume(10).resume(11), 11);
+
+    assert.equal(counts.createExecutionContext, 1);
+    assert.equal(counts.startProgramWithExecutionContextHandle, 3);
+    assert.equal(counts.loadSnapshotHandleWithExecutionContext, 0);
+    assert.equal(counts.loadDetachedSnapshotHandleWithExecutionContext, 1);
+  } finally {
+    native.createExecutionContext = originalCreateExecutionContext;
+    native.startProgramWithExecutionContextHandle =
+      originalStartProgramWithExecutionContextHandle;
+    native.loadSnapshotHandleWithExecutionContext =
+      originalLoadSnapshotHandleWithExecutionContext;
+    native.loadDetachedSnapshotHandleWithExecutionContext =
+      originalLoadDetachedSnapshotHandleWithExecutionContext;
+  }
 });

@@ -231,12 +231,17 @@ function getEncodedStartOptionsSuffix(policy) {
   return cached;
 }
 
-function encodeStartOptions(inputs = {}, policy) {
+function encodeStructuredInputs(inputs = {}) {
   const encodedInputs = {};
   for (const [key, descriptor] of enumerateDataProperties(inputs)) {
     defineEnumerableProperty(encodedInputs, key, encodeStructured(descriptor.value));
   }
-  return `{"inputs":${JSON.stringify(encodedInputs)}${getEncodedStartOptionsSuffix(policy)}`;
+  return JSON.stringify(encodedInputs);
+}
+
+function encodeStartOptions(inputs = {}, policy) {
+  const encodedInputs = encodeStructuredInputs(inputs);
+  return `{"inputs":${encodedInputs}${getEncodedStartOptionsSuffix(policy)}`;
 }
 
 function encodeResumePayloadValue(value) {
@@ -288,6 +293,7 @@ module.exports = {
   encodeResumePayloadError,
   encodeResumePayloadValue,
   encodeStartOptions,
+  encodeStructuredInputs,
   encodeStructured,
   enumerateDataProperties,
   hasOwnProperty,

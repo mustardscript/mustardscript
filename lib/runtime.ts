@@ -13,6 +13,7 @@ const {
   encodeResumePayloadError,
   encodeResumePayloadValue,
   encodeStartOptions,
+  encodeStructuredInputs,
 } = require('./structured.ts');
 
 function createMustardClass({ native, materializeStep, parseStep }) {
@@ -63,13 +64,24 @@ function createMustardClass({ native, materializeStep, parseStep }) {
     async run(options = {}) {
       const signal = getAbortSignal(options, 'run options');
       throwIfAborted(signal);
-      const { hostHandlers, policy } = resolveExecutionContext(options, 'run options');
+      const { hostHandlers, policy, nativeContextHandle } = resolveExecutionContext(
+        options,
+        'run options',
+      );
       const programHandle = this._ensureProgramHandle();
+      const startProgram =
+        typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
+          ? native.startProgramWithExecutionContextHandle
+          : native.startProgramWithSnapshotHandle;
+      const startArgs =
+        typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
+          ? [programHandle, nativeContextHandle, encodeStructuredInputs(options.inputs)]
+          : [programHandle, encodeStartOptions(options.inputs, policy)];
       let step = parseStep(
         withCancellationSignal(
           native,
-          native.startProgramWithSnapshotHandle,
-          [programHandle, encodeStartOptions(options.inputs, policy)],
+          startProgram,
+          startArgs,
           signal,
         ),
       );
@@ -115,13 +127,24 @@ function createMustardClass({ native, materializeStep, parseStep }) {
     start(options = {}) {
       const signal = getAbortSignal(options, 'start options');
       throwIfAborted(signal);
-      const { policy, snapshotKey } = resolveExecutionContext(options, 'start options');
+      const { policy, snapshotKey, nativeContextHandle } = resolveExecutionContext(
+        options,
+        'start options',
+      );
       const programHandle = this._ensureProgramHandle();
+      const startProgram =
+        typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
+          ? native.startProgramWithExecutionContextHandle
+          : native.startProgramWithSnapshotHandle;
+      const startArgs =
+        typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
+          ? [programHandle, nativeContextHandle, encodeStructuredInputs(options.inputs)]
+          : [programHandle, encodeStartOptions(options.inputs, policy)];
       const step = parseStep(
         withCancellationSignal(
           native,
-          native.startProgramWithSnapshotHandle,
-          [programHandle, encodeStartOptions(options.inputs, policy)],
+          startProgram,
+          startArgs,
           signal,
         ),
       );

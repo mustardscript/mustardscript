@@ -534,28 +534,56 @@ function createProgressApi(native) {
         context.snapshotKey,
         snapshotIdentityValue,
       );
-      const policyJson = encodeSnapshotPolicy(context.policy, {
-        snapshotId: state.snapshot_id,
-        snapshotKey: context.snapshotKey,
-        snapshotKeyBase64: context.snapshotKeyBase64,
-        snapshotKeyDigest: context.snapshotKeyDigest,
-        snapshotToken: state.token,
-      });
+      const nativeContextHandle =
+        typeof context.nativeContextHandle === 'string' && context.nativeContextHandle.length > 0
+          ? context.nativeContextHandle
+          : null;
+      const policyJson =
+        nativeContextHandle === null
+          ? encodeSnapshotPolicy(context.policy, {
+              snapshotId: state.snapshot_id,
+              snapshotKey: context.snapshotKey,
+              snapshotKeyBase64: context.snapshotKeyBase64,
+              snapshotKeyDigest: context.snapshotKeyDigest,
+              snapshotToken: state.token,
+            })
+          : null;
       const releaseClaim = claimSnapshotForLoad(native, snapshotIdentityValue);
       try {
         let loadedProgramHandle = null;
         let snapshotHandle = null;
         const loadSnapshotHandle = () => {
           if (dumpedProgram === undefined) {
-            return callNative(native.loadSnapshotHandle, snapshot, policyJson);
+            return nativeContextHandle === null
+              ? callNative(native.loadSnapshotHandle, snapshot, policyJson)
+              : callNative(
+                  native.loadSnapshotHandleWithExecutionContext,
+                  nativeContextHandle,
+                  snapshot,
+                  state.snapshot_id,
+                  context.snapshotKeyBase64,
+                  context.snapshotKeyDigest,
+                  state.token,
+                );
           }
           loadedProgramHandle = callNative(native.loadProgram, Buffer.from(dumpedProgram));
-          return callNative(
-            native.loadDetachedSnapshotHandle,
-            loadedProgramHandle,
-            snapshot,
-            policyJson,
-          );
+          return nativeContextHandle === null
+            ? callNative(
+                native.loadDetachedSnapshotHandle,
+                loadedProgramHandle,
+                snapshot,
+                policyJson,
+              )
+            : callNative(
+                native.loadDetachedSnapshotHandleWithExecutionContext,
+                loadedProgramHandle,
+                nativeContextHandle,
+                snapshot,
+                state.snapshot_id,
+                context.snapshotKeyBase64,
+                context.snapshotKeyDigest,
+                state.token,
+              );
         };
         if (suspendedManifest !== null) {
           assertAuthorizedSuspendedCapability(

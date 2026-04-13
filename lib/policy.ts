@@ -21,6 +21,16 @@ const CONSOLE_CAPABILITY_NAMES = {
 const DEFAULT_SNAPSHOT_KEY = crypto.randomBytes(32);
 const encodedSnapshotPolicyPrefixCache = new WeakMap();
 let nativeSnapshotHelpers;
+const executionContextHandleRegistry =
+  typeof FinalizationRegistry === 'function'
+    ? new FinalizationRegistry((contextHandle) => {
+        try {
+          callNative(snapshotNative().releaseExecutionContext, contextHandle);
+        } catch {
+          // Best-effort cleanup only; process shutdown can race native teardown.
+        }
+      })
+    : null;
 
 function snapshotNative() {
   nativeSnapshotHelpers ??= loadNative();
@@ -190,9 +200,12 @@ function assertNoContextOverrides(options, label) {
 class ExecutionContext {
   #hostHandlers;
   #policy;
+  #policyJson;
   #snapshotKey;
   #snapshotKeyBase64;
   #snapshotKeyDigest;
+  #nativeHandle;
+  #nativeHandleToken;
 
   constructor(options = {}) {
     const {
@@ -204,9 +217,12 @@ class ExecutionContext {
     } = createExecutionPolicy(options);
     this.#hostHandlers = hostHandlers;
     this.#policy = freezePolicy(policy);
+    this.#policyJson = null;
     this.#snapshotKey = cloneSnapshotKey(snapshotKey);
     this.#snapshotKeyBase64 = snapshotKeyBase64;
     this.#snapshotKeyDigest = snapshotKeyDigestValue;
+    this.#nativeHandle = null;
+    this.#nativeHandleToken = null;
   }
 
   hostHandlers() {
@@ -228,6 +244,25 @@ class ExecutionContext {
       snapshotKeyDigest: this.#snapshotKeyDigest,
     };
   }
+
+  policyJson() {
+    this.#policyJson ??= JSON.stringify(this.#policy);
+    return this.#policyJson;
+  }
+
+  nativeHandle() {
+    if (this.#nativeHandle !== null) {
+      return this.#nativeHandle;
+    }
+    const nativeHandle = callNative(
+      snapshotNative().createExecutionContext,
+      this.policyJson(),
+    );
+    this.#nativeHandle = nativeHandle;
+    this.#nativeHandleToken = {};
+    executionContextHandleRegistry?.register(this, nativeHandle, this.#nativeHandleToken);
+    return nativeHandle;
+  }
 }
 
 function resolveExecutionContext(options = {}, label = 'options') {
@@ -243,6 +278,7 @@ function resolveExecutionContext(options = {}, label = 'options') {
   return {
     hostHandlers: context.hostHandlers(),
     policy: context.policy(),
+    nativeContextHandle: context.nativeHandle(),
     ...snapshotKeyMetadata,
   };
 }
@@ -470,6 +506,7 @@ function resolveProgressLoadContext(state, snapshot, options, actualSnapshotId =
     );
     return {
       policy: context.policy(),
+      nativeContextHandle: context.nativeHandle(),
       ...snapshotKeyMetadata,
     };
   }

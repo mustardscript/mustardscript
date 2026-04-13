@@ -17,6 +17,7 @@ const {
   decodeStructured,
   encodeResumePayloadValue,
   encodeStartOptions,
+  encodeStructuredInputs,
 } = require('../lib/structured.ts');
 const {
   encodeSnapshotPolicy,
@@ -651,14 +652,21 @@ function parseNativeInspectionWithMetrics(inspectionJson) {
 
 async function collectAddonStepCounters(runtime, options, resumeValueForStep = undefined) {
   const native = loadNative();
-  const { policy } = resolveExecutionContext(options, 'benchmark counter options');
+  const { policy, nativeContextHandle } = resolveExecutionContext(
+    options,
+    'benchmark counter options',
+  );
   const programHandle = runtime._ensureProgramHandle();
+  const startProgram =
+    typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
+      ? native.startProgramWithExecutionContextHandle
+      : native.startProgramWithSnapshotHandle;
+  const startArgs =
+    typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
+      ? [programHandle, nativeContextHandle, encodeStructuredInputs(options.inputs)]
+      : [programHandle, encodeStartOptions(options.inputs, policy)];
   let step = parseNativeStepWithMetrics(
-    callNative(
-      native.startProgramWithSnapshotHandle,
-      programHandle,
-      encodeStartOptions(options.inputs, policy),
-    ),
+    callNative(startProgram, ...startArgs),
   );
   let metrics = step.metrics;
   while (step.type === 'suspended') {
