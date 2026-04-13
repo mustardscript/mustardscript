@@ -234,10 +234,10 @@ already teaches that model visually.
 
 Action items:
 
-- [ ] confirm `crates/mustard` can compile for the chosen WASM target
-- [ ] identify incompatible dependencies or code paths
-- [ ] document required feature gates and polyfills
-- [ ] produce a minimal browser call that parses and executes `const x = 2 + 2; x;`
+- [x] confirm `crates/mustard` can compile for the chosen WASM target
+- [x] identify incompatible dependencies or code paths
+- [x] document required feature gates and polyfills
+- [x] produce a minimal browser call that parses and executes `const x = 2 + 2; x;`
 
 Implementation notes:
 
@@ -253,13 +253,13 @@ Exit criteria:
 
 Action items:
 
-- [ ] add `crates/mustard-wasm`
-- [ ] expose a browser-safe run API
-- [ ] add typed error mapping for browser consumers
-- [ ] wire limit configuration from website code
-- [ ] add trace collection for capability calls
-- [ ] add Rust tests for exported request validation and error conversion
-- [ ] add a browser-facing smoke test for pure compute success/failure
+- [x] add `crates/mustard-wasm`
+- [x] expose a browser-safe run API
+- [x] add typed error mapping for browser consumers
+- [x] wire limit configuration from website code
+- [x] add trace collection for capability calls
+- [x] add Rust tests for exported request validation and error conversion
+- [x] add a browser-facing smoke test for pure compute success/failure
 
 Exit criteria:
 
@@ -269,12 +269,12 @@ Exit criteria:
 
 Action items:
 
-- [ ] add a fixed scenario registry
-- [ ] implement the explicit capability bridge from JS to the WASM runtime
-- [ ] preserve structured-value validation parity with current host-boundary expectations
-- [ ] add fail-closed errors for unsupported scenario helper use
-- [ ] add Rust tests for structured boundary rejection
-- [ ] add website/browser tests for capability trace rendering
+- [x] add a fixed scenario registry
+- [x] implement the explicit capability bridge from JS to the WASM runtime
+- [x] preserve structured-value validation parity with current host-boundary expectations
+- [x] add fail-closed errors for unsupported scenario helper use
+- [x] add Rust tests for structured boundary rejection
+- [x] add website/browser tests for capability trace rendering
 - [ ] add negative tests for unsupported values and missing capabilities
 
 Exit criteria:
@@ -285,12 +285,12 @@ Exit criteria:
 
 Action items:
 
-- [ ] add an iframe-based vanilla JS execution path
-- [ ] add timeout and iframe reset controls
-- [ ] share the scenario helper registry with the iframe runner
-- [ ] normalize the result/error envelope to match the Mustard pane
+- [x] add an iframe-based vanilla JS execution path
+- [x] add timeout and iframe reset controls
+- [x] share the scenario helper registry with the iframe runner
+- [x] normalize the result/error envelope to match the Mustard pane
 - [ ] add browser tests for iframe timeout and serialization failures
-- [ ] add comparison tests ensuring the same scenario helpers feed both runtimes
+- [x] add comparison tests ensuring the same scenario helpers feed both runtimes
 
 Exit criteria:
 
@@ -300,17 +300,17 @@ Exit criteria:
 
 Action items:
 
-- [ ] add the full `PlaygroundSection`
-- [ ] add side-by-side editors
-- [ ] add run/reset controls
-- [ ] preload scenarios
-- [ ] render output, errors, timings, and capability traces
-- [ ] support mobile layout and load-state handling
-- [ ] add a Playwright smoke test for page load
-- [ ] add a Playwright smoke test for scenario switch
-- [ ] add a Playwright smoke test for running both panes
-- [ ] add a Playwright smoke test for success rendering
-- [ ] add a Playwright smoke test for failure rendering
+- [x] add the full `PlaygroundSection`
+- [x] add side-by-side editors
+- [x] add run/reset controls
+- [x] preload scenarios
+- [x] render output, errors, timings, and capability traces
+- [x] support mobile layout and load-state handling
+- [x] add a Playwright smoke test for page load
+- [x] add a Playwright smoke test for scenario switch
+- [x] add a Playwright smoke test for running both panes
+- [x] add a Playwright smoke test for success rendering
+- [x] add a Playwright smoke test for failure rendering
 
 Exit criteria:
 
@@ -320,12 +320,12 @@ Exit criteria:
 
 Action items:
 
-- [ ] update README/docs to describe browser playground as a demo target
-- [ ] add an explicit note that browser playground does not replace Node/sidecar deployment
-- [ ] document unsupported features and safety caveats
-- [ ] document performance notes and a bundle-size budget
-- [ ] run `website` build and lint
-- [ ] run targeted repo verification for touched crates and browser assets
+- [x] update README/docs to describe browser playground as a demo target
+- [x] add an explicit note that browser playground does not replace Node/sidecar deployment
+- [x] document unsupported features and safety caveats
+- [x] document performance notes and a bundle-size budget
+- [x] run `website` build and lint
+- [x] run targeted repo verification for touched crates and browser assets
 
 Exit criteria:
 

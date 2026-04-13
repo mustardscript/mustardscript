@@ -116,6 +116,27 @@ Maintainers can run `npm run ralph-loop -- <plan.md>` to repeatedly invoke
 marks itself with `[PLAN HAS BEEN COMPLETED]` or `[BLOCKED]`. Use
 `--max-iterations <n>` to cap the loop when needed.
 
+## Website Playground
+
+The repository now includes an experimental website playground in
+[`website/`](website) that compares:
+
+- `MustardScript` guest code running in the browser via a dedicated
+  `wasm32-unknown-unknown` build of the Rust core
+- vanilla JavaScript running client-side inside a sandboxed iframe
+
+The website build copies a raw `.wasm` artifact into
+`website/public/mustard-playground.wasm` through
+`website/scripts/build-playground-wasm.mjs`. The iframe path is a demo-only
+comparison surface, not a hardened sandbox. It intentionally has no ambient
+host authority beyond the fixed scenario helper set, but a synchronous infinite
+loop in browser JavaScript can still block the page event loop before the
+cooperative timeout/reset logic runs.
+
+The current release-mode `.wasm` artifact is also large, roughly 71 MB before
+HTTP compression, so the browser playground should be treated as an
+experimental demo target until bundle-size work lands.
+
 ## Agent-Style Example
 
 See [examples/agent-style.ts](examples/agent-style.ts) for a minimal host loop
