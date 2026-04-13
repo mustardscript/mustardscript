@@ -106,3 +106,49 @@ test('execution contexts validate handler containers before reuse', () => {
     /options\.capabilities cannot define accessor properties/,
   );
 });
+
+test('execution contexts do not reuse stale encoded inputs across runs and starts', async () => {
+  const context = createContext();
+  const program = runtime('fetch_data(seed);');
+
+  assert.equal(await program.run({ context, inputs: { seed: 1 } }), 2);
+  assert.equal(await program.run({ context, inputs: { seed: 7 } }), 8);
+
+  const firstStep = program.start({ context, inputs: { seed: 2 } });
+  assert.ok(firstStep instanceof Progress);
+  assert.deepEqual(firstStep.args, [2]);
+  assert.equal(firstStep.resume(22), 22);
+
+  const secondStep = program.start({ context, inputs: { seed: 9 } });
+  assert.ok(secondStep instanceof Progress);
+  assert.deepEqual(secondStep.args, [9]);
+  assert.equal(secondStep.resume(29), 29);
+});
+
+test('execution contexts do not reuse stale snapshot auth across Progress.load calls', () => {
+  const context = createContext();
+  const program = runtime(`
+    const first = fetch_data(seed);
+    const second = fetch_data(first);
+    second;
+  `);
+
+  const firstDump = program.start({ context, inputs: { seed: 1 } }).dump();
+  const secondDump = program.start({ context, inputs: { seed: 10 } }).dump();
+
+  const firstRestored = Progress.load(firstDump, { context });
+  assert.ok(firstRestored instanceof Progress);
+  assert.deepEqual(firstRestored.args, [1]);
+  const firstNext = firstRestored.resume(2);
+  assert.ok(firstNext instanceof Progress);
+  assert.deepEqual(firstNext.args, [2]);
+  assert.equal(firstNext.resume(3), 3);
+
+  const secondRestored = Progress.load(secondDump, { context });
+  assert.ok(secondRestored instanceof Progress);
+  assert.deepEqual(secondRestored.args, [10]);
+  const secondNext = secondRestored.resume(11);
+  assert.ok(secondNext instanceof Progress);
+  assert.deepEqual(secondNext.args, [11]);
+  assert.equal(secondNext.resume(12), 12);
+});

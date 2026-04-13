@@ -151,6 +151,8 @@ function createProgressApi(native) {
       programId = undefined,
       snapshotHandle = null,
       snapshotId = undefined,
+      snapshotKeyBase64 = undefined,
+      snapshotKeyDigestValue = undefined,
     ) {
       this.#capability = capability;
       this.#args = structuredClone(args);
@@ -165,7 +167,14 @@ function createProgressApi(native) {
             ? snapshotIdentity(this.#snapshot)
             : null;
       this.#snapshotKey = cloneSnapshotKey(snapshotKey);
-      this.#snapshotKeyDigest = snapshotKeyDigest(this.#snapshotKey);
+      this.#snapshotKeyBase64 =
+        typeof snapshotKeyBase64 === 'string' && snapshotKeyBase64.length > 0
+          ? snapshotKeyBase64
+          : this.#snapshotKey.toString('base64');
+      this.#snapshotKeyDigest =
+        typeof snapshotKeyDigestValue === 'string' && snapshotKeyDigestValue.length > 0
+          ? snapshotKeyDigestValue
+          : snapshotKeyDigest(this.#snapshotKey);
       this.#snapshotToken =
         typeof token === 'string' && token.length > 0
           ? token
@@ -185,6 +194,15 @@ function createProgressApi(native) {
                 this.#snapshotKey,
               );
       this.#policy = cloneSnapshotPolicy(policy);
+      this.#snapshotPolicyJson =
+        this.#snapshotIdentity === null || this.#snapshotToken === null
+          ? null
+          : encodeSnapshotPolicy(this.#policy, {
+              snapshotId: this.#snapshotIdentity,
+              snapshotKeyBase64: this.#snapshotKeyBase64,
+              snapshotKeyDigest: this.#snapshotKeyDigest,
+              snapshotToken: this.#snapshotToken,
+            });
       this.#claimState = claimState;
       this.#program = program === undefined || program === null ? null : Buffer.from(program);
       this.#programIdentity =
@@ -214,11 +232,13 @@ function createProgressApi(native) {
     #snapshot;
     #snapshotIdentity;
     #snapshotKey;
+    #snapshotKeyBase64;
     #snapshotKeyDigest;
     #snapshotToken;
     #suspendedManifest;
     #suspendedManifestToken;
     #policy;
+    #snapshotPolicyJson;
     #claimState;
     #program;
     #programIdentity;
@@ -267,7 +287,29 @@ function createProgressApi(native) {
         this.#suspendedManifest,
         this.#snapshotKey,
       );
+      this.#snapshotPolicyJson ??= encodeSnapshotPolicy(this.#policy, {
+        snapshotId: this.#snapshotIdentity,
+        snapshotKeyBase64: this.#snapshotKeyBase64,
+        snapshotKeyDigest: this.#snapshotKeyDigest,
+        snapshotToken: this.#snapshotToken,
+      });
       return Buffer.from(this.#snapshot);
+    }
+
+    #ensureSnapshotPolicyJson() {
+      if (this.#snapshotPolicyJson !== null) {
+        return this.#snapshotPolicyJson;
+      }
+      const snapshot = this.#ensureSnapshotBytes();
+      this.#snapshotIdentity ??= snapshotIdentity(snapshot);
+      this.#snapshotToken ??= snapshotToken(snapshot, this.#snapshotKey, this.#snapshotIdentity);
+      this.#snapshotPolicyJson = encodeSnapshotPolicy(this.#policy, {
+        snapshotId: this.#snapshotIdentity,
+        snapshotKeyBase64: this.#snapshotKeyBase64,
+        snapshotKeyDigest: this.#snapshotKeyDigest,
+        snapshotToken: this.#snapshotToken,
+      });
+      return this.#snapshotPolicyJson;
     }
 
     #consumeSnapshot() {
@@ -353,11 +395,7 @@ function createProgressApi(native) {
       }
 
       const snapshot = this.#consumeSnapshot();
-      const policyJson = encodeSnapshotPolicy(this.#policy, {
-        snapshotId: this.#snapshotIdentity,
-        snapshotKey: this.#snapshotKey,
-        snapshotToken: this.#snapshotToken,
-      });
+      const policyJson = this.#ensureSnapshotPolicyJson();
       const nativeResume =
         programHandle === null ? native.resumeProgram : native.resumeDetachedProgram;
       const nativeArgs =
@@ -499,6 +537,8 @@ function createProgressApi(native) {
       const policyJson = encodeSnapshotPolicy(context.policy, {
         snapshotId: state.snapshot_id,
         snapshotKey: context.snapshotKey,
+        snapshotKeyBase64: context.snapshotKeyBase64,
+        snapshotKeyDigest: context.snapshotKeyDigest,
         snapshotToken: state.token,
       });
       const releaseClaim = claimSnapshotForLoad(native, snapshotIdentityValue);
@@ -549,6 +589,8 @@ function createProgressApi(native) {
             dumpedProgramId,
             snapshotHandle,
             state.snapshot_id,
+            context.snapshotKeyBase64,
+            context.snapshotKeyDigest,
           );
         }
 
@@ -572,6 +614,8 @@ function createProgressApi(native) {
             dumpedProgramId,
             snapshotHandle,
             state.snapshot_id,
+            context.snapshotKeyBase64,
+            context.snapshotKeyDigest,
           );
         } catch (error) {
           if (snapshotHandle !== null) {

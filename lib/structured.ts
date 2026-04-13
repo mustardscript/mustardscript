@@ -4,6 +4,7 @@ const { types } = require('node:util');
 
 const HOST_BOUNDARY_MAX_DEPTH = 128;
 const HOST_BOUNDARY_MAX_ARRAY_LENGTH = 1_000_000;
+const encodedStartOptionsSuffixCache = new WeakMap();
 
 function assertBoundaryDepth(depth, label) {
   if (depth > HOST_BOUNDARY_MAX_DEPTH) {
@@ -218,16 +219,24 @@ function decodeStructured(value, depth = 1) {
   throw new TypeError(`Unsupported structured value: ${JSON.stringify(value)}`);
 }
 
+function getEncodedStartOptionsSuffix(policy) {
+  let cached = encodedStartOptionsSuffixCache.get(policy);
+  if (cached !== undefined) {
+    return cached;
+  }
+  cached =
+    `,"capabilities":${JSON.stringify(policy.capabilities)}` +
+    `,"limits":${JSON.stringify(policy.limits)}}`;
+  encodedStartOptionsSuffixCache.set(policy, cached);
+  return cached;
+}
+
 function encodeStartOptions(inputs = {}, policy) {
   const encodedInputs = {};
   for (const [key, descriptor] of enumerateDataProperties(inputs)) {
     defineEnumerableProperty(encodedInputs, key, encodeStructured(descriptor.value));
   }
-  return JSON.stringify({
-    inputs: encodedInputs,
-    capabilities: policy.capabilities,
-    limits: policy.limits,
-  });
+  return `{"inputs":${JSON.stringify(encodedInputs)}${getEncodedStartOptionsSuffix(policy)}`;
 }
 
 function encodeResumePayloadValue(value) {

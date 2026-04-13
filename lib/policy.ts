@@ -19,6 +19,7 @@ const CONSOLE_CAPABILITY_NAMES = {
   error: 'console.error',
 };
 const DEFAULT_SNAPSHOT_KEY = crypto.randomBytes(32);
+const encodedSnapshotPolicyPrefixCache = new WeakMap();
 let nativeSnapshotHelpers;
 
 function snapshotNative() {
@@ -139,6 +140,40 @@ function freezePolicy(policy) {
   });
 }
 
+function getEncodedSnapshotPolicyPrefix(policy) {
+  let cached = encodedSnapshotPolicyPrefixCache.get(policy);
+  if (cached !== undefined) {
+    return cached;
+  }
+  cached =
+    `{"capabilities":${JSON.stringify(policy.capabilities)}` +
+    `,"limits":${JSON.stringify(policy.limits)}`;
+  encodedSnapshotPolicyPrefixCache.set(policy, cached);
+  return cached;
+}
+
+function resolveSnapshotKeyEncoding(options) {
+  if (
+    typeof options?.snapshotKeyBase64 === 'string' &&
+    options.snapshotKeyBase64.length > 0 &&
+    typeof options?.snapshotKeyDigest === 'string' &&
+    options.snapshotKeyDigest.length > 0
+  ) {
+    return {
+      snapshotKeyBase64: options.snapshotKeyBase64,
+      snapshotKeyDigest: options.snapshotKeyDigest,
+    };
+  }
+  if (options?.snapshotKey === undefined) {
+    return null;
+  }
+  const snapshotKey = cloneSnapshotKey(options.snapshotKey);
+  return {
+    snapshotKeyBase64: snapshotKey.toString('base64'),
+    snapshotKeyDigest: snapshotKeyDigest(snapshotKey),
+  };
+}
+
 function assertNoContextOverrides(options, label) {
   if (
     hasOwnProperty(options, 'capabilities') ||
@@ -156,12 +191,22 @@ class ExecutionContext {
   #hostHandlers;
   #policy;
   #snapshotKey;
+  #snapshotKeyBase64;
+  #snapshotKeyDigest;
 
   constructor(options = {}) {
-    const { hostHandlers, policy, snapshotKey } = createExecutionPolicy(options);
+    const {
+      hostHandlers,
+      policy,
+      snapshotKey,
+      snapshotKeyBase64,
+      snapshotKeyDigest: snapshotKeyDigestValue,
+    } = createExecutionPolicy(options);
     this.#hostHandlers = hostHandlers;
     this.#policy = freezePolicy(policy);
     this.#snapshotKey = cloneSnapshotKey(snapshotKey);
+    this.#snapshotKeyBase64 = snapshotKeyBase64;
+    this.#snapshotKeyDigest = snapshotKeyDigestValue;
   }
 
   hostHandlers() {
@@ -175,6 +220,14 @@ class ExecutionContext {
   snapshotKey() {
     return cloneSnapshotKey(this.#snapshotKey);
   }
+
+  snapshotKeyMetadata() {
+    return {
+      snapshotKey: cloneSnapshotKey(this.#snapshotKey),
+      snapshotKeyBase64: this.#snapshotKeyBase64,
+      snapshotKeyDigest: this.#snapshotKeyDigest,
+    };
+  }
 }
 
 function resolveExecutionContext(options = {}, label = 'options') {
@@ -186,27 +239,33 @@ function resolveExecutionContext(options = {}, label = 'options') {
     throw new TypeError(`${label}.context must be an ExecutionContext`);
   }
   assertNoContextOverrides(options, label);
+  const snapshotKeyMetadata = context.snapshotKeyMetadata();
   return {
     hostHandlers: context.hostHandlers(),
     policy: context.policy(),
-    snapshotKey: context.snapshotKey(),
+    ...snapshotKeyMetadata,
   };
 }
 
 function encodeSnapshotPolicy(policy, options = undefined) {
-  const encoded = cloneSnapshotPolicy(policy);
+  const chunks = [getEncodedSnapshotPolicyPrefix(policy)];
   if (typeof options?.snapshotId === 'string' && options.snapshotId.length > 0) {
-    encoded.snapshot_id = options.snapshotId;
+    chunks.push(',"snapshot_id":', JSON.stringify(options.snapshotId));
   }
-  if (options?.snapshotKey !== undefined) {
-    const snapshotKey = cloneSnapshotKey(options.snapshotKey);
-    encoded.snapshot_key_base64 = snapshotKey.toString('base64');
-    encoded.snapshot_key_digest = snapshotKeyDigest(snapshotKey);
+  const snapshotKeyEncoding = resolveSnapshotKeyEncoding(options);
+  if (snapshotKeyEncoding !== null) {
+    chunks.push(
+      ',"snapshot_key_base64":',
+      JSON.stringify(snapshotKeyEncoding.snapshotKeyBase64),
+      ',"snapshot_key_digest":',
+      JSON.stringify(snapshotKeyEncoding.snapshotKeyDigest),
+    );
   }
   if (typeof options?.snapshotToken === 'string' && options.snapshotToken.length > 0) {
-    encoded.snapshot_token = options.snapshotToken;
+    chunks.push(',"snapshot_token":', JSON.stringify(options.snapshotToken));
   }
-  return JSON.stringify(encoded);
+  chunks.push('}');
+  return chunks.join('');
 }
 
 function normalizeSnapshotKey(snapshotKey, label) {
@@ -361,13 +420,16 @@ function assertSnapshotToken(
 
 function createExecutionPolicy({ limits = {}, snapshotKey, ...handlers } = {}) {
   const hostHandlers = collectHostHandlers(handlers);
+  const normalizedSnapshotKey = normalizeSnapshotKey(snapshotKey, 'options.snapshotKey');
   return {
     hostHandlers,
     policy: {
       capabilities: Object.keys(hostHandlers),
       limits: encodeRuntimeLimits(limits),
     },
-    snapshotKey: normalizeSnapshotKey(snapshotKey, 'options.snapshotKey'),
+    snapshotKey: normalizedSnapshotKey,
+    snapshotKeyBase64: normalizedSnapshotKey.toString('base64'),
+    snapshotKeyDigest: snapshotKeyDigest(normalizedSnapshotKey),
   };
 }
 
@@ -397,18 +459,18 @@ function resolveProgressLoadContext(state, snapshot, options, actualSnapshotId =
       throw new TypeError('Progress.load() options.context must be an ExecutionContext');
     }
     assertNoContextOverrides(options, 'Progress.load() options');
-    const snapshotKey = context.snapshotKey();
+    const snapshotKeyMetadata = context.snapshotKeyMetadata();
     assertSnapshotToken(
       snapshot,
       state.token,
-      snapshotKey,
+      snapshotKeyMetadata.snapshotKey,
       expectedSnapshotId,
       expectedSnapshotKeyDigest,
       actualSnapshotId,
     );
     return {
       policy: context.policy(),
-      snapshotKey,
+      ...snapshotKeyMetadata,
     };
   }
   if (
@@ -433,21 +495,20 @@ function resolveProgressLoadContext(state, snapshot, options, actualSnapshotId =
       'Progress.load() requires explicit snapshotKey when restoring progress',
     );
   }
-  const snapshotKey = normalizeSnapshotKey(
-    options.snapshotKey,
-    'Progress.load() options.snapshotKey',
-  );
+  const executionPolicy = createExecutionPolicy({ ...options, limits });
   assertSnapshotToken(
     snapshot,
     state.token,
-    snapshotKey,
+    executionPolicy.snapshotKey,
     expectedSnapshotId,
     expectedSnapshotKeyDigest,
     actualSnapshotId,
   );
   return {
-    policy: createExecutionPolicy({ ...options, limits }).policy,
-    snapshotKey: cloneSnapshotKey(snapshotKey),
+    policy: executionPolicy.policy,
+    snapshotKey: cloneSnapshotKey(executionPolicy.snapshotKey),
+    snapshotKeyBase64: executionPolicy.snapshotKeyBase64,
+    snapshotKeyDigest: executionPolicy.snapshotKeyDigest,
   };
 }
 

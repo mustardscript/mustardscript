@@ -612,6 +612,8 @@ function createAuthenticatedPolicyJson(dumped, loadOptions) {
   return encodeSnapshotPolicy(context.policy, {
     snapshotId: dumped.snapshot_id,
     snapshotKey: context.snapshotKey,
+    snapshotKeyBase64: context.snapshotKeyBase64,
+    snapshotKeyDigest: context.snapshotKeyDigest,
     snapshotToken: dumped.token,
   });
 }
