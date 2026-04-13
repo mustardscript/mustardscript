@@ -275,7 +275,7 @@ Action items:
 - [x] add fail-closed errors for unsupported scenario helper use
 - [x] add Rust tests for structured boundary rejection
 - [x] add website/browser tests for capability trace rendering
-- [ ] add negative tests for unsupported values and missing capabilities
+- [x] add negative tests for unsupported values and missing capabilities
 
 Exit criteria:
 

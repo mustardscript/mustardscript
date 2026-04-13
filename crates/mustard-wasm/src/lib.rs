@@ -536,4 +536,22 @@ mod tests {
             other => panic!("unexpected response: {other:?}"),
         }
     }
+
+    #[test]
+    fn missing_capability_name_fails_closed() {
+        let response = handle_start_request(StartRequest {
+            code: "lookup_plan_policy(plan);".to_string(),
+            inputs: IndexMap::from([("plan".to_string(), JsonValue::String("starter".to_string()))]),
+            capabilities: Vec::new(),
+            limits: Some(RuntimeLimits::default()),
+        });
+
+        match response {
+            WasmResponse::Error { error } => {
+                assert_eq!(error.name, "MustardRuntimeError");
+                assert!(error.message.contains("lookup_plan_policy"));
+            }
+            other => panic!("unexpected response: {other:?}"),
+        }
+    }
 }
