@@ -38,10 +38,10 @@
     ]
   },
   "optionalDependencies": {
-    "mustardscript-darwin-arm64": "0.1.0",
-    "mustardscript-darwin-x64": "0.1.0",
-    "mustardscript-linux-x64-gnu": "0.1.0",
-    "mustardscript-win32-x64-msvc": "0.1.0"
+    "mustardscript-darwin-arm64": "0.1.1",
+    "mustardscript-darwin-x64": "0.1.1",
+    "mustardscript-linux-x64-gnu": "0.1.1",
+    "mustardscript-win32-x64-msvc": "0.1.1"
   },
   "scripts": {
     "install": "node -e \"const fs=require('node:fs'); const cp=require('node:child_process'); if (!fs.existsSync('dist/install.js')) { cp.execFileSync(process.execPath, ['scripts/build-ts-dist.ts'], { stdio: 'inherit' }); } cp.execFileSync(process.execPath, ['dist/install.js'], { stdio: 'inherit' });\"",

@@ -335,6 +335,8 @@ test('progress load rejects already-consumed snapshots across duplicate package 
   assert.equal(progress.resume(4), 8);
 
   const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mustard-dup-copy-'));
+  const nativeBinaryPath = resolveCurrentNativeBinaryPath();
+  const previousOverride = process.env.MUSTARDSCRIPT_NATIVE_LIBRARY_PATH;
   try {
     fs.copyFileSync(
       path.join(__dirname, '..', '..', 'index.ts'),
@@ -348,12 +350,7 @@ test('progress load rejects already-consumed snapshots across duplicate package 
       recursive: true,
     });
 
-    const nativeBinaryPath = resolveCurrentNativeBinaryPath();
-    fs.copyFileSync(
-      nativeBinaryPath,
-      path.join(packageRoot, path.basename(nativeBinaryPath)),
-    );
-
+    process.env.MUSTARDSCRIPT_NATIVE_LIBRARY_PATH = nativeBinaryPath;
     const duplicateCopy = require(path.join(packageRoot, 'index.ts'));
     assert.throws(
       () =>
@@ -367,6 +364,11 @@ test('progress load rejects already-consumed snapshots across duplicate package 
       isSingleUseRuntimeError,
     );
   } finally {
+    if (previousOverride === undefined) {
+      delete process.env.MUSTARDSCRIPT_NATIVE_LIBRARY_PATH;
+    } else {
+      process.env.MUSTARDSCRIPT_NATIVE_LIBRARY_PATH = previousOverride;
+    }
     fs.rmSync(packageRoot, { recursive: true, force: true });
   }
 });

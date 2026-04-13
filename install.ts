@@ -93,16 +93,35 @@ function parseCargoArtifactPath(output) {
 }
 
 const cargo = process.env.CARGO || 'cargo';
+function cargoInvocation(command, args) {
+  if (
+    process.platform === 'win32' &&
+    typeof command === 'string' &&
+    /\.(cmd|bat)$/iu.test(command)
+  ) {
+    return {
+      file: process.env.ComSpec || 'cmd.exe',
+      args: ['/d', '/s', '/c', command, ...args],
+    };
+  }
+  return {
+    file: command,
+    args,
+  };
+}
+
+const cargoBuildArgs = [
+  'build',
+  '--release',
+  '--manifest-path',
+  'crates/mustard-node/Cargo.toml',
+  '--message-format',
+  'json-render-diagnostics',
+];
+const cargoCommand = cargoInvocation(cargo, cargoBuildArgs);
 const cargoOutput = execFileSync(
-  cargo,
-  [
-    'build',
-    '--release',
-    '--manifest-path',
-    'crates/mustard-node/Cargo.toml',
-    '--message-format',
-    'json-render-diagnostics',
-  ],
+  cargoCommand.file,
+  cargoCommand.args,
   {
     cwd: packageRoot,
     encoding: 'utf8',
