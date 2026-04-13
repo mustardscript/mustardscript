@@ -595,7 +595,6 @@ impl Runtime {
                 .get_mut(key)
                 .ok_or_else(|| MustardError::runtime("closure missing"))?
                 .prototype = Some(prototype);
-            self.refresh_closure_accounting(key)?;
         }
         Ok(key)
     }

@@ -440,3 +440,104 @@ fn promise_combinator_completion_moves_driver_buffers_without_full_refreshes() {
         }))
     ));
 }
+
+#[test]
+fn closure_prototype_attachment_preserves_cached_totals_without_full_refreshes() {
+    let mut runtime = test_runtime();
+    let baseline_metrics = runtime.debug_metrics();
+
+    let closure = runtime
+        .insert_closure(0, runtime.globals, Value::Undefined)
+        .expect("closure should allocate");
+
+    assert!(
+        runtime
+            .closures
+            .get(closure)
+            .expect("closure should exist")
+            .prototype
+            .is_some()
+    );
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}
+
+#[test]
+fn regexp_last_index_updates_preserve_cached_totals_without_full_refreshes() {
+    let mut runtime = test_runtime();
+    let regex = runtime
+        .construct_regexp(&[
+            Value::String("a".to_string()),
+            Value::String("g".to_string()),
+        ])
+        .expect("regexp should construct");
+    let regex_key = match regex.clone() {
+        Value::Object(key) => key,
+        other => panic!("expected regexp object, got {other:?}"),
+    };
+    let baseline_metrics = runtime.debug_metrics();
+
+    let first = runtime
+        .call_regexp_exec(regex.clone(), &[Value::String("a a".to_string())])
+        .expect("first exec should succeed");
+    assert!(matches!(first, Value::Array(_)));
+    assert_eq!(
+        runtime
+            .regexp_object(regex_key)
+            .expect("regexp should exist")
+            .last_index,
+        1
+    );
+
+    let second = runtime
+        .call_regexp_exec(regex.clone(), &[Value::String("a a".to_string())])
+        .expect("second exec should succeed");
+    assert!(matches!(second, Value::Array(_)));
+    assert_eq!(
+        runtime
+            .regexp_object(regex_key)
+            .expect("regexp should exist")
+            .last_index,
+        3
+    );
+
+    let global_match = runtime
+        .call_string_match(
+            Value::String("aba".to_string()),
+            std::slice::from_ref(&regex),
+        )
+        .expect("String.prototype.match should succeed");
+    assert!(matches!(global_match, Value::Array(_)));
+    assert_eq!(
+        runtime
+            .regexp_object(regex_key)
+            .expect("regexp should exist")
+            .last_index,
+        0
+    );
+
+    let match_all = runtime
+        .call_string_match_all(Value::String("aba".to_string()), &[regex])
+        .expect("String.prototype.matchAll should succeed");
+    assert!(matches!(match_all, Value::Iterator(_)));
+    assert_eq!(
+        runtime
+            .regexp_object(regex_key)
+            .expect("regexp should exist")
+            .last_index,
+        0
+    );
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.accounting_refreshes,
+        baseline_metrics.accounting_refreshes
+    );
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}
