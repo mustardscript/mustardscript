@@ -53,8 +53,8 @@ unsafe JavaScript executor.
 ## Locked Decisions
 
 1. `MustardScript` runs in browser through a new Rust-to-WASM target.
-2. Vanilla JavaScript runs client-side, but not in the main page execution
-   context when user-editable code is enabled.
+2. Vanilla JavaScript runs client-side in a sandboxed `iframe`, not in the
+   main page execution context.
 3. The first milestone supports synchronous and promise-free demo scenarios
    unless the existing async/runtime model ports cleanly.
 4. Browser playground capabilities are explicit and fixed per scenario.
@@ -142,16 +142,13 @@ First-pass scenarios should prefer synchronous capabilities. If async
 capabilities are needed, port them only after the base synchronous bridge is
 working and testable.
 
-### 3. Execute Vanilla JS In An Isolated Browser Context
+### 3. Execute Vanilla JS In A Sandboxed Iframe
 
 Do not run arbitrary user-edited vanilla JS directly in the page thread.
 
-Use one of these:
+Use a sandboxed `iframe` with explicit `sandbox` attributes.
 
-- preferred v1: dedicated `Web Worker`
-- stricter alternative: sandboxed `iframe` with `sandbox` attributes
-
-Worker responsibilities:
+Iframe responsibilities:
 
 - receive scenario id, source code, and inputs
 - expose only scenario-approved helpers
@@ -160,10 +157,18 @@ Worker responsibilities:
 
 Required guardrails:
 
-- hard wall-clock timeout with `worker.terminate()`
+- hard wall-clock timeout and iframe reset/recreation on timeout or crash
 - no access to parent React state except message passing
 - scenario helper surface frozen before execution
 - result serialization constrained to plain JSON-compatible values
+- tight `sandbox` policy with the minimum capability set needed for execution
+
+Recommended messaging model:
+
+- parent page sends `postMessage` with a request envelope
+- iframe boot script validates the envelope and runs the selected scenario
+- iframe returns a normalized response envelope
+- parent rejects messages from unexpected origin/source pairs
 
 ### 4. Website Integration
 
@@ -175,8 +180,10 @@ Add new website components:
 - `website/src/components/PlaygroundScenarioTabs.tsx`
 - `website/src/lib/playground/scenarios.ts`
 - `website/src/lib/playground/mustard-wasm.ts`
-- `website/src/lib/playground/vanilla-worker.ts`
-- `website/src/workers/vanillaRunner.ts`
+- `website/src/lib/playground/vanilla-iframe.ts`
+- `website/src/lib/playground/iframe-protocol.ts`
+- `website/public/playground-iframe.html`
+- `website/public/playground-iframe.js`
 
 Insert the section in:
 
@@ -225,12 +232,12 @@ already teaches that model visually.
 
 ## Milestone 0: Feasibility Spike
 
-Deliverables:
+Action items:
 
-- confirm `crates/mustard` can compile for the chosen WASM target
-- identify incompatible dependencies or code paths
-- document required feature gates and polyfills
-- produce a minimal browser call that parses and executes `const x = 2 + 2; x;`
+- [ ] confirm `crates/mustard` can compile for the chosen WASM target
+- [ ] identify incompatible dependencies or code paths
+- [ ] document required feature gates and polyfills
+- [ ] produce a minimal browser call that parses and executes `const x = 2 + 2; x;`
 
 Implementation notes:
 
@@ -244,18 +251,15 @@ Exit criteria:
 
 ## Milestone 1: Core Browser Runner
 
-Deliverables:
+Action items:
 
-- `crates/mustard-wasm`
-- browser-safe run API
-- typed error mapping
-- limit configuration from website code
-- trace collection for capability calls
-
-Tests:
-
-- Rust tests for exported request validation and error conversion
-- browser-facing smoke test for pure compute success/failure
+- [ ] add `crates/mustard-wasm`
+- [ ] expose a browser-safe run API
+- [ ] add typed error mapping for browser consumers
+- [ ] wire limit configuration from website code
+- [ ] add trace collection for capability calls
+- [ ] add Rust tests for exported request validation and error conversion
+- [ ] add a browser-facing smoke test for pure compute success/failure
 
 Exit criteria:
 
@@ -263,60 +267,50 @@ Exit criteria:
 
 ## Milestone 2: Scenario Capability Bridge
 
-Deliverables:
+Action items:
 
-- fixed scenario registry
-- explicit capability bridge from JS to WASM runtime
-- structured-value validation parity with current host boundary expectations
-- fail-closed errors for unsupported scenario helper use
-
-Tests:
-
-- Rust tests for structured boundary rejection
-- website/browser tests for capability trace rendering
-- negative tests for unsupported values and missing capabilities
+- [ ] add a fixed scenario registry
+- [ ] implement the explicit capability bridge from JS to the WASM runtime
+- [ ] preserve structured-value validation parity with current host-boundary expectations
+- [ ] add fail-closed errors for unsupported scenario helper use
+- [ ] add Rust tests for structured boundary rejection
+- [ ] add website/browser tests for capability trace rendering
+- [ ] add negative tests for unsupported values and missing capabilities
 
 Exit criteria:
 
 - one full scenario works end to end in browser Mustard execution
 
-## Milestone 3: Vanilla JS Client-Side Runner
+## Milestone 3: Vanilla JS Sandboxed Iframe Runner
 
-Deliverables:
+Action items:
 
-- worker-based vanilla JS execution path
-- timeout and termination controls
-- shared scenario helper registry
-- normalized result/error envelope matching the Mustard pane
-
-Tests:
-
-- worker unit tests or browser tests for timeout and serialization failures
-- comparison tests ensuring same scenario helpers feed both runtimes
+- [ ] add an iframe-based vanilla JS execution path
+- [ ] add timeout and iframe reset controls
+- [ ] share the scenario helper registry with the iframe runner
+- [ ] normalize the result/error envelope to match the Mustard pane
+- [ ] add browser tests for iframe timeout and serialization failures
+- [ ] add comparison tests ensuring the same scenario helpers feed both runtimes
 
 Exit criteria:
 
-- same scenario runs in Mustard WASM and vanilla JS worker with comparable UI
+- same scenario runs in Mustard WASM and vanilla JS iframe with comparable UI
 
 ## Milestone 4: Website Playground UX
 
-Deliverables:
+Action items:
 
-- full `PlaygroundSection`
-- side-by-side editors
-- run/reset controls
-- preloaded scenarios
-- output, errors, timings, and capability traces
-- mobile layout and load-state handling
-
-Tests:
-
-- Playwright smoke test for:
-  - page load
-  - scenario switch
-  - run both panes
-  - render success
-  - render failure
+- [ ] add the full `PlaygroundSection`
+- [ ] add side-by-side editors
+- [ ] add run/reset controls
+- [ ] preload scenarios
+- [ ] render output, errors, timings, and capability traces
+- [ ] support mobile layout and load-state handling
+- [ ] add a Playwright smoke test for page load
+- [ ] add a Playwright smoke test for scenario switch
+- [ ] add a Playwright smoke test for running both panes
+- [ ] add a Playwright smoke test for success rendering
+- [ ] add a Playwright smoke test for failure rendering
 
 Exit criteria:
 
@@ -324,17 +318,14 @@ Exit criteria:
 
 ## Milestone 5: Hardening And Documentation
 
-Deliverables:
+Action items:
 
-- README/docs update describing browser playground as a demo target
-- explicit note that browser playground does not replace Node/sidecar deployment
-- documented unsupported features and safety caveats
-- performance notes and bundle-size budget
-
-Tests:
-
-- `website` build and lint
-- targeted repo verification for touched crates and browser assets
+- [ ] update README/docs to describe browser playground as a demo target
+- [ ] add an explicit note that browser playground does not replace Node/sidecar deployment
+- [ ] document unsupported features and safety caveats
+- [ ] document performance notes and a bundle-size budget
+- [ ] run `website` build and lint
+- [ ] run targeted repo verification for touched crates and browser assets
 
 Exit criteria:
 
@@ -351,7 +342,7 @@ Must fail closed for:
 - missing scenario capability names
 - invalid scenario ids
 - WASM bootstrap/load failures
-- worker timeout or worker crash
+- iframe timeout or iframe crash
 - user vanilla JS returning non-serializable values
 
 Error envelopes should be normalized so the UI can show:
@@ -359,7 +350,7 @@ Error envelopes should be normalized so the UI can show:
 - runtime name
 - message
 - optional source span or scenario label
-- whether the error came from `mustard`, `vanilla`, `wasm-loader`, or `worker`
+- whether the error came from `mustard`, `vanilla`, `wasm-loader`, or `iframe`
 
 ## Verification Plan
 
@@ -397,15 +388,15 @@ Broader verification before claiming the feature complete:
 3. Bundle size may become too large for the website without code splitting or a
    lazy-loaded playground section.
 4. Browser timing comparisons are illustrative, not authoritative benchmarks.
-5. Vanilla JS safety is only acceptable if code runs in an isolated worker or
-   sandboxed frame with explicit timeouts.
+5. Vanilla JS safety is only acceptable if code runs in a sandboxed iframe with
+   explicit timeouts and envelope validation.
 
 ## Recommended Order Of Execution
 
 1. Complete Milestone 0 as a real code spike in a feature branch.
 2. If the spike passes, land `crates/mustard-wasm` with pure compute support.
 3. Add one fixed scenario with Mustard-only execution in the website.
-4. Add the isolated vanilla JS runner.
+4. Add the sandboxed iframe vanilla JS runner.
 5. Add comparative UI and browser tests.
 6. Expand scenarios only after one polished end-to-end slice works.
 
