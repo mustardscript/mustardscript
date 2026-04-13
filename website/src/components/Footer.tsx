@@ -4,7 +4,7 @@ export function Footer() {
       <p className="text-sm text-black/40">
         Apache-2.0 &middot;{' '}
         <a
-          href="https://github.com/keppoai/mustardscript"
+          href="https://github.com/mustardscript/mustardscript"
           target="_blank"
           rel="noopener noreferrer"
           className="text-black/60 hover:text-black transition-colors underline underline-offset-2"

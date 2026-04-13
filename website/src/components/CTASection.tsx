@@ -24,7 +24,7 @@ export function CTASection() {
           <InstallButton variant="dark" />
 
           <a
-            href="https://github.com/keppoai/mustardscript"
+            href="https://github.com/mustardscript/mustardscript"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-3 px-6 py-3 rounded-xl bg-black/8 hover:bg-black/15 text-black/60 hover:text-black transition-all duration-200 font-medium text-sm"

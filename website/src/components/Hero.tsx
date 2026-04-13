@@ -44,7 +44,7 @@ export function Hero() {
       >
         <InstallButton variant="dark" />
         <a
-          href="https://github.com/keppoai/mustardscript"
+          href="https://github.com/mustardscript/mustardscript"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center justify-center gap-3 w-full max-w-sm px-7 py-4 rounded-2xl bg-black/8 hover:bg-black/15 text-black/80 hover:text-black transition-colors duration-200 font-bold text-base sm:text-lg whitespace-nowrap"
