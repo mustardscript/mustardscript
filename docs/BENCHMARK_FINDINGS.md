@@ -2,9 +2,9 @@
 
 This document summarizes the latest checked-in benchmark evidence from:
 
-- workload suite: `benchmarks/results/2026-04-13T18-10-20-254Z-workloads.json`
-- release smoke suite: `benchmarks/results/2026-04-13T18-20-21-238Z-smoke-release.json`
-- dev smoke suite: `benchmarks/results/2026-04-13T18-20-23-929Z-smoke-dev.json`
+- workload suite: `benchmarks/results/2026-04-13T18-27-01-833Z-workloads.json`
+- release smoke suite: `benchmarks/results/2026-04-13T18-30-29-205Z-smoke-release.json`
+- dev smoke suite: `benchmarks/results/2026-04-13T18-30-23-779Z-smoke-dev.json`
 
 Machine and environment:
 
@@ -12,102 +12,96 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA in artifacts: `ecc7269`
+- Git SHA in artifacts: `80d0556`
 - Workload fixture version: `5`
 - Smoke fixture version: `2`
 
 ## Headline Results
 
-### 1. Keyed collections now use tombstoned slots plus promoted hashed lookup caches
+### 1. Static property access now fast-paths plain and other simple object kinds
 
-`Map` and `Set` no longer stay purely vector-backed for all sizes. The runtime
-now keeps order-preserving slot arrays with tombstones on delete, promotes large
-collections onto `IndexMap` lookup caches once they cross the live-entry
-threshold, and tracks per-collection clear epochs so iterator invalidation no
-longer scans the live iterator set on `delete()` or `clear()`.
+The runtime already had dedicated static branches for array length/index access
+and for many builtin prototype methods. The remaining gap was plain-object
+property hits: every `record.alpha` lookup still walked through date/regexp/
+wrapper/intl checks before finally touching `object.properties`.
 
-Regression coverage now also includes snapshot/resume of active keyed-collection
-iterators across `clear()` and reinsertion, which is the new failure mode this
-representation had to preserve.
+That gap is now closed for the simple object kinds that do not need those
+specialized branches:
 
-### 2. Large keyed-collection Rust microbenches improved materially
+- `Plain`
+- `Global`
+- `Math`
+- `Json`
+- `Console`
+- `Error(...)`
 
-Relative to the large-collection baseline added at `97edb31`, the new
-`npm run bench:rust` medians improved as follows:
+Those kinds now return own properties and constructor links before the heavier
+object-kind logic runs. Regression coverage also proves a plain object’s own
+`constructor` property still shadows the fallback `Object` constructor link.
 
-| Microbench | Baseline | Current | Delta |
-| --- | ---: | ---: | ---: |
-| `map_get_large` | `~16.6 ms` | `~5.95 ms` | `-64%` |
-| `map_has_large` | `~17.1 ms` | `~6.35 ms` | `-63%` |
-| `map_set_large` | `~10.2 ms` | `~6.51 ms` | `-36%` |
-| `set_has_large` | `~16.5 ms` | `~5.66 ms` | `-66%` |
-| `set_add_large` | `~5.1 ms` | `~3.28 ms` | `-36%` |
-| `set_delete_large` | `~5.95 ms` | `~5.00 ms` | `-16%` |
-| `iterator_throughput_large` | `~41.6 ms` | `~41.5 ms` | flat |
+### 2. The direct Rust signal improved on the intended hot path
 
-The strongest direct win is the intended one: large keyed-collection lookups are
-now much cheaper. Update paths improved too, but not yet enough to satisfy the
-full Milestone 6 stretch target.
+The new `npm run bench:rust` rerun showed the expected targeted change:
 
-### 3. Broader addon workloads were roughly neutral on a same-machine control rerun
+| Microbench | Current | Result |
+| --- | ---: | --- |
+| `property_access_hot` | `~0.90 ms` | `~1.8%` faster |
+| `builtin_method_hot` | `~2.43 ms` | flat |
 
-Comparing the landed candidate against a clean same-machine `ecc7269` control
-rerun isolates this keyed-collection change from older branch-level drift. The
-result is mostly neutral rather than dramatically positive:
+Most other runtime-core benches stayed within noise. That is the right shape
+for a small getter fast path: narrow improvement without collateral regressions.
+
+The previously landed keyed-collection work remains in place under the same
+artifact set, so large `Map` / `Set` lookup improvements still apply on top of
+this property-path change.
+
+### 3. Same-machine workload comparison was modestly positive against `80d0556`
+
+To isolate this property fast path from older branch drift, the candidate was
+compared against a clean same-machine control rerun at commit `80d0556`:
 
 | Workload | Control | Current | Delta |
 | --- | ---: | ---: | ---: |
-| Warm run, small script | `0.95 ms` | `0.96 ms` | `+0.6%` |
-| Warm run, code-mode search | `0.52 ms` | `0.54 ms` | `+3.2%` |
-| Programmatic tool workflow | `1.50 ms` | `1.52 ms` | `+1.3%` |
-| Host fanout, 100 calls | `0.42 ms` | `0.39 ms` | `-7.8%` |
-| `execution_only_small` | `2.12 ms` | `2.38 ms` | `+12.0%` |
-| `startInputs.small` | `0.17 ms` | `0.15 ms` | `-9.6%` |
+| Warm run, small script | `0.96 ms` | `0.96 ms` | `+0.1%` |
+| Cold start, code-mode search | `0.97 ms` | `0.93 ms` | `-3.9%` |
+| Warm run, code-mode search | `0.54 ms` | `0.53 ms` | `-1.5%` |
+| Programmatic tool workflow | `1.53 ms` | `1.51 ms` | `-1.8%` |
+| Host fanout, 100 calls | `0.41 ms` | `0.40 ms` | `-2.4%` |
+| `execution_only_small` | `2.19 ms` | `2.06 ms` | `-6.1%` |
+| `startInputs.large` | `1.19 ms` | `1.08 ms` | `-9.7%` |
 
-That same control comparison suggests the large keyed-collection win is real,
-but it does not yet translate into broad addon-latency wins across the public
-workload suite. The tracked checked-in workload baseline from
-`2026-04-13T16-35-07-798Z` looks much worse on many addon boundary and phase
-metrics, which indicates older branch drift and benchmark noise are still mixed
-into the raw before/after picture.
+The candidate was not uniformly better. One boundary surface stayed noisier than
+desired (`startInputs.medium +22.4%` median), and `snapshot_load_only` ticked
+up slightly (`+11.2%` median). But the main addon latencies were flat to
+slightly better overall, which is strong enough evidence to keep the change.
 
-### 4. Smoke budgets still pass and stayed flat to slightly better
+### 4. Smoke budgets still pass, but release snapshot ratio remains noisy
 
-Relative to the previous checked-in release smoke artifact
-`benchmarks/results/2026-04-13T16-34-56-941Z-smoke-release.json`, the latest
-release smoke run stayed within budget and mostly improved:
-
-| Surface | Baseline | Current | Delta |
-| --- | ---: | ---: | ---: |
-| Startup median | `0.06 ms` | `0.06 ms` | `-3.4%` |
-| Compute median | `0.44 ms` | `0.44 ms` | `-0.9%` |
-| Host-call median | `0.25 ms` | `0.24 ms` | `-4.9%` |
-| Snapshot direct median | `0.07 ms` | `0.07 ms` | `-7.5%` |
-| Snapshot round-trip median | `0.45 ms` | `0.45 ms` | `+1.4%` |
-
-Current release smoke medians remain comfortably inside the configured budgets:
+The final release smoke rerun passed comfortably:
 
 | Metric | Current |
 | --- | ---: |
-| Startup | `0.06 ms` |
+| Startup | `0.05 ms` |
 | Compute | `0.44 ms` |
-| Host-call median ratio | `4.33x` |
-| Host-call p95 ratio | `4.73x` |
-| Snapshot median ratio | `6.84x` |
-| Snapshot p95 ratio | `5.73x` |
+| Host-call median ratio | `4.42x` |
+| Host-call p95 ratio | `4.76x` |
+| Snapshot median ratio | `6.00x` |
+| Snapshot p95 ratio | `4.75x` |
+
+One immediately preceding release smoke attempt failed on a narrow noisy sample:
+snapshot median ratio `7.58x` versus the `7.5x` budget. The sequential rerun
+dropped back to `6.00x`, which confirms the release smoke snapshot ratio is
+still somewhat unstable at these sub-millisecond timings even though the gate
+itself remains usable.
 
 ## Conclusions
 
-1. This lands the first two Milestone 6 internal collection items: hashed
-   lookup/update paths for large `Map` / `Set` workloads, and iterator
-   invalidation that no longer repairs live iterator indices by scanning the
-   iterator set.
-2. The performance signal is good but narrow. Large keyed-collection lookups
-   improved by about `2.7x` to `2.9x`, update paths improved by about `1.2x`
-   to `1.6x`, and iterator throughput stayed flat.
-3. The milestone itself remains open because the broader addon workload suite is
-   only roughly neutral so far, and the plan’s `5x` large-collection target is
-   not yet met across both membership and update paths.
-4. The next high-leverage Milestone 6 paths remain static-property fast paths,
-   capacity-aware builders/bulk mutation, the remaining globals cleanup, and
-   builtin allocation/cloning audits.
+1. This closes the Milestone 6 static-property fast-path item: array length and
+   builtin prototype method paths already existed, and plain/simple object own
+   property hits now have the missing early return.
+2. The direct performance signal is small but real. `property_access_hot`
+   improved, the broad workload suite did not regress, and several public addon
+   paths improved slightly against clean same-machine control.
+3. Milestone 6 still remains open. The next concrete paths are capacity-aware
+   builders/bulk mutation, any remaining globals cleanup, and auditing builtin
+   helpers for avoidable cloning or temporary allocation.

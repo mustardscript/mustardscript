@@ -1131,6 +1131,49 @@ impl Runtime {
                     .objects
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
+                match &object.kind {
+                    ObjectKind::Plain
+                    | ObjectKind::Global
+                    | ObjectKind::Math
+                    | ObjectKind::Json => {
+                        if let Some(value) = object.properties.get(key) {
+                            return Ok(value.clone());
+                        }
+                        if key == "constructor" {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCtor));
+                        }
+                        return Ok(Value::Undefined);
+                    }
+                    ObjectKind::Console => {
+                        if let Some(value) = object.properties.get(key) {
+                            return Ok(value.clone());
+                        }
+                        if let Some(value) = self.console_method(key) {
+                            return Ok(value);
+                        }
+                        if key == "constructor" {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCtor));
+                        }
+                        return Ok(Value::Undefined);
+                    }
+                    ObjectKind::Error(name) => {
+                        if let Some(value) = object.properties.get(key) {
+                            return Ok(value.clone());
+                        }
+                        if key == "constructor" {
+                            let ctor = match name.as_str() {
+                                "TypeError" => BuiltinFunction::TypeErrorCtor,
+                                "ReferenceError" => BuiltinFunction::ReferenceErrorCtor,
+                                "RangeError" => BuiltinFunction::RangeErrorCtor,
+                                "SyntaxError" => BuiltinFunction::SyntaxErrorCtor,
+                                _ => BuiltinFunction::ErrorCtor,
+                            };
+                            return Ok(Value::BuiltinFunction(ctor));
+                        }
+                        return Ok(Value::Undefined);
+                    }
+                    _ => {}
+                }
                 if let ObjectKind::Date(_) = &object.kind {
                     let built_in = match key {
                         "getTime" => Some(Value::BuiltinFunction(BuiltinFunction::DateGetTime)),
@@ -1405,30 +1448,10 @@ impl Runtime {
                 {
                     return Ok(Value::BuiltinFunction(BuiltinFunction::BooleanCtor));
                 }
-                if matches!(object.kind, ObjectKind::Console)
-                    && let Some(value) = self.console_method(key)
-                {
-                    return Ok(value);
-                }
                 if key == "constructor" {
                     match &object.kind {
-                        ObjectKind::Plain
-                        | ObjectKind::Global
-                        | ObjectKind::Math
-                        | ObjectKind::Json
-                        | ObjectKind::Intl
-                        | ObjectKind::BoundFunction(_) => {
+                        ObjectKind::Intl | ObjectKind::BoundFunction(_) => {
                             return Ok(Value::BuiltinFunction(BuiltinFunction::ObjectCtor));
-                        }
-                        ObjectKind::Error(name) => {
-                            let ctor = match name.as_str() {
-                                "TypeError" => BuiltinFunction::TypeErrorCtor,
-                                "ReferenceError" => BuiltinFunction::ReferenceErrorCtor,
-                                "RangeError" => BuiltinFunction::RangeErrorCtor,
-                                "SyntaxError" => BuiltinFunction::SyntaxErrorCtor,
-                                _ => BuiltinFunction::ErrorCtor,
-                            };
-                            return Ok(Value::BuiltinFunction(ctor));
                         }
                         _ => {}
                     }

@@ -770,6 +770,24 @@ test('run exposes callable metadata and constructor links for supported callable
   });
 });
 
+test('plain object own properties still shadow constructor fallback', async () => {
+  const result = await runtime(`
+    const own = { constructor: 7, alpha: 1 };
+    const plain = { beta: 2 };
+    ({
+      ownConstructor: own.constructor,
+      alpha: own.alpha,
+      defaultConstructor: plain.constructor === Object,
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    ownConstructor: 7,
+    alpha: 1,
+    defaultConstructor: true,
+  });
+});
+
 test('run exposes callable helper methods and boxed string wrapper methods on the supported surface', async () => {
   const result = await runtime(`
     function sum(left, right) {
