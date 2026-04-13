@@ -1,5 +1,5 @@
 [package]
-name = "jslite-fuzz"
+name = "mustard-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"
@@ -9,8 +9,8 @@ cargo-fuzz = true
 
 [dependencies]
 indexmap = "2.12.0"
-jslite = { path = "../crates/jslite" }
-jslite-sidecar = { path = "../crates/jslite-sidecar" }
+mustard = { path = "../crates/mustard" }
+mustard-sidecar = { path = "../crates/mustard-sidecar" }
 libfuzzer-sys = "0.4"
 serde_json = "1.0.145"
 

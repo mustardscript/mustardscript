@@ -1,6 +1,6 @@
 # Verification Swarm Report 3
 
-Generated on 2026-04-12 for `/Users/mini/jslite`.
+Generated on 2026-04-12 for `/Users/mini/mustard`.
 
 ## Audit Method
 
@@ -15,7 +15,7 @@ Direct probe pattern used for parity checks:
 
 ```js
 const nodeResult = vm.runInNewContext('"use strict";\n' + source, Object.create(null));
-const runtimeResult = await new Jslite(source).run();
+const runtimeResult = await new Mustard(source).run();
 ```
 
 ## Commands Run
@@ -26,7 +26,7 @@ const runtimeResult = await new Jslite(source).run();
 - `npm run lint`
 - `npm run test:conformance`
 - `npm run test:use-cases`
-- Multiple narrow `node - <<'NODE'` probes using `node:vm` for strict-script Node results and `await new Jslite(source).run()` for runtime results
+- Multiple narrow `node - <<'NODE'` probes using `node:vm` for strict-script Node results and `await new Mustard(source).run()` for runtime results
 - Narrow existing-suite checks used to validate test gaps:
   - `node --test tests/node/builtins.test.js --test-name-pattern 'sparse array holes'`
   - `node --test tests/node/builtins.test.js --test-name-pattern 'globalThis'`
@@ -74,8 +74,8 @@ seen;
 - Runtime result: `-1`
 
 Code path explaining it:
-- `crates/jslite/src/runtime/builtins/arrays.rs:705`
-- `crates/jslite/src/runtime/builtins/arrays.rs:745`
+- `crates/mustard/src/runtime/builtins/arrays.rs:705`
+- `crates/mustard/src/runtime/builtins/arrays.rs:745`
 
 Both helpers currently skip indices when `array_has_index(...)` is false instead of invoking the callback with `undefined`.
 
@@ -116,14 +116,14 @@ new Date(5).valueOf()
 ```
 
 - Node result: `5`
-- Runtime result: `JsliteRuntimeError: Error: value is not callable`
+- Runtime result: `MustardRuntimeError: Error: value is not callable`
 
 Code path explaining it:
-- `crates/jslite/src/runtime/properties.rs:399`
-- `crates/jslite/src/runtime/properties.rs:714`
-- `crates/jslite/src/runtime/builtins/support.rs:43`
-- `crates/jslite/src/runtime/builtins/primitives.rs:117`
-- `crates/jslite/src/runtime/builtins/primitives.rs:145`
+- `crates/mustard/src/runtime/properties.rs:399`
+- `crates/mustard/src/runtime/properties.rs:714`
+- `crates/mustard/src/runtime/builtins/support.rs:43`
+- `crates/mustard/src/runtime/builtins/primitives.rs:117`
+- `crates/mustard/src/runtime/builtins/primitives.rs:145`
 
 The runtime only special-cases `getTime` on `Date` instances, parses strings through strict RFC3339 only, does not apply Node-style `TimeClip` rejection for out-of-range numerics, and exposes `valueOf` as a raw number instead of a callable method.
 
@@ -151,9 +151,9 @@ function declared() { return 1; }
 - Runtime result: `{"inGlobal":false,"viaThisType":"undefined","same":false,"afterType":"function","afterGlobal":9}`
 
 Code path explaining it:
-- `crates/jslite/src/runtime/compiler/mod.rs:118`
-- `crates/jslite/src/runtime/env.rs:64`
-- `crates/jslite/src/runtime/env.rs:221`
+- `crates/mustard/src/runtime/compiler/mod.rs:118`
+- `crates/mustard/src/runtime/env.rs:64`
+- `crates/mustard/src/runtime/env.rs:221`
 
 Top-level function declarations are compiled into the root lexical environment, but they are only mirrored onto the global object when initialization happens in `env == self.globals`.
 
@@ -221,11 +221,11 @@ f.length;
 - Runtime result: `3`
 
 Code path explaining it:
-- `crates/jslite/src/runtime/properties.rs:35`
-- `crates/jslite/src/runtime/properties.rs:46`
-- `crates/jslite/src/runtime/properties.rs:333`
-- `crates/jslite/src/runtime/properties.rs:520`
-- `crates/jslite/src/parser/patterns.rs:54`
+- `crates/mustard/src/runtime/properties.rs:35`
+- `crates/mustard/src/runtime/properties.rs:46`
+- `crates/mustard/src/runtime/properties.rs:333`
+- `crates/mustard/src/runtime/properties.rs:520`
+- `crates/mustard/src/parser/patterns.rs:54`
 
 The runtime does not expose `constructor` or any `Function.prototype`-style helpers on callables, gives non-constructible guest callables a `.prototype`, and computes `.length` from lowered temp parameters instead of stopping at the first defaulted source parameter.
 
@@ -256,13 +256,13 @@ Object("  ab  ").trim();
 ```
 
 - Node result: `"ab"`
-- Runtime result: `JsliteRuntimeError: Error: value is not callable`
+- Runtime result: `MustardRuntimeError: Error: value is not callable`
 
 Code path explaining it:
-- `crates/jslite/src/runtime/properties.rs:743`
-- `crates/jslite/src/runtime/properties.rs:898`
-- `crates/jslite/src/runtime/builtins/objects.rs:219`
-- `crates/jslite/src/runtime/builtins/strings.rs:4`
+- `crates/mustard/src/runtime/properties.rs:743`
+- `crates/mustard/src/runtime/properties.rs:898`
+- `crates/mustard/src/runtime/builtins/objects.rs:219`
+- `crates/mustard/src/runtime/builtins/strings.rs:4`
 
 Primitive string reads currently expose direct string helper names but not indexed characters or primitive constructor identity, and boxed string wrapper objects do not receive the same method surface as primitive strings.
 
@@ -300,9 +300,9 @@ new Error("boom", { cause: 1 }).cause;
 - Runtime result: `undefined`
 
 Code path explaining it:
-- `crates/jslite/src/runtime/conversions/errors.rs:11`
-- `crates/jslite/src/runtime/properties.rs:781`
-- `crates/jslite/src/runtime/builtins/primitives.rs:157`
+- `crates/mustard/src/runtime/conversions/errors.rs:11`
+- `crates/mustard/src/runtime/properties.rs:781`
+- `crates/mustard/src/runtime/builtins/primitives.rs:157`
 
 `make_error_object(...)` stringifies an explicit `undefined` message instead of preserving the empty-message behavior, error instances map `constructor` back to `Object`, and the second `Error` argument is accepted without diagnostics even though the documented surface does not include options handling.
 
@@ -319,7 +319,7 @@ Evidence:
 - `docs/CONFORMANCE.md:20`
 - `tests/node/conformance-contract.js:365`
 - `tests/node/differential.test.js:108`
-- `crates/jslite/tests/runtime_correctness.rs:8`
+- `crates/mustard/tests/runtime_correctness.rs:8`
 
 Representative repro:
 
@@ -392,7 +392,7 @@ Classification: confirmed docs drift
 
 Evidence:
 - `docs/LANGUAGE.md:398`
-- `crates/jslite/src/runtime/builtins/arrays.rs:892`
+- `crates/mustard/src/runtime/builtins/arrays.rs:892`
 - `tests/node/builtins.test.js:765`
 
 Representative repro:
@@ -415,8 +415,8 @@ Classification: confirmed docs drift
 Evidence:
 - `docs/LANGUAGE.md:477`
 - `README.md:452`
-- `crates/jslite/src/runtime/builtins/support.rs:43`
-- `crates/jslite/src/runtime/builtins/primitives.rs:150`
+- `crates/mustard/src/runtime/builtins/support.rs:43`
+- `crates/mustard/src/runtime/builtins/primitives.rs:150`
 
 Representative repros:
 
@@ -442,9 +442,9 @@ Classification: confirmed docs drift
 
 Evidence:
 - `docs/LANGUAGE.md:434`
-- `crates/jslite/src/runtime/properties.rs:46`
-- `crates/jslite/src/runtime/properties.rs:333`
-- `crates/jslite/src/runtime/properties.rs:520`
+- `crates/mustard/src/runtime/properties.rs:46`
+- `crates/mustard/src/runtime/properties.rs:333`
+- `crates/mustard/src/runtime/properties.rs:520`
 
 Representative repro:
 

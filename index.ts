@@ -2,19 +2,19 @@
 
 const { loadNative } = require('./native-loader.ts');
 const { createExecutorApi } = require('./lib/executor.ts');
-const { JsliteError } = require('./lib/errors.ts');
+const { MustardError } = require('./lib/errors.ts');
 const { createProgressApi } = require('./lib/progress.ts');
-const { createJsliteClass } = require('./lib/runtime.ts');
+const { createMustardClass } = require('./lib/runtime.ts');
 
 const native = loadNative();
 const { Progress, materializeStep, parseStep } = createProgressApi(native);
-const Jslite = createJsliteClass({ native, materializeStep, parseStep });
-const { InMemoryJsliteExecutorStore, JsliteExecutor } = createExecutorApi({ Jslite, Progress });
+const Mustard = createMustardClass({ native, materializeStep, parseStep });
+const { InMemoryMustardExecutorStore, MustardExecutor } = createExecutorApi({ Mustard, Progress });
 
 module.exports = {
-  InMemoryJsliteExecutorStore,
-  JsliteError,
-  Jslite,
-  JsliteExecutor,
+  InMemoryMustardExecutorStore,
+  MustardError,
+  Mustard,
+  MustardExecutor,
   Progress,
 };

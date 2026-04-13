@@ -5,7 +5,7 @@
     "moduleResolution": "Node16",
     "strict": true,
     "paths": {
-      "@keppoai/jslite": ["./jslite.d.ts"]
+      "mustardscript": ["./mustard.d.ts"]
     },
     "types": ["node"]
   },

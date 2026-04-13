@@ -2,11 +2,11 @@
 
 const { types } = require('node:util');
 
-const { JsliteError, callNative } = require('./errors.ts');
+const { MustardError, callNative } = require('./errors.ts');
 
 function throwIfAborted(signal) {
   if (signal?.aborted) {
-    throw new JsliteError('Limit', 'execution cancelled');
+    throw new MustardError('Limit', 'execution cancelled');
   }
 }
 

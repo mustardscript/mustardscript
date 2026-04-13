@@ -1,7 +1,7 @@
 'use strict';
 
 const { snapshotToken } = require('../../lib/policy.ts');
-const { Jslite, Progress, assert, isJsliteError, test } = require('../node/support/helpers.js');
+const { Mustard, Progress, assert, isMustardError, test } = require('../node/support/helpers.js');
 
 const SNAPSHOT_KEY = Buffer.from('mutation-guards-snapshot-key');
 
@@ -15,7 +15,7 @@ function mutateHexDigit(value) {
 }
 
 test('mutation guards keep validator rejection conditions fail-closed', async () => {
-  const baseline = new Jslite('const value = 1; value + 1;');
+  const baseline = new Mustard('const value = 1; value + 1;');
   assert.equal(await baseline.run(), 2);
 
   const cases = [
@@ -43,8 +43,8 @@ test('mutation guards keep validator rejection conditions fail-closed', async ()
 
   for (const entry of cases) {
     assert.throws(
-      () => new Jslite(entry.source),
-      isJsliteError({
+      () => new Mustard(entry.source),
+      isMustardError({
         kind: 'Validation',
         message: entry.message,
       }),
@@ -54,7 +54,7 @@ test('mutation guards keep validator rejection conditions fail-closed', async ()
 });
 
 test('mutation guards keep snapshot authorization and replay protections fail-closed', () => {
-  const progress = new Jslite('const value = fetch_data(4); value + 1;').start({
+  const progress = new Mustard('const value = fetch_data(4); value + 1;').start({
     capabilities: {
       fetch_data() {},
     },
@@ -79,7 +79,7 @@ test('mutation guards keep snapshot authorization and replay protections fail-cl
           snapshotKey: SNAPSHOT_KEY,
         },
       ),
-    isJsliteError({
+    isMustardError({
       kind: 'Serialization',
       message: 'tampered or unauthenticated snapshot',
     }),
@@ -103,7 +103,7 @@ test('mutation guards keep snapshot authorization and replay protections fail-cl
           snapshotKey: SNAPSHOT_KEY,
         },
       ),
-    isJsliteError({
+    isMustardError({
       kind: 'Serialization',
     }),
   );
@@ -113,7 +113,7 @@ test('mutation guards keep snapshot authorization and replay protections fail-cl
   assert.equal(first.resume(4), 5);
   assert.throws(
     () => second.resume(4),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'single-use',
     }),
@@ -163,11 +163,11 @@ test('mutation guards keep limit comparisons explicit at tight versus relaxed th
   ];
 
   for (const entry of cases) {
-    const runtime = new Jslite(entry.source);
+    const runtime = new Mustard(entry.source);
     assert.equal(await runtime.run({ limits: entry.relaxed }), entry.expected, entry.label);
     await assert.rejects(
       () => runtime.run({ limits: entry.tight }),
-      isJsliteError({
+      isMustardError({
         kind: 'Limit',
         message: entry.error,
       }),
@@ -241,12 +241,12 @@ test('mutation guards keep structured boundary rejections fail-closed across inp
   for (const entry of cases) {
     const value = entry.makeValue();
     await assert.rejects(
-      () => new Jslite('value;').run({ inputs: { value } }),
+      () => new Mustard('value;').run({ inputs: { value } }),
       isBoundaryTypeError(entry.message),
       entry.label,
     );
 
-    const progress = new Jslite('fetch_data(1);').start({
+    const progress = new Mustard('fetch_data(1);').start({
       capabilities: {
         fetch_data() {},
       },

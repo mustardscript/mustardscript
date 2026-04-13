@@ -1,6 +1,6 @@
 # Contributing
 
-`jslite` is a small runtime with an intentionally narrow language contract.
+`mustard` is a small runtime with an intentionally narrow language contract.
 
 ## Development Rules
 

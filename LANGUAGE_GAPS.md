@@ -1,6 +1,6 @@
 # LANGUAGE_GAPS
 
-This is an audit of the biggest gaps between the current `jslite` surface and
+This is an audit of the biggest gaps between the current `mustard` surface and
 the kind of modern Node.js / TypeScript code that MCP-style codemode agents
 commonly generate.
 
@@ -9,8 +9,8 @@ This document is based on:
 - `README.md`
 - `docs/LANGUAGE.md`
 - `docs/HOST_API.md`
-- `crates/jslite/src/parser.rs`
-- `crates/jslite/src/runtime`
+- `crates/mustard/src/parser.rs`
+- `crates/mustard/src/runtime`
 - `tests/node/basic.test.js`
 - `tests/node/async-runtime.test.js`
 - `tests/node/iteration.test.js`
@@ -55,7 +55,7 @@ missing:
 - Dynamic code loading is unsupported. Free `eval(...)` and `new Function(...)`
   are rejected or unavailable.
 - There is no package resolution or npm compatibility layer. Even if a parser
-  accepted an import string, `jslite` still has no module loader.
+  accepted an import string, `mustard` still has no module loader.
 - There is no ambient Node standard library. Generated references to `fs`,
   `path`, `os`, `crypto`, `stream`, `events`, `url`, `buffer`,
   `child_process`, and similar APIs are outside the runtime surface.
@@ -205,7 +205,7 @@ missing:
   relies on user-defined prototype chains or method dispatch through
   prototypes is outside the supported contract.
 - The remaining prototype deferral is deliberate rather than accidental:
-  `jslite` now exposes enough constructor/prototype identity for conservative
+  `mustard` now exposes enough constructor/prototype identity for conservative
   `instanceof`, but not the full JavaScript prototype model.
 - Accessors are unsupported, so generated getter and setter objects and classes
   are out of scope.
@@ -262,13 +262,13 @@ missing:
 
 - A generic codemode agent that targets "Node.js" or "TypeScript" will still
   emit modules, imports, platform APIs, classes, prototype-heavy code, wider
-  built-in surfaces, and unsupported operators. `jslite` does not support that
+  built-in surfaces, and unsupported operators. `mustard` does not support that
   baseline.
 - The current sweet spot is still narrower: script-style guest code, explicit
   host capabilities, JSON-like structured values, plain objects and arrays,
   supported keyed collections, conservative built-ins, async guest promises,
   and explicit fail-closed behavior outside that subset.
-- If `jslite` is meant to execute broader AI-generated code without manual
+- If `mustard` is meant to execute broader AI-generated code without manual
   rewrites, the biggest compatibility wins from here are richer array and
   object built-ins, broader loop forms, wider platform API shims, and any
   future work on full prototype inheritance or class-related semantics.

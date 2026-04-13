@@ -1,11 +1,11 @@
 # Release Guide
 
-This document defines the current release shape for `jslite` and the commands
+This document defines the current release shape for `MustardScript` and the commands
 maintainers should run before publishing anything.
 
 ## Current Release Shape
 
-- The primary release artifact is the npm package `@keppoai/jslite`.
+- The primary release artifact is the npm package `mustardscript`.
 - The default npm install path still preserves source builds. If no matching
   optional prebuilt package is installed, `npm install` compiles the native
   addon locally from the bundled Rust sources.
@@ -75,14 +75,14 @@ npm pack
 Check the dry-run output before keeping the generated tarball:
 
 - The tarball should include the Rust workspace files needed to build the
-  addon locally: `Cargo.toml`, `crates/jslite/src/**`,
-  `crates/jslite/Cargo.toml`, `crates/jslite-node/src/**`,
-  `crates/jslite-node/build.rs`, `crates/jslite-node/Cargo.toml`,
-  `crates/jslite-sidecar/src/**`, and
-  `crates/jslite-sidecar/Cargo.toml`.
+  addon locally: `Cargo.toml`, `crates/mustard/src/**`,
+  `crates/mustard/Cargo.toml`, `crates/mustard-node/src/**`,
+  `crates/mustard-node/build.rs`, `crates/mustard-node/Cargo.toml`,
+  `crates/mustard-sidecar/src/**`, and
+  `crates/mustard-sidecar/Cargo.toml`.
 - The tarball should include the public JS and type entrypoints plus the
   install/load helpers that preserve the source-build fallback:
-  `dist/index.js`, `index.d.ts`, `jslite.d.ts`, `dist/install.js`, and
+  `dist/index.js`, `index.d.ts`, `mustard.d.ts`, `dist/install.js`, and
   `dist/native-loader.js`.
 - The tarball should not include local build products, `.github/`, tests,
   planning documents, or a platform-specific `.node` binary from a maintainer
@@ -99,10 +99,10 @@ cd "$tmpdir/consumer"
 npm init -y
 npm install "$repo_root/$tarball"
 node - <<'EOF'
-const { Jslite } = require('@keppoai/jslite');
+const { Mustard } = require('mustardscript');
 
 async function main() {
-  const runtime = new Jslite('let total = 1; total = total + 41; total;');
+  const runtime = new Mustard('let total = 1; total = total + 41; total;');
   const value = await runtime.run();
   if (value !== 42) {
     throw new Error(`expected 42, got ${value}`);
@@ -128,10 +128,10 @@ code, reinstalls the same tarball, and reruns guest code from the consumer.
 ```sh
 npm install "$repo_root/$tarball"
 node - <<'EOF'
-const { Jslite } = require('@keppoai/jslite');
+const { Mustard } = require('mustardscript');
 
 async function main() {
-  const runtime = new Jslite('let total = 40; total = total + 2; total;');
+  const runtime = new Mustard('let total = 40; total = total + 2; total;');
   const value = await runtime.run();
   if (value !== 42) {
     throw new Error(`expected 42, got ${value}`);
@@ -156,21 +156,21 @@ The default release path does not publish a Rust crate. If maintainers decide
 to publish one later, the current verifiable flow for the core crate is:
 
 ```sh
-cargo publish --dry-run --allow-dirty -p jslite
+cargo publish --dry-run --allow-dirty -p mustard
 ```
 
 For the addon and sidecar crates, maintain dry-run packaging checks:
 
 ```sh
-cargo package -p jslite-node --allow-dirty --list
-cargo package -p jslite-sidecar --allow-dirty --list
+cargo package -p mustard-node --allow-dirty --list
+cargo package -p mustard-sidecar --allow-dirty --list
 ```
 
 Interpretation:
 
-- `jslite` is the only crate that currently makes sense as a future standalone
+- `mustard` is the only crate that currently makes sense as a future standalone
   Rust artifact.
-- `jslite-node` and `jslite-sidecar` are packaging checks for completeness, not
+- `mustard-node` and `mustard-sidecar` are packaging checks for completeness, not
   a recommendation to publish those crates independently.
 - If maintainers later decide to publish more than the core crate, add any
   remaining metadata and remove the current path dependencies before attempting
@@ -178,19 +178,19 @@ Interpretation:
 
 ## npm Namespace And Registry Access
 
-As verified on April 11, 2026, `npm view jslite` resolves to an unrelated
+As verified on April 11, 2026, `npm view mustard` resolves to an unrelated
 public package at version `1.1.12`, so this repository now targets the scoped
-package name `@keppoai/jslite`.
+package name `mustardscript`.
 
 Current state:
 
-- `npm view @keppoai/jslite` returns `404 Not Found`, which is compatible with a
+- `npm view mustardscript` returns `404 Not Found`, which is compatible with a
   first publish for this package name.
 - `npm publish --dry-run` is the command shape the automated release
   verification now checks.
 - An actual public publish still requires an authenticated npm publisher with
-  access to the `@keppoai` scope. That permission check cannot be proven from
-  repository-local verification alone.
+  rights to publish `mustardscript`. That permission check cannot be proven
+  from repository-local verification alone.
 
 ## Publishing The npm Package
 
@@ -208,7 +208,7 @@ Recommended follow-up:
 - link to `README.md`, `docs/LANGUAGE.md`, `docs/HOST_API.md`, and
   `docs/SECURITY_MODEL.md`
 
-If maintainers ever move away from `@keppoai/jslite`, update the package name,
+If maintainers ever move away from `mustardscript`, update the package name,
 smoke tests, release verification script, and this document together.
 
 ## Optional Prebuilt Binary Flow
@@ -220,10 +220,10 @@ an assumption for every host.
 
 Current prebuilt target matrix:
 
-- `x86_64-unknown-linux-gnu` -> `@keppoai/jslite-linux-x64-gnu`
-- `aarch64-apple-darwin` -> `@keppoai/jslite-darwin-arm64`
-- `x86_64-apple-darwin` -> `@keppoai/jslite-darwin-x64`
-- `x86_64-pc-windows-msvc` -> `@keppoai/jslite-win32-x64-msvc`
+- `x86_64-unknown-linux-gnu` -> `mustardscript-linux-x64-gnu`
+- `aarch64-apple-darwin` -> `mustardscript-darwin-arm64`
+- `x86_64-apple-darwin` -> `mustardscript-darwin-x64`
+- `x86_64-pc-windows-msvc` -> `mustardscript-win32-x64-msvc`
 
 Current mechanics:
 
@@ -253,7 +253,8 @@ corresponding runner environments.
 
 External blocker for a real prebuilt publish:
 
-- The workflow still requires a real `NPM_TOKEN` with publish rights for the
-  `@keppoai` scope before `npx napi pre-publish` and the final root
-  `npm publish` can succeed. Repository-local verification cannot prove those
-  credentials or scope permissions.
+- The workflow still requires a real `NPM_TOKEN` with publish rights for
+  `mustardscript` and its optional prebuilt packages before
+  `npx napi pre-publish` and the final root `npm publish` can succeed.
+  Repository-local verification cannot prove those credentials or registry
+  permissions.

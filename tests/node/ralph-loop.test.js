@@ -22,7 +22,7 @@ const {
 } = require('../../scripts/ralph-loop.ts');
 
 function createTempPlan(initialContent) {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-ralph-loop-'));
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mustard-ralph-loop-'));
   const planPath = path.join(tempRoot, 'plan.md');
   fs.writeFileSync(planPath, initialContent, 'utf8');
   return { tempRoot, planPath };

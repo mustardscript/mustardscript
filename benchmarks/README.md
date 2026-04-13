@@ -20,15 +20,15 @@ broad absolute ceilings, while the host-call and snapshot contracts use ratios
 against a direct in-process baseline so they stay meaningful across different
 development machines.
 
-## Comparative Benchmark Plan: `jslite` vs V8 Isolates
+## Comparative Benchmark Plan: `mustard` vs V8 Isolates
 
 The current smoke suite is useful for regression detection, but it does not yet
-answer the product question that matters most: how `jslite` compares with a V8
+answer the product question that matters most: how `mustard` compares with a V8
 isolate embedding for the workloads this project is actually targeting.
 
 ### Benchmark Goal
 
-Measure whether `jslite` is competitive for bounded agent-runtime workloads,
+Measure whether `mustard` is competitive for bounded agent-runtime workloads,
 especially:
 
 - code-mode execution where a model writes code against a compact tool surface
@@ -42,14 +42,14 @@ This comparison should not be framed as "general JavaScript speed." A V8
 isolate is expected to win many raw compute microbenchmarks because it has a
 full optimizing engine and a much broader language/runtime surface. The purpose
 of this plan is to measure the tradeoff for the constrained orchestration
-workloads `jslite` is designed for.
+workloads `mustard` is designed for.
 
 ### Baselines
 
 The benchmark matrix should start with:
 
-- `jslite` addon mode
-- `jslite` sidecar mode, reported separately because IPC is a deployment tradeoff
+- `mustard` addon mode
+- `mustard` sidecar mode, reported separately because IPC is a deployment tradeoff
 - a V8 isolate baseline implemented with `isolated-vm` or an equivalent
   minimal isolate embedding
 
@@ -129,18 +129,18 @@ Measure the cost of stopping at explicit host boundaries and continuing later.
 Fixture:
 
 - guest code that suspends on a host capability multiple times
-- persisted state between resumes for `jslite`
+- persisted state between resumes for `mustard`
 - best-effort equivalent async continuation flow for the V8 isolate baseline
 
 Measure:
 
 - suspend overhead per boundary
 - resume latency
-- serialized snapshot size and round-trip cost for `jslite`
+- serialized snapshot size and round-trip cost for `mustard`
 - state rebuild cost for the isolate baseline when it cannot persist equivalent
   continuation state directly
 
-This workload matters because suspend and resume is one of `jslite`'s intended
+This workload matters because suspend and resume is one of `mustard`'s intended
 advantages, not just an implementation detail.
 
 #### 5. Limits and Failure Cleanup
@@ -185,7 +185,7 @@ To keep the results interpretable:
   being measured
 - benchmark language features both runtimes can express without changing the
   workload shape
-- report `jslite` addon mode and sidecar mode separately rather than blending
+- report `mustard` addon mode and sidecar mode separately rather than blending
   them into one number
 - include at least one pure-compute microbenchmark, but treat it as a control
   metric, not the primary decision metric
@@ -196,7 +196,7 @@ The implementation order should be:
 
 1. Add a benchmark runner that emits structured JSON results and machine
    metadata.
-2. Add a V8 isolate adapter with the same host-tool contract used by `jslite`.
+2. Add a V8 isolate adapter with the same host-tool contract used by `mustard`.
 3. Add the cold-start, code-mode, and programmatic-tool-calling fixtures.
 4. Add suspend/resume and failure-cleanup fixtures.
 5. Capture results on a dedicated machine class and publish a checked-in
@@ -207,9 +207,9 @@ The implementation order should be:
 
 The benchmark should help answer these questions:
 
-- Is `jslite` materially faster to cold-start for short-lived agent steps?
-- How much host-call overhead does `jslite` add relative to a V8 isolate?
-- Does `jslite`'s suspend/resume model justify its narrower language surface?
+- Is `mustard` materially faster to cold-start for short-lived agent steps?
+- How much host-call overhead does `mustard` add relative to a V8 isolate?
+- Does `mustard`'s suspend/resume model justify its narrower language surface?
 - What memory tradeoff do we pay for explicit limits and snapshot support?
 - In which workloads should users prefer addon mode, sidecar mode, or a V8
   isolate instead?

@@ -41,19 +41,19 @@ This plan is about structure, not feature work.
 
 At the start of this wave, these are the highest-value refactor targets:
 
-- `crates/jslite/src/runtime/validation.rs` is about 1.1k lines and mixes:
+- `crates/mustard/src/runtime/validation.rs` is about 1.1k lines and mixes:
   bytecode validation, snapshot graph validation, and snapshot-policy capability
   validation. The snapshot and policy paths also repeat many of the same
   runtime-graph traversals.
-- `crates/jslite/src/runtime/async_runtime.rs` is about 760 lines and mixes:
+- `crates/mustard/src/runtime/async_runtime.rs` is about 760 lines and mixes:
   promise state management, thenable adoption, reaction activation, promise
   combinators, microtask checkpoints, suspended host-call handling, idle-state
   progression, and resume logic.
-- `crates/jslite/src/runtime/conversions.rs` is about 580 lines and mixes:
+- `crates/mustard/src/runtime/conversions.rs` is about 580 lines and mixes:
   unary/binary operators, numeric and string coercions, property-key
   normalization, error-object creation/rendering, structured host-boundary
   conversion, and JSON conversion.
-- `crates/jslite/src/runtime/builtins/mod.rs` is still a helper bucket for
+- `crates/mustard/src/runtime/builtins/mod.rs` is still a helper bucket for
   string-search, RegExp replacement, index normalization, and `Date` helpers,
   even though `builtins/mod.rs` should mainly be module wiring plus any truly
   central shared types.
@@ -65,7 +65,7 @@ They are less urgent than the cross-cutting ownership problems above.
 ## Proposed Target Layout
 
 ```text
-crates/jslite/src/runtime/
+crates/mustard/src/runtime/
   validation/
     mod.rs
     bytecode.rs
@@ -134,7 +134,7 @@ traversal.
 
 Checklist:
 
-- [x] Convert `crates/jslite/src/runtime/validation.rs` into
+- [x] Convert `crates/mustard/src/runtime/validation.rs` into
   `runtime/validation/mod.rs`
 - [x] Move bytecode validation into `runtime/validation/bytecode.rs`
 - [x] Introduce `runtime/validation/walk.rs` for shared runtime-graph traversal
@@ -158,7 +158,7 @@ Purpose: separate promise primitives from scheduling and host-resume flow.
 
 Checklist:
 
-- [x] Convert `crates/jslite/src/runtime/async_runtime.rs` into
+- [x] Convert `crates/mustard/src/runtime/async_runtime.rs` into
   `runtime/async_runtime/mod.rs`
 - [x] Move promise state helpers and settlement primitives into
   `runtime/async_runtime/promises.rs`
@@ -183,7 +183,7 @@ guest-safe error rendering.
 
 Checklist:
 
-- [x] Convert `crates/jslite/src/runtime/conversions.rs` into
+- [x] Convert `crates/mustard/src/runtime/conversions.rs` into
   `runtime/conversions/mod.rs`
 - [x] Move unary/binary operator helpers and BigInt arithmetic into
   `runtime/conversions/operators.rs`
@@ -234,7 +234,7 @@ Checklist:
   and async resume scenarios where that reduces duplication
 - [x] Keep unit tests aligned with the new module boundaries, especially for
   validation, async runtime behavior, and structured-boundary conversion
-- [x] Preserve the current integration-test surface in `crates/jslite/tests/`
+- [x] Preserve the current integration-test surface in `crates/mustard/tests/`
   and `tests/node/`
 - [x] Avoid moving broad behavioral coverage into production modules
 
@@ -249,7 +249,7 @@ Exit criteria:
 - Do not re-open the Node wrapper split unless new wrapper complexity appears.
   `index.js` and `lib/*.js` are already much healthier than before.
 - Do not re-open addon/sidecar DTO consolidation unless a new drift appears.
-  The `jslite-bridge` extraction already addressed the main duplication there.
+  The `mustard-bridge` extraction already addressed the main duplication there.
 - Do not split `builtins/arrays.rs` or `builtins/strings.rs` purely by line
   count unless a concrete ownership problem appears. Those files are large, but
   they are currently semantically cohesive in a way `validation.rs`,

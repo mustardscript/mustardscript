@@ -1,9 +1,9 @@
-You are working in `/Users/mini/jslite`.
+You are working in `/Users/mini/mustard`.
 
 Your job is to fully implement everything in `TODOS.md`, update `TODOS.md` as items become verifiably complete, and create git commits after each substantial, verified milestone. Treat this as an execution task, not a planning exercise.
 
 Repository context you must account for:
-- The repo already contains a Rust workspace with `crates/jslite`, `crates/jslite-node`, and `crates/jslite-sidecar`.
+- The repo already contains a Rust workspace with `crates/mustard`, `crates/mustard-node`, and `crates/mustard-sidecar`.
 - There is already meaningful implementation in the parser, IR, runtime, Node addon, JS wrapper, docs, and tests.
 - `README.md` and `TODOS.md` currently have local uncommitted edits. Do not discard, overwrite, or revert unrelated user changes. Work with the existing state carefully.
 - Current verification commands:

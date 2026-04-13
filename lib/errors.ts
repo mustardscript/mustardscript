@@ -8,11 +8,11 @@ const KNOWN_ERROR_KINDS = new Set([
   'Serialization',
 ]);
 
-class JsliteError extends Error {
+class MustardError extends Error {
   constructor(kind, message, cause) {
     super(message, { cause });
     this.kind = kind;
-    this.name = `Jslite${kind}Error`;
+    this.name = `Mustard${kind}Error`;
   }
 }
 
@@ -28,7 +28,7 @@ function normalizeNativeError(error) {
   if (!KNOWN_ERROR_KINDS.has(kind)) {
     return error;
   }
-  return new JsliteError(kind, message, error);
+  return new MustardError(kind, message, error);
 }
 
 function callNative(fn, ...args) {
@@ -40,7 +40,7 @@ function callNative(fn, ...args) {
 }
 
 module.exports = {
-  JsliteError,
+  MustardError,
   callNative,
   normalizeNativeError,
 };

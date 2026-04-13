@@ -1,6 +1,6 @@
 'use strict';
 
-const { assert, isJsliteError, runtime, test } = require('./support/helpers.js');
+const { assert, isMustardError, runtime, test } = require('./support/helpers.js');
 
 test('run executes throw, try/catch, finally, and Error constructors', async () => {
   const result = await runtime(`
@@ -162,7 +162,7 @@ test('nested exception unwinds preserve catch and finally ordering', async () =>
 test('constructor converts native parse failures into typed errors', () => {
   assert.throws(
     () => runtime('const value = ;'),
-    isJsliteError({
+    isMustardError({
       kind: 'Parse',
       check(error) {
         assert.ok(error.message.length > 0);
@@ -175,7 +175,7 @@ test('constructor converts native parse failures into typed errors', () => {
 test('constructor converts native validation failures into typed errors', () => {
   assert.throws(
     () => runtime('export const value = 1;'),
-    isJsliteError({
+    isMustardError({
       kind: 'Validation',
       message: /module syntax is not supported/,
     }),
@@ -185,7 +185,7 @@ test('constructor converts native validation failures into typed errors', () => 
 test('constructor rejects free arguments while allowing supported parameter defaults', () => {
   assert.throws(
     () => runtime('function wrap() { return arguments[0]; }'),
-    isJsliteError({
+    isMustardError({
       kind: 'Validation',
       message: /forbidden ambient global `arguments`/,
     }),
@@ -213,7 +213,7 @@ test('runtime errors do not leak host internals in guest tracebacks', async () =
       }
       outer();
     `).run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       guestSafe: true,
     }),

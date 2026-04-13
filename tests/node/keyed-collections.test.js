@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { Mustard, MustardError, Progress } = require('../../index.ts');
 
 const SNAPSHOT_KEY = Buffer.from('keyed-collections-snapshot-key');
 const PROGRESS_LOAD_OPTIONS = Object.freeze({
@@ -15,7 +15,7 @@ const PROGRESS_LOAD_OPTIONS = Object.freeze({
 });
 
 test('run supports Map mutation, lookup, and SameValueZero semantics', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const shared = {};
     const nan = Number('nope');
     const map = new Map();
@@ -45,7 +45,7 @@ test('run supports Map mutation, lookup, and SameValueZero semantics', async () 
 });
 
 test('run supports Set mutation, membership, and clear semantics', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const shared = {};
     const nan = Number('nope');
     const set = new Set();
@@ -82,7 +82,7 @@ test('run supports Set mutation, membership, and clear semantics', async () => {
 });
 
 test('collection methods reject incompatible receivers', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const map = new Map();
     const set = new Set();
     const mapGet = map.get;
@@ -115,7 +115,7 @@ test('collection methods reject incompatible receivers', async () => {
 });
 
 test('progress snapshots preserve live keyed collections and cycles across resumes', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const key = { label: 'shared' };
     const map = new Map();
     const set = new Set();
@@ -159,7 +159,7 @@ test('progress snapshots preserve live keyed collections and cycles across resum
 });
 
 test('collection constructors and iteration helpers support the documented iterable surface', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const map = new Map([['alpha', 1], ['beta', 2], ['alpha', 3]]);
     const set = new Set('abba');
     const entry = map.entries().next();
@@ -195,7 +195,7 @@ test('collection constructors and iteration helpers support the documented itera
 });
 
 test('Map and Set iterators visit entries appended during active iteration', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const map = new Map([
       ['alpha', 1],
       ['omega', 2],
@@ -243,7 +243,7 @@ test('Map and Set iterators visit entries appended during active iteration', asy
 });
 
 test('Map and Set iterators can continue after clear followed by new entries', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const map = new Map([
       ['alpha', 1],
       ['omega', 2],
@@ -283,7 +283,7 @@ test('Map and Set iterators can continue after clear followed by new entries', a
 });
 
 test('Map.prototype.forEach and Set.prototype.forEach support callback iteration', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const map = new Map([
       ['alpha', 1],
       ['beta', 2],
@@ -323,16 +323,16 @@ test('Map.prototype.forEach and Set.prototype.forEach support callback iteration
 
 test('collection forEach helpers fail closed for invalid callbacks and host suspensions', async () => {
   await assert.rejects(
-    () => new Jslite('new Map().forEach(1);').run(),
+    () => new Mustard('new Map().forEach(1);').run(),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Runtime' &&
       error.message.includes('Map.prototype.forEach expects a callable callback'),
   );
 
   await assert.rejects(
     () =>
-      new Jslite('new Set([1]).forEach(fetch_data);').run({
+      new Mustard('new Set([1]).forEach(fetch_data);').run({
         capabilities: {
           fetch_data(value) {
             return value;
@@ -340,7 +340,7 @@ test('collection forEach helpers fail closed for invalid callbacks and host susp
         },
       }),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Runtime' &&
       error.message.includes(
         'Set.prototype.forEach does not support synchronous host suspensions',
@@ -351,20 +351,20 @@ test('collection forEach helpers fail closed for invalid callbacks and host susp
 test('guest keyed collections cannot cross the structured host boundary', async () => {
   await assert.rejects(
     () =>
-      new Jslite(`
+      new Mustard(`
         const map = new Map();
         map.set('alpha', 1);
         map;
       `).run(),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Runtime' &&
       error.message.includes('Map and Set values cannot cross the structured host boundary'),
   );
 
   await assert.rejects(
     () =>
-      new Jslite(`
+      new Mustard(`
         const set = new Set();
         set.add(1);
         sink(set);
@@ -376,14 +376,14 @@ test('guest keyed collections cannot cross the structured host boundary', async 
         },
       }),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Runtime' &&
       error.message.includes('Map and Set values cannot cross the structured host boundary'),
   );
 });
 
 test('host Map and Set inputs are rejected before they cross the wrapper boundary', async () => {
-  const runtime = new Jslite('value;');
+  const runtime = new Mustard('value;');
 
   await assert.rejects(
     () => runtime.run({ inputs: { value: new Map([['alpha', 1]]) } }),

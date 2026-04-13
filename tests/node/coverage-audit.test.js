@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { Jslite } = require('../../index.ts');
+const { Mustard } = require('../../index.ts');
 const { COVERAGE, FEATURE_CONTRACT, OUTCOME } = require('./conformance-contract.js');
 const { assertDifferential } = require('./runtime-oracle.js');
 
@@ -291,13 +291,13 @@ const PUBLIC_API_MISUSE_COVERAGE = Object.freeze({
   'run()': [
     {
       file: 'tests/node/property-boundary.test.js',
-      pattern: "new Jslite('value;').run({ inputs: { value } })",
+      pattern: "new Mustard('value;').run({ inputs: { value } })",
     },
   ],
   'start()': [
     {
       file: 'tests/node/property-boundary.test.js',
-      pattern: "new Jslite('value;').start({ inputs: { value } })",
+      pattern: "new Mustard('value;').start({ inputs: { value } })",
     },
   ],
   'resume()': [
@@ -332,16 +332,16 @@ const PUBLIC_API_MISUSE_COVERAGE = Object.freeze({
       pattern: 'progress load surfaces snapshot failures as typed errors',
     },
   ],
-  'Jslite.load(...)': [
+  'Mustard.load(...)': [
     {
       file: 'tests/node/serialization.test.js',
-      pattern: 'Jslite.load surfaces invalid compiled-program blobs as typed errors',
+      pattern: 'Mustard.load surfaces invalid compiled-program blobs as typed errors',
     },
   ],
-  'Jslite.validateProgram(...)': [
+  'Mustard.validateProgram(...)': [
     {
       file: 'tests/node/validation-api.test.js',
-      pattern: 'Jslite.validateProgram accepts supported programs and rejects invalid ones with typed errors',
+      pattern: 'Mustard.validateProgram accepts supported programs and rejects invalid ones with typed errors',
     },
   ],
 });
@@ -372,7 +372,7 @@ test('JSON.stringify matches Node for property order, number rendering, and omis
 });
 
 test('primitive and error constructors expose the documented built-in surface', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const base = new Error('boom');
     const reference = new ReferenceError('missing');
     const range = new RangeError('too far');
@@ -411,7 +411,7 @@ test('primitive and error constructors expose the documented built-in surface', 
 });
 
 test('globalThis remains a stable guest-visible object', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     globalThis.answer = 3;
     [
       typeof globalThis,
@@ -425,7 +425,7 @@ test('globalThis remains a stable guest-visible object', async () => {
 });
 
 test('in operator follows the conservative supported property surface and rejects primitives', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const object = { alpha: undefined };
     const array = [4];
     array.extra = 5;
@@ -479,7 +479,7 @@ test('in operator follows the conservative supported property surface and reject
   ]);
 
   await assert.rejects(
-    () => new Jslite(`"length" in "abc";`).run(),
+    () => new Mustard(`"length" in "abc";`).run(),
     (error) =>
       error &&
       error.kind === 'Runtime' &&
@@ -488,7 +488,7 @@ test('in operator follows the conservative supported property surface and reject
 });
 
 test('deferring await does not inject a guest-visible cancellation signal', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const value = fetch_data(2);
     value + 1;
   `);
@@ -631,7 +631,7 @@ test('documented public runtime methods keep misuse-path coverage anchors', () =
     'resumeError()',
     'Progress.cancel()',
     'Progress.load(...)',
-    'Jslite.load(...)',
+    'Mustard.load(...)',
   ];
 
   for (const method of documentedMethods) {
@@ -650,10 +650,10 @@ test('documented public runtime methods keep misuse-path coverage anchors', () =
 
 test('documented sidecar methods keep both valid-flow and hostile-input coverage', () => {
   const validFiles = [
-    'crates/jslite-sidecar/tests/protocol.rs',
-    'crates/jslite-sidecar/tests/protocol_state.rs',
+    'crates/mustard-sidecar/tests/protocol.rs',
+    'crates/mustard-sidecar/tests/protocol_state.rs',
   ].map(readRepo);
-  const hostile = readRepo('crates/jslite-sidecar/tests/hostile_protocol.rs');
+  const hostile = readRepo('crates/mustard-sidecar/tests/hostile_protocol.rs');
 
   for (const method of extractSidecarMethods(SIDECAR_PROTOCOL)) {
     assert.ok(

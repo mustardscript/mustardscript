@@ -13,11 +13,11 @@ scripts/run-hardening.sh
 
 That runs:
 
-- `cargo test -p jslite --test security_hostile_inputs`
-- `cargo test -p jslite --test property_generated_execution`
-- `cargo test -p jslite --test property_roundtrip`
-- `cargo test -p jslite --test property_snapshot_roundtrip`
-- `cargo test -p jslite-sidecar --test hostile_protocol`
+- `cargo test -p mustard --test security_hostile_inputs`
+- `cargo test -p mustard --test property_generated_execution`
+- `cargo test -p mustard --test property_roundtrip`
+- `cargo test -p mustard --test property_snapshot_roundtrip`
+- `cargo test -p mustard-sidecar --test hostile_protocol`
 - `npm run build`
 - `node scripts/seed-fuzz-corpus.ts`
 - short executed `cargo-fuzz` smoke for `parser`, `snapshot_load`, and
@@ -79,10 +79,10 @@ lane.
 
 For local tuning, `scripts/run-hardening.sh` accepts:
 
-- `JSLITE_FUZZ_TARGETS` to override the fuzz target list
-- `JSLITE_FUZZ_SECONDS` to change per-target runtime
-- `JSLITE_FUZZ_TOOLCHAIN` to pick a non-default toolchain
-- `JSLITE_FUZZ_ARTIFACT_ROOT` to redirect crash artifacts
+- `MUSTARD_FUZZ_TARGETS` to override the fuzz target list
+- `MUSTARD_FUZZ_SECONDS` to change per-target runtime
+- `MUSTARD_FUZZ_TOOLCHAIN` to pick a non-default toolchain
+- `MUSTARD_FUZZ_ARTIFACT_ROOT` to redirect crash artifacts
 
 ## Denial-of-Service Audit
 
@@ -94,7 +94,7 @@ Current hostile-input pressure points and mitigations:
 - Bytecode and snapshot loading treat serialized blobs as untrusted. The
   verified suites mutate valid blobs, fuzz loaders with arbitrary bytes, and
   assert that failures stay host-safe. The dedicated
-  `crates/jslite/tests/snapshot_policy_security.rs` suite also verifies that
+  `crates/mustard/tests/snapshot_policy_security.rs` suite also verifies that
   loaded snapshots cannot resume until the host reasserts allowed capability
   names and explicit runtime limits.
 - Bytecode execution is bounded by instruction, heap, allocation, and call-depth
@@ -122,7 +122,7 @@ The current kill/cancellation evidence is intentionally split by deployment
 mode:
 
 - Core cooperative cancellation is covered by
-  `crates/jslite/tests/cancellation.rs`, which interrupts running guest code and
+  `crates/mustard/tests/cancellation.rs`, which interrupts running guest code and
   cancels suspended async host waits without letting guest `try` / `catch`
   convert the host abort into ordinary guest control flow.
 - Addon-mode cancellation plumbing is covered by
@@ -133,7 +133,7 @@ mode:
   `tests/node/coverage-audit.test.js`, which verifies that merely dropping or
   delaying the caller's immediate await does not itself inject cancellation.
 - Sidecar hard-stop behavior is covered by
-  `crates/jslite-sidecar/tests/protocol.rs`, which forcefully terminates a live
+  `crates/mustard-sidecar/tests/protocol.rs`, which forcefully terminates a live
   sidecar process and verifies that a fresh sidecar can be started cleanly
   afterward.
 - Same-thread addon compute is still cooperative rather than preemptive. If the

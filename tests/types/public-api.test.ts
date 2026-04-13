@@ -3,24 +3,24 @@ import type {
   CapabilityError,
   ConsoleCallbacks,
   ExecutionOptions,
-  InMemoryJsliteExecutorStore as InMemoryJsliteExecutorStoreType,
-  JsliteError as JsliteErrorType,
-  JsliteExecutor as JsliteExecutorType,
-  JsliteExecutorStore,
-  JsliteJobRecord,
-  JsliteErrorKind,
+  InMemoryMustardExecutorStore as InMemoryMustardExecutorStoreType,
+  MustardError as MustardErrorType,
+  MustardExecutor as MustardExecutorType,
+  MustardExecutorStore,
+  MustardJobRecord,
+  MustardErrorKind,
   ProgressLoadOptions,
   Progress as ProgressType,
   ResumeOptions,
   RuntimeLimits,
   SerializedProgress,
   StructuredValue,
-} from '@keppoai/jslite';
+} from 'mustardscript';
 
-const { InMemoryJsliteExecutorStore, Jslite, JsliteError, JsliteExecutor, Progress } =
-  require('@keppoai/jslite') as typeof import('@keppoai/jslite');
+const { InMemoryMustardExecutorStore, Mustard, MustardError, MustardExecutor, Progress } =
+  require('mustardscript') as typeof import('mustardscript');
 
-const runtime = new Jslite('const response = fetch_data(seed); response + 1;', {
+const runtime = new Mustard('const response = fetch_data(seed); response + 1;', {
   inputs: ['seed'],
 });
 
@@ -67,11 +67,11 @@ const progressLoadOptions: ProgressLoadOptions = {
     instructionBudget: 1000,
   },
 };
-const executorStore: JsliteExecutorStore<{ seed: StructuredValue }, StructuredValue> =
-  new InMemoryJsliteExecutorStore();
-const typedStore: InMemoryJsliteExecutorStoreType<{ seed: StructuredValue }, StructuredValue> =
-  new InMemoryJsliteExecutorStore();
-const executor: JsliteExecutorType<{ seed: StructuredValue }, StructuredValue> = new JsliteExecutor({
+const executorStore: MustardExecutorStore<{ seed: StructuredValue }, StructuredValue> =
+  new InMemoryMustardExecutorStore();
+const typedStore: InMemoryMustardExecutorStoreType<{ seed: StructuredValue }, StructuredValue> =
+  new InMemoryMustardExecutorStore();
+const executor: MustardExecutorType<{ seed: StructuredValue }, StructuredValue> = new MustardExecutor({
   program: runtime,
   store: executorStore,
   snapshotKey: Buffer.from('snapshot-key'),
@@ -85,7 +85,7 @@ const executor: JsliteExecutorType<{ seed: StructuredValue }, StructuredValue> =
   },
 });
 
-const errorKind: JsliteErrorKind = 'Runtime';
+const errorKind: MustardErrorKind = 'Runtime';
 const capability: Capability = async (...args) => args[0] ?? structured;
 const consoleCallbacks: ConsoleCallbacks = {
   log(...args) {
@@ -94,7 +94,7 @@ const consoleCallbacks: ConsoleCallbacks = {
 };
 
 async function typecheck(): Promise<void> {
-  Jslite.validateProgram('const value = 1; value + 1;');
+  Mustard.validateProgram('const value = 1; value + 1;');
 
   const result: StructuredValue = await runtime.run({
     ...executionOptions,
@@ -106,7 +106,7 @@ async function typecheck(): Promise<void> {
   });
 
   const dumped: Buffer = runtime.dump();
-  const loaded: typeof runtime = Jslite.load(dumped);
+  const loaded: typeof runtime = Mustard.load(dumped);
   const step: StructuredValue | ProgressType = loaded.start(executionOptions);
 
   if (step instanceof Progress) {
@@ -144,8 +144,8 @@ async function typecheck(): Promise<void> {
 
 void typecheck();
 
-const typedError: JsliteErrorType = new JsliteError(errorKind, 'boom', new Error('cause'));
-const jobRecordPromise: Promise<JsliteJobRecord<{ seed: StructuredValue }, StructuredValue> | null> =
+const typedError: MustardErrorType = new MustardError(errorKind, 'boom', new Error('cause'));
+const jobRecordPromise: Promise<MustardJobRecord<{ seed: StructuredValue }, StructuredValue> | null> =
   executor.get('job-1');
 const enqueuePromise: Promise<string> = executor.enqueue({ seed: 1 }, { jobId: 'job-1' });
 const runWorkerPromise: Promise<void> = executor.runWorker({ maxConcurrentJobs: 2, drain: true });

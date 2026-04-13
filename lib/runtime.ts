@@ -20,12 +20,12 @@ const {
   encodeStartOptions,
 } = require('./structured.ts');
 
-function createJsliteClass({ native, materializeStep, parseStep }) {
+function createMustardClass({ native, materializeStep, parseStep }) {
   function compileProgram(code) {
     return callNative(native.compileProgram, code);
   }
 
-  return class Jslite {
+  return class Mustard {
     constructor(code, options = {}) {
       this._program = compileProgram(code);
       this._inputNames = options.inputs ?? [];
@@ -96,7 +96,7 @@ function createJsliteClass({ native, materializeStep, parseStep }) {
     }
 
     static load(buffer) {
-      const instance = Object.create(Jslite.prototype);
+      const instance = Object.create(Mustard.prototype);
       instance._program = Buffer.from(buffer);
       instance._inputNames = [];
       return instance;
@@ -105,5 +105,5 @@ function createJsliteClass({ native, materializeStep, parseStep }) {
 }
 
 module.exports = {
-  createJsliteClass,
+  createMustardClass,
 };

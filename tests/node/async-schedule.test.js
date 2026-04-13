@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
-const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { Mustard, MustardError, Progress } = require('../../index.ts');
 const { normalizeValue } = require('./runtime-oracle.js');
 
 const SNAPSHOT_KEY = Buffer.from('async-schedule-test-key');
@@ -282,8 +282,8 @@ async function captureGuestScheduleRecord(source, runner) {
   return captureScheduleRecordFromOutcome(outcome, []);
 }
 
-async function runJsliteSchedule(source) {
-  const runtime = new Jslite(source);
+async function runMustardSchedule(source) {
+  const runtime = new Mustard(source);
   return runtime.run();
 }
 
@@ -338,7 +338,7 @@ function loadProgress(progress, transport) {
 }
 
 async function captureRunHostScheduleRecord(schedule) {
-  const runtime = new Jslite(HOST_SCHEDULE_SOURCE);
+  const runtime = new Mustard(HOST_SCHEDULE_SOURCE);
   const hostTrace = [];
   const pendingCalls = [];
   const pending = runtime.run({
@@ -407,7 +407,7 @@ async function captureRunHostScheduleRecord(schedule) {
 }
 
 async function captureProgressHostScheduleRecord(schedule) {
-  const runtime = new Jslite(HOST_SCHEDULE_SOURCE);
+  const runtime = new Mustard(HOST_SCHEDULE_SOURCE);
   const hostTrace = [];
   let current = runtime.start({
     snapshotKey: SNAPSHOT_KEY,
@@ -472,7 +472,7 @@ async function captureProgressHostScheduleRecord(schedule) {
 
 function isCancelledLimit(error) {
   return (
-    error instanceof JsliteError &&
+    error instanceof MustardError &&
     error.kind === 'Limit' &&
     error.message.includes('execution cancelled')
   );
@@ -499,7 +499,7 @@ async function runCancellationSchedule(caseEntry) {
   const controller = new AbortController();
   const hostTrace = [];
   const deferred = createDeferred();
-  const runtime = new Jslite(CANCELLATION_SOURCE);
+  const runtime = new Mustard(CANCELLATION_SOURCE);
   const pending = runtime.run({
     signal: controller.signal,
     capabilities: {
@@ -590,7 +590,7 @@ test('async schedule matrix: promise chains match Node across exhaustive finally
       const source = renderPromiseChainSource({ baseOutcome, finallyRejects });
       await t.test(label, async () => {
         const [actual, expected] = await Promise.all([
-          captureGuestScheduleRecord(source, () => runJsliteSchedule(source)),
+          captureGuestScheduleRecord(source, () => runMustardSchedule(source)),
           captureGuestScheduleRecord(source, () => runNodeSchedule(source)),
         ]);
         assertScheduleRecordEqual(label, actual, expected);
@@ -624,7 +624,7 @@ test('async schedule matrix: promise combinators match Node across exhaustive tw
           const source = renderPromiseCombinatorSource({ combinator, orderedInputs });
           await t.test(label, async () => {
             const [actual, expected] = await Promise.all([
-              captureGuestScheduleRecord(source, () => runJsliteSchedule(source)),
+              captureGuestScheduleRecord(source, () => runMustardSchedule(source)),
               captureGuestScheduleRecord(source, () => runNodeSchedule(source)),
             ]);
             assertScheduleRecordEqual(label, actual, expected);
@@ -689,7 +689,7 @@ test('async schedule matrix: cancellation races are deterministic around host se
 
       assert.equal(record.outcome.type, 'rejected');
       const { value } = record.outcome;
-      assert.ok(isCancelledLimit(Object.assign(new JsliteError('Limit', value.value.message), { kind: 'Limit' })) || value.value.kind?.value === 'Limit');
+      assert.ok(isCancelledLimit(Object.assign(new MustardError('Limit', value.value.message), { kind: 'Limit' })) || value.value.kind?.value === 'Limit');
       assert.match(value.value.message, /execution cancelled/);
       assert.deepEqual(record.guestTrace, []);
     });

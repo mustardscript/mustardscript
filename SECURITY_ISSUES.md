@@ -33,10 +33,10 @@ inputs containing `__proto__` do not round-trip as documented.
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 (async () => {
-  const result = await new Jslite(
+  const result = await new Mustard(
     `({ ['__proto__']: { admin: true }, user: 'alice' });`,
   ).run();
 
@@ -75,7 +75,7 @@ the boundary.
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 (async () => {
   let getterRuns = 0;
@@ -88,7 +88,7 @@ const { Jslite } = require('./index.js');
     },
   });
 
-  const result = await new Jslite('value.secret;').run({ inputs: { value } });
+  const result = await new Mustard('value.secret;').run({ inputs: { value } });
   console.log(result); // "top-secret"
   console.log(getterRuns); // 1
 })();
@@ -105,7 +105,7 @@ descriptors explicitly.
 
 **Affected files**
 
-- [`crates/jslite/src/runtime.rs`](crates/jslite/src/runtime.rs)
+- [`crates/mustard/src/runtime.rs`](crates/mustard/src/runtime.rs)
 - [`docs/HOST_API.md`](docs/HOST_API.md)
 - [`README.md`](README.md)
 
@@ -130,9 +130,9 @@ The crash is reachable from:
 const { spawnSync } = require('node:child_process');
 
 const child = spawnSync(process.execPath, ['-e', `
-  const { Jslite } = require('./index.js');
+  const { Mustard } = require('./index.js');
   (async () => {
-    await new Jslite('const o = {}; o.self = o; o;').run();
+    await new Mustard('const o = {}; o.self = o; o;').run();
   })();
 `], {
   cwd: process.cwd(),
@@ -154,7 +154,7 @@ closed on cycles instead of recursing indefinitely.
 
 **Affected files**
 
-- [`crates/jslite/src/runtime.rs`](crates/jslite/src/runtime.rs)
+- [`crates/mustard/src/runtime.rs`](crates/mustard/src/runtime.rs)
 - [`README.md`](README.md)
 
 **Impact**
@@ -181,10 +181,10 @@ Representative affected surface includes:
 const { spawnSync } = require('node:child_process');
 
 const payload = `
-  const { Jslite } = require('./index.js');
+  const { Mustard } = require('./index.js');
   (async () => {
     const text = 'a'.repeat(200) + '!';
-    await new Jslite('text.search(/^(a+)+$/);').run({
+    await new Mustard('text.search(/^(a+)+$/);').run({
       inputs: { text },
       limits: { instructionBudget: 20 },
     });
@@ -225,7 +225,7 @@ metered and cancellable regex execution path.
 `resume()` ignores them and resumes using only the serialized snapshot.
 
 That means a tampered persisted progress object can mislead the host before
-`jslite` regains control:
+`mustard` regains control:
 
 1. the host loads persisted progress
 2. the host dispatches on `progress.capability` and `progress.args`
@@ -237,9 +237,9 @@ No snapshot-byte forgery is required.
 **Short repro**
 
 ```js
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 
-const runtime = new Jslite('const value = fetch_data(1); value + 1;');
+const runtime = new Mustard('const value = fetch_data(1); value + 1;');
 const first = runtime.start({
   capabilities: {
     fetch_data(value) {
@@ -303,9 +303,9 @@ That is a replay vulnerability for one-shot approval or side-effecting flows.
 **Short repro**
 
 ```js
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 
-const runtime = new Jslite('const token = auth(); spend(token);');
+const runtime = new Mustard('const token = auth(); spend(token);');
 const first = runtime.start({
   capabilities: {
     auth() {},
@@ -336,7 +336,7 @@ token.
 
 **Affected files**
 
-- [`crates/jslite/src/runtime.rs`](crates/jslite/src/runtime.rs)
+- [`crates/mustard/src/runtime.rs`](crates/mustard/src/runtime.rs)
 - [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md)
 - [`docs/HOST_API.md`](docs/HOST_API.md)
 
@@ -354,7 +354,7 @@ later, even though capability access is supposed to be explicit host authority.
 **Short repro**
 
 ```js
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 
 function replaceAllAscii(buffer, from, to) {
   const a = Buffer.from(from, 'utf8');
@@ -368,7 +368,7 @@ function replaceAllAscii(buffer, from, to) {
 }
 
 (async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const first = fetch_data(1);
     const second = fetch_data(2);
     [first, second];
@@ -404,10 +404,10 @@ contain live capability-bearing state.
 
 **Affected files**
 
-- [`crates/jslite/src/limits.rs`](crates/jslite/src/limits.rs)
-- [`crates/jslite/src/runtime.rs`](crates/jslite/src/runtime.rs)
+- [`crates/mustard/src/limits.rs`](crates/mustard/src/limits.rs)
+- [`crates/mustard/src/runtime.rs`](crates/mustard/src/runtime.rs)
 - [`index.js`](index.js)
-- [`crates/jslite-sidecar/src/lib.rs`](crates/jslite-sidecar/src/lib.rs)
+- [`crates/mustard-sidecar/src/lib.rs`](crates/mustard-sidecar/src/lib.rs)
 - [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md)
 - [`docs/LIMITS.md`](docs/LIMITS.md)
 
@@ -424,10 +424,10 @@ or host-call fan-out on resume than the host originally allowed.
 **Short repro**
 
 ```js
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 
 function makeDump(instructionBudget) {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const ready = fetch_data(1);
     let total = 0;
     for (let i = 0; i < 10000; i = i + 1) {
@@ -455,7 +455,7 @@ for (let i = 0; i < lowSnapshot.length; i++) {
 try {
   Progress.load({ ...low, token: 'low-token' }).resume(1);
 } catch (error) {
-  console.log(error.name); // "JsliteLimitError"
+  console.log(error.name); // "MustardLimitError"
 }
 
 console.log(

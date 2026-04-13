@@ -21,12 +21,12 @@ Review method:
 - [`lib/policy.js`](lib/policy.js)
 - [`lib/progress.js`](lib/progress.js)
 - [`lib/runtime.js`](lib/runtime.js)
-- [`crates/jslite-node/src/lib.rs`](crates/jslite-node/src/lib.rs)
-- [`crates/jslite-sidecar/src/lib.rs`](crates/jslite-sidecar/src/lib.rs)
-- [`crates/jslite-bridge/src/operations.rs`](crates/jslite-bridge/src/operations.rs)
-- [`crates/jslite/src/runtime/validation/snapshot.rs`](crates/jslite/src/runtime/validation/snapshot.rs)
-- [`crates/jslite/src/runtime/conversions/boundary.rs`](crates/jslite/src/runtime/conversions/boundary.rs)
-- [`crates/jslite/src/runtime/builtins/primitives.rs`](crates/jslite/src/runtime/builtins/primitives.rs)
+- [`crates/mustard-node/src/lib.rs`](crates/mustard-node/src/lib.rs)
+- [`crates/mustard-sidecar/src/lib.rs`](crates/mustard-sidecar/src/lib.rs)
+- [`crates/mustard-bridge/src/operations.rs`](crates/mustard-bridge/src/operations.rs)
+- [`crates/mustard/src/runtime/validation/snapshot.rs`](crates/mustard/src/runtime/validation/snapshot.rs)
+- [`crates/mustard/src/runtime/conversions/boundary.rs`](crates/mustard/src/runtime/conversions/boundary.rs)
+- [`crates/mustard/src/runtime/builtins/primitives.rs`](crates/mustard/src/runtime/builtins/primitives.rs)
 
 ## High: host-error sanitization executes attacker-controlled `error.code` hooks
 
@@ -47,7 +47,7 @@ This violates the documented host-error boundary guarantee that proxy traps,
 coercion hooks, and similar host-side code should not run during sanitization.
 It is reachable through both public host-error paths:
 
-- capability failures during `Jslite.run()`
+- capability failures during `Mustard.run()`
 - explicit `Progress.resumeError(...)`
 
 **Validation notes**
@@ -60,11 +60,11 @@ It is reachable through both public host-error paths:
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 (async () => {
   const events = [];
-  const result = await new Jslite(`
+  const result = await new Mustard(`
     let outcome = 'missing';
     try {
       fetch_data();
@@ -132,10 +132,10 @@ the lifetime of the current process.
 
 ```js
 const { Worker } = require('node:worker_threads');
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 
 const snapshotKey = Buffer.from('worker-thread-replay-key');
-const dumped = new Jslite('const v = fetch_data(4); v * 2;').start({
+const dumped = new Mustard('const v = fetch_data(4); v * 2;').start({
   snapshotKey,
   capabilities: { fetch_data() {} },
   limits: {},
@@ -190,9 +190,9 @@ Current result on this checkout:
 
 **Affected files**
 
-- [`crates/jslite-sidecar/src/lib.rs`](crates/jslite-sidecar/src/lib.rs)
-- [`crates/jslite-bridge/src/dto.rs`](crates/jslite-bridge/src/dto.rs)
-- [`crates/jslite-bridge/src/operations.rs`](crates/jslite-bridge/src/operations.rs)
+- [`crates/mustard-sidecar/src/lib.rs`](crates/mustard-sidecar/src/lib.rs)
+- [`crates/mustard-bridge/src/dto.rs`](crates/mustard-bridge/src/dto.rs)
+- [`crates/mustard-bridge/src/operations.rs`](crates/mustard-bridge/src/operations.rs)
 
 **Impact**
 
@@ -241,7 +241,7 @@ function request(proc, obj) {
 }
 
 (async () => {
-  const proc = spawn('cargo', ['run', '-q', '-p', 'jslite-sidecar'], {
+  const proc = spawn('cargo', ['run', '-q', '-p', 'mustard-sidecar'], {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'inherit'],
   });
@@ -296,7 +296,7 @@ Current result on this checkout:
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/conversions/boundary.rs`](crates/jslite/src/runtime/conversions/boundary.rs)
+- [`crates/mustard/src/runtime/conversions/boundary.rs`](crates/mustard/src/runtime/conversions/boundary.rs)
 
 **Impact**
 
@@ -324,7 +324,7 @@ it is an easy request-amplification and worker-kill primitive.
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 const depth = 18;
 const source = `
@@ -336,7 +336,7 @@ const source = `
   send(value);
 `;
 
-const progress = new Jslite(source).start({
+const progress = new Mustard(source).start({
   capabilities: { send() {} },
   limits: { heapLimitBytes: 50_000 },
 });
@@ -354,10 +354,10 @@ Current result on this checkout:
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/api.rs`](crates/jslite/src/runtime/api.rs)
-- [`crates/jslite/src/runtime/serialization.rs`](crates/jslite/src/runtime/serialization.rs)
-- [`crates/jslite/src/runtime/validation/snapshot.rs`](crates/jslite/src/runtime/validation/snapshot.rs)
-- [`crates/jslite/src/runtime/mod.rs`](crates/jslite/src/runtime/mod.rs)
+- [`crates/mustard/src/runtime/api.rs`](crates/mustard/src/runtime/api.rs)
+- [`crates/mustard/src/runtime/serialization.rs`](crates/mustard/src/runtime/serialization.rs)
+- [`crates/mustard/src/runtime/validation/snapshot.rs`](crates/mustard/src/runtime/validation/snapshot.rs)
+- [`crates/mustard/src/runtime/mod.rs`](crates/mustard/src/runtime/mod.rs)
 
 **Impact**
 
@@ -388,7 +388,7 @@ host rebinds explicit policy.
 **Short repro**
 
 ```rust
-use jslite::{
+use mustard::{
     compile, resume, start, ExecutionOptions, ExecutionSnapshot, ExecutionStep,
     ResumePayload, StructuredValue,
 };

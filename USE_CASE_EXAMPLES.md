@@ -21,7 +21,7 @@ Surveyed references:
 - Cloudflare, [Code Mode: give agents an entire API in 1,000 tokens](https://blog.cloudflare.com/code-mode-mcp/)
 - Cloudflare, [Codemode docs](https://developers.cloudflare.com/agents/api-reference/codemode/)
 
-All snippets assume they are run from a checked-out repository and therefore use `require("./index.js")`. If you are consuming the published package, replace that import with `require("@keppoai/jslite")`.
+All snippets assume they are run from a checked-out repository and therefore use `require("./index.js")`. If you are consuming the published package, replace that import with `require("mustardscript")`.
 
 ## Example 1: Compact `search()` / `execute()` Code Mode
 
@@ -32,10 +32,10 @@ Description: This follows the "compact tool surface" pattern from the README and
 ```js
 'use strict';
 
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 async function main() {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const matches = search_api(question);
     let best = null;
 
@@ -118,7 +118,7 @@ main().catch((error) => {
 });
 ```
 
-> Callout: `jslite` supports the compact global capability pattern today, but it does not yet provide first-class guest-side module imports, generated typed SDKs inside guest code, or dynamic capability injection mid-execution. The current best fit is a narrow host-owned surface such as `search_api()` / `execute_api()`.
+> Callout: `mustard` supports the compact global capability pattern today, but it does not yet provide first-class guest-side module imports, generated typed SDKs inside guest code, or dynamic capability injection mid-execution. The current best fit is a narrow host-owned surface such as `search_api()` / `execute_api()`.
 
 ## Example 2: Programmatic Multi-Tool Reduction
 
@@ -129,10 +129,10 @@ Description: This matches the README's "programmatic tool-calling workloads" use
 ```js
 'use strict';
 
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 async function main() {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function summarizeAccount() {
       const profilePromise = fetch_profile(accountId);
       const invoicesPromise = fetch_invoices(accountId);
@@ -206,7 +206,7 @@ main().catch((error) => {
 });
 ```
 
-> Callout: `jslite` supports guest async functions, `await`, queued host calls, and `maxOutstandingHostCalls` today. The current Node wrapper still resumes one suspended capability at a time, so if you need true parallel host I/O, do that fan-out inside a host capability or in the host orchestration layer rather than expecting parallel host handler execution from `run()`.
+> Callout: `mustard` supports guest async functions, `await`, queued host calls, and `maxOutstandingHostCalls` today. The current Node wrapper still resumes one suspended capability at a time, so if you need true parallel host I/O, do that fan-out inside a host capability or in the host orchestration layer rather than expecting parallel host handler execution from `run()`.
 
 ## Example 3: Durable Pause / Persist / Resume
 
@@ -217,10 +217,10 @@ Description: This is the README's "resumable host-mediated workflow" pattern. Th
 ```js
 'use strict';
 
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 
 async function main() {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const approval = request_approval({
       invoice_id: invoiceId,
       proposed_credit: creditAmount,

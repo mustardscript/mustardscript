@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { Mustard, MustardError, Progress } = require('../../index.ts');
 const { assertDifferential } = require('./runtime-oracle.js');
 
 const SNAPSHOT_KEY = Buffer.from('bigint-snapshot-key');
@@ -16,7 +16,7 @@ const PROGRESS_LOAD_OPTIONS = Object.freeze({
 });
 
 test('run supports guest-internal BigInt arithmetic and keyed-collection semantics', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const reserve = 9007199254740993n;
     const record = {};
     record[10n] = 'ok';
@@ -56,7 +56,7 @@ test('run supports guest-internal BigInt arithmetic and keyed-collection semanti
 });
 
 test('progress dump/load preserve guest BigInt state across suspension', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function main() {
       const reserve = 9007199254740993n;
       const status = await fetch_step('A-9');
@@ -80,7 +80,7 @@ test('progress dump/load preserve guest BigInt state across suspension', () => {
 });
 
 test('BigInt mixed edges and JSON.stringify fail closed with explicit errors', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     [
       (() => {
         try {
@@ -139,7 +139,7 @@ test('BigInt mixed edges and JSON.stringify fail closed with explicit errors', a
 });
 
 test('BigInt exponentiation supports non-negative BigInt exponents only', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     [
       String(2n ** 5n),
       String((-3n) ** 3n),
@@ -162,28 +162,28 @@ test('BigInt exponentiation supports non-negative BigInt exponents only', async 
 });
 
 test('exponent assignment now supports the documented compound-assignment surface', async () => {
-  const result = await new Jslite('let value = 2n; value **= 3n; String(value);').run();
+  const result = await new Mustard('let value = 2n; value **= 3n; String(value);').run();
   assert.equal(result, '8');
 });
 
 test('BigInt values still fail closed at the structured host boundary', async () => {
   await assert.rejects(
-    () => new Jslite('1n;').run(),
+    () => new Mustard('1n;').run(),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Runtime' &&
       error.message.includes('BigInt values cannot cross the structured host boundary'),
   );
 
   await assert.rejects(
     () =>
-      new Jslite('send_amount(1n);').run({
+      new Mustard('send_amount(1n);').run({
         capabilities: {
           send_amount() {},
         },
       }),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Runtime' &&
       error.message.includes('BigInt values cannot cross the structured host boundary'),
   );

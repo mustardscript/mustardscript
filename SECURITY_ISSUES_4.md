@@ -17,13 +17,13 @@ security-relevant review targets:
 - [`lib/structured.js`](lib/structured.js)
 - [`lib/policy.js`](lib/policy.js)
 - [`lib/progress.js`](lib/progress.js)
-- [`crates/jslite-node/src/lib.rs`](crates/jslite-node/src/lib.rs)
-- [`crates/jslite-sidecar/src/lib.rs`](crates/jslite-sidecar/src/lib.rs)
-- [`crates/jslite/src/runtime/serialization.rs`](crates/jslite/src/runtime/serialization.rs)
-- [`crates/jslite/src/runtime/validation/snapshot.rs`](crates/jslite/src/runtime/validation/snapshot.rs)
-- [`crates/jslite/src/runtime/conversions/boundary.rs`](crates/jslite/src/runtime/conversions/boundary.rs)
-- [`crates/jslite/src/runtime/builtins/primitives.rs`](crates/jslite/src/runtime/builtins/primitives.rs)
-- [`crates/jslite/src/runtime/vm.rs`](crates/jslite/src/runtime/vm.rs)
+- [`crates/mustard-node/src/lib.rs`](crates/mustard-node/src/lib.rs)
+- [`crates/mustard-sidecar/src/lib.rs`](crates/mustard-sidecar/src/lib.rs)
+- [`crates/mustard/src/runtime/serialization.rs`](crates/mustard/src/runtime/serialization.rs)
+- [`crates/mustard/src/runtime/validation/snapshot.rs`](crates/mustard/src/runtime/validation/snapshot.rs)
+- [`crates/mustard/src/runtime/conversions/boundary.rs`](crates/mustard/src/runtime/conversions/boundary.rs)
+- [`crates/mustard/src/runtime/builtins/primitives.rs`](crates/mustard/src/runtime/builtins/primitives.rs)
+- [`crates/mustard/src/runtime/vm.rs`](crates/mustard/src/runtime/vm.rs)
 
 ## Critical: forged raw snapshots can rewrite suspended capability metadata in low-level inspect/resume flows
 
@@ -31,11 +31,11 @@ security-relevant review targets:
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/serialization.rs`](crates/jslite/src/runtime/serialization.rs)
-- [`crates/jslite/src/runtime/validation/snapshot.rs`](crates/jslite/src/runtime/validation/snapshot.rs)
-- [`crates/jslite/src/runtime/validation/policy.rs`](crates/jslite/src/runtime/validation/policy.rs)
-- [`crates/jslite/src/runtime/api.rs`](crates/jslite/src/runtime/api.rs)
-- [`crates/jslite-bridge/src/operations.rs`](crates/jslite-bridge/src/operations.rs)
+- [`crates/mustard/src/runtime/serialization.rs`](crates/mustard/src/runtime/serialization.rs)
+- [`crates/mustard/src/runtime/validation/snapshot.rs`](crates/mustard/src/runtime/validation/snapshot.rs)
+- [`crates/mustard/src/runtime/validation/policy.rs`](crates/mustard/src/runtime/validation/policy.rs)
+- [`crates/mustard/src/runtime/api.rs`](crates/mustard/src/runtime/api.rs)
+- [`crates/mustard-bridge/src/operations.rs`](crates/mustard-bridge/src/operations.rs)
 
 **Impact**
 
@@ -63,9 +63,9 @@ attacker-chosen arguments.
 
 ```js
 const native = require('./native-loader').loadNative();
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
-const progress = new Jslite('const value = fetch_data("read_only!"); value;').start({
+const progress = new Mustard('const value = fetch_data("read_only!"); value;').start({
   capabilities: { fetch_data() {}, drop_table() {} },
 });
 const forged = Buffer.from(progress.snapshot);
@@ -82,11 +82,11 @@ console.log(JSON.parse(native.inspectSnapshot(forged, policy)).capability); // d
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/serialization.rs`](crates/jslite/src/runtime/serialization.rs)
-- [`crates/jslite/src/runtime/validation/snapshot.rs`](crates/jslite/src/runtime/validation/snapshot.rs)
-- [`crates/jslite/src/runtime/validation/walk.rs`](crates/jslite/src/runtime/validation/walk.rs)
-- [`crates/jslite/src/runtime/async_runtime/reactions.rs`](crates/jslite/src/runtime/async_runtime/reactions.rs)
-- [`crates/jslite/src/runtime/api.rs`](crates/jslite/src/runtime/api.rs)
+- [`crates/mustard/src/runtime/serialization.rs`](crates/mustard/src/runtime/serialization.rs)
+- [`crates/mustard/src/runtime/validation/snapshot.rs`](crates/mustard/src/runtime/validation/snapshot.rs)
+- [`crates/mustard/src/runtime/validation/walk.rs`](crates/mustard/src/runtime/validation/walk.rs)
+- [`crates/mustard/src/runtime/async_runtime/reactions.rs`](crates/mustard/src/runtime/async_runtime/reactions.rs)
+- [`crates/mustard/src/runtime/api.rs`](crates/mustard/src/runtime/api.rs)
 
 **Impact**
 
@@ -110,9 +110,9 @@ the worker process with one hostile snapshot restore.
 
 ```js
 const native = require('./native-loader').loadNative();
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
-const progress = new Jslite(`
+const progress = new Mustard(`
   async function main() { return Promise.all([fetch_data(1), fetch_data(2)]); }
   main();
 `).start({ capabilities: { fetch_data() {} } });
@@ -158,10 +158,10 @@ effects even though the later `resume()` fails as single-use.
 **Short repro**
 
 ```js
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 
 let sideEffects = 0;
-const runtime = new Jslite('const value = fetch_data(7); value * 2;');
+const runtime = new Mustard('const value = fetch_data(7); value * 2;');
 const first = runtime.start({ capabilities: { fetch_data() {} } });
 const dumped = first.dump();
 first.resume(7);
@@ -205,21 +205,21 @@ without executing host-side hooks.
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 let ran = 0;
 class EvilError extends Error {}
 Object.defineProperty(EvilError.prototype, 'message', {
-  get() { ran += 1; Object.prototype.__jslite_pwned = true; return 'boom'; },
+  get() { ran += 1; Object.prototype.__mustard_pwned = true; return 'boom'; },
 });
 
 try {
-  await new Jslite('fetch_data();').run({
+  await new Mustard('fetch_data();').run({
     capabilities: { fetch_data() { throw new EvilError(); } },
   });
 } catch {}
 
-console.log({ ran, polluted: Object.prototype.__jslite_pwned === true });
+console.log({ ran, polluted: Object.prototype.__mustard_pwned === true });
 ```
 
 ## High: structured boundary conversions bypass instruction-budget and mid-conversion cancellation checks
@@ -228,10 +228,10 @@ console.log({ ran, polluted: Object.prototype.__jslite_pwned === true });
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/conversions/boundary.rs`](crates/jslite/src/runtime/conversions/boundary.rs)
-- [`crates/jslite/src/runtime/mod.rs`](crates/jslite/src/runtime/mod.rs)
-- [`crates/jslite/src/runtime/vm.rs`](crates/jslite/src/runtime/vm.rs)
-- [`crates/jslite/src/runtime/async_runtime/scheduler.rs`](crates/jslite/src/runtime/async_runtime/scheduler.rs)
+- [`crates/mustard/src/runtime/conversions/boundary.rs`](crates/mustard/src/runtime/conversions/boundary.rs)
+- [`crates/mustard/src/runtime/mod.rs`](crates/mustard/src/runtime/mod.rs)
+- [`crates/mustard/src/runtime/vm.rs`](crates/mustard/src/runtime/vm.rs)
+- [`crates/mustard/src/runtime/async_runtime/scheduler.rs`](crates/mustard/src/runtime/async_runtime/scheduler.rs)
 
 **Impact**
 
@@ -255,9 +255,9 @@ finishes.
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
-const progress = new Jslite('fetch_data(); 0;').start({
+const progress = new Mustard('fetch_data(); 0;').start({
   capabilities: { fetch_data() {} },
   limits: { instructionBudget: 5, heapLimitBytes: 1_000_000_000, allocationBudget: 2_000_000 },
 });

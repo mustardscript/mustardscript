@@ -1,6 +1,6 @@
 # Bytecode VM Model
 
-`jslite` currently uses a private stack-based bytecode.
+`mustard` currently uses a private stack-based bytecode.
 
 ## Program Shape
 

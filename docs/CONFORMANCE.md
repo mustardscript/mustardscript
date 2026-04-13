@@ -1,9 +1,9 @@
 # Conformance Strategy
 
-`jslite` currently uses two active conformance buckets:
+`mustard` currently uses two active conformance buckets:
 
 1. Node-parity programs
-   These are guest programs that should evaluate the same way in `jslite` and
+   These are guest programs that should evaluate the same way in `mustard` and
    Node for the documented subset. We exercise them with direct differential
    tests, generated property tests, and the curated `test262` pass manifest.
 2. Validator-rejected programs

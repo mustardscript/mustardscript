@@ -4,16 +4,16 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-fuzz_seconds="${JSLITE_FUZZ_SECONDS:-10}"
-fuzz_targets="${JSLITE_FUZZ_TARGETS:-parser snapshot_load sidecar_protocol}"
-fuzz_toolchain="${JSLITE_FUZZ_TOOLCHAIN:-nightly}"
-fuzz_artifact_root="${JSLITE_FUZZ_ARTIFACT_ROOT:-fuzz/artifacts}"
+fuzz_seconds="${MUSTARD_FUZZ_SECONDS:-10}"
+fuzz_targets="${MUSTARD_FUZZ_TARGETS:-parser snapshot_load sidecar_protocol}"
+fuzz_toolchain="${MUSTARD_FUZZ_TOOLCHAIN:-nightly}"
+fuzz_artifact_root="${MUSTARD_FUZZ_ARTIFACT_ROOT:-fuzz/artifacts}"
 
-cargo test -p jslite --test security_hostile_inputs
-cargo test -p jslite --test property_generated_execution
-cargo test -p jslite --test property_roundtrip
-cargo test -p jslite --test property_snapshot_roundtrip
-cargo test -p jslite-sidecar --test hostile_protocol
+cargo test -p mustard --test security_hostile_inputs
+cargo test -p mustard --test property_generated_execution
+cargo test -p mustard --test property_roundtrip
+cargo test -p mustard --test property_snapshot_roundtrip
+cargo test -p mustard-sidecar --test hostile_protocol
 
 npm run build
 node scripts/seed-fuzz-corpus.ts

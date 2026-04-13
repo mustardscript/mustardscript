@@ -1,6 +1,6 @@
 # Limits
 
-`jslite` exposes a limits struct early so resource controls stay part of the
+`mustard` exposes a limits struct early so resource controls stay part of the
 public contract even while enforcement is still being filled in.
 
 ## Public Limits

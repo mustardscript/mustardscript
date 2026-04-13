@@ -38,11 +38,11 @@ Heap-backed state is stored indirectly through slotmap keys:
 
 These handles are runtime-internal identities. Raw keys must never cross the
 host boundary, appear in structured values, or be treated as stable serialized
-references outside `jslite`.
+references outside `mustard`.
 
 ## Rooting and Reachability Rules
 
-`jslite` now uses a non-moving mark-sweep collector over the existing slotmap
+`mustard` now uses a non-moving mark-sweep collector over the existing slotmap
 heaps. Heap handles remain stable for live allocations; collection only removes
 unreachable entries and never relocates them.
 
@@ -71,7 +71,7 @@ Practical rules that follow from this:
 - no raw guest references may cross into JavaScript host code
 - no raw guest references may cross the sidecar boundary
 - no raw guest references may be embedded in structured host values
-- snapshots may only persist validated runtime handles owned by `jslite`
+- snapshots may only persist validated runtime handles owned by `mustard`
 
 Collection currently runs at allocation-safe execution boundaries and resume
 points. That keeps the collector precise without requiring a moving handle

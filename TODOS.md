@@ -1,6 +1,6 @@
-# jslite TODOs
+# mustard TODOs
 
-This file tracks the concrete work required to build `jslite`.
+This file tracks the concrete work required to build `mustard`.
 
 `README.md` explains the goals, threat model, and architecture. This file turns
 that into executable milestones with exit criteria.
@@ -36,7 +36,7 @@ These decisions are closed unless a later ADR explicitly changes them:
 - `start()` and `resume()` remain available as lower-level controls
 - Sidecar mode runs the same core runtime behind a structured IPC boundary
 - Compiled programs and snapshots only need to round-trip within the same
-  `jslite` version
+  `mustard` version
 - Resource accounting is a core design concern, not a late-stage add-on
 
 ## Required Design Docs Before Major Implementation
@@ -104,8 +104,8 @@ Exit criteria:
 ## Phase 0: Repository Bootstrap
 
 - [x] Create repository layout
-- [x] Add Rust workspace with `crates/jslite`, `crates/jslite-node`, and
-  `crates/jslite-sidecar`
+- [x] Add Rust workspace with `crates/mustard`, `crates/mustard-node`, and
+  `crates/mustard-sidecar`
 - [x] Add minimal Node package wrapper for the addon
 - [x] Add Rust unit and integration test harnesses
 - [x] Add Node integration and end-to-end test harnesses
@@ -130,7 +130,7 @@ Exit criteria:
 ## Phase 1: Parsing, Validation, and Diagnostics
 
 - [x] Integrate `oxc` for JavaScript parsing
-- [x] Decide whether `jslite` accepts scripts only or a tightly defined script
+- [x] Decide whether `mustard` accepts scripts only or a tightly defined script
   subset with module syntax rejected
 - [x] Define and publish the supported-syntax matrix for v1
 - [x] Implement a validation pass after parsing
@@ -412,10 +412,10 @@ Exit criteria:
 Exit criteria:
 
 - [x] Docs match the implementation
-- [x] Users can embed `jslite` without tribal knowledge
+- [x] Users can embed `mustard` without tribal knowledge
 - [x] Release checklists are runnable and verified
 - [ ] Project is publishable and maintainable
-  Current blocker: a real public release now targets `@keppoai/jslite` plus the
+  Current blocker: a real public release now targets `mustardscript` plus the
   optional scoped prebuilt packages, but the final publish still requires an
   authenticated npm publisher with permission for those `@keppoai` packages and
   a GitHub Actions run with the needed publish secrets, which repository-local

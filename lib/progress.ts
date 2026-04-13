@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { performance } = require('node:perf_hooks');
 
-const { JsliteError, callNative } = require('./errors.ts');
+const { MustardError, callNative } = require('./errors.ts');
 const { getAbortSignal, withCancellationSignal } = require('./cancellation.ts');
 const {
   cloneSnapshotPolicy,
@@ -25,7 +25,7 @@ const {
 
 const SHARED_PROGRESS_REGISTRY_ROOT = path.join(
   os.tmpdir(),
-  'jslite-progress-registry',
+  'mustard-progress-registry',
   `${process.pid}-${Math.round(performance.timeOrigin)}`,
 );
 
@@ -67,7 +67,7 @@ function claimSharedProgressSnapshot(snapshotIdentityValue) {
 }
 
 function singleUseRuntimeError() {
-  return new JsliteError(
+  return new MustardError(
     'Runtime',
     'Progress objects are single-use; this suspended execution was already resumed',
   );
@@ -91,7 +91,7 @@ function claimSnapshotForLoad(native, snapshotIdentityValue) {
       throw singleUseRuntimeError();
     }
   } catch (error) {
-    if (!(error instanceof JsliteError)) {
+    if (!(error instanceof MustardError)) {
       releaseSharedProgressSnapshot(snapshotIdentityValue);
     }
     throw error;
@@ -158,7 +158,7 @@ function createProgressApi(native) {
           throw singleUseRuntimeError();
         }
       } catch (error) {
-        if (!(error instanceof JsliteError)) {
+        if (!(error instanceof MustardError)) {
           releaseSharedProgressSnapshot(this.#snapshotIdentity);
         }
         throw error;
@@ -267,8 +267,8 @@ function createProgressApi(native) {
       try {
         snapshotIdentityValue = snapshotIdentity(snapshot);
       } catch (error) {
-        if (error instanceof JsliteError && error.kind === 'Serialization') {
-          throw new JsliteError(
+        if (error instanceof MustardError && error.kind === 'Serialization') {
+          throw new MustardError(
             'Serialization',
             'Progress.load() rejected a tampered or unauthenticated snapshot',
             error,
@@ -277,7 +277,7 @@ function createProgressApi(native) {
         throw error;
       }
       if (state.snapshot_id !== snapshotIdentityValue) {
-        throw new JsliteError(
+        throw new MustardError(
           'Serialization',
           'Progress.load() rejected a tampered or unauthenticated snapshot',
         );

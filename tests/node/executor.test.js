@@ -4,18 +4,18 @@ const { setTimeout: delay } = require('node:timers/promises');
 
 const {
   assert,
-  InMemoryJsliteExecutorStore,
-  JsliteExecutor,
+  InMemoryMustardExecutorStore,
+  MustardExecutor,
   test,
 } = require('./support/helpers.js');
 
 function buildExecutor(source, capabilities, options = {}) {
-  const { Jslite } = require('../../index.ts');
-  return new JsliteExecutor({
-    program: new Jslite(source, options.compileOptions),
+  const { Mustard } = require('../../index.ts');
+  return new MustardExecutor({
+    program: new Mustard(source, options.compileOptions),
     capabilities,
     snapshotKey: Buffer.from('executor-snapshot-key'),
-    store: options.store ?? new InMemoryJsliteExecutorStore(),
+    store: options.store ?? new InMemoryMustardExecutorStore(),
     limits: options.limits,
   });
 }
@@ -144,7 +144,7 @@ test('executor records guest-safe failures from host capability errors', async (
 
   const job = await executor.get('job-1');
   assert.equal(job.state, 'failed');
-  assert.equal(job.error.name, 'JsliteRuntimeError');
+  assert.equal(job.error.name, 'MustardRuntimeError');
   assert.match(job.error.message, /host exploded/);
 });
 
@@ -206,7 +206,7 @@ test('executor honours cancellation requests for waiting jobs', async () => {
 });
 
 test('executor rejects waiting progress swapped across job ids', async () => {
-  class SwappedProgressStore extends InMemoryJsliteExecutorStore {
+  class SwappedProgressStore extends InMemoryMustardExecutorStore {
     constructor() {
       super();
       this._capturedAttackerProgress = null;

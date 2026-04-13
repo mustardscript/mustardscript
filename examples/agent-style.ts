@@ -1,9 +1,9 @@
 'use strict';
 
-const { Jslite, Progress } = require('../index.ts');
+const { Mustard, Progress } = require('../index.ts');
 
 async function main() {
-  const program = new Jslite(`
+  const program = new Mustard(`
     const profile = fetch_profile(userId);
     ({
       greeting: "hello",

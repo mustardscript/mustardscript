@@ -5,7 +5,7 @@ the safety rules they are expected to follow.
 
 ## Formats
 
-`jslite` serializes:
+`mustard` serializes:
 
 1. Compiled programs
 2. Suspended execution snapshots
@@ -13,14 +13,14 @@ the safety rules they are expected to follow.
 ## Compiled-Program Format Goals
 
 - preserve lowered bytecode without reparsing source
-- remain private to `jslite` rather than becoming a public stable bytecode
-- round-trip only within the same `jslite` version
+- remain private to `mustard` rather than becoming a public stable bytecode
+- round-trip only within the same `mustard` version
 - fail safely on corrupt or unsupported input
 
 ## Versioning
 
 - Serialized data is versioned explicitly.
-- Round-tripping is only guaranteed within the same `jslite` version.
+- Round-tripping is only guaranteed within the same `mustard` version.
 - Cross-version loads are rejected.
 
 ## Safety Rules

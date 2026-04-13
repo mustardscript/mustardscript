@@ -35,7 +35,7 @@ function aggregateContains(error, snippet) {
 }
 
 test('native loader rejects JavaScript override payloads before execution', () => {
-  withTempDir('jslite-loader-override-', (root) => {
+  withTempDir('mustard-loader-override-', (root) => {
     const sentinelPath = path.join(root, 'sentinel.txt');
     const payloadPath = path.join(root, 'payload.js');
     writeFile(
@@ -53,7 +53,7 @@ test('native loader rejects JavaScript override payloads before execution', () =
           searchRoot: root,
           overrideCwd: root,
           env: {
-            JSLITE_NATIVE_LIBRARY_PATH: payloadPath,
+            MUSTARD_NATIVE_LIBRARY_PATH: payloadPath,
           },
         }),
       (error) => aggregateContains(error, 'must point to a native .node addon'),
@@ -68,22 +68,22 @@ test(
     skip: !getCurrentPrebuiltTarget(),
   },
   () => {
-    withTempDir('jslite-loader-local-', (root) => {
+    withTempDir('mustard-loader-local-', (root) => {
       const target = getCurrentPrebuiltTarget();
       writeFile(path.join(root, 'evil.node'), 'not-a-real-addon');
       writeFile(path.join(root, 'index.node'), 'generic-addon');
       writeFile(path.join(root, target.localFile), 'target-addon');
-      writeFile(path.join(root, 'crates', 'jslite-node', 'evil.node'), 'nested-rogue-addon');
+      writeFile(path.join(root, 'crates', 'mustard-node', 'evil.node'), 'nested-rogue-addon');
       writeFile(
-        path.join(root, 'crates', 'jslite-node', target.localFile),
+        path.join(root, 'crates', 'mustard-node', target.localFile),
         'nested-target-addon',
       );
 
       assert.deepEqual(localBinaryCandidates(root), [
         path.join(root, target.localFile),
         path.join(root, 'index.node'),
-        path.join(root, 'crates', 'jslite-node', target.localFile),
-        path.join(root, 'crates', 'jslite-node', 'index.node'),
+        path.join(root, 'crates', 'mustard-node', target.localFile),
+        path.join(root, 'crates', 'mustard-node', 'index.node'),
       ].filter((candidate) => fs.existsSync(candidate)));
     });
   },
@@ -95,7 +95,7 @@ test(
     skip: !getCurrentPrebuiltTarget(),
   },
   () => {
-    withTempDir('jslite-loader-prebuilt-', (root) => {
+    withTempDir('mustard-loader-prebuilt-', (root) => {
       const target = getCurrentPrebuiltTarget();
       const sentinelPath = path.join(root, 'sentinel.txt');
       const packageRoot = path.join(root, 'node_modules', ...target.packageName.split('/'));
@@ -129,7 +129,7 @@ test(
           }),
         (error) =>
           aggregateContains(error, 'must expose its native addon as') &&
-          error.message.includes('Unable to locate a jslite native addon'),
+          error.message.includes('Unable to locate a MustardScript native addon'),
       );
       assert.equal(fs.existsSync(sentinelPath), false);
     });

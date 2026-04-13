@@ -1,0 +1,31 @@
+[package]
+name = "mustard"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Sandboxed subset-JavaScript runtime core for MustardScript"
+
+[dependencies]
+anyhow.workspace = true
+bincode.workspace = true
+futures.workspace = true
+indexmap.workspace = true
+num-bigint.workspace = true
+num-traits.workspace = true
+oxc_allocator.workspace = true
+oxc_ast.workspace = true
+oxc_parser.workspace = true
+oxc_span.workspace = true
+oxc_syntax.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+slotmap.workspace = true
+thiserror.workspace = true
+regex.workspace = true
+rand.workspace = true
+time.workspace = true
+
+[dev-dependencies]
+proptest = "1.9.0"

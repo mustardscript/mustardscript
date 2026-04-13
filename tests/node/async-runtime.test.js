@@ -3,11 +3,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { Mustard, MustardError, Progress } = require('../../index.ts');
 const { assertDifferential } = require('./runtime-oracle.js');
 
 test('run executes guest async functions, await, and Promise microtasks in order', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     let events = [];
     async function tick(label, value) {
       events[events.length] = label + ':start';
@@ -33,7 +33,7 @@ test('run executes guest async functions, await, and Promise microtasks in order
 });
 
 test('start and resume drive async host capability suspension inside guest async functions', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function load(value) {
       const resolved = await fetch_data(value);
       return resolved * 3;
@@ -56,7 +56,7 @@ test('start and resume drive async host capability suspension inside guest async
 });
 
 test('run composes async host rejections with guest try/catch', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function load() {
       try {
         await fetch_data(1);
@@ -88,7 +88,7 @@ test('run composes async host rejections with guest try/catch', async () => {
 });
 
 test('run enforces maxOutstandingHostCalls for guest async fan-out', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function fanOut() {
       const first = fetch_data(1);
       const second = fetch_data(2);
@@ -109,14 +109,14 @@ test('run enforces maxOutstandingHostCalls for guest async fan-out', async () =>
       },
     }),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Limit' &&
       /outstanding host-call limit exhausted/.test(error.message),
   );
 });
 
 test('run supports Promise instance methods and combinators for the documented surface', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function main() {
       let events = [];
       const chained = await Promise.resolve(3)
@@ -156,7 +156,7 @@ test('run supports Promise instance methods and combinators for the documented s
 });
 
 test('run rejects Promise.any with AggregateError details when every input rejects', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function main() {
       try {
         await Promise.any([Promise.reject('alpha'), Promise.reject('beta')]);
@@ -177,7 +177,7 @@ test('run rejects Promise.any with AggregateError details when every input rejec
 });
 
 test('start and resume drive host capability suspension from Promise callbacks', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function main() {
       return await Promise.resolve(7).then(fetch_data);
     }
@@ -199,7 +199,7 @@ test('start and resume drive host capability suspension from Promise callbacks',
 });
 
 test('start and resume support Promise constructors for approval bridges and thenable adoption', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     function wrapDouble(value) {
       return new Promise((resolve, reject) => {
         Promise.resolve(value)
@@ -248,7 +248,7 @@ test('start and resume support Promise constructors for approval bridges and the
 });
 
 test('run preserves Promise constructor rejection propagation and cleanup ordering', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function main() {
       let events = [];
       const denied = await new Promise((resolve, reject) => {
@@ -296,7 +296,7 @@ test('run preserves Promise constructor rejection propagation and cleanup orderi
 });
 
 test('run preserves thrown values from Promise executors and adopted thenables', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function main() {
       const thrown = await new Promise((resolve, reject) => {
         throw 'boom';

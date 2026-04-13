@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Make `jslite` testing materially stronger by increasing signal per test-minute,
+Make `mustard` testing materially stronger by increasing signal per test-minute,
 not by adding a long tail of isolated examples.
 
 This document is an execution plan for the current repository state audited on
@@ -29,17 +29,17 @@ April 12, 2026. It is intended to be used as a living checklist.
 - [x] A first metamorphic/generated AST layer already exists in
       `tests/node/ast-conformance.js`
 - [x] Property snapshot round-trip coverage already exists in
-      `crates/jslite/tests/property_snapshot_roundtrip.rs`
+      `crates/mustard/tests/property_snapshot_roundtrip.rs`
 - [x] Sidecar happy-path and hostile protocol coverage already exists in
-      `crates/jslite-sidecar/tests/protocol.rs` and
-      `crates/jslite-sidecar/tests/hostile_protocol.rs`
+      `crates/mustard-sidecar/tests/protocol.rs` and
+      `crates/mustard-sidecar/tests/hostile_protocol.rs`
 
 ## Product Claims The Test Suite Must Prove
 
 Every major testing investment should strengthen one or more of these claims:
 
 1. Supported guest programs produce the same observable outcome as Node
-   wherever `jslite` promises parity.
+   wherever `mustard` promises parity.
 2. Unsupported syntax and semantics fail closed at the correct phase with the
    correct error category.
 3. The structured host boundary preserves allowed values exactly and rejects
@@ -260,8 +260,8 @@ Checklist:
       sleeps as the primary technique.
 - [x] Record canonical event traces for capability call, resolve/reject,
       microtask checkpoint, guest continuation, and completion/failure.
-- [x] Compare `jslite` against Node only where parity is promised.
-- [x] Compare against the documented contract where `jslite` intentionally fails
+- [x] Compare `mustard` against Node only where parity is promised.
+- [x] Compare against the documented contract where `mustard` intentionally fails
       closed.
 
 Priority scenarios:
@@ -442,7 +442,7 @@ Checklist:
 - [x] Selected fuzzers run continuously and feed the regression corpus.
 - [x] Docs, conformance data, and coverage obligations cannot silently drift.
 
-That is the path to a materially stronger `jslite` test suite: sharper
+That is the path to a materially stronger `mustard` test suite: sharper
 contracts, better generators, stronger stateful checks, and tighter alignment
 between docs, runtime promises, and executed verification.
 

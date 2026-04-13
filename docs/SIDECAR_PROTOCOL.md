@@ -1,6 +1,6 @@
 # Sidecar Protocol
 
-This document defines the current `jslite-sidecar` process contract.
+This document defines the current `mustard-sidecar` process contract.
 
 ## Transport
 
@@ -11,7 +11,7 @@ This document defines the current `jslite-sidecar` process contract.
 
 ## Request Methods
 
-`jslite-sidecar` currently accepts three request shapes:
+`mustard-sidecar` currently accepts three request shapes:
 
 1. `compile`
 2. `start`

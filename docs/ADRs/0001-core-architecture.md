@@ -6,7 +6,7 @@ Accepted
 
 ## Decision
 
-`jslite` uses a Rust core with an explicit pipeline:
+`mustard` uses a Rust core with an explicit pipeline:
 
 `source -> parse -> validate -> lowered IR -> bytecode -> VM`
 

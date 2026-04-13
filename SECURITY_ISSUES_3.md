@@ -18,12 +18,12 @@ security-relevant review targets:
 - [`lib/policy.js`](lib/policy.js)
 - [`lib/progress.js`](lib/progress.js)
 - [`lib/runtime.js`](lib/runtime.js)
-- [`crates/jslite-node/src/lib.rs`](crates/jslite-node/src/lib.rs)
-- [`crates/jslite-sidecar/src/lib.rs`](crates/jslite-sidecar/src/lib.rs)
-- [`crates/jslite/src/runtime/serialization.rs`](crates/jslite/src/runtime/serialization.rs)
-- [`crates/jslite/src/runtime/validation.rs`](crates/jslite/src/runtime/validation.rs)
-- [`crates/jslite/src/runtime/builtins/primitives.rs`](crates/jslite/src/runtime/builtins/primitives.rs)
-- [`crates/jslite/src/runtime/conversions/boundary.rs`](crates/jslite/src/runtime/conversions/boundary.rs)
+- [`crates/mustard-node/src/lib.rs`](crates/mustard-node/src/lib.rs)
+- [`crates/mustard-sidecar/src/lib.rs`](crates/mustard-sidecar/src/lib.rs)
+- [`crates/mustard/src/runtime/serialization.rs`](crates/mustard/src/runtime/serialization.rs)
+- [`crates/mustard/src/runtime/validation.rs`](crates/mustard/src/runtime/validation.rs)
+- [`crates/mustard/src/runtime/builtins/primitives.rs`](crates/mustard/src/runtime/builtins/primitives.rs)
+- [`crates/mustard/src/runtime/conversions/boundary.rs`](crates/mustard/src/runtime/conversions/boundary.rs)
 
 ## Critical: unexpected top-level `.node` files are import-reachable native code
 
@@ -34,12 +34,12 @@ security-relevant review targets:
 
 **Impact**
 
-Importing `@keppoai/jslite` can load an unexpected native addon purely because a
-top-level filename under the package root or `crates/jslite-node` ends with
+Importing `mustardscript` can load an unexpected native addon purely because a
+top-level filename under the package root or `crates/mustard-node` ends with
 `.node`.
 
 `loadNative()` does not restrict the local fallback to the expected
-`index.<abi>.node` artifact. It scans the package root and `crates/jslite-node`
+`index.<abi>.node` artifact. It scans the package root and `crates/mustard-node`
 and queues every top-level `.node` file it finds, then `require(...)`s those
 paths until one loads.
 
@@ -55,7 +55,7 @@ Local repro confirmed that:
 
 causes the loader to attempt `evil.node` directly.
 
-I also confirmed the same behavior for `<tmp>/crates/jslite-node/evil.node`.
+I also confirmed the same behavior for `<tmp>/crates/mustard-node/evil.node`.
 
 **Short repro**
 
@@ -65,7 +65,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { loadNative } = require('./native-loader');
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-rogue-node-'));
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mustard-rogue-node-'));
 fs.copyFileSync(
   require.resolve('./index.darwin-arm64.node'),
   path.join(root, 'evil.node'),
@@ -89,7 +89,7 @@ The package install lifecycle runs `node install.js`. On the source-build path,
 `execFileSync(...)`.
 
 That resolution is not pinned to a package-local copy. Node will walk ancestor
-`node_modules` directories from the installed `@keppoai/jslite` location, so an
+`node_modules` directories from the installed `mustardscript` location, so an
 ancestor-controlled `@napi-rs/cli` becomes trusted executable code during
 `npm install`.
 
@@ -103,7 +103,7 @@ resolved and executed, and wrote a sentinel file containing the exact build
 argv:
 
 ```json
-["build","--platform","--manifest-path","crates/jslite-node/Cargo.toml","--js-package-name","@keppoai/jslite","--output-dir",".","--no-js"]
+["build","--platform","--manifest-path","crates/mustard-node/Cargo.toml","--js-package-name","mustardscript","--output-dir",".","--no-js"]
 ```
 
 **Short repro**
@@ -114,8 +114,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-install-ancestor-'));
-const pkgRoot = path.join(root, 'node_modules', '@keppoai', 'jslite');
+const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mustard-install-ancestor-'));
+const pkgRoot = path.join(root, 'node_modules', '@keppoai', 'mustard');
 const fakeCliRoot = path.join(root, 'node_modules', '@napi-rs', 'cli');
 
 fs.mkdirSync(pkgRoot, { recursive: true });
@@ -172,10 +172,10 @@ exceeds `USED_PROGRESS_SNAPSHOT_CACHE_LIMIT`.
 **Short repro**
 
 ```js
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 
 const SNAPSHOT_KEY = 'review-snapshot-key';
-const runtime = new Jslite('approve(seed);');
+const runtime = new Mustard('approve(seed);');
 const original = runtime.start({
   inputs: { seed: 1 },
   capabilities: { approve(value) { return value; } },
@@ -207,12 +207,12 @@ console.log(replayed); // 22
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/builtins/primitives.rs`](crates/jslite/src/runtime/builtins/primitives.rs)
-- [`crates/jslite/src/runtime/conversions/boundary.rs`](crates/jslite/src/runtime/conversions/boundary.rs)
-- [`crates/jslite/src/runtime/mod.rs`](crates/jslite/src/runtime/mod.rs)
-- [`crates/jslite/src/runtime/vm.rs`](crates/jslite/src/runtime/vm.rs)
-- [`crates/jslite/src/runtime/accounting.rs`](crates/jslite/src/runtime/accounting.rs)
-- [`crates/jslite/src/runtime/exceptions.rs`](crates/jslite/src/runtime/exceptions.rs)
+- [`crates/mustard/src/runtime/builtins/primitives.rs`](crates/mustard/src/runtime/builtins/primitives.rs)
+- [`crates/mustard/src/runtime/conversions/boundary.rs`](crates/mustard/src/runtime/conversions/boundary.rs)
+- [`crates/mustard/src/runtime/mod.rs`](crates/mustard/src/runtime/mod.rs)
+- [`crates/mustard/src/runtime/vm.rs`](crates/mustard/src/runtime/vm.rs)
+- [`crates/mustard/src/runtime/accounting.rs`](crates/mustard/src/runtime/accounting.rs)
+- [`crates/mustard/src/runtime/exceptions.rs`](crates/mustard/src/runtime/exceptions.rs)
 
 **Impact**
 
@@ -253,17 +253,17 @@ The independent verifier also confirmed:
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 const text = '[' + '0,'.repeat(20000) + '0]';
-const parsed = await new Jslite('JSON.parse(text).length;').run({
+const parsed = await new Mustard('JSON.parse(text).length;').run({
   inputs: { text },
   limits: { instructionBudget: 8 },
 });
 console.log(parsed); // 20001
 
 const values = Array.from({ length: 20000 }, () => 0);
-const stringified = await new Jslite('JSON.stringify(values).length;').run({
+const stringified = await new Mustard('JSON.stringify(values).length;').run({
   inputs: { values },
   limits: { instructionBudget: 8 },
 });
@@ -274,9 +274,9 @@ console.log(stringified); // 40001
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/conversions/boundary.rs`](crates/jslite/src/runtime/conversions/boundary.rs)
-- [`crates/jslite/src/runtime/mod.rs`](crates/jslite/src/runtime/mod.rs)
-- [`crates/jslite/src/runtime/vm.rs`](crates/jslite/src/runtime/vm.rs)
+- [`crates/mustard/src/runtime/conversions/boundary.rs`](crates/mustard/src/runtime/conversions/boundary.rs)
+- [`crates/mustard/src/runtime/mod.rs`](crates/mustard/src/runtime/mod.rs)
+- [`crates/mustard/src/runtime/vm.rs`](crates/mustard/src/runtime/vm.rs)
 
 **Impact**
 
@@ -313,8 +313,8 @@ const { spawnSync } = require('node:child_process');
 
 const depth = 1600;
 const script = `
-const { Jslite } = require('./index.js');
-const runtime = new Jslite(
+const { Mustard } = require('./index.js');
+const runtime = new Mustard(
   'let value = 0; let i = 0; while (i < ${depth}) { value = [value]; i = i + 1; } send(value);'
 );
 runtime.start({ capabilities: { send(value) { return value; } } });

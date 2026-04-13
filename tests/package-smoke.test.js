@@ -39,9 +39,9 @@ function runGuestProgram(consumerRoot, source) {
     [
       '-e',
       `
-        const { Jslite } = require(${JSON.stringify(packageInfo.name)});
+        const { Mustard } = require(${JSON.stringify(packageInfo.name)});
         (async () => {
-          const runtime = new Jslite(${JSON.stringify(source)});
+          const runtime = new Mustard(${JSON.stringify(source)});
           const value = await runtime.run();
           process.stdout.write(String(value));
         })().catch((error) => {
@@ -128,7 +128,7 @@ function stageHostPrebuiltBinary(tempRoot, stagingRoot, hostTarget) {
       '--release',
       '--platform',
       '--manifest-path',
-      'crates/jslite-node/Cargo.toml',
+      'crates/mustard-node/Cargo.toml',
       '--js-package-name',
       packageInfo.name,
       '--output-dir',
@@ -163,7 +163,7 @@ test(
   'published source package installs, reinstalls, and runs from a fresh consumer project',
   { concurrency: false },
   async () => {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-package-smoke-'));
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mustard-package-smoke-'));
   const consumerRoot = path.join(tempRoot, 'consumer');
   const tarballName = tarballFilenameForPackage(packageInfo.name, packageInfo.version);
   const tarballPath = path.join(repoRoot, tarballName);
@@ -205,7 +205,7 @@ test(
     skip: !hostPrebuiltTarget,
   },
   async () => {
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-prebuilt-smoke-'));
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mustard-prebuilt-smoke-'));
     const consumerRoot = path.join(tempRoot, 'consumer');
     const rootTarballName = tarballFilenameForPackage(packageInfo.name, packageInfo.version);
     const rootTarballPath = path.join(repoRoot, rootTarballName);
@@ -246,8 +246,7 @@ test(
           path.join(
             consumerRoot,
             'node_modules',
-            '@keppoai',
-            'jslite',
+            ...packageInfo.name.split('/'),
             'dist/install.js',
           ),
         ],

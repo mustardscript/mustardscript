@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { types } = require('node:util');
 const { loadNative } = require('../native-loader.ts');
 
-const { JsliteError, callNative } = require('./errors.ts');
+const { MustardError, callNative } = require('./errors.ts');
 const { defineEnumerableProperty, hasOwnProperty, isAccessorDescriptor } = require('./structured.ts');
 
 const CONSOLE_CAPABILITY_NAMES = {
@@ -180,7 +180,7 @@ function assertSnapshotToken(
   }
   const actualSnapshotId = snapshotIdentity(snapshot);
   if (expectedSnapshotId !== undefined && actualSnapshotId !== expectedSnapshotId) {
-    throw new JsliteError(
+    throw new MustardError(
       'Serialization',
       'Progress.load() rejected a tampered or unauthenticated snapshot',
     );
@@ -189,7 +189,7 @@ function assertSnapshotToken(
     expectedSnapshotKeyDigest !== undefined &&
     snapshotKeyDigest(snapshotKey) !== expectedSnapshotKeyDigest
   ) {
-    throw new JsliteError(
+    throw new MustardError(
       'Serialization',
       'Progress.load() rejected a mismatched snapshot key digest',
     );
@@ -199,7 +199,7 @@ function assertSnapshotToken(
     token.length !== expected.length ||
     !crypto.timingSafeEqual(Buffer.from(token, 'utf8'), Buffer.from(expected, 'utf8'))
   ) {
-    throw new JsliteError(
+    throw new MustardError(
       'Serialization',
       'Progress.load() rejected a tampered or unauthenticated snapshot',
     );

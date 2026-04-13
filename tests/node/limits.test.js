@@ -1,6 +1,6 @@
 'use strict';
 
-const { assert, isJsliteError, runtime, test } = require('./support/helpers.js');
+const { assert, isMustardError, runtime, test } = require('./support/helpers.js');
 
 test('run surfaces limit failures as typed errors', async () => {
   await assert.rejects(
@@ -9,7 +9,7 @@ test('run surfaces limit failures as typed errors', async () => {
         instructionBudget: 100,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /instruction budget exhausted/,
     }),
@@ -25,7 +25,7 @@ test('run surfaces heap and allocation limit failures as typed errors', async ()
         heapLimitBytes: 1,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /heap limit exceeded/,
     }),
@@ -37,7 +37,7 @@ test('run surfaces heap and allocation limit failures as typed errors', async ()
         allocationBudget: 1,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /allocation budget exhausted/,
     }),
@@ -59,7 +59,7 @@ test('run surfaces call-depth limit failures as typed errors', async () => {
         callDepthLimit: 3,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /call depth limit exceeded/,
     }),
@@ -73,7 +73,7 @@ test('limit errors do not leak host internals', async () => {
         instructionBudget: 100,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       guestSafe: true,
     }),
@@ -85,7 +85,7 @@ test('limit errors do not leak host internals', async () => {
         heapLimitBytes: 1,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       guestSafe: true,
     }),
@@ -105,7 +105,7 @@ test('JSON.parse and JSON.stringify charge instruction budget inside native help
         instructionBudget: 8,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /instruction budget exhausted/,
     }),
@@ -120,7 +120,7 @@ test('JSON.parse and JSON.stringify charge instruction budget inside native help
         instructionBudget: 8,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /instruction budget exhausted/,
     }),
@@ -135,7 +135,7 @@ test('JSON.parse and JSON.stringify charge instruction budget inside native help
         instructionBudget: 8,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /instruction budget exhausted/,
     }),
@@ -150,7 +150,7 @@ test('JSON.parse and JSON.stringify charge instruction budget inside native help
         instructionBudget: 8,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /instruction budget exhausted/,
     }),
@@ -169,7 +169,7 @@ test('direct JSON.stringify returns respect the heap limit before crossing the h
         heapLimitBytes: 15_000,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /heap limit exceeded/,
     }),
@@ -186,7 +186,7 @@ test('JSON.parse bare string results respect the heap limit before crossing the 
         heapLimitBytes: 15_000,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /heap limit exceeded/,
     }),
@@ -209,7 +209,7 @@ test('bare string capability results respect the heap limit before crossing the 
         maxOutstandingHostCalls: 1,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /heap limit exceeded/,
     }),
@@ -232,7 +232,7 @@ test('bare string resume payloads respect the heap limit before crossing the hos
 
   assert.throws(
     () => progress.resume('x'.repeat(5_000_000)),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /heap limit exceeded/,
     }),
@@ -254,7 +254,7 @@ test('resume payloads charge instruction budget during structured boundary conve
 
   assert.throws(
     () => progress.resume(largeValues),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /instruction budget exhausted/,
     }),
@@ -289,7 +289,7 @@ test('capability results charge instruction budget during structured boundary co
         allocationBudget: 2_000_000,
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Limit',
       message: /instruction budget exhausted/,
     }),

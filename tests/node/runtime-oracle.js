@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 
-const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { Mustard, MustardError, Progress } = require('../../index.ts');
 const { DIAGNOSTIC_CATEGORY, REJECT_PHASE } = require('./conformance-contract.js');
 
 const DIAGNOSTIC_CATEGORY_MATCHERS = Object.freeze({
@@ -19,8 +19,8 @@ const DIAGNOSTIC_CATEGORY_MATCHERS = Object.freeze({
   [DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN]: /ReferenceError: `[^`]+` is not defined/,
 });
 
-async function runJslite(source) {
-  const runtime = new Jslite(source);
+async function runMustard(source) {
+  const runtime = new Mustard(source);
   return runtime.run();
 }
 
@@ -267,7 +267,7 @@ function createTraceHarness(options = {}) {
   return {
     events,
     progressHandlers,
-    jsliteOptions: {
+    mustardOptions: {
       capabilities,
       console,
       inputs: options.inputs,
@@ -295,10 +295,10 @@ async function captureTraceOutcome(run, events) {
   };
 }
 
-async function runJsliteWithTrace(source, options = {}) {
-  const runtime = new Jslite(source);
+async function runMustardWithTrace(source, options = {}) {
+  const runtime = new Mustard(source);
   const harness = createTraceHarness(options);
-  return captureTraceOutcome(() => runtime.run(harness.jsliteOptions), harness.events);
+  return captureTraceOutcome(() => runtime.run(harness.mustardOptions), harness.events);
 }
 
 async function runNodeWithTrace(source, options = {}) {
@@ -311,7 +311,7 @@ async function runNodeWithTrace(source, options = {}) {
 
 async function executeProgressLoop(runtime, harness, options = {}) {
   const { reloadSnapshots = false } = options;
-  let step = runtime.start(harness.jsliteOptions);
+  let step = runtime.start(harness.mustardOptions);
   while (step instanceof Progress) {
     if (reloadSnapshots) {
       step = Progress.load(step.dump(), harness.progressLoadOptions);
@@ -330,14 +330,14 @@ async function executeProgressLoop(runtime, harness, options = {}) {
   return step;
 }
 
-async function runJsliteWithProgressTrace(source, options = {}) {
-  const runtime = new Jslite(source);
+async function runMustardWithProgressTrace(source, options = {}) {
+  const runtime = new Mustard(source);
   const harness = createTraceHarness(options);
   return captureTraceOutcome(() => executeProgressLoop(runtime, harness), harness.events);
 }
 
-async function runJsliteWithSerializedProgressTrace(source, options = {}) {
-  const runtime = new Jslite(source);
+async function runMustardWithSerializedProgressTrace(source, options = {}) {
+  const runtime = new Mustard(source);
   const harness = createTraceHarness(options);
   return captureTraceOutcome(
     () => executeProgressLoop(runtime, harness, { reloadSnapshots: true }),
@@ -345,10 +345,10 @@ async function runJsliteWithSerializedProgressTrace(source, options = {}) {
   );
 }
 
-async function runJsliteWithLoadedProgramTrace(source, options = {}) {
+async function runMustardWithLoadedProgramTrace(source, options = {}) {
   const harness = createTraceHarness(options);
-  const runtime = Jslite.load(new Jslite(source).dump());
-  return captureTraceOutcome(() => runtime.run(harness.jsliteOptions), harness.events);
+  const runtime = Mustard.load(new Mustard(source).dump());
+  return captureTraceOutcome(() => runtime.run(harness.mustardOptions), harness.events);
 }
 
 function renderCanonical(value) {
@@ -383,7 +383,7 @@ function assertCanonicalRecordsEqual(kind, source, actual, expected) {
 
 async function assertDifferential(source) {
   const [actual, expected] = await Promise.all([
-    captureOutcome(() => runJslite(source)),
+    captureOutcome(() => runMustard(source)),
     captureOutcome(() => Promise.resolve(runNode(source))),
   ]);
   assertCanonicalRecordsEqual('Outcome', source, actual, expected);
@@ -391,7 +391,7 @@ async function assertDifferential(source) {
 
 async function assertTraceDifferential(source, options) {
   const [actual, expected] = await Promise.all([
-    runJsliteWithTrace(source, options),
+    runMustardWithTrace(source, options),
     runNodeWithTrace(source, options),
   ]);
   assertCanonicalRecordsEqual('Trace', source, actual, expected);
@@ -399,7 +399,7 @@ async function assertTraceDifferential(source, options) {
 
 async function assertProgressTraceDifferential(source, options) {
   const [actual, expected] = await Promise.all([
-    runJsliteWithProgressTrace(source, options),
+    runMustardWithProgressTrace(source, options),
     runNodeWithTrace(source, options),
   ]);
   assertCanonicalRecordsEqual('Progress trace', source, actual, expected);
@@ -407,7 +407,7 @@ async function assertProgressTraceDifferential(source, options) {
 
 function isValidationError(error, messageIncludes) {
   return (
-    error instanceof JsliteError &&
+    error instanceof MustardError &&
     error.kind === 'Validation' &&
     (messageIncludes === undefined || error.message.includes(messageIncludes))
   );
@@ -422,7 +422,7 @@ function isContractReject(error, contractCase) {
   const expectedKind =
     contractCase.phase === REJECT_PHASE.CONSTRUCTOR ? 'Validation' : 'Runtime';
   return (
-    error instanceof JsliteError &&
+    error instanceof MustardError &&
     error.kind === expectedKind &&
     matchesDiagnosticCategory(error, contractCase.category) &&
     (contractCase.messageIncludes === undefined || error.message.includes(contractCase.messageIncludes))
@@ -431,19 +431,19 @@ function isContractReject(error, contractCase) {
 
 async function assertContractReject(source, contractCase) {
   if (contractCase.phase === REJECT_PHASE.CONSTRUCTOR) {
-    assert.throws(() => new Jslite(source), (error) => isContractReject(error, contractCase));
+    assert.throws(() => new Mustard(source), (error) => isContractReject(error, contractCase));
     return;
   }
 
-  const runtime = new Jslite(source);
+  const runtime = new Mustard(source);
   await assert.rejects(runtime.run(), (error) => isContractReject(error, contractCase));
 }
 
-function assertJsliteFailure(source, { kind, messageIncludes }) {
+function assertMustardFailure(source, { kind, messageIncludes }) {
   assert.throws(
-    () => new Jslite(source),
+    () => new Mustard(source),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === kind &&
       error.message.includes(messageIncludes),
   );
@@ -451,7 +451,7 @@ function assertJsliteFailure(source, { kind, messageIncludes }) {
 
 async function assertMatchesNodeOrValidation(source, { messageIncludes } = {}) {
   try {
-    new Jslite(source);
+    new Mustard(source);
   } catch (error) {
     assert.ok(isValidationError(error, messageIncludes));
     return;
@@ -461,20 +461,20 @@ async function assertMatchesNodeOrValidation(source, { messageIncludes } = {}) {
 }
 
 async function assertMetamorphicDifferential(originalSource, rewrittenSource, options) {
-  const [nodeOriginal, nodeRewritten, jsliteOriginal, jsliteRewritten] = await Promise.all([
+  const [nodeOriginal, nodeRewritten, mustardOriginal, mustardRewritten] = await Promise.all([
     runNodeWithTrace(originalSource, options),
     runNodeWithTrace(rewrittenSource, options),
-    runJsliteWithTrace(originalSource, options),
-    runJsliteWithTrace(rewrittenSource, options),
+    runMustardWithTrace(originalSource, options),
+    runMustardWithTrace(rewrittenSource, options),
   ]);
 
   assert.deepEqual(nodeOriginal, nodeRewritten);
   assert.deepEqual(
-    normalizeMetamorphicTraceRecord(jsliteOriginal),
-    normalizeMetamorphicTraceRecord(jsliteRewritten),
+    normalizeMetamorphicTraceRecord(mustardOriginal),
+    normalizeMetamorphicTraceRecord(mustardRewritten),
   );
-  assert.deepEqual(jsliteOriginal, nodeOriginal);
-  assert.deepEqual(jsliteRewritten, nodeRewritten);
+  assert.deepEqual(mustardOriginal, nodeOriginal);
+  assert.deepEqual(mustardRewritten, nodeRewritten);
 }
 
 module.exports = {
@@ -484,16 +484,16 @@ module.exports = {
   assertMatchesNodeOrValidation,
   assertProgressTraceDifferential,
   assertTraceDifferential,
-  assertJsliteFailure,
+  assertMustardFailure,
   captureOutcome,
   captureTraceOutcome,
   isValidationError,
   normalizeValue,
-  runJslite,
-  runJsliteWithLoadedProgramTrace,
-  runJsliteWithProgressTrace,
-  runJsliteWithSerializedProgressTrace,
-  runJsliteWithTrace,
+  runMustard,
+  runMustardWithLoadedProgramTrace,
+  runMustardWithProgressTrace,
+  runMustardWithSerializedProgressTrace,
+  runMustardWithTrace,
   runNode,
   runNodeWithTrace,
 };

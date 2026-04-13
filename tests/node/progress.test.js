@@ -1,6 +1,6 @@
 'use strict';
 
-const { assert, isJsliteError, Progress, runtime, test } = require('./support/helpers.js');
+const { assert, isMustardError, Progress, runtime, test } = require('./support/helpers.js');
 
 const SNAPSHOT_KEY = Buffer.from('progress-test-snapshot-key');
 const PROGRESS_LOAD_OPTIONS = Object.freeze({
@@ -61,7 +61,7 @@ test('progress objects are single-use', () => {
   assert.equal(progress.resume(4), 8);
   assert.throws(
     () => progress.resume(4),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: /single-use/,
     }),
@@ -121,7 +121,7 @@ test('progress.load rejects reused snapshots in the same process', () => {
 
   assert.throws(
     () => Progress.load(dumped),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: /single-use/,
     }),

@@ -1,13 +1,13 @@
 # Curated `test262` Subset
 
 This directory contains a curated, committed conformance subset used to
-exercise `jslite`'s documented v1 language contract.
+exercise `mustard`'s documented v1 language contract.
 
 Rules for this subset:
 
 - `manifest.js` is the source of truth for which fixtures are intentionally in
   scope.
-- `pass` cases are expected to match both `jslite` and Node for the selected
+- `pass` cases are expected to match both `mustard` and Node for the selected
   Node-parity subset.
 - pass fixtures belong under `cases/pass/**`; if a fixture is meant to pin a
   specific machine-readable contract entry, `manifest.js` records that with a

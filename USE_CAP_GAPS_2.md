@@ -9,7 +9,7 @@ curated backlog of additional realistic examples that should either:
 - become future audited gallery cases once the runtime and host contract can
   support them cleanly
 - or become explicit fail-closed examples when they require semantics that
-  `jslite` should intentionally avoid
+  `mustard` should intentionally avoid
 
 Current synthesized summary on April 11, 2026:
 

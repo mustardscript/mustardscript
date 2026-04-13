@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { Mustard, MustardError, Progress } = require('../../index.ts');
 const { PROPERTY_RUNS, fc } = require('./property-generators.js');
 const { captureOutcome } = require('./runtime-oracle.js');
 
@@ -89,7 +89,7 @@ function lifecycleErrorForArg(arg) {
 
 function isRuntimeBoom(error) {
   return (
-    error instanceof JsliteError &&
+    error instanceof MustardError &&
     error.kind === 'Runtime' &&
     error.message.includes('boom')
   );
@@ -97,7 +97,7 @@ function isRuntimeBoom(error) {
 
 function isCancelledLimit(error) {
   return (
-    error instanceof JsliteError &&
+    error instanceof MustardError &&
     error.kind === 'Limit' &&
     error.message.includes('execution cancelled')
   );
@@ -105,7 +105,7 @@ function isCancelledLimit(error) {
 
 function isSingleUseRuntimeError(error) {
   return (
-    error instanceof JsliteError &&
+    error instanceof MustardError &&
     error.kind === 'Runtime' &&
     error.message.includes('single-use')
   );
@@ -113,7 +113,7 @@ function isSingleUseRuntimeError(error) {
 
 async function runLifecycleScriptWithRun(steps) {
   let index = 0;
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const first = fetch_data(1);
     const second = fetch_data(first + 1);
     ({ first, second, total: first + second });
@@ -133,7 +133,7 @@ async function runLifecycleScriptWithRun(steps) {
 }
 
 function runLifecycleScriptWithStart(steps) {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const first = fetch_data(1);
     const second = fetch_data(first + 1);
     ({ first, second, total: first + second });
@@ -215,7 +215,7 @@ function replaySequenceArbitrary({ prefixMaxLength, suffixMinLength, suffixMaxLe
 }
 
 async function assertReplayLifecycleSequence(actions) {
-  const runtime = new Jslite('fetch_data(4);');
+  const runtime = new Mustard('fetch_data(4);');
   let current = runtime.start({
     snapshotKey: SNAPSHOT_KEY,
     capabilities: {
@@ -270,7 +270,7 @@ test('property: progress lifecycle sequences preserve single-use across replay p
 
 test(
   'property: extended progress replay sequences run outside the presubmit lane',
-  { skip: !process.env.JSLITE_LONG_TESTS },
+  { skip: !process.env.MUSTARD_LONG_TESTS },
   async () => {
     await assertLifecycleProperty({
       arbitrary: replaySequenceArbitrary({

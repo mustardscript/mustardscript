@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, Progress } = require('../../index.ts');
+const { Mustard, Progress } = require('../../index.ts');
 
 function defineEnumerableDataProperty(target, key, value) {
   Object.defineProperty(target, key, {
@@ -64,7 +64,7 @@ function createDeepHostArray(depth) {
 }
 
 test('guest-to-host decoding keeps __proto__ as plain data on completed results', async () => {
-  const result = await new Jslite(`
+  const result = await new Mustard(`
     ({ ['__proto__']: { admin: true }, user: 'alice' });
   `).run();
 
@@ -72,7 +72,7 @@ test('guest-to-host decoding keeps __proto__ as plain data on completed results'
 });
 
 test('guest-to-host decoding keeps __proto__ as plain data on suspended capability args', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     fetch_data({ ['__proto__']: { admin: true }, user: 'alice' });
   `).start({
     capabilities: {
@@ -91,7 +91,7 @@ test('host-to-guest encoding preserves __proto__ input keys as plain data', asyn
   defineEnumerableDataProperty(value, '__proto__', { admin: true });
   defineEnumerableDataProperty(value, 'user', 'alice');
 
-  const result = await new Jslite(`
+  const result = await new Mustard(`
     [value['__proto__'].admin, value.admin === undefined, value.user];
   `).run({
     inputs: { value },
@@ -112,7 +112,7 @@ test('host-to-guest encoding rejects enumerable object accessors without executi
   });
 
   await assert.rejects(
-    new Jslite('value.secret;').run({
+    new Mustard('value.secret;').run({
       inputs: { value },
     }),
     (error) => error instanceof TypeError && error.message.includes('accessors cannot cross'),
@@ -131,7 +131,7 @@ test('host-to-guest encoding rejects enumerable setter-only properties', async (
   });
 
   await assert.rejects(
-    new Jslite('value.secret;').run({
+    new Mustard('value.secret;').run({
       inputs: { value },
     }),
     (error) => error instanceof TypeError && error.message.includes('accessors cannot cross'),
@@ -151,7 +151,7 @@ test('capability results reject enumerable object accessors without executing th
   });
 
   await assert.rejects(
-    new Jslite('fetch_secret();').run({
+    new Mustard('fetch_secret();').run({
       capabilities: {
         fetch_secret() {
           return value;
@@ -175,7 +175,7 @@ test('host arrays reject accessor-backed elements without executing them', async
   });
 
   await assert.rejects(
-    new Jslite('value[0];').run({
+    new Mustard('value[0];').run({
       inputs: { value },
     }),
     (error) => error instanceof TypeError && error.message.includes('accessors cannot cross'),
@@ -187,7 +187,7 @@ test('host arrays preserve holes across the structured boundary', async () => {
   const value = new Array(3);
   value[1] = 'middle';
 
-  const result = await new Jslite(`
+  const result = await new Mustard(`
     const echoed = echo(value);
     ({
       inputKeys: Object.keys(value),
@@ -227,7 +227,7 @@ test('host-to-guest encoding rejects proxy-backed inputs without executing traps
   const value = createTrapProxy(events, { answer: 42 });
 
   await assert.rejects(
-    new Jslite('value.answer;').run({
+    new Mustard('value.answer;').run({
       inputs: { value },
     }),
     (error) => error instanceof TypeError && error.message.includes('Proxy values cannot cross'),
@@ -244,7 +244,7 @@ test('capability registration rejects proxy-backed handler containers without ex
   });
 
   await assert.rejects(
-    new Jslite('fetch_data();').run({
+    new Mustard('fetch_data();').run({
       capabilities,
     }),
     (error) =>
@@ -258,7 +258,7 @@ test('capability results reject proxy-backed values without executing traps', as
   const value = createTrapProxy(events, { answer: 42 });
 
   await assert.rejects(
-    new Jslite('fetch_data().answer;').run({
+    new Mustard('fetch_data().answer;').run({
       capabilities: {
         fetch_data() {
           return value;
@@ -271,7 +271,7 @@ test('capability results reject proxy-backed values without executing traps', as
 });
 
 test('resumeError rejects proxy-backed details without executing traps', () => {
-  const progress = new Jslite('fetch_data(1);').start({
+  const progress = new Mustard('fetch_data(1);').start({
     capabilities: {
       fetch_data() {},
     },
@@ -289,7 +289,7 @@ test('resumeError rejects proxy-backed details without executing traps', () => {
 });
 
 test('resumeError does not execute inherited host error getters before fail-closed rejection', () => {
-  const progress = new Jslite('fetch_data();').start({
+  const progress = new Mustard('fetch_data();').start({
     capabilities: {
       fetch_data() {},
     },
@@ -324,7 +324,7 @@ test('resumeError does not execute inherited host error getters before fail-clos
 test('capability error sanitization drops non-string code values without executing hooks', async () => {
   let hookRuns = 0;
 
-  const result = await new Jslite(`
+  const result = await new Mustard(`
     let outcome = 'missing';
     try {
       fetch_data();
@@ -352,7 +352,7 @@ test('capability error sanitization drops non-string code values without executi
 });
 
 test('resumeError drops non-string code values without executing hooks', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     let outcome = 'missing';
     try {
       fetch_data(1);
@@ -384,7 +384,7 @@ test('host-to-guest encoding rejects cyclic inputs with a typed boundary error',
   value.self = value;
 
   await assert.rejects(
-    new Jslite('value;').run({
+    new Mustard('value;').run({
       inputs: { value },
     }),
     (error) =>
@@ -395,7 +395,7 @@ test('host-to-guest encoding rejects cyclic inputs with a typed boundary error',
 
 test('capability results reject cyclic values with a typed boundary error', async () => {
   await assert.rejects(
-    new Jslite('fetch_data();').run({
+    new Mustard('fetch_data();').run({
       capabilities: {
         fetch_data() {
           const value = {};
@@ -411,7 +411,7 @@ test('capability results reject cyclic values with a typed boundary error', asyn
 });
 
 test('resumeError rejects cyclic details with a typed boundary error', () => {
-  const progress = new Jslite('fetch_data(1);').start({
+  const progress = new Mustard('fetch_data(1);').start({
     capabilities: {
       fetch_data() {},
     },
@@ -431,7 +431,7 @@ test('resumeError rejects cyclic details with a typed boundary error', () => {
 
 test('guest root results fail closed on shared references instead of alias expansion', async () => {
   await assert.rejects(
-    new Jslite(`
+    new Mustard(`
       const shared = [1, 2, 3];
       [shared, shared];
     `).run(),
@@ -444,7 +444,7 @@ test('guest root results fail closed on shared references instead of alias expan
 test('guest capability arguments fail closed on shared references instead of alias expansion', () => {
   assert.throws(
     () =>
-      new Jslite(`
+      new Mustard(`
         const shared = { value: 1 };
         send([shared, shared]);
       `).start({
@@ -460,7 +460,7 @@ test('guest capability arguments fail closed on shared references instead of ali
 
 test('host-to-guest encoding rejects excessively deep structured inputs with a typed boundary error', async () => {
   await assert.rejects(
-    new Jslite('value;').run({
+    new Mustard('value;').run({
       inputs: {
         value: createDeepHostArray(1_100),
       },
@@ -473,7 +473,7 @@ test('host-to-guest encoding rejects excessively deep structured inputs with a t
 
 test('guest root results fail closed on structured boundary nesting exhaustion', async () => {
   await assert.rejects(
-    new Jslite(`
+    new Mustard(`
       let value = 0;
       for (let index = 0; index < 1100; index = index + 1) {
         value = [value];
@@ -489,7 +489,7 @@ test('guest root results fail closed on structured boundary nesting exhaustion',
 test('guest capability arguments fail closed on structured boundary nesting exhaustion', () => {
   assert.throws(
     () =>
-      new Jslite(`
+      new Mustard(`
         let value = 0;
         for (let index = 0; index < 1100; index = index + 1) {
           value = [value];

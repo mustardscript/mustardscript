@@ -1,6 +1,6 @@
 'use strict';
 
-const { assert, isJsliteError, runtime, test } = require('./support/helpers.js');
+const { assert, isMustardError, runtime, test } = require('./support/helpers.js');
 
 test('run executes sync programs', async () => {
   const result = await runtime(`
@@ -325,7 +325,7 @@ test('run supports computed object literal keys, method shorthand, and object sp
 test('array callback helpers fail closed for invalid callbacks and synchronous host suspensions', async () => {
   await assert.rejects(
     () => runtime('([1]).map(1);').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Array.prototype.map expects a callable callback',
     }),
@@ -340,7 +340,7 @@ test('array callback helpers fail closed for invalid callbacks and synchronous h
           },
         },
       }),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'array callback helpers do not support synchronous host suspensions',
     }),
@@ -348,7 +348,7 @@ test('array callback helpers fail closed for invalid callbacks and synchronous h
 
   await assert.rejects(
     () => runtime('[].reduce((acc, value) => acc + value);').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Array.prototype.reduce requires an initial value for empty arrays',
     }),
@@ -358,7 +358,7 @@ test('array callback helpers fail closed for invalid callbacks and synchronous h
 test('Array.prototype.splice, Array.prototype.flat, and Array.prototype.flatMap fail closed for incompatible receivers and invalid callbacks', async () => {
   await assert.rejects(
     () => runtime('const splice = [1].splice; splice(0, 1);').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Array.prototype.splice called on incompatible receiver',
       guestSafe: true,
@@ -367,7 +367,7 @@ test('Array.prototype.splice, Array.prototype.flat, and Array.prototype.flatMap 
 
   await assert.rejects(
     () => runtime('const flat = [1].flat; flat();').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Array.prototype.flat called on incompatible receiver',
       guestSafe: true,
@@ -376,7 +376,7 @@ test('Array.prototype.splice, Array.prototype.flat, and Array.prototype.flatMap 
 
   await assert.rejects(
     () => runtime('const flatMap = [1].flatMap; flatMap((value) => [value]);').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Array.prototype.flatMap called on incompatible receiver',
       guestSafe: true,
@@ -385,7 +385,7 @@ test('Array.prototype.splice, Array.prototype.flat, and Array.prototype.flatMap 
 
   await assert.rejects(
     () => runtime('([1]).flatMap(1);').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Array.prototype.flatMap expects a callable callback',
       guestSafe: true,
@@ -401,7 +401,7 @@ test('Array.prototype.splice, Array.prototype.flat, and Array.prototype.flatMap 
           },
         },
       }),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'array callback helpers do not support synchronous host suspensions',
       guestSafe: true,
@@ -412,7 +412,7 @@ test('Array.prototype.splice, Array.prototype.flat, and Array.prototype.flatMap 
 test('Array.prototype.concat and Array.prototype.at fail closed for incompatible receivers', async () => {
   await assert.rejects(
     () => runtime('const concat = [1].concat; concat([2]);').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Array.prototype.concat called on incompatible receiver',
       guestSafe: true,
@@ -421,7 +421,7 @@ test('Array.prototype.concat and Array.prototype.at fail closed for incompatible
 
   await assert.rejects(
     () => runtime('const at = [1].at; at(0);').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Array.prototype.at called on incompatible receiver',
       guestSafe: true,
@@ -432,7 +432,7 @@ test('Array.prototype.concat and Array.prototype.at fail closed for incompatible
 test('Object.assign copies supported enumerable properties and unsupported object helpers fail closed', async () => {
   await assert.rejects(
     () => runtime('Object.assign(1, { alpha: 1 });').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Object helpers currently only support plain objects and arrays',
       guestSafe: true,
@@ -441,7 +441,7 @@ test('Object.assign copies supported enumerable properties and unsupported objec
 
   await assert.rejects(
     () => runtime('Object.create(null);').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Object.create is unsupported because prototype semantics are deferred',
       guestSafe: true,
@@ -450,7 +450,7 @@ test('Object.assign copies supported enumerable properties and unsupported objec
 
   await assert.rejects(
     () => runtime('Object.freeze({ alpha: 1 });').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Object.freeze is unsupported because property descriptor semantics are deferred',
       guestSafe: true,
@@ -459,7 +459,7 @@ test('Object.assign copies supported enumerable properties and unsupported objec
 
   await assert.rejects(
     () => runtime('Object.seal({ alpha: 1 });').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Object.seal is unsupported because property descriptor semantics are deferred',
       guestSafe: true,
@@ -468,7 +468,7 @@ test('Object.assign copies supported enumerable properties and unsupported objec
 
   await assert.rejects(
     () => runtime('({ ...1 });').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'object spread currently only supports plain objects and arrays',
       guestSafe: true,
@@ -535,7 +535,7 @@ test('run supports RegExp helpers, regex string patterns, and callback replaceme
 test('RegExp helpers fail closed for unsupported flags, non-global replaceAll, and sync host replacements', async () => {
   await assert.rejects(
     () => runtime('new RegExp("a", "dg");').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'unsupported regular expression flag `d`',
     }),
@@ -543,7 +543,7 @@ test('RegExp helpers fail closed for unsupported flags, non-global replaceAll, a
 
   await assert.rejects(
     () => runtime('"abc".replaceAll(/a/, "z");').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'String.prototype.replaceAll requires a global RegExp',
     }),
@@ -558,7 +558,7 @@ test('RegExp helpers fail closed for unsupported flags, non-global replaceAll, a
           },
         },
       }),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'String.prototype.replace callback replacements do not support host suspensions',
     }),
@@ -651,7 +651,7 @@ test('run rejects duplicate lexical bindings during validation', async () => {
       let value = 2;
       value;
     `),
-    isJsliteError({
+    isMustardError({
       kind: 'Validation',
       message: 'already been declared',
     }),
@@ -1314,7 +1314,7 @@ test('run supports a narrow Intl DateTimeFormat and NumberFormat subset', async 
 test('Intl and new helper additions fail closed for unsupported options and invalid callbacks', async () => {
   await assert.rejects(
     () => runtime('Intl.DateTimeFormat("fr-FR");').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Intl currently supports only the `en-US` locale',
       guestSafe: true,
@@ -1323,7 +1323,7 @@ test('Intl and new helper additions fail closed for unsupported options and inva
 
   await assert.rejects(
     () => runtime('Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles" });').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Intl.DateTimeFormat currently supports only the `UTC` timeZone',
       guestSafe: true,
@@ -1332,7 +1332,7 @@ test('Intl and new helper additions fail closed for unsupported options and inva
 
   await assert.rejects(
     () => runtime('Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" });').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Intl.NumberFormat currency style currently supports only `USD`',
       guestSafe: true,
@@ -1341,7 +1341,7 @@ test('Intl and new helper additions fail closed for unsupported options and inva
 
   await assert.rejects(
     () => runtime('Intl.DateTimeFormat("en-US", { weekday: "long" });').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Intl.DateTimeFormat does not support the `weekday` option',
       guestSafe: true,
@@ -1350,7 +1350,7 @@ test('Intl and new helper additions fail closed for unsupported options and inva
 
   await assert.rejects(
     () => runtime('Intl.NumberFormat("en-US", { notation: "scientific" });').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Intl.NumberFormat does not support the `notation` option',
       guestSafe: true,
@@ -1362,7 +1362,7 @@ test('Intl and new helper additions fail closed for unsupported options and inva
       runtime(
         'Intl.DateTimeFormat("en-US", { timeZone: "UTC", year: "numeric" }).format(new Date(0 / 0));',
       ).run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'RangeError: Invalid time value',
       guestSafe: true,
@@ -1371,7 +1371,7 @@ test('Intl and new helper additions fail closed for unsupported options and inva
 
   await assert.rejects(
     () => runtime('([].reduceRight((acc, value) => acc + value));').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Array.prototype.reduceRight requires an initial value for empty arrays',
       guestSafe: true,
@@ -1380,7 +1380,7 @@ test('Intl and new helper additions fail closed for unsupported options and inva
 
   await assert.rejects(
     () => runtime('([1]).findLast(1);').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'Array.prototype.findLast expects a callable callback',
       guestSafe: true,
@@ -1389,7 +1389,7 @@ test('Intl and new helper additions fail closed for unsupported options and inva
 
   await assert.rejects(
     () => runtime('"ha".repeat(-1);').run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: 'RangeError: Invalid count value',
       guestSafe: true,

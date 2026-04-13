@@ -1,9 +1,9 @@
 [workspace]
 members = [
-  "crates/jslite",
-  "crates/jslite-bridge",
-  "crates/jslite-node",
-  "crates/jslite-sidecar",
+  "crates/mustard",
+  "crates/mustard-bridge",
+  "crates/mustard-node",
+  "crates/mustard-sidecar",
 ]
 resolver = "2"
 
@@ -11,8 +11,8 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-authors = ["jslite contributors"]
-repository = "https://github.com/keppoai/jslite"
+authors = ["MustardScript contributors"]
+repository = "https://github.com/keppoai/mustardscript"
 
 [workspace.dependencies]
 anyhow = "1.0.100"

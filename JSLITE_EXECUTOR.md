@@ -1,7 +1,7 @@
-# Jslite Executor
+# Mustard Executor
 
-`JsliteExecutor` is a Node-side queue-oriented API built on top of the existing
-`Jslite` and `Progress` primitives.
+`MustardExecutor` is a Node-side queue-oriented API built on top of the existing
+`Mustard` and `Progress` primitives.
 
 It exists for hosts that need to manage many resumable guest executions without
 manually orchestrating `start()`, `Progress.dump()`, `Progress.load()`, and
@@ -25,17 +25,17 @@ It does not:
 ## Public API
 
 ```ts
-class JsliteExecutor<TInput extends Record<string, StructuredValue>, TResult extends StructuredValue> {
+class MustardExecutor<TInput extends Record<string, StructuredValue>, TResult extends StructuredValue> {
   constructor(options: {
-    program: Jslite;
+    program: Mustard;
     capabilities: Record<string, Capability>;
     snapshotKey?: string | Buffer | Uint8Array;
-    store: JsliteExecutorStore<TInput, TResult>;
+    store: MustardExecutorStore<TInput, TResult>;
     limits?: RuntimeLimits;
   });
 
   enqueue(input: TInput, options?: { jobId?: string }): Promise<string>;
-  get(jobId: string): Promise<JsliteJobRecord<TInput, TResult> | null>;
+  get(jobId: string): Promise<MustardJobRecord<TInput, TResult> | null>;
   cancel(jobId: string): Promise<void>;
   runWorker(options?: {
     maxConcurrentJobs?: number;
@@ -65,15 +65,15 @@ The executor depends on a pluggable store. The store is the source of truth for
 durable state; worker-local memory is only transient cache.
 
 ```ts
-interface JsliteExecutorStore<TInput, TResult> {
-  enqueue(record: JsliteJobRecord<TInput, TResult>): Promise<{
+interface MustardExecutorStore<TInput, TResult> {
+  enqueue(record: MustardJobRecord<TInput, TResult>): Promise<{
     jobId: string;
     inserted: boolean;
   }>;
-  get(jobId: string): Promise<JsliteJobRecord<TInput, TResult> | null>;
+  get(jobId: string): Promise<MustardJobRecord<TInput, TResult> | null>;
   claimRunnable(limit: number, workerId: string, now: number): Promise<string[]>;
   releaseClaim(jobId: string, workerId: string): Promise<void>;
-  update(jobId: string, patch: Partial<JsliteJobRecord<TInput, TResult>>): Promise<void>;
+  update(jobId: string, patch: Partial<MustardJobRecord<TInput, TResult>>): Promise<void>;
   saveProgress(jobId: string, progress: SerializedProgress): Promise<void>;
   loadProgress(jobId: string): Promise<SerializedProgress | null>;
   deleteProgress(jobId: string): Promise<void>;
@@ -122,8 +122,8 @@ Cancellation stays cooperative and honest:
 
 The first implementation in this repository includes:
 
-- `JsliteExecutor`
-- `InMemoryJsliteExecutorStore`
+- `MustardExecutor`
+- `InMemoryMustardExecutorStore`
 - bounded worker concurrency with `maxConcurrentJobs`
 - `drain` mode for tests and batch scripts
 - durable queued/running/waiting/completed/failed/cancelled state in the

@@ -1,6 +1,6 @@
 'use strict';
 
-const { assert, isJsliteError, Jslite, Progress, runtime, test } = require('./support/helpers.js');
+const { assert, isMustardError, Mustard, Progress, runtime, test } = require('./support/helpers.js');
 const { snapshotKeyDigest } = require('../../lib/policy.ts');
 
 const SNAPSHOT_KEY = Buffer.from('serialization-test-key');
@@ -27,7 +27,7 @@ test('progress load surfaces snapshot failures as typed errors', () => {
           limits: {},
         },
       ),
-    isJsliteError({
+    isMustardError({
       kind: 'Serialization',
     }),
   );
@@ -51,7 +51,7 @@ test('serialization errors do not leak host internals', () => {
           limits: {},
         },
       ),
-    isJsliteError({
+    isMustardError({
       kind: 'Serialization',
       guestSafe: true,
     }),
@@ -59,16 +59,16 @@ test('serialization errors do not leak host internals', () => {
 });
 
 test('dump and load preserve compiled programs', async () => {
-  const copy = Jslite.load(runtime('Math.max(1, 8, 2);').dump());
+  const copy = Mustard.load(runtime('Math.max(1, 8, 2);').dump());
   const result = await copy.run();
   assert.equal(result, 8);
 });
 
-test('Jslite.load surfaces invalid compiled-program blobs as typed errors', async () => {
-  const copy = Jslite.load(Buffer.from('not-a-valid-program'));
+test('Mustard.load surfaces invalid compiled-program blobs as typed errors', async () => {
+  const copy = Mustard.load(Buffer.from('not-a-valid-program'));
   await assert.rejects(
     () => copy.run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Serialization',
       guestSafe: true,
     }),

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { Mustard, MustardError, Progress } = require('../../index.ts');
 
 const SNAPSHOT_KEY = Buffer.from('iteration-test-snapshot-key');
 const PROGRESS_LOAD_OPTIONS = Object.freeze({
@@ -13,7 +13,7 @@ const PROGRESS_LOAD_OPTIONS = Object.freeze({
 });
 
 test('run supports array for...of with fresh iteration bindings', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const fns = [];
     for (const [value] of [[1], [2]]) {
       fns[fns.length] = () => value;
@@ -26,7 +26,7 @@ test('run supports array for...of with fresh iteration bindings', async () => {
 });
 
 test('run supports for...of assignment-target headers', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     let value = 0;
     const fns = [];
     for (value of [1, 2]) {
@@ -45,7 +45,7 @@ test('run supports for...of assignment-target headers', async () => {
 });
 
 test('run supports for...in over plain objects and arrays', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const object = { beta: 2, alpha: 1 };
     const array = [10, 20];
     array.extra = 30;
@@ -65,7 +65,7 @@ test('run supports for...in over plain objects and arrays', async () => {
 });
 
 test('run supports for...in assignment-target headers', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const record = { current: '' };
     for (record.current in { beta: 2, alpha: 1 }) {
     }
@@ -77,7 +77,7 @@ test('run supports for...in assignment-target headers', async () => {
 });
 
 test('progress snapshots preserve active array iterators across resumes', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     let total = 0;
     for (const value of [1, 2, 3]) {
       total += fetch_data(value);
@@ -116,7 +116,7 @@ test('progress snapshots preserve active array iterators across resumes', () => 
 });
 
 test('run supports for await...of over the documented iterable surface', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function run() {
       const values = [Promise.resolve(1), 2, Promise.resolve(3)];
       const seen = [];
@@ -139,7 +139,7 @@ test('run supports for await...of over the documented iterable surface', async (
 });
 
 test('progress snapshots preserve for await...of assignment-target headers across resumes', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function load(value) {
       return await fetch_data(value);
     }
@@ -184,7 +184,7 @@ test('progress snapshots preserve for await...of assignment-target headers acros
 });
 
 test('progress snapshots preserve assignment-target for...of headers across resumes', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const state = { current: 0, total: 0 };
     for (state.current of [1, 2, 3]) {
       state.total += fetch_data(state.current);
@@ -223,7 +223,7 @@ test('progress snapshots preserve assignment-target for...of headers across resu
 });
 
 test('progress snapshots preserve active for...in iterators across resumes', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     let total = 0;
     for (const key in { beta: 2, alpha: 1 }) {
       total += fetch_data(key);
@@ -257,7 +257,7 @@ test('progress snapshots preserve active for...in iterators across resumes', () 
 });
 
 test('run supports strings, keyed collections, and iterator helper objects', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const map = new Map([['alpha', 1], ['beta', 2]]);
     const set = new Set('aba');
     const seen = [];
@@ -281,7 +281,7 @@ test('run supports strings, keyed collections, and iterator helper objects', asy
 });
 
 test('run rejects unsupported for...in iterable inputs', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     for (const key in new Map()) {
       key;
     }
@@ -290,14 +290,14 @@ test('run rejects unsupported for...in iterable inputs', async () => {
   await assert.rejects(
     () => runtime.run(),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Runtime' &&
       error.message.includes('Object helpers currently only support plain objects and arrays'),
   );
 });
 
 test('run rejects unsupported for...of iterable inputs', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     for (const value of { alpha: 1 }) {
       value;
     }
@@ -306,14 +306,14 @@ test('run rejects unsupported for...of iterable inputs', async () => {
   await assert.rejects(
     () => runtime.run(),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Runtime' &&
       error.message.includes('value is not iterable in the supported surface'),
   );
 });
 
 test('run supports conservative for...in over plain objects and arrays', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const object = { zebra: 1, alpha: 2 };
     const array = [10, 20];
     array.label = "seed";
@@ -338,7 +338,7 @@ test('run supports conservative for...in over plain objects and arrays', async (
 });
 
 test('progress snapshots preserve for...in assignment-target headers across resumes', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const state = { current: "", seen: [] };
     for (state.current in { beta: 1, alpha: 2 }) {
       state.seen[state.seen.length] = fetch_data(state.current);
@@ -372,7 +372,7 @@ test('progress snapshots preserve for...in assignment-target headers across resu
 });
 
 test('run rejects unsupported for...in right-hand sides', async () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     for (const key in "hi") {
       key;
     }
@@ -381,7 +381,7 @@ test('run rejects unsupported for...in right-hand sides', async () => {
   await assert.rejects(
     () => runtime.run(),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Runtime' &&
       error.message.includes('Object helpers currently only support plain objects and arrays'),
   );

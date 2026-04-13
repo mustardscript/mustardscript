@@ -4,7 +4,7 @@ Status: resolved on the current branch as of April 12, 2026. This file is
 retained as the audit input that drove the fixes below; the listed gaps were
 confirmed when the audit was written and then closed in the follow-up changes.
 
-This document records the currently confirmed gaps where `jslite` either:
+This document records the currently confirmed gaps where `mustard` either:
 
 - does not match Node.js execution for behavior it currently accepts, or
 - does not fail closed and instead returns the wrong observable result.
@@ -21,8 +21,8 @@ Resolution verification after the fixes:
 ## Method
 
 - Audited the current implementation before writing anything:
-  - `crates/jslite/src/runtime`
-  - `crates/jslite-node/src/lib.rs`
+  - `crates/mustard/src/runtime`
+  - `crates/mustard-node/src/lib.rs`
   - `index.js`
   - `lib/runtime.js`
   - `lib/structured.js`
@@ -39,7 +39,7 @@ Resolution verification after the fixes:
   - `npm run test:test262`
   - `npm run test:use-cases`
   - `npm run test:hardening`
-- Ran targeted Node-vs-`jslite` differential probes.
+- Ran targeted Node-vs-`mustard` differential probes.
 - Validated the audit with 6 independent `gpt-5.4` `xhigh` explorer agents, each owning one slice:
   - global environment and `this`
   - callable / function-object parity
@@ -54,10 +54,10 @@ For the targeted differential probes, the Node baseline was strict-script execut
 vm.runInNewContext('"use strict";\n' + source, Object.create(null))
 ```
 
-The `jslite` baseline was:
+The `mustard` baseline was:
 
 ```js
-await new Jslite(source).run()
+await new Mustard(source).run()
 ```
 
 ## Confirmed Runtime Gaps
@@ -66,30 +66,30 @@ await new Jslite(source).run()
 
 Relevant implementation paths:
 
-- `crates/jslite/src/runtime/builtins/install.rs:166-239`
-- `crates/jslite/src/runtime/env.rs:8-21`
-- `crates/jslite/src/runtime/env.rs:49-78`
-- `crates/jslite/src/runtime/properties.rs:341-395`
-- `crates/jslite/src/runtime/properties.rs:557-620`
-- `crates/jslite/src/runtime/vm.rs:708-712`
+- `crates/mustard/src/runtime/builtins/install.rs:166-239`
+- `crates/mustard/src/runtime/env.rs:8-21`
+- `crates/mustard/src/runtime/env.rs:49-78`
+- `crates/mustard/src/runtime/properties.rs:341-395`
+- `crates/mustard/src/runtime/properties.rs:557-620`
+- `crates/mustard/src/runtime/vm.rs:708-712`
 
 Confirmed mismatches:
 
 - `globalThis.globalThis === globalThis`
   - Node: `true`
-  - `jslite`: `false`
+  - `mustard`: `false`
 - `globalThis.Object === Object`
   - Node: `true`
-  - `jslite`: `false`
+  - `mustard`: `false`
 - `'Object' in globalThis`
   - Node: `true`
-  - `jslite`: `false`
+  - `mustard`: `false`
 - `typeof globalThis.Object`
   - Node: `"function"`
-  - `jslite`: `"undefined"`
+  - `mustard`: `"undefined"`
 - `globalThis.answer = 7; ({ prop: globalThis.answer, lookup: answer })`
   - Node: `{ prop: 7, lookup: 7 }`
-  - `jslite`: `ReferenceError: \`answer\` is not defined`
+  - `mustard`: `ReferenceError: \`answer\` is not defined`
 
 This means global bindings currently live in the lexical environment, while the exposed `globalThis` object is a separate object with different contents. Some probes fail closed, but others silently return the wrong value.
 
@@ -97,18 +97,18 @@ This means global bindings currently live in the lexical environment, while the 
 
 Relevant implementation paths:
 
-- `crates/jslite/src/runtime/vm.rs:688-724`
-- `crates/jslite/src/runtime/vm.rs:708-712`
-- `crates/jslite/src/runtime/compiler/expressions.rs`
+- `crates/mustard/src/runtime/vm.rs:688-724`
+- `crates/mustard/src/runtime/vm.rs:708-712`
+- `crates/mustard/src/runtime/compiler/expressions.rs`
 
 Confirmed mismatches:
 
 - `this === globalThis`
   - Node: `true`
-  - `jslite`: `false`
+  - `mustard`: `false`
 - `const obj = { value: 3, method() { return (() => this.value)(); } }; obj.method();`
   - Node: `3`
-  - `jslite`: `TypeError: cannot read properties of nullish value`
+  - `mustard`: `TypeError: cannot read properties of nullish value`
 
 The root cause is that arrow frames currently force `this` to `undefined` instead of capturing lexical `this`, and the top-level execution model does not expose the real global object as `this`.
 
@@ -116,38 +116,38 @@ The root cause is that arrow frames currently force `this` to `undefined` instea
 
 Relevant implementation paths:
 
-- `crates/jslite/src/runtime/state.rs:25-40`
-- `crates/jslite/src/runtime/properties.rs:341-555`
-- `crates/jslite/src/runtime/properties.rs:557-620`
-- `crates/jslite/src/runtime/conversions/operators.rs:163-216`
-- `crates/jslite/src/runtime/builtins/install.rs:173-240`
+- `crates/mustard/src/runtime/state.rs:25-40`
+- `crates/mustard/src/runtime/properties.rs:341-555`
+- `crates/mustard/src/runtime/properties.rs:557-620`
+- `crates/mustard/src/runtime/conversions/operators.rs:163-216`
+- `crates/mustard/src/runtime/builtins/install.rs:173-240`
 
 Confirmed mismatches for guest functions:
 
 - `const fn = function named(a, b) {}; ({ name: fn.name, length: fn.length, prototypeType: typeof fn.prototype, instanceofObject: fn instanceof Object })`
   - Node: `{ name: "named", length: 2, prototypeType: "object", instanceofObject: true }`
-  - `jslite`: `{ name: undefined, length: undefined, prototypeType: "undefined", instanceofObject: false }`
+  - `mustard`: `{ name: undefined, length: undefined, prototypeType: "undefined", instanceofObject: false }`
 - `const fn = (a, b) => {}; ({ name: fn.name, length: fn.length, instanceofObject: fn instanceof Object })`
   - Node: `{ name: "fn", length: 2, instanceofObject: true }`
-  - `jslite`: `{ name: undefined, length: undefined, instanceofObject: false }`
+  - `mustard`: `{ name: undefined, length: undefined, instanceofObject: false }`
 - `function f() {} f.answer = 1; f.answer`
   - Node: `1`
-  - `jslite`: `TypeError: value is not an object`
+  - `mustard`: `TypeError: value is not an object`
 - `Object.keys(function f() {})`
   - Node: `[]`
-  - `jslite`: `TypeError: Object helpers currently only support plain objects and arrays`
+  - `mustard`: `TypeError: Object helpers currently only support plain objects and arrays`
 
 Confirmed mismatches for built-in constructors and extracted methods:
 
 - `({ name: Array.name, length: Array.length, prototypeType: typeof Array.prototype, instanceofObject: Array instanceof Object })`
   - Node: `{ name: "Array", length: 1, prototypeType: "object", instanceofObject: true }`
-  - `jslite`: `{ name: undefined, length: undefined, prototypeType: "undefined", instanceofObject: false }`
+  - `mustard`: `{ name: undefined, length: undefined, prototypeType: "undefined", instanceofObject: false }`
 - `Object.hasOwn(Array, "length")`
   - Node: `true`
-  - `jslite`: throws the same `Object helpers currently only support plain objects and arrays` error
+  - `mustard`: throws the same `Object helpers currently only support plain objects and arrays` error
 - `const method = [].map; ({ name: method.name, length: method.length, instanceofObject: method instanceof Object })`
   - Node: `{ name: "map", length: 1, instanceofObject: true }`
-  - `jslite`: `{ name: undefined, length: undefined, instanceofObject: false }`
+  - `mustard`: `{ name: undefined, length: undefined, instanceofObject: false }`
 
 Confirmed missing constructor links:
 
@@ -157,7 +157,7 @@ Confirmed missing constructor links:
 - `/a/.constructor === RegExp`
 - `Promise.resolve(1).constructor === Promise`
 
-All of those are `true` in Node and `false` in `jslite`.
+All of those are `true` in Node and `false` in `mustard`.
 
 This is not one isolated bug. The current runtime model separates closures and built-ins from the ordinary object system, so function metadata, property storage, helper interoperability, and prototype-adjacent observables all break together.
 
@@ -165,47 +165,47 @@ This is not one isolated bug. The current runtime model separates closures and b
 
 Relevant implementation paths:
 
-- `crates/jslite/src/runtime/builtins/install.rs:10-47`
-- `crates/jslite/src/runtime/builtins/install.rs:127-148`
-- `crates/jslite/src/runtime/builtins/arrays.rs:24-30`
-- `crates/jslite/src/runtime/builtins/primitives.rs:111-145`
-- `crates/jslite/src/runtime/builtins/primitives.rs:160-176`
-- `crates/jslite/src/runtime/vm.rs:759-772`
-- `crates/jslite/src/runtime/conversions/operators.rs:163-216`
+- `crates/mustard/src/runtime/builtins/install.rs:10-47`
+- `crates/mustard/src/runtime/builtins/install.rs:127-148`
+- `crates/mustard/src/runtime/builtins/arrays.rs:24-30`
+- `crates/mustard/src/runtime/builtins/primitives.rs:111-145`
+- `crates/mustard/src/runtime/builtins/primitives.rs:160-176`
+- `crates/mustard/src/runtime/vm.rs:759-772`
+- `crates/mustard/src/runtime/conversions/operators.rs:163-216`
 
 Confirmed `Array` / `new Array` mismatches:
 
 - `Array(3)` and `new Array(3)`
   - Node: holey array of length `3`
-  - `jslite`: one-element array `[3]`
+  - `mustard`: one-element array `[3]`
 - `new Array(-1)`, `new Array(2.5)`, and `new Array(4294967296)`
   - Node: `RangeError: Invalid array length`
-  - `jslite`: one-element arrays containing `-1`, `2.5`, and `4294967296`
+  - `mustard`: one-element arrays containing `-1`, `2.5`, and `4294967296`
 - `Object.keys(new Array(3))`
   - Node: `[]`
-  - `jslite`: `["0"]`
+  - `mustard`: `["0"]`
 - `JSON.stringify(new Array(3))`
   - Node: `"[null,null,null]"`
-  - `jslite`: `"[3]"`
+  - `mustard`: `"[3]"`
 
 Confirmed `Object(value)` mismatches:
 
 - `Object(array) === array`
   - Node: `true`
-  - `jslite`: `false`
+  - `mustard`: `false`
 - `Object(new Map([[1, 2]])) === map`
   - Node: `true`
-  - `jslite`: `false`
+  - `mustard`: `false`
 - `Array.isArray(Object(array))`
   - Node: `true`
-  - `jslite`: `false`
+  - `mustard`: `false`
 - `String(Object("ab"))`
   - Node: `"ab"`
-  - `jslite`: `"[object Object]"`
+  - `mustard`: `"[object Object]"`
 - `String(Object(1))`
   - Node: `"1"`
-  - `jslite`: `"[object Object]"`
-- `Object("ab")` in `jslite` has no boxed-string surface:
+  - `mustard`: `"[object Object]"`
+- `Object("ab")` in `mustard` has no boxed-string surface:
   - `'length' in boxed` is `false`
   - `boxed[0] === undefined` is `true`
 
@@ -213,21 +213,21 @@ Confirmed wrapper-constructor mismatches:
 
 - `typeof new Number(1)`
   - Node: `"object"`
-  - `jslite`: `"number"`
+  - `mustard`: `"number"`
 - `typeof new String("ab")`
   - Node: `"object"`
-  - `jslite`: `"string"`
+  - `mustard`: `"string"`
 - `typeof new Boolean(false)`
   - Node: `"object"`
-  - `jslite`: `"boolean"`
+  - `mustard`: `"boolean"`
 - `!!new Boolean(false)`
   - Node: `true`
-  - `jslite`: `false`
+  - `mustard`: `false`
 - `new Number(1) instanceof Number`
 - `new String("ab") instanceof String`
 - `new Boolean(false) instanceof Boolean`
   - Node: `true` for all three
-  - `jslite`: `TypeError: right-hand side of instanceof must be a supported constructor`
+  - `mustard`: `TypeError: right-hand side of instanceof must be a supported constructor`
 
 These paths accept programs that should either behave like Node or reject explicitly. Today they silently produce the wrong values or the wrong object kinds.
 
@@ -235,17 +235,17 @@ These paths accept programs that should either behave like Node or reject explic
 
 Relevant implementation paths:
 
-- `crates/jslite/src/runtime/builtins/arrays.rs:497-505`
-- `crates/jslite/src/runtime/builtins/arrays.rs:873-928`
+- `crates/mustard/src/runtime/builtins/arrays.rs:497-505`
+- `crates/mustard/src/runtime/builtins/arrays.rs:873-928`
 
 Confirmed mismatches:
 
 - `const seed = { tag: "seed" }; [1].reduce(function (acc) { return { same: this === acc, thisTag: this && this.tag, accTag: acc.tag }; }, seed);`
   - Node: `{ same: false, accTag: "seed" }`
-  - `jslite`: `{ same: true, thisTag: "seed", accTag: "seed" }`
+  - `mustard`: `{ same: true, thisTag: "seed", accTag: "seed" }`
 - `const seed = { tag: "seed" }; const result = [1].reduce(function (acc) { this.extra = 1; return acc; }, seed); ({ result, seed });`
   - Node: `{ result: { tag: "seed" }, seed: { tag: "seed" } }`
-  - `jslite`: `{ result: { tag: "seed", extra: 1 }, seed: { tag: "seed", extra: 1 } }`
+  - `mustard`: `{ result: { tag: "seed", extra: 1 }, seed: { tag: "seed", extra: 1 } }`
 
 The shared array-callback helper always reads `args[1]` as `thisArg`, but `reduce` also uses `args[1]` as the initial accumulator. That leaks a wrong observable `this` value and allows mutation through the wrong alias.
 
@@ -253,30 +253,30 @@ The shared array-callback helper always reads `args[1]` as `thisArg`, but `reduc
 
 Relevant implementation paths:
 
-- `crates/jslite/src/runtime/builtins/support.rs:36-46`
-- `crates/jslite/src/runtime/builtins/primitives.rs:111-145`
-- `crates/jslite/src/runtime/builtins/install.rs:127-133`
+- `crates/mustard/src/runtime/builtins/support.rs:36-46`
+- `crates/mustard/src/runtime/builtins/primitives.rs:111-145`
+- `crates/mustard/src/runtime/builtins/install.rs:127-133`
 
 Confirmed mismatches:
 
 - `const value = Date.now(); [value, value === Math.trunc(value)]`
   - Node: integer epoch milliseconds
-  - `jslite`: fractional milliseconds, second element `false`
+  - `mustard`: fractional milliseconds, second element `false`
 - `const value = new Date().getTime(); [value, value === Math.trunc(value)]`
   - Node: integer epoch milliseconds
-  - `jslite`: fractional milliseconds, second element `false`
+  - `mustard`: fractional milliseconds, second element `false`
 - `const value = new Date(1.9).getTime(); [value, value === Math.trunc(value)]`
   - Node: `[1, true]`
-  - `jslite`: `[1.9, false]`
+  - `mustard`: `[1.9, false]`
 - `const value = new Date(-1.9).getTime(); [value, value === Math.trunc(value)]`
   - Node: `[-1, true]`
-  - `jslite`: `[-1.9, false]`
+  - `mustard`: `[-1.9, false]`
 - `const value = new Date("2026-04-10T14:00:00.123456789Z").getTime(); [value, value === Math.trunc(value)]`
   - Node: `[1775829600123, true]`
-  - `jslite`: `[1775829600123.4568, false]`
+  - `mustard`: `[1775829600123.4568, false]`
 - `const value = new Date("2026-04-10T14:00:00.1239Z").getTime(); [value, value === Math.trunc(value)]`
   - Node: `[1775829600123, true]`
-  - `jslite`: `[1775829600123.9, false]`
+  - `mustard`: `[1775829600123.9, false]`
 
 This is accepted, documented surface. It is neither Node-parity nor fail-closed.
 
@@ -325,7 +325,7 @@ Relevant paths:
 - `tests/node/conformance-contract.js:536-700`
 - `tests/node/conformance-contract.js:725-747`
 - `tests/node/rejection-contract.test.js`
-- `crates/jslite/src/runtime/conversions/operators.rs:163-216`
+- `crates/mustard/src/runtime/conversions/operators.rs:163-216`
 
 Confirmed issue:
 

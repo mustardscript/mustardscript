@@ -1,6 +1,6 @@
 'use strict';
 
-const { assert, isJsliteError, Progress, runtime, test } = require('./support/helpers.js');
+const { assert, isMustardError, Progress, runtime, test } = require('./support/helpers.js');
 
 test('run exposes structured inputs with preserved numeric edge cases', async () => {
   const result = await runtime(`
@@ -103,7 +103,7 @@ test('console methods fail guest-safely when callbacks are not registered', asyn
     runtime(`
       console.log('alpha');
     `).run(),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: /value is not callable/,
       guestSafe: true,
@@ -126,7 +126,7 @@ test('run surfaces sanitized host capability errors', async () => {
         },
       },
     }),
-    isJsliteError({
+    isMustardError({
       kind: 'Runtime',
       message: /CapabilityError: upstream failed \[code=E_UPSTREAM\]/,
     }),

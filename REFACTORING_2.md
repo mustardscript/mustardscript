@@ -17,7 +17,7 @@ This plan is intentionally about structure, not feature work.
 - Keep the public Rust API stable: `compile`, `lower_to_bytecode`, runtime
   entry points, serialization helpers, and public types should keep the same
   names and behavior.
-- Keep the public JavaScript API stable: `Jslite`, `Progress`, `JsliteError`,
+- Keep the public JavaScript API stable: `Mustard`, `Progress`, `MustardError`,
   `run()`, `start()`, `load()`, `resume()`, and `resumeError()` should keep
   the same names and behavior.
 - Keep guest/runtime semantics in Rust. Do not push logic into the Node
@@ -37,20 +37,20 @@ This plan is intentionally about structure, not feature work.
 
 At the start of this wave, these were the highest-value refactor targets:
 
-- `crates/jslite/src/runtime/compiler/mod.rs` is still about 1.3k lines and
+- `crates/mustard/src/runtime/compiler/mod.rs` is still about 1.3k lines and
   mixes root/function setup, statement lowering, expression lowering,
   assignment lowering, and control-transfer patching.
 - `index.js` is still over 600 lines and mixes native error normalization,
   structured-value codecs, policy encoding, abort/cancellation bridging,
   `Progress` lifecycle, host capability orchestration, and the public API.
-- `crates/jslite-node/src/lib.rs` and `crates/jslite-sidecar/src/lib.rs`
+- `crates/mustard-node/src/lib.rs` and `crates/mustard-sidecar/src/lib.rs`
   duplicate most of their DTOs and boundary encode/decode logic.
 - `tests/node/basic.test.js` is nearly 900 lines and mixes builtins, host
   boundary behavior, exceptions, limits, progress objects, serialization, and
   error sanitization.
-- `crates/jslite/tests/coverage_audit.rs` contains ad hoc IR traversal helpers
+- `crates/mustard/tests/coverage_audit.rs` contains ad hoc IR traversal helpers
   that will become harder to reuse if more structural assertions are added.
-- `crates/jslite/src/runtime/mod.rs` is much smaller than the original
+- `crates/mustard/src/runtime/mod.rs` is much smaller than the original
   monolith, but it still owns more shared glue than a true facade should.
 
 These files are not all equally urgent, but they all have the same underlying
@@ -60,7 +60,7 @@ diff.
 ## Proposed Target Layout
 
 ```text
-crates/jslite/src/parser/
+crates/mustard/src/parser/
   mod.rs
   scope.rs
   patterns.rs
@@ -72,7 +72,7 @@ crates/jslite/src/parser/
     acceptance.rs
     rejections.rs
 
-crates/jslite/src/runtime/compiler/
+crates/mustard/src/runtime/compiler/
   mod.rs
   context.rs
   bindings.rs
@@ -81,7 +81,7 @@ crates/jslite/src/runtime/compiler/
   assignments.rs
   control.rs
 
-crates/jslite-bridge/
+crates/mustard-bridge/
   Cargo.toml
   src/
     lib.rs
@@ -126,9 +126,9 @@ precise names.
 - Shared addon/sidecar DTOs and shared Rust boundary operations should live in
   one reusable internal crate rather than duplicated in two adapter crates.
 - Node-specific concerns such as the cancellation-token registry must remain in
-  `crates/jslite-node`.
+  `crates/mustard-node`.
 - Sidecar-specific concerns such as line-delimited request framing must remain
-  in `crates/jslite-sidecar`.
+  in `crates/mustard-sidecar`.
 - `index.js` should become a public facade, not the implementation home for
   every wrapper concern.
 - Shared test helpers should live in test-support modules, not be copy-pasted
@@ -166,7 +166,7 @@ stops concentrating in one file.
 
 Checklist:
 
-- [x] Rename `crates/jslite/src/parser.rs` to `crates/jslite/src/parser/mod.rs`
+- [x] Rename `crates/mustard/src/parser.rs` to `crates/mustard/src/parser/mod.rs`
 - [x] Extract scope tracking and binding registration into `scope.rs`
 - [x] Extract pattern lowering helpers into `patterns.rs`
 - [x] Extract statement lowering into `statements.rs`
@@ -194,9 +194,9 @@ Checklist:
 - [x] Move common encode/decode helpers into shared code
 - [x] Move shared compile/start/resume/inspect operations into shared code
 - [x] Keep Node-specific cancellation-token registry logic only in
-  `crates/jslite-node`
+  `crates/mustard-node`
 - [x] Keep sidecar request/response envelope types and line framing only in
-  `crates/jslite-sidecar`
+  `crates/mustard-sidecar`
 - [x] Preserve current JSON shapes and sidecar protocol shapes
 
 Exit criteria:
@@ -217,7 +217,7 @@ Checklist:
 - [x] Extract policy and snapshot-policy helpers into `lib/policy.js`
 - [x] Extract abort/cancellation bridging into `lib/cancellation.js`
 - [x] Extract `Progress` state and lifecycle logic into `lib/progress.js`
-- [x] Extract `Jslite` run/start orchestration into `lib/runtime.js`
+- [x] Extract `Mustard` run/start orchestration into `lib/runtime.js`
 - [x] Preserve CommonJS entry behavior and existing TypeScript declarations
 
 Exit criteria:
@@ -240,7 +240,7 @@ Checklist:
 - [x] Move parser tests out of production modules if Milestone 2 has not
   already done so
 - [x] Extract reusable IR traversal helpers from
-  `crates/jslite/tests/coverage_audit.rs` if multiple tests need them
+  `crates/mustard/tests/coverage_audit.rs` if multiple tests need them
   and otherwise keep the local helpers single-consumer
 - [x] Preserve or improve the same coverage surface after the split
 
@@ -256,7 +256,7 @@ Purpose: clean up whatever broad glue remains after the earlier extractions.
 
 Checklist:
 
-- [x] Reduce remaining shared-logic weight in `crates/jslite/src/runtime/mod.rs`
+- [x] Reduce remaining shared-logic weight in `crates/mustard/src/runtime/mod.rs`
 - [x] Tighten visibility to `pub(super)` or private where possible
 - [x] Reduce oversized `use` lists
 - [x] Add short module-level docs where a file owns a tricky subsystem
@@ -286,7 +286,7 @@ Exit criteria:
 
 After each milestone:
 
-- `cargo test -p jslite`
+- `cargo test -p mustard`
 
 After milestones that touch addon, sidecar, wrapper, or cross-boundary tests:
 
@@ -338,7 +338,7 @@ The safest first cut is Milestone 1:
 4. Move assignment and control-transfer helpers into `assignments.rs` and
    `control.rs`
 5. Keep `lower_to_bytecode` re-exported from `runtime/compiler/mod.rs`
-6. Run `cargo test -p jslite`
+6. Run `cargo test -p mustard`
 
 That delivers a concrete maintainability win in the most obvious remaining Rust
 hotspot without touching public APIs or transport boundaries yet.

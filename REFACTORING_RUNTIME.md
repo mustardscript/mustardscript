@@ -1,10 +1,10 @@
-# Refactoring `crates/jslite/src/runtime.rs`
+# Refactoring `crates/mustard/src/runtime.rs`
 
 ## Goal
 
-`crates/jslite/src/runtime.rs` is currently about 10.8k lines and mixes too
+`crates/mustard/src/runtime.rs` is currently about 10.8k lines and mixes too
 many responsibilities into one file. The goal of this refactor is to split it
-into a `crates/jslite/src/runtime/` module tree that is easier to navigate,
+into a `crates/mustard/src/runtime/` module tree that is easier to navigate,
 review, test, and change without altering guest semantics.
 
 This plan is intentionally about structure, not feature work.
@@ -46,7 +46,7 @@ same file and the same review diff.
 ## Proposed Target Layout
 
 ```text
-crates/jslite/src/runtime/
+crates/mustard/src/runtime/
   mod.rs
   api.rs
   bytecode.rs
@@ -168,7 +168,7 @@ The exact line numbers will drift, but this is the correct extraction order.
 
 ### Phase 1: Convert `runtime.rs` into a module directory
 
-- Rename `crates/jslite/src/runtime.rs` to `crates/jslite/src/runtime/mod.rs`.
+- Rename `crates/mustard/src/runtime.rs` to `crates/mustard/src/runtime/mod.rs`.
 - Keep all code compiling with no logical changes.
 - Add module declarations only as files are extracted.
 
@@ -275,7 +275,7 @@ Result: production code stops carrying a 1k+ line test tail.
 
 After each phase:
 
-- `cargo test -p jslite`
+- `cargo test -p mustard`
 
 At the end of each substantial milestone:
 
@@ -291,8 +291,8 @@ merging the milestone.
 
 The refactor is complete when all of these are true:
 
-- `crates/jslite/src/runtime.rs` no longer exists as a monolithic file
-- `crates/jslite/src/runtime/mod.rs` is a thin facade
+- `crates/mustard/src/runtime.rs` no longer exists as a monolithic file
+- `crates/mustard/src/runtime/mod.rs` is a thin facade
 - Compiler, VM, GC, conversions, and builtins live in separate modules
 - Runtime tests are no longer embedded in the production module file
 - Public API is unchanged
@@ -305,7 +305,7 @@ If this work starts now, the safest first commit is:
 1. Move `runtime.rs` to `runtime/mod.rs`
 2. Extract `api.rs`, `bytecode.rs`, `serialization.rs`, and `validation.rs`
 3. Re-export the same public API from `mod.rs`
-4. Run `cargo test -p jslite`
+4. Run `cargo test -p mustard`
 
 That first cut removes a large amount of top-level noise without touching the
 VM semantics yet.

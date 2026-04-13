@@ -1,12 +1,12 @@
-# Property-Based Testing for `jslite`
+# Property-Based Testing for `mustard`
 
 ## Goal
 
 Two properties matter most for this project:
 
-1. For generated programs inside the documented `jslite` subset, `jslite` and
+1. For generated programs inside the documented `mustard` subset, `mustard` and
    Node.js should produce the same guest-visible outcome.
-2. For generated programs outside the documented subset, `jslite` should reject
+2. For generated programs outside the documented subset, `mustard` should reject
    them during validation with a clear `Validation` error instead of partially
    running them.
 
@@ -14,7 +14,7 @@ Separately, hostile inputs should never crash the process, corrupt runtime
 state, hang past the documented limits, or leak host-only details.
 
 Property-based testing can strengthen confidence in those claims. It cannot
-prove that `jslite` is "not exploitable." The strongest realistic claim is:
+prove that `mustard` is "not exploitable." The strongest realistic claim is:
 
 - no known crashers, panics, sanitizer findings, or fail-open behaviors across
   the maintained generated-input and fuzz suites
@@ -31,14 +31,14 @@ As of April 11, 2026, the repo already has useful foundations:
 - Node differential tests in [tests/node/differential.test.js](tests/node/differential.test.js)
 - async differential coverage in [tests/node/async-runtime.test.js](tests/node/async-runtime.test.js)
 - curated `test262` coverage in [tests/test262/harness.test.js](tests/test262/harness.test.js)
-- hostile-input `proptest` coverage in [crates/jslite/tests/security_hostile_inputs.rs](crates/jslite/tests/security_hostile_inputs.rs)
+- hostile-input `proptest` coverage in [crates/mustard/tests/security_hostile_inputs.rs](crates/mustard/tests/security_hostile_inputs.rs)
 - libFuzzer entry points in [fuzz/fuzz_targets](fuzz/fuzz_targets)
-- sidecar hostile-protocol coverage in [crates/jslite-sidecar/tests/hostile_protocol.rs](crates/jslite-sidecar/tests/hostile_protocol.rs)
+- sidecar hostile-protocol coverage in [crates/mustard-sidecar/tests/hostile_protocol.rs](crates/mustard-sidecar/tests/hostile_protocol.rs)
 
 I also verified the current baseline on this working tree:
 
 - `npm run test:differential` passed
-- `cargo test -p jslite --test security_hostile_inputs` passed
+- `cargo test -p mustard --test security_hostile_inputs` passed
 
 That means the project already has:
 
@@ -60,14 +60,14 @@ cases well, but it does not explore large spaces of supported programs.
 ### Gap 2: current `proptest` coverage is mostly hostile-input safety, not parity
 
 The properties in
-[crates/jslite/tests/security_hostile_inputs.rs](crates/jslite/tests/security_hostile_inputs.rs)
+[crates/mustard/tests/security_hostile_inputs.rs](crates/mustard/tests/security_hostile_inputs.rs)
 mostly say:
 
 - arbitrary bytes do not crash loaders
 - arbitrary source does not leak host paths
 - bounded execution of arbitrary compilable source does not fail unsafely
 
-Those are valuable hardening checks, but they do not compare `jslite` to Node.
+Those are valuable hardening checks, but they do not compare `mustard` to Node.
 
 ### Gap 3: the current Node oracle is too weak for generated testing
 
@@ -86,7 +86,7 @@ That is acceptable for the curated tests, but not for large generated suites.
 
 The repo has explicit unsupported fixtures and hand-written validation tests,
 but not a generator that can produce unsupported forms and assert that
-`jslite` rejects them at validation time.
+`mustard` rejects them at validation time.
 
 ### Gap 5: the Node boundary is under-tested by generated inputs
 
@@ -103,8 +103,8 @@ not yet get equivalent generated coverage for:
 
 [scripts/run-hardening.sh](scripts/run-hardening.sh) currently does:
 
-- `cargo test -p jslite --test security_hostile_inputs`
-- `cargo test -p jslite-sidecar --test hostile_protocol`
+- `cargo test -p mustard --test security_hostile_inputs`
+- `cargo test -p mustard-sidecar --test hostile_protocol`
 - `cargo check --manifest-path fuzz/Cargo.toml --bins`
 
 That is enough to keep the fuzz targets wired up, but not enough to claim that
@@ -119,8 +119,8 @@ tracks.
 
 This track should answer:
 
-- if a generated program is supported, does `jslite` match Node?
-- if a generated program is unsupported, does `jslite` reject it during
+- if a generated program is supported, does `mustard` match Node?
+- if a generated program is unsupported, does `mustard` reject it during
   validation?
 
 ### Recommendation: put the semantic differential generator in Node tests
@@ -218,15 +218,15 @@ Do not mix them in one property at first.
 
 Supported-program property:
 
-- `new Jslite(source)` must succeed
+- `new Mustard(source)` must succeed
 - `await runtime.run()` must complete
-- Node and `jslite` must match on canonical outcome
+- Node and `mustard` must match on canonical outcome
 
 Unsupported-program property:
 
 - generate exactly one unsupported feature from [docs/LANGUAGE.md](docs/LANGUAGE.md)
 - place it in an otherwise minimal program
-- `new Jslite(source)` must throw `JsliteValidationError`
+- `new Mustard(source)` must throw `MustardValidationError`
 - the message should mention the unsupported feature class
 
 That directly matches the required contract:
@@ -368,7 +368,7 @@ Suggested properties:
      - getters/setters
      - cyclic objects
      - proxies
-   - assert clean JS or `JsliteError` failure
+   - assert clean JS or `MustardError` failure
    - assert the process stays alive
 
 3. Host error sanitization shape
@@ -418,9 +418,9 @@ Suggested additions:
 - `tests/node/property-differential.test.js`
 - `tests/node/property-unsupported.test.js`
 - `tests/node/property-host-boundary.test.js`
-- `crates/jslite/tests/property_roundtrip.rs`
-- `crates/jslite/tests/property_snapshot_roundtrip.rs`
-- `crates/jslite/tests/property_generated_execution.rs`
+- `crates/mustard/tests/property_roundtrip.rs`
+- `crates/mustard/tests/property_snapshot_roundtrip.rs`
+- `crates/mustard/tests/property_generated_execution.rs`
 
 Suggested dependency addition:
 
@@ -433,7 +433,7 @@ Suggested dependency addition:
 
 2. Add a small supported-program generator in Node.
    - keep it value-only
-   - compare Node and `jslite`
+   - compare Node and `mustard`
 
 3. Add an unsupported-feature generator in Node.
    - require constructor-time `Validation` failure
@@ -466,7 +466,7 @@ should let the project make these narrower, defensible claims:
 - limits, cancellation, and serialized-state restoration hold under generated
   stress
 
-That is the right testing target for `jslite`.
+That is the right testing target for `mustard`.
 
 It directly supports the subset contract, the fail-closed rule, and the
 security model without pretending that property tests alone can certify absolute

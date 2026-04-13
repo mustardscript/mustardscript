@@ -1,0 +1,17 @@
+[package]
+name = "mustard-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Shared bridge DTOs and operations for MustardScript adapters"
+
+[dependencies]
+anyhow.workspace = true
+base64 = "0.22.1"
+hmac.workspace = true
+mustard = { path = "../mustard" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true

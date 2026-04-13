@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { Mustard, MustardError, Progress } = require('../../index.ts');
 const {
   PROPERTY_RUNS,
   fc,
@@ -25,7 +25,7 @@ function performProgressAction(progress, action) {
 
 function isSingleUseRuntimeError(error) {
   return (
-    error instanceof JsliteError &&
+    error instanceof MustardError &&
     error.kind === 'Runtime' &&
     error.message.includes('single-use')
   );
@@ -34,7 +34,7 @@ function isSingleUseRuntimeError(error) {
 test('property: supported structured host values round-trip across inputs, capabilities, and results', async () => {
   await fc.assert(
     fc.asyncProperty(structuredValueArbitrary, async (value) => {
-      const runtime = new Jslite(`
+      const runtime = new Mustard(`
         const echoed = echo(value);
         ({ value, echoed });
       `);
@@ -66,14 +66,14 @@ test('property: unsupported host values fail closed across boundary inputs and r
       const isBoundaryTypeError = (error) =>
         error instanceof TypeError && error.message.includes(messageIncludes);
 
-      await assert.rejects(new Jslite('value;').run({ inputs: { value } }), isBoundaryTypeError);
+      await assert.rejects(new Mustard('value;').run({ inputs: { value } }), isBoundaryTypeError);
       assert.throws(
-        () => new Jslite('value;').start({ inputs: { value } }),
+        () => new Mustard('value;').start({ inputs: { value } }),
         isBoundaryTypeError,
       );
 
       await assert.rejects(
-        new Jslite('fetch_data();').run({
+        new Mustard('fetch_data();').run({
           capabilities: {
             fetch_data() {
               return value;
@@ -83,7 +83,7 @@ test('property: unsupported host values fail closed across boundary inputs and r
         isBoundaryTypeError,
       );
 
-      const resumed = new Jslite('fetch_data(1);').start({
+      const resumed = new Mustard('fetch_data(1);').start({
         capabilities: {
           fetch_data() {},
         },
@@ -91,7 +91,7 @@ test('property: unsupported host values fail closed across boundary inputs and r
       assert.ok(resumed instanceof Progress);
       assert.throws(() => resumed.resume(value), isBoundaryTypeError);
 
-      const resumedError = new Jslite('fetch_data(1);').start({
+      const resumedError = new Mustard('fetch_data(1);').start({
         capabilities: {
           fetch_data() {},
         },
@@ -110,7 +110,7 @@ test('property: unsupported host values fail closed across boundary inputs and r
 test('property: Progress wrappers remain single-use after any completion path', async () => {
   await fc.assert(
     fc.property(progressActionArbitrary, progressActionArbitrary, (firstAction, secondAction) => {
-      const runtime = new Jslite('fetch_data(4);');
+      const runtime = new Mustard('fetch_data(4);');
       const progress = runtime.start({
         capabilities: {
           fetch_data() {},

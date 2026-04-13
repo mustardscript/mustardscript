@@ -1,6 +1,6 @@
-# jslite
+# MustardScript
 
-`jslite` is a small, opinionated JavaScript runtime for executing a deliberately
+`MustardScript` is a small, opinionated JavaScript runtime for executing a deliberately
 limited subset of JavaScript inside a Node.js service with explicit host
 capabilities, bounded resources, and resumable execution.
 
@@ -10,7 +10,7 @@ agent-style scripts and other constrained guest code.
 
 ## Status
 
-`jslite` is an early-stage design and implementation project.
+`MustardScript` is an early-stage design and implementation project.
 
 Two warnings belong at the top because they affect almost every technical
 decision:
@@ -84,7 +84,7 @@ The current implementation already supports:
 
 ## Installation
 
-The release package name is `@keppoai/jslite`. The default and fully verified
+The release package name is `mustardscript`. The default and fully verified
 path is still source-build installation from a clean checkout or packed source
 tarball, where `npm install` compiles the native addon locally. Optional
 prebuilt binaries now have a separate release flow for the documented target
@@ -126,7 +126,7 @@ workloads, see [examples/programmatic-tool-calls](examples/programmatic-tool-cal
 
 ## Primary Use Cases
 
-`jslite` is primarily aimed at agent runtimes that need to execute small,
+`MustardScript` is primarily aimed at agent runtimes that need to execute small,
 bounded guest programs with explicit host tools instead of exposing a large
 ambient runtime.
 
@@ -142,12 +142,12 @@ ambient runtime.
 These are the workload shapes described by
 [Cloudflare's Code Mode](https://blog.cloudflare.com/code-mode-mcp/) and
 [Anthropic's Programmatic Tool Calling](https://www.anthropic.com/engineering/advanced-tool-use).
-They are a better fit for `jslite` than trying to match general-purpose
+They are a better fit for `MustardScript` than trying to match general-purpose
 JavaScript runtime behavior.
 
 ## Project Goals
 
-`jslite` should provide:
+`MustardScript` should provide:
 
 - A small, auditable runtime surface
 - No ambient filesystem, network, environment, module, or subprocess access
@@ -164,7 +164,7 @@ JavaScript runtime behavior.
 
 ## Non-Goals
 
-`jslite` is not intended to be:
+`MustardScript` is not intended to be:
 
 - A secure wrapper around `node:vm`
 - A general-purpose JavaScript runtime
@@ -214,7 +214,7 @@ correct and well tested.
 
 ## Threat Model and Deployment Modes
 
-`jslite` should document three deployment modes clearly.
+`MustardScript` should document three deployment modes clearly.
 
 ### Addon Mode
 
@@ -241,13 +241,13 @@ correct and well tested.
   policies, containerization, job objects, cgroups, or platform-native jail
   mechanisms
 
-`jslite` itself is responsible for language-level containment. Production
+`MustardScript` itself is responsible for language-level containment. Production
 security for untrusted inputs should assume sidecar mode plus host-managed OS
 controls.
 
 ## Core Terminology
 
-- **Guest code**: JavaScript executed by `jslite`
+- **Guest code**: JavaScript executed by `MustardScript`
 - **Host**: The embedding application
 - **Capability**: A named host function intentionally exposed to the guest
 - **Suspension point**: A boundary where guest execution pauses awaiting host
@@ -288,7 +288,7 @@ Use `oxc` as the parser frontend unless evaluation proves it to be a poor fit.
 Reasons:
 
 - It is a strong Rust-native frontend for JavaScript parsing
-- It allows `jslite` to separate parsing from runtime design
+- It allows `mustard` to separate parsing from runtime design
 - It is a better fit than building a parser from scratch before the runtime
   architecture exists
 
@@ -363,10 +363,10 @@ JavaScript.
 
 ### Important Clarification About Names Like `require`
 
-`jslite` should not reject arbitrary identifiers named `require` or `process`.
+`mustard` should not reject arbitrary identifiers named `require` or `process`.
 Those names can be legitimate local bindings in JavaScript.
 
-What `jslite` should reject is:
+What `mustard` should reject is:
 
 - module syntax and dynamic import forms
 - dynamic code loading primitives such as `eval` and `Function`
@@ -588,9 +588,9 @@ The bytecode should be:
 - Easy to validate
 - Easy to serialize
 - Instrumentable for instruction budgeting
-- Private to `jslite`, not a public stable standard
+- Private to `mustard`, not a public stable standard
 
-Compiled programs only need to round-trip within the same `jslite` version.
+Compiled programs only need to round-trip within the same `mustard` version.
 
 ### VM
 
@@ -608,7 +608,7 @@ Responsibilities:
 
 ### Values, Objects, and Heap
 
-`jslite` should define an explicit internal `JsValue` type and a heap object
+`mustard` should define an explicit internal `JsValue` type and a heap object
 model with a disciplined rooting strategy.
 
 For v1, object semantics should prioritize correctness and centralization over
@@ -648,7 +648,7 @@ Requirements:
 
 ### Async Runtime
 
-`jslite` owns its own async model.
+`mustard` owns its own async model.
 
 Current behavior:
 
@@ -682,7 +682,7 @@ Requirements:
 
 Snapshots should only be allowed at safe suspension points. If a suspended
 execution depends on ongoing external work, the host must represent that work
-through an explicit continuation token or equivalent resumable contract. `jslite`
+through an explicit continuation token or equivalent resumable contract. `mustard`
 must not attempt to serialize opaque host futures.
 
 ## Resource Model
@@ -721,7 +721,7 @@ type HostValue =
 
 type Capability = (...args: HostValue[]) => HostValue | Promise<HostValue>
 
-const program = new Jslite(source, {
+const program = new Mustard(source, {
   inputs: ['x'],
 })
 
@@ -740,28 +740,28 @@ const result = await program.run({
 
 Lower-level control should exist for advanced hosts:
 
-- `new Jslite(...)`
-- `Jslite.validateProgram(...)`
+- `new Mustard(...)`
+- `Mustard.validateProgram(...)`
 - `run(...)`
 - `start(...)`
 - `progress.resume(...)`
 - `progress.resumeError(...)`
 - `dump()`
-- `Jslite.load(...)`
+- `Mustard.load(...)`
 - `progress.dump()`
 - `Progress.load(...)`
 
 For hosts managing a large backlog of resumable jobs, the Node wrapper also
-exports `JsliteExecutor` plus `InMemoryJsliteExecutorStore` as a thin
+exports `MustardExecutor` plus `InMemoryMustardExecutorStore` as a thin
 queue-oriented layer over `start()` / `Progress.dump()` / `Progress.load()`.
 The design and invariants for that layer are documented in
-[JSLITE_EXECUTOR.md](JSLITE_EXECUTOR.md).
+[MUSTARD_EXECUTOR.md](MUSTARD_EXECUTOR.md).
 
 Native failures are surfaced in Node as typed JavaScript errors:
-`JsliteParseError`, `JsliteValidationError`, `JsliteRuntimeError`,
-`JsliteLimitError`, and `JsliteSerializationError`.
+`MustardParseError`, `MustardValidationError`, `MustardRuntimeError`,
+`MustardLimitError`, and `MustardSerializationError`.
 
-`Jslite.validateProgram(source)` checks that a guest program parses, stays
+`Mustard.validateProgram(source)` checks that a guest program parses, stays
 inside the supported language subset, and lowers to an executable compiled
 program. It does not prove that a later `run()` or `start()` call will succeed
 with a particular host policy, input set, capability map, or runtime limit.
@@ -777,11 +777,11 @@ The common path should be easy. The advanced path should remain explicit.
 ## Repository Shape
 
 ```text
-jslite/
+mustard/
   crates/
-    jslite/
-    jslite-node/
-    jslite-sidecar/
+    mustard/
+    mustard-node/
+    mustard-sidecar/
   docs/
     SECURITY_MODEL.md
     LANGUAGE.md
@@ -798,7 +798,7 @@ complexity. It is semantic ambiguity.
 
 ## What Must Be True Before Production Use
 
-Before `jslite` is described as production-ready for untrusted workloads, the
+Before `mustard` is described as production-ready for untrusted workloads, the
 following should be true:
 
 - the supported subset is written down and tested

@@ -37,8 +37,8 @@ jobs:
 
       - name: Scheduled sanitizer-backed fuzzing
         env:
-          JSLITE_FUZZ_SECONDS: 60
-          JSLITE_FUZZ_TARGETS: parser ir_lowering bytecode_validation bytecode_execution snapshot_load sidecar_protocol
+          MUSTARD_FUZZ_SECONDS: 60
+          MUSTARD_FUZZ_TARGETS: parser ir_lowering bytecode_validation bytecode_execution snapshot_load sidecar_protocol
         run: scripts/run-hardening.sh
 
       - uses: actions/cache/save@v4

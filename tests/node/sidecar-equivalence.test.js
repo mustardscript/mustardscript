@@ -8,7 +8,7 @@ const readline = require('node:readline');
 const { once } = require('node:events');
 const { spawn, spawnSync } = require('node:child_process');
 
-const { Jslite, Progress } = require('../../index.ts');
+const { Mustard, Progress } = require('../../index.ts');
 const {
   decodeStructured,
   encodeResumePayloadError,
@@ -83,7 +83,7 @@ function baseExecutionOptions(capabilities) {
 
 async function runAddon(entry) {
   const sequence = createCapabilitySequence(entry);
-  const runtime = new Jslite(entry.source);
+  const runtime = new Mustard(entry.source);
   const value = await runtime.run(baseExecutionOptions(sequence.capabilities));
   sequence.assertConsumed();
   return normalizeValue(value);
@@ -103,7 +103,7 @@ function assertProgressCapability(entry, progress) {
 
 function driveAddonProgress(entry, { reloadSnapshots }) {
   const capabilities = Object.fromEntries(entry.capabilities.map((name) => [name, () => undefined]));
-  let current = new Jslite(entry.source).start(baseExecutionOptions(capabilities));
+  let current = new Mustard(entry.source).start(baseExecutionOptions(capabilities));
   let index = 0;
 
   while (current instanceof Progress) {
@@ -133,13 +133,13 @@ function ensureSidecarBuilt() {
     return;
   }
   sidecarBuildChecked = true;
-  const result = spawnSync('cargo', ['build', '-q', '-p', 'jslite-sidecar'], {
+  const result = spawnSync('cargo', ['build', '-q', '-p', 'mustard-sidecar'], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
   });
   if (result.status !== 0) {
     throw new Error(
-      `failed to build jslite-sidecar for sidecar equivalence tests\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      `failed to build mustard-sidecar for sidecar equivalence tests\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
   }
 }
@@ -149,7 +149,7 @@ function sidecarExecutablePath() {
     REPO_ROOT,
     'target',
     'debug',
-    process.platform === 'win32' ? 'jslite-sidecar.exe' : 'jslite-sidecar',
+    process.platform === 'win32' ? 'mustard-sidecar.exe' : 'mustard-sidecar',
   );
 }
 

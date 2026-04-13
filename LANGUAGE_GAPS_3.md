@@ -8,23 +8,23 @@ original speculative gap list.
 
 Audit inputs:
 
-- `crates/jslite/src/runtime/builtins/install.rs`
-- `crates/jslite/src/runtime/builtins/primitives.rs`
-- `crates/jslite/src/runtime/builtins/strings.rs`
-- `crates/jslite/src/runtime/builtins/arrays.rs`
-- `crates/jslite/src/runtime/builtins/collections.rs`
-- `crates/jslite/src/runtime/properties.rs`
-- `crates/jslite/src/parser/operators.rs`
-- `crates/jslite/src/runtime/compiler/bindings.rs`
-- `crates/jslite/src/runtime/conversions/operators.rs`
+- `crates/mustard/src/runtime/builtins/install.rs`
+- `crates/mustard/src/runtime/builtins/primitives.rs`
+- `crates/mustard/src/runtime/builtins/strings.rs`
+- `crates/mustard/src/runtime/builtins/arrays.rs`
+- `crates/mustard/src/runtime/builtins/collections.rs`
+- `crates/mustard/src/runtime/properties.rs`
+- `crates/mustard/src/parser/operators.rs`
+- `crates/mustard/src/runtime/compiler/bindings.rs`
+- `crates/mustard/src/runtime/conversions/operators.rs`
 - `tests/node/builtins.test.js`
 - `tests/node/keyed-collections.test.js`
 - `tests/node/language-gaps.test.js`
 - `tests/test262/harness.test.js`
-- `crates/jslite/tests/builtin_surface.rs`
-- `crates/jslite/tests/keyed_collections.rs`
-- `crates/jslite/src/parser/tests/acceptance.rs`
-- `crates/jslite/src/parser/tests/rejections.rs`
+- `crates/mustard/tests/builtin_surface.rs`
+- `crates/mustard/tests/keyed_collections.rs`
+- `crates/mustard/src/parser/tests/acceptance.rs`
+- `crates/mustard/src/parser/tests/rejections.rs`
 
 ## Verifiably Complete
 
@@ -52,8 +52,8 @@ implemented and covered:
 
 Verification evidence:
 
-- `cargo test -p jslite --test builtin_surface --test keyed_collections`
-- `cargo test -p jslite parser`
+- `cargo test -p mustard --test builtin_surface --test keyed_collections`
+- `cargo test -p mustard parser`
 - `node --test tests/node/builtins.test.js tests/node/keyed-collections.test.js tests/node/language-gaps.test.js tests/test262/harness.test.js`
 
 ## Still Open

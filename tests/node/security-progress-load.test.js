@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { Worker } = require('node:worker_threads');
 
-const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { Mustard, MustardError, Progress } = require('../../index.ts');
 const {
   loadNative,
   localBinaryCandidates,
@@ -48,7 +48,7 @@ function replaceAllAscii(buffer, from, to) {
 function isSingleUseRuntimeError(error) {
   return (
     error &&
-    error.name === 'JsliteRuntimeError' &&
+    error.name === 'MustardRuntimeError' &&
     error.kind === 'Runtime' &&
     typeof error.message === 'string' &&
     error.message.includes('single-use')
@@ -57,7 +57,7 @@ function isSingleUseRuntimeError(error) {
 
 function isTamperedSnapshotError(error) {
   return (
-    error instanceof JsliteError &&
+    error instanceof MustardError &&
     error.kind === 'Serialization' &&
     error.message.includes('tampered or unauthenticated snapshot')
   );
@@ -85,11 +85,11 @@ function resolveCurrentNativeBinaryPath() {
   if (prebuilt) {
     return prebuilt.binaryPath;
   }
-  throw new Error('unable to resolve the current jslite native addon path');
+  throw new Error('unable to resolve the current mustard native addon path');
 }
 
 test('progress load derives capability and args from the snapshot instead of caller metadata', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
   `).start({
@@ -112,7 +112,7 @@ test('progress load derives capability and args from the snapshot instead of cal
 });
 
 test('progress load burns same-process snapshots before a second load can expose metadata', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
   `).start({
@@ -133,7 +133,7 @@ test('progress load burns same-process snapshots before a second load can expose
 });
 
 test('progress load rejects already-consumed snapshots before exposing capability metadata', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
   `).start({
@@ -149,7 +149,7 @@ test('progress load rejects already-consumed snapshots before exposing capabilit
 });
 
 test('progress load requires explicit restore policy even in the same process', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
   `).start({
@@ -168,7 +168,7 @@ test('progress load requires explicit restore policy even in the same process', 
 test('progress load rejects replay attempts that re-key an already-consumed dump', () => {
   const originalKey = Buffer.from('progress-security-key-a');
   const replayKey = Buffer.from('progress-security-key-b');
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
   `).start({
@@ -199,7 +199,7 @@ test('progress load rejects replay attempts that re-key an already-consumed dump
 });
 
 test('progress snapshots remain single-use after unrelated same-process churn', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const response = fetch_data(seed);
     response;
   `);
@@ -241,7 +241,7 @@ test('progress snapshots remain single-use after unrelated same-process churn', 
 });
 
 test('progress load rejects already-consumed snapshots across same-process worker threads', async () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
   `).start({
@@ -316,12 +316,12 @@ test('progress load rejects already-consumed snapshots across same-process worke
 
   assert.equal(message.pid, process.pid);
   assert.match(message.withoutOptions, /single-use/);
-  assert.equal(message.withOptions.name, 'JsliteRuntimeError');
+  assert.equal(message.withOptions.name, 'MustardRuntimeError');
   assert.match(message.withOptions.message, /single-use/);
 });
 
 test('progress load rejects already-consumed snapshots across duplicate package copies', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
   `).start({
@@ -334,7 +334,7 @@ test('progress load rejects already-consumed snapshots across duplicate package 
   const dumped = progress.dump();
   assert.equal(progress.resume(4), 8);
 
-  const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-dup-copy-'));
+  const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mustard-dup-copy-'));
   try {
     fs.copyFileSync(
       path.join(__dirname, '..', '..', 'index.ts'),
@@ -372,7 +372,7 @@ test('progress load rejects already-consumed snapshots across duplicate package 
 });
 
 test('progress load rejects forged progress tokens', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
   `).start({
@@ -403,7 +403,7 @@ test('progress load rejects forged progress tokens', () => {
 });
 
 test('progress load releases a claimed snapshot when restore inspection fails', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
   `).start({
@@ -432,7 +432,7 @@ test('progress load releases a claimed snapshot when restore inspection fails', 
 
 test('raw native snapshot inspect and resume require snapshot authentication', () => {
   const native = loadNative();
-  const progress = new Jslite('const value = fetch_data(7); value * 2;').start({
+  const progress = new Mustard('const value = fetch_data(7); value * 2;').start({
     snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data() {},
@@ -465,7 +465,7 @@ test('raw native snapshot inspect and resume require snapshot authentication', (
 });
 
 test('progress load requires explicit policy, limits, and snapshotKey', () => {
-  const progress = new Jslite('fetch_data(1);').start({
+  const progress = new Mustard('fetch_data(1);').start({
     snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data() {},
@@ -514,7 +514,7 @@ test('progress load requires explicit policy, limits, and snapshotKey', () => {
 });
 
 test('progress load works across processes when explicit policy and snapshotKey are provided', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const response = fetch_data(4);
     response * 2;
   `).start({
@@ -571,7 +571,7 @@ test('progress load works across processes when explicit policy and snapshotKey 
 });
 
 test('progress load rejects explicit undefined limits during restore', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const ready = fetch_data(1);
     let total = 0;
     for (let i = 0; i < 10000; i = i + 1) {
@@ -602,7 +602,7 @@ test('progress load rejects explicit undefined limits during restore', () => {
 });
 
 test('progress load rejects tampered snapshots that switch capability bytes', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const first = fetch_data(1);
     const second = fetch_data(2);
     [first, second];
@@ -638,7 +638,7 @@ test('progress load rejects tampered snapshots that switch capability bytes', ()
 });
 
 test('progress load rejects tampered snapshots that lower serialized instruction counters', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const ready = fetch_data(1);
     let total = 0;
     for (let i = 0; i < 10000; i = i + 1) {
@@ -682,7 +682,7 @@ test('progress load rejects tampered snapshots that lower serialized instruction
 });
 
 test('progress load reapplies explicit host limits before resume', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const ready = fetch_data(1);
     let total = 0;
     for (let i = 0; i < 10000; i = i + 1) {
@@ -713,7 +713,7 @@ test('progress load reapplies explicit host limits before resume', () => {
   assert.throws(
     () => restored.resume(1),
     (error) =>
-      error instanceof JsliteError &&
+      error instanceof MustardError &&
       error.kind === 'Limit' &&
       error.message.includes('instruction budget exhausted'),
   );
@@ -721,7 +721,7 @@ test('progress load reapplies explicit host limits before resume', () => {
 
 test('raw native snapshot inspect and resume require explicit limits in restore policy', () => {
   const native = loadNative();
-  const progress = new Jslite('const value = fetch_data(7); value * 2;').start({
+  const progress = new Mustard('const value = fetch_data(7); value * 2;').start({
     snapshotKey: SNAPSHOT_KEY,
     capabilities: {
       fetch_data() {},
@@ -749,7 +749,7 @@ test('raw native snapshot inspect and resume require explicit limits in restore 
 });
 
 test('progress load rejects same-process restore-policy rebinding without an explicit snapshotKey', () => {
-  const progress = new Jslite(`
+  const progress = new Mustard(`
     const secret = fetch_data(7);
     const next = write_audit(secret);
     next;

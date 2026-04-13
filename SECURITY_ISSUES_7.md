@@ -20,26 +20,26 @@ Method:
 - [`lib/progress.js`](lib/progress.js)
 - [`lib/runtime.js`](lib/runtime.js)
 - [`lib/executor.js`](lib/executor.js)
-- [`crates/jslite-node/src/lib.rs`](crates/jslite-node/src/lib.rs)
-- [`crates/jslite-sidecar/src/lib.rs`](crates/jslite-sidecar/src/lib.rs)
-- [`crates/jslite-bridge/src/operations.rs`](crates/jslite-bridge/src/operations.rs)
-- [`crates/jslite/src/runtime/api.rs`](crates/jslite/src/runtime/api.rs)
-- [`crates/jslite/src/runtime/conversions/boundary.rs`](crates/jslite/src/runtime/conversions/boundary.rs)
-- [`crates/jslite/src/runtime/serialization.rs`](crates/jslite/src/runtime/serialization.rs)
-- [`crates/jslite/src/runtime/validation/snapshot.rs`](crates/jslite/src/runtime/validation/snapshot.rs)
-- [`crates/jslite/src/runtime/vm.rs`](crates/jslite/src/runtime/vm.rs)
+- [`crates/mustard-node/src/lib.rs`](crates/mustard-node/src/lib.rs)
+- [`crates/mustard-sidecar/src/lib.rs`](crates/mustard-sidecar/src/lib.rs)
+- [`crates/mustard-bridge/src/operations.rs`](crates/mustard-bridge/src/operations.rs)
+- [`crates/mustard/src/runtime/api.rs`](crates/mustard/src/runtime/api.rs)
+- [`crates/mustard/src/runtime/conversions/boundary.rs`](crates/mustard/src/runtime/conversions/boundary.rs)
+- [`crates/mustard/src/runtime/serialization.rs`](crates/mustard/src/runtime/serialization.rs)
+- [`crates/mustard/src/runtime/validation/snapshot.rs`](crates/mustard/src/runtime/validation/snapshot.rs)
+- [`crates/mustard/src/runtime/vm.rs`](crates/mustard/src/runtime/vm.rs)
 
 ## Critical: restore-time policy rebinding skips closure-owned capability state
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/validation/snapshot.rs`](crates/jslite/src/runtime/validation/snapshot.rs)
-- [`crates/jslite/src/runtime/validation/policy.rs`](crates/jslite/src/runtime/validation/policy.rs)
-- [`crates/jslite/src/runtime/validation/walk.rs`](crates/jslite/src/runtime/validation/walk.rs)
-- [`crates/jslite/src/runtime/state.rs`](crates/jslite/src/runtime/state.rs)
-- [`crates/jslite/src/runtime/properties.rs`](crates/jslite/src/runtime/properties.rs)
-- [`crates/jslite/src/runtime/api.rs`](crates/jslite/src/runtime/api.rs)
-- [`crates/jslite/src/runtime/serialization.rs`](crates/jslite/src/runtime/serialization.rs)
+- [`crates/mustard/src/runtime/validation/snapshot.rs`](crates/mustard/src/runtime/validation/snapshot.rs)
+- [`crates/mustard/src/runtime/validation/policy.rs`](crates/mustard/src/runtime/validation/policy.rs)
+- [`crates/mustard/src/runtime/validation/walk.rs`](crates/mustard/src/runtime/validation/walk.rs)
+- [`crates/mustard/src/runtime/state.rs`](crates/mustard/src/runtime/state.rs)
+- [`crates/mustard/src/runtime/properties.rs`](crates/mustard/src/runtime/properties.rs)
+- [`crates/mustard/src/runtime/api.rs`](crates/mustard/src/runtime/api.rs)
+- [`crates/mustard/src/runtime/serialization.rs`](crates/mustard/src/runtime/serialization.rs)
 
 **Impact**
 
@@ -58,11 +58,11 @@ outside the approved capability set.
 
 - A skeptical verifier confirmed that `walk_heap_values()` and the policy walk
   omit `Closure.this_value`, `Closure.prototype`, and `Closure.properties`.
-- A local throwaway Rust harness against the public `jslite` crate reproduced
+- A local throwaway Rust harness against the public `mustard` crate reproduced
   the bypass on the current checkout. Output:
   `{"hit":6,"capability":"drop_table","args":[String("boom")]}`
 - Existing targeted coverage still passes:
-  `cargo test -q -p jslite --test snapshot_policy_security`
+  `cargo test -q -p mustard --test snapshot_policy_security`
   The current suite covers obvious suspended-call rewrites, but not
   closure-owned capability state.
 
@@ -80,18 +80,18 @@ bytes in the serialized snapshot to `drop_table`, then restore under policy
 `{ capabilities: ['fetch_data'] }`. The current checkout resumes and next
 suspends on `drop_table('boom')`.
 
-## Critical: `JsliteExecutor` does not bind stored progress to the owning job
+## Critical: `MustardExecutor` does not bind stored progress to the owning job
 
 **Affected files**
 
 - [`lib/executor.js`](lib/executor.js)
 - [`lib/progress.js`](lib/progress.js)
 - [`lib/policy.js`](lib/policy.js)
-- [`JSLITE_EXECUTOR.md`](JSLITE_EXECUTOR.md)
+- [`MUSTARD_EXECUTOR.md`](MUSTARD_EXECUTOR.md)
 
 **Impact**
 
-`JsliteExecutor` uses one executor-wide `snapshotKey`, capability set, and
+`MustardExecutor` uses one executor-wide `snapshotKey`, capability set, and
 limit set. `_resumeWaitingJob(jobId)` blindly loads whatever blob
 `store.loadProgress(jobId)` returns and never checks that the blob actually
 belongs to that job.
@@ -108,7 +108,7 @@ tenants or workflows.
 - A skeptical verifier confirmed the cross-job mixup.
 - A local custom-store repro showed the victim job completing from the
   attacker's snapshot while the attacker job later failed single-use:
-  `{"victim":{"state":"completed","result":"ATTACKER"},"attacker":{"state":"failed","error":{"name":"JsliteRuntimeError","message":"Progress objects are single-use; this suspended execution was already resumed"}}}`
+  `{"victim":{"state":"completed","result":"ATTACKER"},"attacker":{"state":"failed","error":{"name":"MustardRuntimeError","message":"Progress objects are single-use; this suspended execution was already resumed"}}}`
 - Existing targeted coverage still passes:
   `node --test tests/node/executor.test.js`
   The current executor suite does not cover swapped waiting snapshots.
@@ -127,7 +127,7 @@ tenants or workflows.
 **Affected files**
 
 - [`lib/progress.js`](lib/progress.js)
-- [`crates/jslite-node/src/lib.rs`](crates/jslite-node/src/lib.rs)
+- [`crates/mustard-node/src/lib.rs`](crates/mustard-node/src/lib.rs)
 - [`docs/HOST_API.md`](docs/HOST_API.md)
 
 **Impact**

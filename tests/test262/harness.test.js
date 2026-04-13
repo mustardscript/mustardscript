@@ -3,10 +3,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { Jslite } = require('../../index.ts');
+const { Mustard } = require('../../index.ts');
 const manifest = require('./manifest.js');
 const { FEATURE_CONTRACT, OUTCOME } = require('../node/conformance-contract.js');
-const { normalizeValue, runJslite, runNode } = require('../node/runtime-oracle.js');
+const { normalizeValue, runMustard, runNode } = require('../node/runtime-oracle.js');
 
 function fixtureSource(file) {
   return fs.readFileSync(path.join(__dirname, file), 'utf8');
@@ -41,7 +41,7 @@ for (const entry of manifest.pass) {
   test(`test262 pass fixture ${entry.id}`, async () => {
     const source = fixtureSource(entry.file);
     const [actual, nodeValue] = await Promise.all([
-      runJslite(source),
+      runMustard(source),
       Promise.resolve(runNode(source)),
     ]);
     assert.deepEqual(normalizeValue(actual), normalizeValue(entry.expected));
@@ -54,7 +54,7 @@ for (const entry of manifest.unsupported) {
     assert.match(entry.reason, /\S/);
     const source = fixtureSource(entry.file);
     assert.throws(
-      () => new Jslite(source),
+      () => new Mustard(source),
       (error) =>
         error &&
         error.kind === entry.errorKind &&

@@ -1,6 +1,6 @@
 # Security Threat Model
 
-This document is the project-level threat model for `jslite`. It complements:
+This document is the project-level threat model for `mustard`. It complements:
 
 - [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) for the short normative
   contract
@@ -14,13 +14,13 @@ This document is the project-level threat model for `jslite`. It complements:
 - [SECURITY.md](SECURITY.md) for disclosure and reporting
 
 The purpose of this file is not to restate every API detail. It is to make the
-security posture explicit: what `jslite` is defending, what it is not
+security posture explicit: what `mustard` is defending, what it is not
 defending, which inputs are untrusted, where the trust boundaries are, and what
 failure classes count as security issues.
 
 ## Executive Summary
 
-- `jslite` is a language-level containment runtime, not a general-purpose OS
+- `mustard` is a language-level containment runtime, not a general-purpose OS
   sandbox.
 - Addon mode is a low-latency embedding path, not a hard isolation boundary.
 - Sidecar mode adds a process boundary and better killability, but it is still
@@ -41,7 +41,7 @@ failure classes count as security issues.
 
 ## Security Objectives
 
-`jslite` is trying to preserve these properties:
+`mustard` is trying to preserve these properties:
 
 1. Guest code does not receive ambient authority by default.
 2. Unsupported syntax, unsupported runtime features, unsupported host values,
@@ -61,7 +61,7 @@ failure classes count as security issues.
 
 ## Explicit Non-Goals
 
-`jslite` does not claim any of the following:
+`mustard` does not claim any of the following:
 
 - Addon mode is not a hard boundary against memory-safety bugs, native crashes,
   or same-process denial of service.
@@ -69,7 +69,7 @@ failure classes count as security issues.
   syscall filtering, filesystem restrictions, network restrictions, uid
   separation, memory cgroups, CPU quotas, wall-clock deadlines, transport
   authentication, or encrypted IPC.
-- Host capability implementations are not sandboxed by `jslite`.
+- Host capability implementations are not sandboxed by `mustard`.
 - `AbortSignal`, `Progress.cancel()`, or sidecar process termination do not
   roll back host side effects that already happened.
 - The project does not provide cryptographic replay protection for snapshots,
@@ -112,15 +112,15 @@ The current design assumes:
 
 ## System Context
 
-`jslite` has four security-relevant implementation components:
+`mustard` has four security-relevant implementation components:
 
-- `crates/jslite`: parser, validator, compiler, VM, heap, serializer, limits,
+- `crates/mustard`: parser, validator, compiler, VM, heap, serializer, limits,
   snapshot inspection, and resume policy enforcement
-- `crates/jslite-node`: the Node-API addon
+- `crates/mustard-node`: the Node-API addon
 - `index.js` plus `native-loader.js`: the JavaScript wrapper for capability
   registration, structured-value encoding/decoding, cancellation plumbing, and
   progress helpers
-- `crates/jslite-sidecar`: the separate-process request/response runner over
+- `crates/mustard-sidecar`: the separate-process request/response runner over
   newline-delimited JSON on stdio
 
 Security-sensitive data that crosses those components includes:
@@ -189,7 +189,7 @@ The core invariants are:
 ### 1. Source Text And Parse/Validate/Lower Boundary
 
 Untrusted source enters through the parser, validator, and lowering pipeline in
-`crates/jslite`.
+`crates/mustard`.
 
 Main threats:
 
@@ -340,7 +340,7 @@ Residual risk:
 - serialized bytes should still be stored and transported with ordinary host
   integrity controls
 - snapshot bytes are not authenticated, encrypted, or anti-replay protected by
-  `jslite`
+  `mustard`
 
 ### 5. Runtime Limits And Cancellation Boundary
 
@@ -378,7 +378,7 @@ The native loading path is part of the trust model.
 
 Loader precedence today is:
 
-1. `JSLITE_NATIVE_LIBRARY_PATH` or `NAPI_RS_NATIVE_LIBRARY_PATH`
+1. `MUSTARD_NATIVE_LIBRARY_PATH` or `NAPI_RS_NATIVE_LIBRARY_PATH`
 2. any local `.node` file under the installed package tree
 3. the matching optional prebuilt package, when present
 
@@ -409,7 +409,7 @@ Residual risk:
 
 ### 7. Sidecar Protocol Boundary
 
-`crates/jslite-sidecar` exposes a narrow request/response protocol over local
+`crates/mustard-sidecar` exposes a narrow request/response protocol over local
 stdio.
 
 Main threats:
@@ -558,7 +558,7 @@ Expected outcome:
 
 ### For packaging and install security
 
-- clear or tightly control `JSLITE_NATIVE_LIBRARY_PATH` and
+- clear or tightly control `MUSTARD_NATIVE_LIBRARY_PATH` and
   `NAPI_RS_NATIVE_LIBRARY_PATH` in production
 - treat optional prebuilt packages as a trust decision, not just a performance
   convenience
@@ -573,9 +573,9 @@ The current security story is backed by tests, fuzz targets, and hardening
 documentation:
 
 - [docs/HARDENING.md](docs/HARDENING.md)
-- [crates/jslite/tests/security_hostile_inputs.rs](crates/jslite/tests/security_hostile_inputs.rs)
-- [crates/jslite/tests/snapshot_policy_security.rs](crates/jslite/tests/snapshot_policy_security.rs)
-- [crates/jslite-sidecar/tests/hostile_protocol.rs](crates/jslite-sidecar/tests/hostile_protocol.rs)
+- [crates/mustard/tests/security_hostile_inputs.rs](crates/mustard/tests/security_hostile_inputs.rs)
+- [crates/mustard/tests/snapshot_policy_security.rs](crates/mustard/tests/snapshot_policy_security.rs)
+- [crates/mustard-sidecar/tests/hostile_protocol.rs](crates/mustard-sidecar/tests/hostile_protocol.rs)
 - [tests/node/security-host-boundary.test.js](tests/node/security-host-boundary.test.js)
 - [tests/node/security-progress-load.test.js](tests/node/security-progress-load.test.js)
 - [tests/node/property-boundary.test.js](tests/node/property-boundary.test.js)

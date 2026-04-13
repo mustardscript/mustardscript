@@ -21,7 +21,7 @@ try {
 
 if (prebuilt) {
   process.stdout.write(
-    `jslite: using optional prebuilt addon from ${prebuilt.packageName}\n`,
+    `MustardScript: using optional prebuilt addon from ${prebuilt.packageName}\n`,
   );
   process.exit(0);
 }
@@ -29,16 +29,16 @@ if (prebuilt) {
 const target = getCurrentPrebuiltTarget();
 if (prebuiltError) {
   process.stdout.write(
-    `jslite: ignoring invalid optional prebuilt for ${target?.platformArchABI ?? `${process.platform}-${process.arch}`}: ${prebuiltError.message}\n`,
+    `MustardScript: ignoring invalid optional prebuilt for ${target?.platformArchABI ?? `${process.platform}-${process.arch}`}: ${prebuiltError.message}\n`,
   );
 }
 if (target) {
   process.stdout.write(
-    `jslite: no installed prebuilt for ${target.platformArchABI}; building from source\n`,
+    `MustardScript: no installed prebuilt for ${target.platformArchABI}; building from source\n`,
   );
 } else {
   process.stdout.write(
-    `jslite: no configured prebuilt for ${process.platform}-${process.arch}; building from source\n`,
+    `MustardScript: no configured prebuilt for ${process.platform}-${process.arch}; building from source\n`,
   );
 }
 
@@ -69,7 +69,7 @@ function parseCargoArtifactPath(output) {
     if (event.reason !== 'compiler-artifact') {
       continue;
     }
-    if (event.target?.name !== 'jslite_node') {
+    if (event.target?.name !== 'mustard_node') {
       continue;
     }
     if (
@@ -87,7 +87,7 @@ function parseCargoArtifactPath(output) {
     }
   }
   if (!artifactPath) {
-    throw new Error('jslite: cargo did not report a native cdylib artifact');
+    throw new Error('MustardScript: cargo did not report a native cdylib artifact');
   }
   return artifactPath;
 }
@@ -98,7 +98,7 @@ const cargoOutput = execFileSync(
   [
     'build',
     '--manifest-path',
-    'crates/jslite-node/Cargo.toml',
+    'crates/mustard-node/Cargo.toml',
     '--message-format',
     'json-render-diagnostics',
   ],
@@ -113,4 +113,4 @@ const cargoOutput = execFileSync(
 const artifactPath = parseCargoArtifactPath(cargoOutput);
 const outputPath = path.join(packageRoot, getLocalBuildOutputFile());
 fs.copyFileSync(artifactPath, outputPath);
-process.stdout.write(`jslite: built local addon at ${path.basename(outputPath)}\n`);
+process.stdout.write(`MustardScript: built local addon at ${path.basename(outputPath)}\n`);

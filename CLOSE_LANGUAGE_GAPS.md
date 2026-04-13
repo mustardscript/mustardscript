@@ -8,10 +8,10 @@ Audit sources:
 
 - `README.md`
 - `docs/LANGUAGE.md`
-- `crates/jslite/src/parser.rs`
-- `crates/jslite/src/runtime/compiler`
-- `crates/jslite/src/runtime/env.rs`
-- `crates/jslite/src/runtime/builtins`
+- `crates/mustard/src/parser.rs`
+- `crates/mustard/src/runtime/compiler`
+- `crates/mustard/src/runtime/env.rs`
+- `crates/mustard/src/runtime/builtins`
 - `tests/node/basic.test.js`
 - `tests/node/async-runtime.test.js`
 - `tests/node/iteration.test.js`

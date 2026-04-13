@@ -21,14 +21,14 @@ Review method:
 - [`lib/policy.js`](lib/policy.js)
 - [`lib/progress.js`](lib/progress.js)
 - [`lib/runtime.js`](lib/runtime.js)
-- [`crates/jslite-node/src/lib.rs`](crates/jslite-node/src/lib.rs)
-- [`crates/jslite-sidecar/src/lib.rs`](crates/jslite-sidecar/src/lib.rs)
-- [`crates/jslite-bridge/src/operations.rs`](crates/jslite-bridge/src/operations.rs)
-- [`crates/jslite/src/runtime/validation/snapshot.rs`](crates/jslite/src/runtime/validation/snapshot.rs)
-- [`crates/jslite/src/runtime/validation/bytecode.rs`](crates/jslite/src/runtime/validation/bytecode.rs)
-- [`crates/jslite/src/runtime/conversions/boundary.rs`](crates/jslite/src/runtime/conversions/boundary.rs)
-- [`crates/jslite/src/runtime/builtins/primitives.rs`](crates/jslite/src/runtime/builtins/primitives.rs)
-- [`crates/jslite/src/runtime/vm.rs`](crates/jslite/src/runtime/vm.rs)
+- [`crates/mustard-node/src/lib.rs`](crates/mustard-node/src/lib.rs)
+- [`crates/mustard-sidecar/src/lib.rs`](crates/mustard-sidecar/src/lib.rs)
+- [`crates/mustard-bridge/src/operations.rs`](crates/mustard-bridge/src/operations.rs)
+- [`crates/mustard/src/runtime/validation/snapshot.rs`](crates/mustard/src/runtime/validation/snapshot.rs)
+- [`crates/mustard/src/runtime/validation/bytecode.rs`](crates/mustard/src/runtime/validation/bytecode.rs)
+- [`crates/mustard/src/runtime/conversions/boundary.rs`](crates/mustard/src/runtime/conversions/boundary.rs)
+- [`crates/mustard/src/runtime/builtins/primitives.rs`](crates/mustard/src/runtime/builtins/primitives.rs)
+- [`crates/mustard/src/runtime/vm.rs`](crates/mustard/src/runtime/vm.rs)
 
 ## Critical: the same dumped snapshot can be replayed by re-keying the token
 
@@ -36,7 +36,7 @@ Review method:
 
 - [`lib/progress.js`](lib/progress.js)
 - [`lib/policy.js`](lib/policy.js)
-- [`crates/jslite-node/src/lib.rs`](crates/jslite-node/src/lib.rs)
+- [`crates/mustard-node/src/lib.rs`](crates/mustard-node/src/lib.rs)
 
 **Impact**
 
@@ -66,12 +66,12 @@ deletes, and other one-shot flows.
 **Short repro**
 
 ```js
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 const { snapshotToken } = require('./lib/policy.js');
 
 const keyA = Buffer.from('key-one');
 const keyB = Buffer.from('key-two');
-const progress = new Jslite('const v = fetch_data(4); v * 2;').start({
+const progress = new Mustard('const v = fetch_data(4); v * 2;').start({
   snapshotKey: keyA,
   capabilities: { fetch_data() {} },
 });
@@ -95,9 +95,9 @@ console.log(replay.resume(4)); // 8 again
 
 **Affected files**
 
-- [`crates/jslite-node/src/lib.rs`](crates/jslite-node/src/lib.rs)
-- [`crates/jslite-bridge/src/operations.rs`](crates/jslite-bridge/src/operations.rs)
-- [`crates/jslite/src/runtime/validation/policy.rs`](crates/jslite/src/runtime/validation/policy.rs)
+- [`crates/mustard-node/src/lib.rs`](crates/mustard-node/src/lib.rs)
+- [`crates/mustard-bridge/src/operations.rs`](crates/mustard-bridge/src/operations.rs)
+- [`crates/mustard/src/runtime/validation/policy.rs`](crates/mustard/src/runtime/validation/policy.rs)
 
 **Impact**
 
@@ -128,7 +128,7 @@ reopens forged-snapshot capability steering for direct addon callers.
 ```js
 const crypto = require('node:crypto');
 const { loadNative } = require('./native-loader.js');
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 function replaceAllAscii(buffer, from, to) {
   const source = Buffer.from(from);
@@ -142,7 +142,7 @@ function replaceAllAscii(buffer, from, to) {
 }
 
 const native = loadNative();
-const progress = new Jslite('const value = fetch_data(7); value * 2;').start({
+const progress = new Mustard('const value = fetch_data(7); value * 2;').start({
   snapshotKey: Buffer.from('original-key'),
   capabilities: { fetch_data() {} },
 });
@@ -174,9 +174,9 @@ console.log(
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/conversions/boundary.rs`](crates/jslite/src/runtime/conversions/boundary.rs)
-- [`crates/jslite/src/runtime/async_runtime/scheduler.rs`](crates/jslite/src/runtime/async_runtime/scheduler.rs)
-- [`crates/jslite/src/runtime/exceptions.rs`](crates/jslite/src/runtime/exceptions.rs)
+- [`crates/mustard/src/runtime/conversions/boundary.rs`](crates/mustard/src/runtime/conversions/boundary.rs)
+- [`crates/mustard/src/runtime/async_runtime/scheduler.rs`](crates/mustard/src/runtime/async_runtime/scheduler.rs)
+- [`crates/mustard/src/runtime/exceptions.rs`](crates/mustard/src/runtime/exceptions.rs)
 
 **Impact**
 
@@ -196,7 +196,7 @@ real top-level boundary-accounting gap rather than a general heap-limit miss.
 - Local repro confirmed `fetch_data();` can return a `5_000_000` byte string
   successfully under `heapLimitBytes: 50_000`.
 - Local control repro confirmed `const value = fetch_data(); value;` fails with
-  `JsliteLimitError: heap limit exceeded` under the same limit.
+  `MustardLimitError: heap limit exceeded` under the same limit.
 - An independent verifier confirmed the same gap for direct resume payloads and
   traced it through `root_result` handling plus `value_to_structured(...)`.
 - [`docs/LIMITS.md`](docs/LIMITS.md) currently says direct top-level string
@@ -206,10 +206,10 @@ real top-level boundary-accounting gap rather than a general heap-limit miss.
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 (async () => {
-  const result = await new Jslite('fetch_data();').run({
+  const result = await new Mustard('fetch_data();').run({
     capabilities: {
       fetch_data() {
         return 'x'.repeat(5_000_000);

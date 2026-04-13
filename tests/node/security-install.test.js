@@ -33,7 +33,7 @@ function createFakeCargo(root) {
     root,
     'target',
     'debug',
-    `libjslite_node${nativeLibraryExtension()}`,
+    `libmustard_node${nativeLibraryExtension()}`,
   );
   const scriptPath = path.join(root, 'fake-cargo.js');
   writeExecutable(
@@ -52,7 +52,7 @@ fs.writeFileSync(sentinelPath, JSON.stringify(process.argv.slice(2)));
 process.stdout.write(JSON.stringify({
   reason: 'compiler-artifact',
   target: {
-    name: 'jslite_node',
+    name: 'mustard_node',
     crate_types: ['cdylib'],
   },
   filenames: [artifactPath],
@@ -76,9 +76,9 @@ process.stdout.write(JSON.stringify({
 }
 
 test('dist/install.js ignores ancestor-resolved @napi-rs/cli and builds through cargo', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'jslite-install-security-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mustard-install-security-'));
   try {
-    const packageRoot = path.join(root, 'node_modules', '@keppoai', 'jslite');
+    const packageRoot = path.join(root, 'node_modules', 'mustardscript');
     const fakeCliRoot = path.join(root, 'node_modules', '@napi-rs', 'cli');
     const fakeCargo = createFakeCargo(root);
     const cliSentinelPath = path.join(root, 'cli-sentinel.txt');
@@ -121,7 +121,7 @@ test('dist/install.js ignores ancestor-resolved @napi-rs/cli and builds through 
       [
         'build',
         '--manifest-path',
-        'crates/jslite-node/Cargo.toml',
+        'crates/mustard-node/Cargo.toml',
         '--message-format',
         'json-render-diagnostics',
       ],

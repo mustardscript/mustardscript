@@ -3,13 +3,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { Jslite, JsliteError, Progress } = require('../../index.ts');
+const { Mustard, MustardError, Progress } = require('../../index.ts');
 const { loadNative } = require('../../native-loader.ts');
 
 function isCancelledLimit(error) {
   return (
-    error instanceof JsliteError &&
-    error.name === 'JsliteLimitError' &&
+    error instanceof MustardError &&
+    error.name === 'MustardLimitError' &&
     error.kind === 'Limit' &&
     /execution cancelled/.test(error.message)
   );
@@ -19,7 +19,7 @@ test('run rejects immediately when the abort signal is already cancelled', async
   const controller = new AbortController();
   controller.abort();
 
-  const runtime = new Jslite('while (true) {}');
+  const runtime = new Mustard('while (true) {}');
   await assert.rejects(runtime.run({ signal: controller.signal }), isCancelledLimit);
 });
 
@@ -29,7 +29,7 @@ test('start short-circuits already-aborted signals before host boundary traversa
 
   assert.throws(
     () =>
-      new Jslite('value;').start({
+      new Mustard('value;').start({
         inputs: {
           value: new Array(1_000_001),
         },
@@ -40,7 +40,7 @@ test('start short-circuits already-aborted signals before host boundary traversa
 });
 
 test('progress.cancel aborts suspended execution without guest catch interception', () => {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     try {
       const value = fetch_data(1);
       value + 1;
@@ -70,7 +70,7 @@ test('run cancels while guest async code is awaiting a host promise', async () =
   });
   const controller = new AbortController();
 
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     async function main() {
       try {
         await fetch_data(1);
@@ -103,7 +103,7 @@ test('progress.resume respects already-aborted signals', () => {
   const controller = new AbortController();
   controller.abort();
 
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const value = fetch_data(1);
     value + 1;
   `);

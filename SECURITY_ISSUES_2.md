@@ -8,7 +8,7 @@ Update on `codex/security-issues-2`: every finding below remains confirmed on
 `main` at `aa61959`, and each item is fixed in this worktree branch with
 targeted tests.
 
-## Critical: `JSLITE_NATIVE_LIBRARY_PATH` and `NAPI_RS_NATIVE_LIBRARY_PATH` allow arbitrary JavaScript execution at import time
+## Critical: `MUSTARD_NATIVE_LIBRARY_PATH` and `NAPI_RS_NATIVE_LIBRARY_PATH` allow arbitrary JavaScript execution at import time
 
 **Status:** confirmed on `main`; fixed on `codex/security-issues-2`
 
@@ -19,7 +19,7 @@ targeted tests.
 
 **Impact**
 
-Importing `@keppoai/jslite` can execute arbitrary attacker-controlled
+Importing `mustardscript` can execute arbitrary attacker-controlled
 JavaScript before any native API validation happens.
 
 The override path is passed directly into `require(...)`, so the payload does
@@ -37,7 +37,7 @@ module.exports = {};
 EOF
 
 SENTINEL_PATH="$tmpdir/sentinel.txt" \
-JSLITE_NATIVE_LIBRARY_PATH="$tmpdir/payload.js" \
+MUSTARD_NATIVE_LIBRARY_PATH="$tmpdir/payload.js" \
 node -e "try { require('./index.js'); } catch {}"
 
 cat "$tmpdir/sentinel.txt" # owned
@@ -79,9 +79,9 @@ npm pack
 tmpdir="$(mktemp -d)"
 cd "$tmpdir"
 npm init -y >/dev/null
-npm install --ignore-scripts /Users/mini/jslite/keppoai-jslite-0.1.0.tgz >/dev/null
+npm install --ignore-scripts /Users/mini/mustard/keppoai-mustard-0.1.0.tgz >/dev/null
 
-fake="@keppoai/jslite-darwin-arm64" # use the host-matching package name
+fake="mustardscript-darwin-arm64" # use the host-matching package name
 mkdir -p "node_modules/$fake"
 cat > "node_modules/$fake/package.json" <<EOF
 { "name": "$fake", "version": "0.0.0", "main": "index.js" }
@@ -92,7 +92,7 @@ fs.writeFileSync(process.env.SENTINEL_PATH, 'fake-prebuilt-ran');
 module.exports = {};
 EOF
 
-SENTINEL_PATH="$tmpdir/sentinel.txt" node -e "try { require('@keppoai/jslite'); } catch {}"
+SENTINEL_PATH="$tmpdir/sentinel.txt" node -e "try { require('mustardscript'); } catch {}"
 cat "$tmpdir/sentinel.txt" # fake-prebuilt-ran
 ```
 
@@ -126,7 +126,7 @@ cross.
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 (async () => {
   const events = [];
@@ -139,7 +139,7 @@ const { Jslite } = require('./index.js');
     },
   });
 
-  const result = await new Jslite('value.answer;').run({ inputs: { value } });
+  const result = await new Mustard('value.answer;').run({ inputs: { value } });
   console.log(result);  // 42
   console.log(events);  // [ 'getPrototypeOf', 'ownKeys', 'gopd' ]
 })();
@@ -178,12 +178,12 @@ down a host process if the error is uncaught.
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 (async () => {
   const value = {};
   value.self = value;
-  await new Jslite('value;').run({ inputs: { value } });
+  await new Mustard('value;').run({ inputs: { value } });
 })();
 ```
 
@@ -205,9 +205,9 @@ cycles into a typed boundary rejection.
 **Affected files**
 
 - [`index.js`](index.js)
-- [`crates/jslite/src/runtime/state.rs`](crates/jslite/src/runtime/state.rs)
-- [`crates/jslite/src/runtime/vm.rs`](crates/jslite/src/runtime/vm.rs)
-- [`crates/jslite/src/runtime/serialization.rs`](crates/jslite/src/runtime/serialization.rs)
+- [`crates/mustard/src/runtime/state.rs`](crates/mustard/src/runtime/state.rs)
+- [`crates/mustard/src/runtime/vm.rs`](crates/mustard/src/runtime/vm.rs)
+- [`crates/mustard/src/runtime/serialization.rs`](crates/mustard/src/runtime/serialization.rs)
 
 **Impact**
 
@@ -224,9 +224,9 @@ That is a replay vulnerability for one-shot approval or side-effecting flows.
 **Short repro**
 
 ```js
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 
-const progress = new Jslite('fetch_data(1);').start({
+const progress = new Mustard('fetch_data(1);').start({
   capabilities: { fetch_data() {} },
 });
 
@@ -255,9 +255,9 @@ remove non-semantic serialized fields from the replay identity calculation.
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/state.rs`](crates/jslite/src/runtime/state.rs)
-- [`crates/jslite/src/runtime/accounting.rs`](crates/jslite/src/runtime/accounting.rs)
-- [`crates/jslite/src/runtime/mod.rs`](crates/jslite/src/runtime/mod.rs)
+- [`crates/mustard/src/runtime/state.rs`](crates/mustard/src/runtime/state.rs)
+- [`crates/mustard/src/runtime/accounting.rs`](crates/mustard/src/runtime/accounting.rs)
+- [`crates/mustard/src/runtime/mod.rs`](crates/mustard/src/runtime/mod.rs)
 
 **Impact**
 
@@ -271,9 +271,9 @@ budget that should have already been exhausted.
 **Short repro**
 
 ```js
-const { Jslite, Progress } = require('./index.js');
+const { Mustard, Progress } = require('./index.js');
 
-const progress = new Jslite('fetch_data(1);').start({
+const progress = new Mustard('fetch_data(1);').start({
   capabilities: { fetch_data() {} },
 });
 
@@ -309,10 +309,10 @@ trusting the stored value.
 
 **Affected files**
 
-- [`crates/jslite/src/runtime/builtins/arrays.rs`](crates/jslite/src/runtime/builtins/arrays.rs)
-- [`crates/jslite/src/runtime/builtins/objects.rs`](crates/jslite/src/runtime/builtins/objects.rs)
-- [`crates/jslite/src/runtime/mod.rs`](crates/jslite/src/runtime/mod.rs)
-- [`crates/jslite/src/runtime/vm.rs`](crates/jslite/src/runtime/vm.rs)
+- [`crates/mustard/src/runtime/builtins/arrays.rs`](crates/mustard/src/runtime/builtins/arrays.rs)
+- [`crates/mustard/src/runtime/builtins/objects.rs`](crates/mustard/src/runtime/builtins/objects.rs)
+- [`crates/mustard/src/runtime/mod.rs`](crates/mustard/src/runtime/mod.rs)
+- [`crates/mustard/src/runtime/vm.rs`](crates/mustard/src/runtime/vm.rs)
 
 **Impact**
 
@@ -331,12 +331,12 @@ insertion sort, so descending input drives quadratic work.
 **Short repro**
 
 ```js
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 
 (async () => {
   const big = Array.from({ length: 12000 }, (_, i) => 12000 - i);
   const started = Date.now();
-  const result = await new Jslite('big.sort(); 1;').run({
+  const result = await new Mustard('big.sort(); 1;').run({
     inputs: { big },
     limits: { instructionBudget: 20 },
   });
@@ -385,11 +385,11 @@ runtime.
 
 ```sh
 node --expose-gc - <<'EOF'
-const { Jslite } = require('./index.js');
+const { Mustard } = require('./index.js');
 if (global.gc) global.gc();
 const before = process.memoryUsage();
 for (let i = 0; i < 50000; i++) {
-  new Jslite(`fetch_data(${i});`).start({ capabilities: { fetch_data() {} } });
+  new Mustard(`fetch_data(${i});`).start({ capabilities: { fetch_data() {} } });
 }
 if (global.gc) global.gc();
 const after = process.memoryUsage();

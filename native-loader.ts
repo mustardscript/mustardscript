@@ -13,7 +13,7 @@ const PREBUILT_TARGETS = Object.freeze([
     platform: 'win32',
     arch: 'x64',
     platformArchABI: 'win32-x64-msvc',
-    packageName: '@keppoai/jslite-win32-x64-msvc',
+    packageName: 'mustardscript-win32-x64-msvc',
     localFile: 'index.win32-x64-msvc.node',
     os: ['win32'],
     cpu: ['x64'],
@@ -23,7 +23,7 @@ const PREBUILT_TARGETS = Object.freeze([
     platform: 'darwin',
     arch: 'x64',
     platformArchABI: 'darwin-x64',
-    packageName: '@keppoai/jslite-darwin-x64',
+    packageName: 'mustardscript-darwin-x64',
     localFile: 'index.darwin-x64.node',
     os: ['darwin'],
     cpu: ['x64'],
@@ -33,7 +33,7 @@ const PREBUILT_TARGETS = Object.freeze([
     platform: 'darwin',
     arch: 'arm64',
     platformArchABI: 'darwin-arm64',
-    packageName: '@keppoai/jslite-darwin-arm64',
+    packageName: 'mustardscript-darwin-arm64',
     localFile: 'index.darwin-arm64.node',
     os: ['darwin'],
     cpu: ['arm64'],
@@ -43,7 +43,7 @@ const PREBUILT_TARGETS = Object.freeze([
     platform: 'linux',
     arch: 'x64',
     platformArchABI: 'linux-x64-gnu',
-    packageName: '@keppoai/jslite-linux-x64-gnu',
+    packageName: 'mustardscript-linux-x64-gnu',
     localFile: 'index.linux-x64-gnu.node',
     os: ['linux'],
     cpu: ['x64'],
@@ -146,7 +146,7 @@ function resolvePrebuiltPackage(searchRoot = packageRoot()) {
 function localBinaryCandidates(searchRoot = packageRoot()) {
   const roots = [
     searchRoot,
-    path.join(searchRoot, 'crates', 'jslite-node'),
+    path.join(searchRoot, 'crates', 'mustard-node'),
   ];
   const candidates = [];
 
@@ -173,7 +173,9 @@ function loadNative(options = {}) {
   const overrideCwd = options.overrideCwd ?? process.cwd();
   const loadErrors = [];
   const overridePath =
-    env.JSLITE_NATIVE_LIBRARY_PATH ?? env.NAPI_RS_NATIVE_LIBRARY_PATH;
+    env.MUSTARDSCRIPT_NATIVE_LIBRARY_PATH ??
+    env.MUSTARD_NATIVE_LIBRARY_PATH ??
+    env.NAPI_RS_NATIVE_LIBRARY_PATH;
   if (overridePath) {
     try {
       return require(resolveNativeAddonPath(overridePath, 'native library override', overrideCwd));
@@ -209,7 +211,7 @@ function loadNative(options = {}) {
     : `${process.platform}-${process.arch}`;
   throw new AggregateError(
     loadErrors,
-    `Unable to locate a jslite native addon for ${platformHint}. Install a matching optional prebuilt package or allow the source build to run.`,
+    `Unable to locate a MustardScript native addon for ${platformHint}. Install a matching optional prebuilt package or allow the source build to run.`,
   );
 }
 

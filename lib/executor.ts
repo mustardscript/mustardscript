@@ -4,14 +4,14 @@ const { createHmac, randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
 const { types } = require('node:util');
 
-const { JsliteError, normalizeNativeError } = require('./errors.ts');
+const { MustardError, normalizeNativeError } = require('./errors.ts');
 const { normalizeSnapshotKey } = require('./policy.ts');
 
 const TERMINAL_STATES = new Set(['completed', 'failed', 'cancelled']);
 const RUNNABLE_STATES = new Set(['queued', 'waiting']);
 const DEFAULT_MAX_CONCURRENT_JOBS = 1;
 const DEFAULT_POLL_INTERVAL_MS = 25;
-const EXECUTOR_JOB_SNAPSHOT_KEY_LABEL = 'jslite-executor-job-snapshot-key';
+const EXECUTOR_JOB_SNAPSHOT_KEY_LABEL = 'mustard-executor-job-snapshot-key';
 
 function assertPlainObject(value, label) {
   if (value === null || typeof value !== 'object' || Array.isArray(value) || types.isProxy(value)) {
@@ -40,7 +40,7 @@ function clonePersistedProgress(progress) {
 
 function sanitizeFailure(error) {
   const normalized = normalizeNativeError(error);
-  if (normalized instanceof JsliteError) {
+  if (normalized instanceof MustardError) {
     return {
       name: normalized.name,
       message: normalized.message,
@@ -73,7 +73,7 @@ function sanitizeFailure(error) {
 function isCancellationFailure(error) {
   const normalized = normalizeNativeError(error);
   return (
-    normalized instanceof JsliteError &&
+    normalized instanceof MustardError &&
     normalized.kind === 'Limit' &&
     normalized.message.includes('execution cancelled')
   );
@@ -120,7 +120,7 @@ async function waitForSignalOrDelay(signal, ms) {
   }
 }
 
-class InMemoryJsliteExecutorStore {
+class InMemoryMustardExecutorStore {
   constructor() {
     this._jobs = new Map();
     this._progress = new Map();
@@ -229,7 +229,7 @@ class InMemoryJsliteExecutorStore {
         args: undefined,
         result: undefined,
         error: {
-          name: 'JsliteLimitError',
+          name: 'MustardLimitError',
           message: 'execution cancelled',
         },
         updatedAt: Date.now(),
@@ -250,11 +250,11 @@ class InMemoryJsliteExecutorStore {
   }
 }
 
-function createExecutorApi({ Jslite, Progress }) {
-  class JsliteExecutor {
+function createExecutorApi({ Mustard, Progress }) {
+  class MustardExecutor {
     constructor(options) {
       if (options === null || typeof options !== 'object') {
-        throw new TypeError('JsliteExecutor options must be an object');
+        throw new TypeError('MustardExecutor options must be an object');
       }
       const {
         program,
@@ -263,12 +263,12 @@ function createExecutorApi({ Jslite, Progress }) {
         store,
         limits = {},
       } = options;
-      if (!(program instanceof Jslite)) {
-        throw new TypeError('JsliteExecutor options.program must be a Jslite instance');
+      if (!(program instanceof Mustard)) {
+        throw new TypeError('MustardExecutor options.program must be a Mustard instance');
       }
-      assertPlainObject(capabilities, 'JsliteExecutor options.capabilities');
+      assertPlainObject(capabilities, 'MustardExecutor options.capabilities');
       if (store === undefined || store === null || typeof store !== 'object') {
-        throw new TypeError('JsliteExecutor options.store must be a JsliteExecutorStore');
+        throw new TypeError('MustardExecutor options.store must be a MustardExecutorStore');
       }
       for (const method of [
         'enqueue',
@@ -283,14 +283,14 @@ function createExecutorApi({ Jslite, Progress }) {
         'consumeCancel',
       ]) {
         if (typeof store[method] !== 'function') {
-          throw new TypeError(`JsliteExecutor options.store is missing ${method}()`);
+          throw new TypeError(`MustardExecutor options.store is missing ${method}()`);
         }
       }
       this._program = program;
       this._capabilities = capabilities;
       this._snapshotKey = normalizeSnapshotKey(
         snapshotKey,
-        'JsliteExecutor options.snapshotKey',
+        'MustardExecutor options.snapshotKey',
       );
       this._store = store;
       this._limits = { ...limits };
@@ -303,9 +303,9 @@ function createExecutorApi({ Jslite, Progress }) {
     _limits;
 
     async enqueue(input, options = {}) {
-      assertPlainObject(input, 'JsliteExecutor.enqueue() input');
+      assertPlainObject(input, 'MustardExecutor.enqueue() input');
       if (options === null || typeof options !== 'object') {
-        throw new TypeError('JsliteExecutor.enqueue() options must be an object');
+        throw new TypeError('MustardExecutor.enqueue() options must be an object');
       }
       const now = Date.now();
       const jobId = options.jobId ?? randomUUID();
@@ -331,12 +331,12 @@ function createExecutorApi({ Jslite, Progress }) {
 
     async runWorker(options = {}) {
       if (options === null || typeof options !== 'object') {
-        throw new TypeError('JsliteExecutor.runWorker() options must be an object');
+        throw new TypeError('MustardExecutor.runWorker() options must be an object');
       }
       const workerId = randomUUID();
       const maxConcurrentJobs = options.maxConcurrentJobs ?? DEFAULT_MAX_CONCURRENT_JOBS;
       if (!Number.isInteger(maxConcurrentJobs) || maxConcurrentJobs <= 0) {
-        throw new TypeError('JsliteExecutor.runWorker() maxConcurrentJobs must be a positive integer');
+        throw new TypeError('MustardExecutor.runWorker() maxConcurrentJobs must be a positive integer');
       }
       const signal = options.signal;
       const drain = options.drain === true;
@@ -416,7 +416,7 @@ function createExecutorApi({ Jslite, Progress }) {
     async _resumeWaitingJob(jobId, record) {
       const dumped = await this._store.loadProgress(jobId);
       if (dumped === null) {
-        await this._failJob(jobId, new JsliteError('Serialization', `missing stored progress for job ${jobId}`));
+        await this._failJob(jobId, new MustardError('Serialization', `missing stored progress for job ${jobId}`));
         return;
       }
       const snapshotKey = deriveJobSnapshotKey(this._snapshotKey, jobId);
@@ -456,7 +456,7 @@ function createExecutorApi({ Jslite, Progress }) {
       if (typeof handler !== 'function') {
         await this._failJob(
           jobId,
-          new JsliteError('Runtime', `Missing capability: ${progress.capability}`),
+          new MustardError('Runtime', `Missing capability: ${progress.capability}`),
         );
         return;
       }
@@ -544,12 +544,12 @@ function createExecutorApi({ Jslite, Progress }) {
   }
 
   return {
-    InMemoryJsliteExecutorStore,
-    JsliteExecutor,
+    InMemoryMustardExecutorStore,
+    MustardExecutor,
   };
 }
 
 module.exports = {
   createExecutorApi,
-  InMemoryJsliteExecutorStore,
+  InMemoryMustardExecutorStore,
 };

@@ -1,6 +1,6 @@
 # Verification Swarm Report 4
 
-Generated on 2026-04-12 for `/Users/mini/jslite`.
+Generated on 2026-04-12 for `/Users/mini/mustard`.
 
 ## Resolution Status
 
@@ -27,7 +27,7 @@ Direct parity probe pattern:
 
 ```js
 const nodeResult = vm.runInNewContext('"use strict";\n' + source, Object.create(null));
-const runtimeResult = await new Jslite(source).run();
+const runtimeResult = await new Mustard(source).run();
 ```
 
 ## Commands Run
@@ -37,13 +37,13 @@ const runtimeResult = await new Jslite(source).run();
 - `npm run lint`
 - `npm test`
 - `node --test tests/node/differential.test.js --test-name-pattern 'matches Node for callable metadata and constructor links'`
-- Multiple focused `node - <<'NODE'` probes comparing strict-script Node results against `await new Jslite(source).run()`
+- Multiple focused `node - <<'NODE'` probes comparing strict-script Node results against `await new Mustard(source).run()`
 
 Notes:
 
 - `cargo test --workspace` passed during the audit.
 - `npm run lint` passed during the audit.
-- `npm test` was initially green during the baseline pass, but a later rerun failed at [`tests/node/bigint.test.js`](/Users/mini/jslite/tests/node/bigint.test.js:154). That failure is included below as confirmed test / contract drift because the negative expectation is stale.
+- `npm test` was initially green during the baseline pass, but a later rerun failed at [`tests/node/bigint.test.js`](/Users/mini/mustard/tests/node/bigint.test.js:154). That failure is included below as confirmed test / contract drift because the negative expectation is stale.
 
 ## 12 Validation Slices
 
@@ -89,9 +89,9 @@ x;
 - Runtime result: `2`
 
 Code path:
-- [`crates/jslite/src/runtime/compiler/mod.rs`](/Users/mini/jslite/crates/jslite/src/runtime/compiler/mod.rs:153)
-- [`crates/jslite/src/runtime/env.rs`](/Users/mini/jslite/crates/jslite/src/runtime/env.rs:64)
-- [`crates/jslite/src/runtime/env.rs`](/Users/mini/jslite/crates/jslite/src/runtime/env.rs:88)
+- [`crates/mustard/src/runtime/compiler/mod.rs`](/Users/mini/mustard/crates/mustard/src/runtime/compiler/mod.rs:153)
+- [`crates/mustard/src/runtime/env.rs`](/Users/mini/mustard/crates/mustard/src/runtime/env.rs:64)
+- [`crates/mustard/src/runtime/env.rs`](/Users/mini/mustard/crates/mustard/src/runtime/env.rs:88)
 
 The compiler hard-codes `globalThis` during root-scope function installation, and duplicate lexical declarations are silently accepted instead of rejected during declaration/instantiation.
 
@@ -173,14 +173,14 @@ function f() {}
 - Runtime result: `"[Function]"` placeholders
 
 Code path:
-- [`crates/jslite/src/runtime/properties.rs`](/Users/mini/jslite/crates/jslite/src/runtime/properties.rs:55)
-- [`crates/jslite/src/runtime/properties.rs`](/Users/mini/jslite/crates/jslite/src/runtime/properties.rs:396)
-- [`crates/jslite/src/runtime/properties.rs`](/Users/mini/jslite/crates/jslite/src/runtime/properties.rs:1053)
-- [`crates/jslite/src/runtime/properties.rs`](/Users/mini/jslite/crates/jslite/src/runtime/properties.rs:1358)
-- [`crates/jslite/src/runtime/builtins/objects.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/objects.rs:67)
-- [`crates/jslite/src/runtime/builtins/objects.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/objects.rs:348)
-- [`crates/jslite/src/runtime/conversions/coercions.rs`](/Users/mini/jslite/crates/jslite/src/runtime/conversions/coercions.rs:127)
-- [`crates/jslite/src/parser/expressions.rs`](/Users/mini/jslite/crates/jslite/src/parser/expressions.rs:153)
+- [`crates/mustard/src/runtime/properties.rs`](/Users/mini/mustard/crates/mustard/src/runtime/properties.rs:55)
+- [`crates/mustard/src/runtime/properties.rs`](/Users/mini/mustard/crates/mustard/src/runtime/properties.rs:396)
+- [`crates/mustard/src/runtime/properties.rs`](/Users/mini/mustard/crates/mustard/src/runtime/properties.rs:1053)
+- [`crates/mustard/src/runtime/properties.rs`](/Users/mini/mustard/crates/mustard/src/runtime/properties.rs:1358)
+- [`crates/mustard/src/runtime/builtins/objects.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/objects.rs:67)
+- [`crates/mustard/src/runtime/builtins/objects.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/objects.rs:348)
+- [`crates/mustard/src/runtime/conversions/coercions.rs`](/Users/mini/mustard/crates/mustard/src/runtime/conversions/coercions.rs:127)
+- [`crates/mustard/src/parser/expressions.rs`](/Users/mini/mustard/crates/mustard/src/parser/expressions.rs:153)
 
 The runtime treats closures, bound functions, built-in functions, and host functions as callable values, but not as a coherent object model with Node-like own-property behavior.
 
@@ -229,9 +229,9 @@ Representative repros:
 - Runtime result: `Error: value is not callable`
 
 Code path:
-- [`crates/jslite/src/runtime/properties.rs`](/Users/mini/jslite/crates/jslite/src/runtime/properties.rs:534)
-- [`crates/jslite/src/runtime/properties.rs`](/Users/mini/jslite/crates/jslite/src/runtime/properties.rs:907)
-- [`crates/jslite/src/runtime/properties.rs`](/Users/mini/jslite/crates/jslite/src/runtime/properties.rs:1234)
+- [`crates/mustard/src/runtime/properties.rs`](/Users/mini/mustard/crates/mustard/src/runtime/properties.rs:534)
+- [`crates/mustard/src/runtime/properties.rs`](/Users/mini/mustard/crates/mustard/src/runtime/properties.rs:907)
+- [`crates/mustard/src/runtime/properties.rs`](/Users/mini/mustard/crates/mustard/src/runtime/properties.rs:1234)
 
 Primitive strings expose some helper methods, but primitive indexing, primitive `.constructor`, and several boxed wrapper methods are still missing.
 
@@ -288,9 +288,9 @@ const result = values.reduceRight((acc, value, index, array) => {
 - Runtime result: `{ result: 6, seen: [2,1,0], finalLength: 3, finalKeys: ["0","1","2","length"] }`
 
 Code path:
-- [`crates/jslite/src/runtime/builtins/arrays.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/arrays.rs:869)
-- [`crates/jslite/src/runtime/builtins/arrays.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/arrays.rs:1110)
-- [`crates/jslite/src/runtime/properties.rs`](/Users/mini/jslite/crates/jslite/src/runtime/properties.rs:1381)
+- [`crates/mustard/src/runtime/builtins/arrays.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/arrays.rs:869)
+- [`crates/mustard/src/runtime/builtins/arrays.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/arrays.rs:1110)
+- [`crates/mustard/src/runtime/properties.rs`](/Users/mini/mustard/crates/mustard/src/runtime/properties.rs:1381)
 
 Two structural problems combine here:
 
@@ -340,13 +340,13 @@ new Date(-62198755200000).toJSON();
 - Runtime result: `"-001-01-01T00:00:00.000Z"`
 
 Code path:
-- [`crates/jslite/src/runtime/builtins/support.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/support.rs:43)
-- [`crates/jslite/src/runtime/builtins/support.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/support.rs:50)
-- [`crates/jslite/src/runtime/builtins/support.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/support.rs:80)
-- [`crates/jslite/src/runtime/builtins/support.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/support.rs:93)
-- [`crates/jslite/src/runtime/builtins/primitives.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/primitives.rs:147)
-- [`crates/jslite/src/runtime/builtins/primitives.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/primitives.rs:165)
-- [`crates/jslite/src/runtime/builtins/primitives.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/primitives.rs:211)
+- [`crates/mustard/src/runtime/builtins/support.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/support.rs:43)
+- [`crates/mustard/src/runtime/builtins/support.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/support.rs:50)
+- [`crates/mustard/src/runtime/builtins/support.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/support.rs:80)
+- [`crates/mustard/src/runtime/builtins/support.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/support.rs:93)
+- [`crates/mustard/src/runtime/builtins/primitives.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/primitives.rs:147)
+- [`crates/mustard/src/runtime/builtins/primitives.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/primitives.rs:165)
+- [`crates/mustard/src/runtime/builtins/primitives.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/primitives.rs:211)
 
 The current helper layer turns invalid UTC accessor reads into throws, mishandles `TimeClip` edge cases, and still does not round-trip some extended-year ISO values correctly.
 
@@ -400,11 +400,11 @@ Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(-1.23)
 - Runtime result: `"$-1.23"`
 
 Code path:
-- [`crates/jslite/src/runtime/builtins/intl.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/intl.rs:113)
-- [`crates/jslite/src/runtime/builtins/intl.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/intl.rs:160)
-- [`crates/jslite/src/runtime/builtins/intl.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/intl.rs:273)
-- [`crates/jslite/src/runtime/builtins/intl.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/intl.rs:298)
-- [`crates/jslite/src/runtime/builtins/intl.rs`](/Users/mini/jslite/crates/jslite/src/runtime/builtins/intl.rs:404)
+- [`crates/mustard/src/runtime/builtins/intl.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/intl.rs:113)
+- [`crates/mustard/src/runtime/builtins/intl.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/intl.rs:160)
+- [`crates/mustard/src/runtime/builtins/intl.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/intl.rs:273)
+- [`crates/mustard/src/runtime/builtins/intl.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/intl.rs:298)
+- [`crates/mustard/src/runtime/builtins/intl.rs`](/Users/mini/mustard/crates/mustard/src/runtime/builtins/intl.rs:404)
 
 Unsupported `Intl` options are currently ignored instead of failing closed, and several formatting details still differ even inside accepted calls.
 
@@ -417,7 +417,7 @@ Classification:
 Representative repros:
 
 ```js
-const progress = new Jslite('const v = fetch_data(5); v + 3;').start({
+const progress = new Mustard('const v = fetch_data(5); v + 3;').start({
   snapshotKey: 'k',
   capabilities: { fetch_data() {} },
   limits: {},
@@ -427,7 +427,7 @@ progress.resume(5);
 Progress.load(dumped);
 ```
 
-- Addon result: first resume completes `8`; later `Progress.load(dumped)` throws `JsliteRuntimeError: Progress objects are single-use; this suspended execution was already resumed`
+- Addon result: first resume completes `8`; later `Progress.load(dumped)` throws `MustardRuntimeError: Progress objects are single-use; this suspended execution was already resumed`
 - Sidecar result: replaying the same authenticated `snapshot_base64` in two `resume` requests succeeds twice and completes `8` both times
 
 ```js
@@ -438,7 +438,7 @@ const source = `
   sum + value;
 `;
 const limits = { instructionBudget: 50 };
-const dumped = new Jslite(source).start({
+const dumped = new Mustard(source).start({
   snapshotKey: 'k',
   capabilities: { fetch_data() {} },
   limits,
@@ -450,18 +450,18 @@ Progress.load(dumped, {
 }).resume(1);
 ```
 
-- Direct addon resume under the original `instructionBudget: 50` fails with `JsliteLimitError: instruction budget exhausted`
+- Direct addon resume under the original `instructionBudget: 50` fails with `MustardLimitError: instruction budget exhausted`
 - Restored addon progress with `limits: undefined` completes `199990001`
 - Sidecar replay with `policy.limits` omitted also completes `199990001`, while the same replay with `policy.limits: { instruction_budget: 50 }` correctly fails
 
 Code path:
-- [`lib/progress.js`](/Users/mini/jslite/lib/progress.js:23)
-- [`lib/progress.js`](/Users/mini/jslite/lib/progress.js:53)
-- [`lib/progress.js`](/Users/mini/jslite/lib/progress.js:123)
-- [`lib/policy.js`](/Users/mini/jslite/lib/policy.js:223)
-- [`lib/policy.js`](/Users/mini/jslite/lib/policy.js:275)
-- [`crates/jslite-bridge/src/dto.rs`](/Users/mini/jslite/crates/jslite-bridge/src/dto.rs:42)
-- [`crates/jslite-bridge/src/dto.rs`](/Users/mini/jslite/crates/jslite-bridge/src/dto.rs:80)
+- [`lib/progress.js`](/Users/mini/mustard/lib/progress.js:23)
+- [`lib/progress.js`](/Users/mini/mustard/lib/progress.js:53)
+- [`lib/progress.js`](/Users/mini/mustard/lib/progress.js:123)
+- [`lib/policy.js`](/Users/mini/mustard/lib/policy.js:223)
+- [`lib/policy.js`](/Users/mini/mustard/lib/policy.js:275)
+- [`crates/mustard-bridge/src/dto.rs`](/Users/mini/mustard/crates/mustard-bridge/src/dto.rs:42)
+- [`crates/mustard-bridge/src/dto.rs`](/Users/mini/mustard/crates/mustard-bridge/src/dto.rs:80)
 
 The addon and sidecar expose different replay semantics, and serialized executions are not bound to their original limits unless the caller explicitly re-supplies them on restore.
 
@@ -475,7 +475,7 @@ Classification:
 
 Evidence:
 
-- [`tests/node/differential.test.js`](/Users/mini/jslite/tests/node/differential.test.js:501) and [`tests/node/builtins.test.js`](/Users/mini/jslite/tests/node/builtins.test.js:629) verify `name`, `length`, `prototype`, and a few constructor-instance links, but they never read callable `.constructor`, never check built-in constructor extensibility, and never check bound-function `Object.hasOwn(..., "name" | "length")`.
+- [`tests/node/differential.test.js`](/Users/mini/mustard/tests/node/differential.test.js:501) and [`tests/node/builtins.test.js`](/Users/mini/mustard/tests/node/builtins.test.js:629) verify `name`, `length`, `prototype`, and a few constructor-instance links, but they never read callable `.constructor`, never check built-in constructor extensibility, and never check bound-function `Object.hasOwn(..., "name" | "length")`.
 - Those same coverage areas also miss a confirmed metadata mismatch in default-parameter arity:
 
 ```js
@@ -486,7 +486,7 @@ f.length;
   - Node result: `1`
   - Runtime result: `3`
 
-- [`docs/LANGUAGE.md`](/Users/mini/jslite/docs/LANGUAGE.md:462) says supported guest functions and built-in callables expose `constructor`, but current runtime repros show that claim is false for guest, built-in, host, and most bound callables.
+- [`docs/LANGUAGE.md`](/Users/mini/mustard/docs/LANGUAGE.md:462) says supported guest functions and built-in callables expose `constructor`, but current runtime repros show that claim is false for guest, built-in, host, and most bound callables.
 
 ### 2. Primitive property coverage misses the confirmed autoboxing and property-access gaps
 
@@ -494,7 +494,7 @@ Classification: confirmed test bug
 
 Evidence:
 
-- [`tests/node/conformance-contract.js`](/Users/mini/jslite/tests/node/conformance-contract.js:121), [`tests/node/coverage-audit.test.js`](/Users/mini/jslite/tests/node/coverage-audit.test.js:208), [`tests/node/coverage-audit.test.js`](/Users/mini/jslite/tests/node/coverage-audit.test.js:374), and [`tests/node/builtins.test.js`](/Users/mini/jslite/tests/node/builtins.test.js:14) do not pin primitive indexing or primitive `.constructor` behavior tightly enough to catch the current runtime gap.
+- [`tests/node/conformance-contract.js`](/Users/mini/mustard/tests/node/conformance-contract.js:121), [`tests/node/coverage-audit.test.js`](/Users/mini/mustard/tests/node/coverage-audit.test.js:208), [`tests/node/coverage-audit.test.js`](/Users/mini/mustard/tests/node/coverage-audit.test.js:374), and [`tests/node/builtins.test.js`](/Users/mini/mustard/tests/node/builtins.test.js:14) do not pin primitive indexing or primitive `.constructor` behavior tightly enough to catch the current runtime gap.
 
 ```js
 ['ab'[0], typeof 'ab'.constructor, typeof (1).constructor, typeof true.constructor];
@@ -509,8 +509,8 @@ Classification: confirmed docs drift
 
 Evidence:
 
-- [`docs/LANGUAGE.md`](/Users/mini/jslite/docs/LANGUAGE.md:446) says `findLast` / `findLastIndex` follow the same callback rules as `find` / `findIndex`, but current runtime skips holes while `find` / `findIndex` already visit them as `undefined`.
-- [`docs/LANGUAGE.md`](/Users/mini/jslite/docs/LANGUAGE.md:515) and [`README.md`](/Users/mini/jslite/README.md:463) say unsupported `Intl` options fail closed, but `weekday: "long"` and `notation: "scientific"` are silently ignored.
+- [`docs/LANGUAGE.md`](/Users/mini/mustard/docs/LANGUAGE.md:446) says `findLast` / `findLastIndex` follow the same callback rules as `find` / `findIndex`, but current runtime skips holes while `find` / `findIndex` already visit them as `undefined`.
+- [`docs/LANGUAGE.md`](/Users/mini/mustard/docs/LANGUAGE.md:515) and [`README.md`](/Users/mini/mustard/README.md:463) say unsupported `Intl` options fail closed, but `weekday: "long"` and `notation: "scientific"` are silently ignored.
 
 ### 4. The `Date` docs overstate accepted string parsing
 
@@ -518,7 +518,7 @@ Classification: confirmed docs drift
 
 Evidence:
 
-- [`docs/LANGUAGE.md`](/Users/mini/jslite/docs/LANGUAGE.md:507) describes `new Date(value).getTime()` as supported without narrowing the accepted string formats enough to match the current implementation.
+- [`docs/LANGUAGE.md`](/Users/mini/mustard/docs/LANGUAGE.md:507) describes `new Date(value).getTime()` as supported without narrowing the accepted string formats enough to match the current implementation.
 
 ```js
 (() => {
@@ -536,14 +536,14 @@ Classification: confirmed docs drift
 
 Evidence:
 
-- [`docs/HOST_API.md`](/Users/mini/jslite/docs/HOST_API.md:121) documents addon `Progress` objects as single-use, while [`docs/SIDECAR_PROTOCOL.md`](/Users/mini/jslite/docs/SIDECAR_PROTOCOL.md:112) explicitly documents stateless sidecar replay. That means the public surfaces intentionally expose different lifecycle rules, but consumers cannot assume parity between addon restore and sidecar resume.
-- [`docs/SIDECAR_PROTOCOL.md`](/Users/mini/jslite/docs/SIDECAR_PROTOCOL.md:73) and [`docs/SIDECAR_PROTOCOL.md`](/Users/mini/jslite/docs/SIDECAR_PROTOCOL.md:138) do not make it clear that a `payload` of `{ "type": "cancelled" }` is accepted and translated into a cancellation limit error rather than rejected as an unsupported resume payload.
+- [`docs/HOST_API.md`](/Users/mini/mustard/docs/HOST_API.md:121) documents addon `Progress` objects as single-use, while [`docs/SIDECAR_PROTOCOL.md`](/Users/mini/mustard/docs/SIDECAR_PROTOCOL.md:112) explicitly documents stateless sidecar replay. That means the public surfaces intentionally expose different lifecycle rules, but consumers cannot assume parity between addon restore and sidecar resume.
+- [`docs/SIDECAR_PROTOCOL.md`](/Users/mini/mustard/docs/SIDECAR_PROTOCOL.md:73) and [`docs/SIDECAR_PROTOCOL.md`](/Users/mini/mustard/docs/SIDECAR_PROTOCOL.md:138) do not make it clear that a `payload` of `{ "type": "cancelled" }` is accepted and translated into a cancellation limit error rather than rejected as an unsupported resume payload.
 
 ## Rejected / Not Confirmed
 
 - No surviving mismatch was confirmed in top-level/member/arrow `this` binding after extended probing.
 - No surviving function-helper-dispatch mismatch was confirmed beyond the broader callable own-property issues already captured above.
-- BigInt exponent assignment no longer appears as a contract or verification gap in the current tree: [`tests/node/bigint.test.js`](/Users/mini/jslite/tests/node/bigint.test.js:154) now asserts support, and `npm test` is green.
+- BigInt exponent assignment no longer appears as a contract or verification gap in the current tree: [`tests/node/bigint.test.js`](/Users/mini/mustard/tests/node/bigint.test.js:154) now asserts support, and `npm test` is green.
 - A direct `tests/node/builtins.test.js` failure around global `parseInt` exposure was not stable enough to reduce to a minimal runtime repro during this pass, so it is not included above as a confirmed gap.
 
 ## Verification Snapshot

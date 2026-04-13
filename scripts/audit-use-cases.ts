@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { Jslite, JsliteError, Progress } = require('../index.ts');
+const { Mustard, MustardError, Progress } = require('../index.ts');
 
 const ROOT = path.join(__dirname, '..');
 const USE_CASE_ROOT = path.join(ROOT, 'examples/programmatic-tool-calls');
@@ -22,7 +22,7 @@ function loadCatalog(relativePath) {
 }
 
 function normalizeError(error) {
-  if (error instanceof JsliteError) {
+  if (error instanceof MustardError) {
     return {
       kind: error.kind,
       name: error.name,
@@ -44,7 +44,7 @@ function normalizeError(error) {
 }
 
 async function runWithOptions(descriptor, source) {
-  const runtime = new Jslite(source);
+  const runtime = new Mustard(source);
   const options = {
     ...(descriptor.options ?? {}),
     inputs: descriptor.inputs ?? descriptor.options?.inputs ?? {},
@@ -57,7 +57,7 @@ async function runWithOptions(descriptor, source) {
 }
 
 function runWithStartPlan(descriptor, source) {
-  const runtime = new Jslite(source);
+  const runtime = new Mustard(source);
   const startPlan = descriptor.startPlan;
   let step = runtime.start({
     inputs: descriptor.inputs ?? {},

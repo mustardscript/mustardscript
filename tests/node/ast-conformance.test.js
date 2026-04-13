@@ -18,10 +18,10 @@ const { FEATURE_CONTRACT, OUTCOME } = require('./conformance-contract.js');
 const {
   assertMetamorphicDifferential,
   assertTraceDifferential,
-  runJsliteWithLoadedProgramTrace,
-  runJsliteWithProgressTrace,
-  runJsliteWithTrace,
-  runJsliteWithSerializedProgressTrace,
+  runMustardWithLoadedProgramTrace,
+  runMustardWithProgressTrace,
+  runMustardWithTrace,
+  runMustardWithSerializedProgressTrace,
   runNodeWithTrace,
 } = require('./runtime-oracle.js');
 
@@ -96,8 +96,8 @@ test('property: AST-generated programs preserve traces through compiled-program 
     fc.asyncProperty(astProgramArbitrary(), async (program) => {
       const source = renderProgram(program);
       const [direct, loaded, expected] = await Promise.all([
-        runJsliteWithTrace(source),
-        runJsliteWithLoadedProgramTrace(source),
+        runMustardWithTrace(source),
+        runMustardWithLoadedProgramTrace(source),
         runNodeWithTrace(source),
       ]);
       assert.deepEqual(loaded, direct);
@@ -115,8 +115,8 @@ test('property: AST trace programs preserve semantics through explicit snapshot 
     fc.asyncProperty(astTraceProgramArbitrary(), async (program) => {
       const source = renderProgram(program);
       const [direct, serialized, expected] = await Promise.all([
-        runJsliteWithProgressTrace(source),
-        runJsliteWithSerializedProgressTrace(source),
+        runMustardWithProgressTrace(source),
+        runMustardWithSerializedProgressTrace(source),
         runNodeWithTrace(source),
       ]);
       assert.deepEqual(serialized, direct);

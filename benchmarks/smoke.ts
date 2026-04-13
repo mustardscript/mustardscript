@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { performance } = require('node:perf_hooks');
 
 const budgets = require('./budgets.json');
-const { Jslite, Progress } = require('../index.ts');
+const { Mustard, Progress } = require('../index.ts');
 
 const SNAPSHOT_KEY = Buffer.from('benchmark-snapshot-key');
 
@@ -30,7 +30,7 @@ async function measure({ iterations, warmup }, fn) {
 
 async function benchmarkStartup() {
   return measure(budgets.startup, async () => {
-    const runtime = new Jslite(`
+    const runtime = new Mustard(`
       const values = [1, 2, 3, 4];
       let total = 0;
       for (let i = 0; i < values.length; i += 1) {
@@ -44,7 +44,7 @@ async function benchmarkStartup() {
 }
 
 async function benchmarkCompute() {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     function double(value) {
       return value * 2;
     }
@@ -61,7 +61,7 @@ async function benchmarkCompute() {
 }
 
 async function benchmarkHostCallOverhead() {
-  const guestRuntime = new Jslite(`
+  const guestRuntime = new Mustard(`
     function echo(value) {
       return value;
     }
@@ -71,7 +71,7 @@ async function benchmarkHostCallOverhead() {
     }
     total;
   `);
-  const hostRuntime = new Jslite(`
+  const hostRuntime = new Mustard(`
     let total = 0;
     for (let i = 0; i < 24; i += 1) {
       total += fetch_value(i);
@@ -102,7 +102,7 @@ async function benchmarkHostCallOverhead() {
 }
 
 function driveSuspension({ reloadSnapshots }) {
-  const runtime = new Jslite(`
+  const runtime = new Mustard(`
     const first = fetch_value(4);
     const second = fetch_value(first + 1);
     second * 2;

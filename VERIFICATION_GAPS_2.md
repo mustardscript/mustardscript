@@ -26,7 +26,7 @@ locally reproduced or directly corroborated in code.
   - `tests/node/differential.test.js`
   - `tests/node/builtins.test.js`
   - `tests/node/language-gaps.test.js`
-  - `crates/jslite/src/runtime/{vm.rs,mod.rs,env.rs,properties.rs,builtins/*.rs,conversions/*.rs}`
+  - `crates/mustard/src/runtime/{vm.rs,mod.rs,env.rs,properties.rs,builtins/*.rs,conversions/*.rs}`
   - `docs/LANGUAGE.md`
   - `docs/CONFORMANCE.md`
   - `docs/HOST_API.md`
@@ -48,7 +48,7 @@ vm.runInNewContext('"use strict";\n' + source, Object.create(null))
     against:
 
 ```js
-await new Jslite(source).run()
+await new Mustard(source).run()
 ```
 
 - Validation slices used:
@@ -65,7 +65,7 @@ await new Jslite(source).run()
 
 Accepted behavior:
 
-`jslite` currently accepts top-level function declarations. In strict-script
+`mustard` currently accepts top-level function declarations. In strict-script
 Node, those bindings are also visible as properties on the real global object.
 
 Representative repro:
@@ -85,7 +85,7 @@ Node result:
 { same: true, inGlobal: true, type: "function" }
 ```
 
-`jslite` result:
+`mustard` result:
 
 ```js
 { same: false, inGlobal: false, type: "undefined" }
@@ -93,11 +93,11 @@ Node result:
 
 Code path:
 
-- `crates/jslite/src/runtime/vm.rs:5-20` runs the root script in a fresh child
+- `crates/mustard/src/runtime/vm.rs:5-20` runs the root script in a fresh child
   environment of `globals`
-- `crates/jslite/src/runtime/compiler/mod.rs:118-132` emits top-level
+- `crates/mustard/src/runtime/compiler/mod.rs:118-132` emits top-level
   `FunctionDeclaration`s into that child scope
-- `crates/jslite/src/runtime/env.rs:64-85` only mirrors bindings installed
+- `crates/mustard/src/runtime/env.rs:64-85` only mirrors bindings installed
   through `define_global()` onto the actual global object
 
 The same root cause also reproduces with `async function declared() {}`.
@@ -127,7 +127,7 @@ Node result:
 { declaredType: "function", builtinType: "function", declaredIn: true, builtinIn: true }
 ```
 
-`jslite` result:
+`mustard` result:
 
 ```js
 { declaredType: "undefined", builtinType: "undefined", declaredIn: false, builtinIn: false }
@@ -135,11 +135,11 @@ Node result:
 
 Code path:
 
-- `crates/jslite/src/runtime/properties.rs:46-70` `closure_own_property()`
+- `crates/mustard/src/runtime/properties.rs:46-70` `closure_own_property()`
   handles `name`, `length`, and `prototype`, but not `constructor`
-- `crates/jslite/src/runtime/properties.rs:328-380`
+- `crates/mustard/src/runtime/properties.rs:328-380`
   `builtin_function_own_property()` also omits `constructor`
-- `crates/jslite/src/runtime/properties.rs:520-523` makes closure/built-in
+- `crates/mustard/src/runtime/properties.rs:520-523` makes closure/built-in
   `'in'` checks depend on those same helpers, so both property access and
   `'constructor' in callable` fail
 
@@ -164,7 +164,7 @@ Node result:
 { fn: "task", arrow: "task" }
 ```
 
-`jslite` result:
+`mustard` result:
 
 ```js
 { fn: "", arrow: "" }
@@ -172,7 +172,7 @@ Node result:
 
 Code path:
 
-- `crates/jslite/src/parser/expressions.rs:153-159` only infers a name for
+- `crates/mustard/src/parser/expressions.rs:153-159` only infers a name for
   method syntax (`task() {}`), not for `task: function () {}` or
   `task: () => {}`
 - the lowered runtime then preserves the empty-name callable unchanged
@@ -198,7 +198,7 @@ Node result:
 { guest: "function f() {}", builtin: "function Array() { [native code] }" }
 ```
 
-`jslite` result:
+`mustard` result:
 
 ```js
 { guest: "[Function]", builtin: "[Function]" }
@@ -206,7 +206,7 @@ Node result:
 
 Code path:
 
-- `crates/jslite/src/runtime/conversions/coercions.rs:133-135` maps every
+- `crates/mustard/src/runtime/conversions/coercions.rs:133-135` maps every
   `Value::Closure`, `Value::BuiltinFunction`, and `Value::HostFunction` to the
   fixed string `"[Function]"`
 
@@ -241,7 +241,7 @@ Node result:
 }
 ```
 
-`jslite` result:
+`mustard` result:
 
 ```js
 {
@@ -254,10 +254,10 @@ Node result:
 
 Code path:
 
-- `crates/jslite/src/runtime/properties.rs:898-917` only exposes `length` and
+- `crates/mustard/src/runtime/properties.rs:898-917` only exposes `length` and
   string helper methods on primitive `Value::String`, not indexed characters or
   `constructor`
-- `crates/jslite/src/runtime/properties.rs:922` falls through to `undefined`
+- `crates/mustard/src/runtime/properties.rs:922` falls through to `undefined`
   for primitive numbers and booleans instead of conservative wrapper-style
   property reads
 
@@ -265,7 +265,7 @@ Code path:
 
 Accepted behavior:
 
-`jslite` accepts `new Date(value)` and `Date` instances, so supported Date
+`mustard` accepts `new Date(value)` and `Date` instances, so supported Date
 properties should remain method-shaped. The current docs also say
 `new Date(value)` supports exactly one numeric, string, or existing `Date`
 argument, but the implementation only parses RFC3339 strings successfully.
@@ -289,7 +289,7 @@ Node result:
 { type: "function", call: 5 }
 ```
 
-`jslite` result:
+`mustard` result:
 
 ```js
 { type: "number", call: "Error: value is not callable" }
@@ -308,7 +308,7 @@ Node result:
 { isNaN: false, value: 1775779200000 }
 ```
 
-`jslite` result:
+`mustard` result:
 
 ```js
 { isNaN: true, value: NaN }
@@ -316,11 +316,11 @@ Node result:
 
 Code path:
 
-- `crates/jslite/src/runtime/properties.rs:712-716` returns
+- `crates/mustard/src/runtime/properties.rs:712-716` returns
   `Value::Number(date.timestamp_ms)` for `valueOf` instead of a callable method
-- `crates/jslite/src/runtime/builtins/support.rs:43-46` parses date strings
+- `crates/mustard/src/runtime/builtins/support.rs:43-46` parses date strings
   only with `Rfc3339`
-- `crates/jslite/src/runtime/builtins/primitives.rs:143-149` funnels every
+- `crates/mustard/src/runtime/builtins/primitives.rs:143-149` funnels every
   string `new Date(value)` argument through that RFC3339-only parser
 
 Note:
@@ -335,7 +335,7 @@ current RFC3339 inputs truncate to integral milliseconds correctly.
 File refs:
 
 - `docs/LANGUAGE.md:398-399`
-- `crates/jslite/src/runtime/builtins/arrays.rs:892-930`
+- `crates/mustard/src/runtime/builtins/arrays.rs:892-930`
 - `tests/node/builtins.test.js:765-780`
 - `tests/node/differential.test.js:572-590`
 
@@ -371,7 +371,7 @@ Node result:
 {"thisType":"undefined","same":false,"accTag":"seed","value":1,"index":0,"arrayLength":1}
 ```
 
-`jslite` result: identical
+`mustard` result: identical
 
 Classification: standalone docs drift
 

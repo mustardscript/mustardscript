@@ -53,8 +53,8 @@ jobs:
         run: >
           npx napi build --release --platform
           --target ${{ matrix.settings.target }}
-          --manifest-path crates/jslite-node/Cargo.toml
-          --js-package-name @keppoai/jslite
+          --manifest-path crates/mustard-node/Cargo.toml
+          --js-package-name mustardscript
           --output-dir artifacts
           --no-js
         shell: bash
@@ -152,7 +152,7 @@ jobs:
       - name: Verify npm token is configured
         run: |
           if [ -z "${NPM_TOKEN}" ]; then
-            echo "NPM_TOKEN is required to publish @keppoai/jslite prebuilt packages." >&2
+            echo "NPM_TOKEN is required to publish mustardscript prebuilt packages." >&2
             exit 1
           fi
         shell: bash

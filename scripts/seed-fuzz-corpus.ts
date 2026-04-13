@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { Jslite, Progress } = require('../index.ts');
+const { Mustard, Progress } = require('../index.ts');
 
 const repoRoot = path.join(__dirname, '..');
 const corpusRoot = path.join(repoRoot, 'fuzz', 'corpus');
@@ -97,7 +97,7 @@ function writeSeed(target, name, contents) {
 }
 
 function suspendedSnapshotBytes(source) {
-  const runtime = new Jslite(source);
+  const runtime = new Mustard(source);
   const step = runtime.start({
     snapshotKey,
     capabilities: {
@@ -120,7 +120,7 @@ function writeSourceSeeds() {
 
 function writeProgramSeeds() {
   for (const seed of SUPPORTED_SOURCE_SEEDS) {
-    const program = new Jslite(seed.source).dump();
+    const program = new Mustard(seed.source).dump();
     writeSeed('bytecode_validation', seed.name.replace(/\.js$/, '.bin'), program);
     writeSeed('bytecode_execution', seed.name.replace(/\.js$/, '.bin'), program);
   }
@@ -133,7 +133,7 @@ function writeSnapshotSeeds() {
 }
 
 function writeSidecarProtocolSeeds() {
-  const compiled = new Jslite('const value = fetch_data(5); value + 1;');
+  const compiled = new Mustard('const value = fetch_data(5); value + 1;');
   const programBase64 = compiled.dump().toString('base64');
 
   const suspended = compiled.start({
