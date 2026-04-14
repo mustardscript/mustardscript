@@ -13,6 +13,16 @@ function npmCommand() {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm'
 }
 
+function outputSection(page, title) {
+  if (title === 'Mustard Output') {
+    return page.getByTestId('playground-output-mustard')
+  }
+  if (title === 'Vanilla Output') {
+    return page.getByTestId('playground-output-vanilla')
+  }
+  throw new Error(`unknown output section: ${title}`)
+}
+
 async function waitForServer(url, timeoutMs = 20_000) {
   const startedAt = Date.now()
   while (Date.now() - startedAt < timeoutMs) {
@@ -46,6 +56,8 @@ test('playground loads, switches scenarios, runs successfully, and renders failu
     await waitForServer(baseUrl)
     const page = await browser.newPage()
     await page.goto(baseUrl)
+    const mustardOutput = outputSection(page, 'Mustard Output')
+    const vanillaOutput = outputSection(page, 'Vanilla Output')
 
     await assert.doesNotReject(async () => {
       await page.getByRole('heading', { name: 'MustardScript vs vanilla JavaScript' }).waitFor()
@@ -55,13 +67,17 @@ test('playground loads, switches scenarios, runs successfully, and renders failu
     await page.getByText('Compare deterministic policy checks').waitFor()
 
     await page.getByRole('button', { name: 'Run Comparison' }).click()
-    await page.getByText('"approved": false').waitFor()
-    await page.getByText('Capability Trace').waitFor()
+    await mustardOutput.getByText('Completed').waitFor()
+    await mustardOutput.getByText('"approved": false').waitFor()
+    await mustardOutput.getByText('Capability Trace').waitFor()
+    await vanillaOutput.getByText('Completed').waitFor()
+    await vanillaOutput.getByText('"approved": false').waitFor()
 
     const vanillaEditor = page.getByLabel('Vanilla JavaScript')
     await vanillaEditor.fill('throw new Error("browser failure")')
     await page.getByRole('button', { name: 'Run Comparison' }).click()
-    await page.getByText('browser failure').waitFor()
+    await vanillaOutput.getByText('browser failure').waitFor()
+    await mustardOutput.getByText('Completed').waitFor()
   } finally {
     await browser.close()
     server.kill('SIGTERM')

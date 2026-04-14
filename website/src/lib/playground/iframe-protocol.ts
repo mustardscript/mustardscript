@@ -50,4 +50,12 @@ export interface IframeReadyMessage {
   type: 'playground-ready'
 }
 
-export type IframeMessage = IframeRunResponse | IframeReadyMessage
+export interface IframeReadyCheckMessage {
+  type: 'playground-ready-check'
+}
+
+export type IframeMessage =
+  | IframeRunRequest
+  | IframeRunResponse
+  | IframeReadyMessage
+  | IframeReadyCheckMessage

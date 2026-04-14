@@ -7,6 +7,38 @@ const MAX_GC_DEBT_BYTES: usize = 256 * 1024;
 const MIN_GC_DEBT_ALLOCATIONS: usize = 32;
 const MAX_GC_DEBT_ALLOCATIONS: usize = 2_048;
 
+#[cfg(target_arch = "wasm32")]
+unsafe extern "C" {
+    fn mustard_now_millis() -> f64;
+}
+
+#[cfg(target_arch = "wasm32")]
+fn gc_started_at() -> f64 {
+    // `Instant::now()` traps on `wasm32-unknown-unknown`, so the browser build
+    // measures GC wall time through the existing host-provided millisecond clock.
+    unsafe { mustard_now_millis() }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn gc_elapsed(started_at: f64) -> std::time::Duration {
+    let elapsed_ms = unsafe { mustard_now_millis() } - started_at;
+    if !elapsed_ms.is_finite() || elapsed_ms <= 0.0 {
+        return std::time::Duration::ZERO;
+    }
+    let elapsed_ns = (elapsed_ms * 1_000_000.0).round().min(u64::MAX as f64) as u64;
+    std::time::Duration::from_nanos(elapsed_ns)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn gc_started_at() -> std::time::Instant {
+    std::time::Instant::now()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn gc_elapsed(started_at: std::time::Instant) -> std::time::Duration {
+    started_at.elapsed()
+}
+
 impl Runtime {
     fn record_gc_collection(
         &mut self,
@@ -74,7 +106,7 @@ impl Runtime {
     }
 
     pub(super) fn collect_garbage(&mut self) -> MustardResult<GarbageCollectionStats> {
-        let started = std::time::Instant::now();
+        let started = gc_started_at();
         let baseline_bytes = self.heap_bytes_used;
         let baseline_allocations = self.allocation_count;
         let marks = self.mark_reachable_heap()?;
@@ -100,7 +132,7 @@ impl Runtime {
         #[cfg(debug_assertions)]
         self.debug_assert_cached_accounting_matches_full_walk();
 
-        self.record_gc_collection(stats, started.elapsed());
+        self.record_gc_collection(stats, gc_elapsed(started));
         self.reset_gc_debt();
         Ok(stats)
     }

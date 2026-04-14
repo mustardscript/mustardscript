@@ -2,6 +2,7 @@ import type { PlaygroundRunResult } from '../lib/playground/iframe-protocol'
 
 interface PlaygroundOutputProps {
   title: string
+  testId?: string
   tone: 'mustard' | 'vanilla'
   result: PlaygroundRunResult | null
   isRunning: boolean
@@ -13,6 +14,7 @@ function formatValue(value: unknown) {
 
 export function PlaygroundOutput({
   title,
+  testId,
   tone,
   result,
   isRunning,
@@ -23,7 +25,7 @@ export function PlaygroundOutput({
       : 'border-[#2563EB]/20 bg-[#111827] text-[#D7E7FF]'
 
   return (
-    <section className={`rounded-[24px] border ${accentClass} shadow-xl`}>
+    <section data-testid={testId} className={`rounded-[24px] border ${accentClass} shadow-xl`}>
       <div className="flex items-center justify-between gap-4 border-b border-white/10 px-5 py-4">
         <h3 className="font-heading text-lg font-bold">{title}</h3>
         <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-xs">

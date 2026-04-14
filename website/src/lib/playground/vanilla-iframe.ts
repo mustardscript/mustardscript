@@ -19,6 +19,10 @@ function createRequestId() {
   return `playground-${crypto.randomUUID()}`
 }
 
+function requestIframeReady(iframe: HTMLIFrameElement) {
+  iframe.contentWindow?.postMessage({ type: 'playground-ready-check' }, IFRAME_ORIGIN)
+}
+
 function isIframeResponse(message: unknown): message is IframeRunResponse {
   return (
     typeof message === 'object' &&
@@ -43,8 +47,14 @@ export async function ensureIframeReady(iframe: HTMLIFrameElement): Promise<void
   }
 
   await new Promise<void>((resolve, reject) => {
-    const timeoutId = window.setTimeout(() => {
+    const cleanup = () => {
+      window.clearTimeout(timeoutId)
       window.removeEventListener('message', onMessage)
+      iframe.removeEventListener('load', onLoad)
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      cleanup()
       reject(new Error('sandboxed iframe did not become ready in time'))
     }, READY_TIMEOUT_MS)
 
@@ -59,12 +69,17 @@ export async function ensureIframeReady(iframe: HTMLIFrameElement): Promise<void
         return
       }
       iframe.dataset.ready = 'true'
-      window.clearTimeout(timeoutId)
-      window.removeEventListener('message', onMessage)
+      cleanup()
       resolve()
     }
 
+    const onLoad = () => {
+      requestIframeReady(iframe)
+    }
+
     window.addEventListener('message', onMessage)
+    iframe.addEventListener('load', onLoad)
+    requestIframeReady(iframe)
   })
 }
 

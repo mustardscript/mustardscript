@@ -160,12 +160,14 @@ export function PlaygroundSection() {
         <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1fr_0.8fr]">
           <PlaygroundOutput
             title="Mustard Output"
+            testId="playground-output-mustard"
             tone="mustard"
             result={mustardResult}
             isRunning={isMustardRunning}
           />
           <PlaygroundOutput
             title="Vanilla Output"
+            testId="playground-output-vanilla"
             tone="vanilla"
             result={vanillaResult}
             isRunning={isVanillaRunning}

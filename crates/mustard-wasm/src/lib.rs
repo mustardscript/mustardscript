@@ -541,7 +541,10 @@ mod tests {
     fn missing_capability_name_fails_closed() {
         let response = handle_start_request(StartRequest {
             code: "lookup_plan_policy(plan);".to_string(),
-            inputs: IndexMap::from([("plan".to_string(), JsonValue::String("starter".to_string()))]),
+            inputs: IndexMap::from([(
+                "plan".to_string(),
+                JsonValue::String("starter".to_string()),
+            )]),
             capabilities: Vec::new(),
             limits: Some(RuntimeLimits::default()),
         });
