@@ -22,9 +22,9 @@ const {
 } = require('./policy.ts');
 const {
   decodeStructured,
-  encodeResumePayloadCancel,
-  encodeResumePayloadError,
-  encodeResumePayloadValue,
+  encodeResumePayloadCancelBuffer,
+  encodeResumePayloadErrorBuffer,
+  encodeResumePayloadValueBuffer,
 } = require('./structured.ts');
 
 const SHARED_PROGRESS_REGISTRY_ROOT = path.join(
@@ -381,8 +381,13 @@ function createProgressApi(native) {
           const nativeArgs = [snapshotHandle, payload];
           const step = parseStep(
             signal === undefined
-              ? callNative(native.resumeSnapshotHandle, ...nativeArgs)
-              : withCancellationSignal(native, native.resumeSnapshotHandle, nativeArgs, signal),
+              ? callNative(native.resumeSnapshotHandleBuffer, ...nativeArgs)
+              : withCancellationSignal(
+                  native,
+                  native.resumeSnapshotHandleBuffer,
+                  nativeArgs,
+                  signal,
+                ),
           );
           return materializeStep(step, this.#policy, this.#snapshotKey, programHandle, this.#program);
         } finally {
@@ -446,7 +451,7 @@ function createProgressApi(native) {
       if (signal?.aborted) {
         return this.cancel();
       }
-      return this.#resumeWithPayload(encodeResumePayloadValue(value), signal);
+      return this.#resumeWithPayload(encodeResumePayloadValueBuffer(value), signal);
     }
 
     resumeError(error, options = undefined) {
@@ -454,11 +459,11 @@ function createProgressApi(native) {
       if (signal?.aborted) {
         return this.cancel();
       }
-      return this.#resumeWithPayload(encodeResumePayloadError(error), signal);
+      return this.#resumeWithPayload(encodeResumePayloadErrorBuffer(error), signal);
     }
 
     cancel() {
-      return this.#resumeWithPayload(encodeResumePayloadCancel(), undefined);
+      return this.#resumeWithPayload(encodeResumePayloadCancelBuffer(), undefined);
     }
 
     static load(state, options = undefined) {

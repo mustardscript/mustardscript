@@ -4,9 +4,9 @@ const { assert, ExecutionContext, test } = require('./support/helpers.js');
 const { loadNative } = require('../../native-loader.ts');
 const {
   decodeStructured,
-  encodeResumePayloadValue,
-  encodeStartOptions,
-  encodeStructuredInputs,
+  encodeResumePayloadValueBuffer,
+  encodeStartOptionsBuffer,
+  encodeStructuredInputsBuffer,
 } = require('../../lib/structured.ts');
 
 const SNAPSHOT_KEY = Buffer.from('addon-boundary-profile-test-key');
@@ -61,10 +61,10 @@ test('profiled execution-context start and resume preserve hot-path behavior', (
 
   try {
     const started = parseProfiledStep(
-      native.profileStartProgramWithExecutionContextHandle(
+      native.profileStartProgramWithExecutionContextHandleBuffer(
         programHandle,
         contextHandle,
-        encodeStructuredInputs({ seed: 1 }),
+        encodeStructuredInputsBuffer({ seed: 1 }),
       ),
     );
     assertProfileShape(started.profile);
@@ -75,7 +75,7 @@ test('profiled execution-context start and resume preserve hot-path behavior', (
     assert.equal(typeof snapshotHandle, 'string');
 
     const resumed = parseProfiledStep(
-      native.profileResumeSnapshotHandle(snapshotHandle, encodeResumePayloadValue(2)),
+      native.profileResumeSnapshotHandleBuffer(snapshotHandle, encodeResumePayloadValueBuffer(2)),
     );
     snapshotHandle = null;
     assertProfileShape(resumed.profile);
@@ -85,7 +85,7 @@ test('profiled execution-context start and resume preserve hot-path behavior', (
     snapshotHandle = resumed.step.snapshotHandle;
 
     const completed = parseProfiledStep(
-      native.profileResumeSnapshotHandle(snapshotHandle, encodeResumePayloadValue(3)),
+      native.profileResumeSnapshotHandleBuffer(snapshotHandle, encodeResumePayloadValueBuffer(3)),
     );
     snapshotHandle = null;
     assertProfileShape(completed.profile);
@@ -100,7 +100,7 @@ test('profiled execution-context start and resume preserve hot-path behavior', (
   }
 });
 
-test('profiled snapshot-handle start accepts the existing JSON start-options hot path', () => {
+test('profiled snapshot-handle start accepts the binary start-options hot path', () => {
   const native = loadNative();
   const context = new ExecutionContext({
     snapshotKey: SNAPSHOT_KEY,
@@ -114,9 +114,9 @@ test('profiled snapshot-handle start accepts the existing JSON start-options hot
 
   try {
     const started = parseProfiledStep(
-      native.profileStartProgramWithSnapshotHandle(
+      native.profileStartProgramWithSnapshotHandleBuffer(
         programHandle,
-        encodeStartOptions({ seed: 7 }, context.policy()),
+        encodeStartOptionsBuffer({ seed: 7 }, context.policy()),
       ),
     );
     assertProfileShape(started.profile);

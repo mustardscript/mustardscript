@@ -1,0 +1,2824 @@
+{
+  "machine": {
+    "timestamp": "2026-04-14T03:41:06.633Z",
+    "benchmarkKind": "workloads",
+    "buildProfile": "release",
+    "gitSha": "043e182",
+    "fixtureVersion": 6,
+    "hostname": "mac.lan",
+    "platform": "darwin 25.2.0",
+    "arch": "arm64",
+    "nodeVersion": "v24.12.0",
+    "cpuModel": "Apple M4",
+    "cpuCount": 10,
+    "totalMemoryBytes": 17179869184
+  },
+  "ptc": {
+    "websiteMetric": "addon.latency.ptc_website_demo_small",
+    "weightedScoreMetric": "addon.ptc.weightedScore.medium",
+    "weights": {
+      "ptc_incident_triage_medium": 0.4,
+      "ptc_fraud_investigation_medium": 0.35,
+      "ptc_vendor_review_medium": 0.25
+    },
+    "scenarios": {
+      "ptc_website_demo_small": {
+        "laneId": "website_demo",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+        "toolFamilyCount": 4,
+        "logicalPeakFanout": 1,
+        "finalAction": false,
+        "usesPromiseAll": false,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "alertCount": 4,
+          "deployCount": 2,
+          "logCount": 9
+        }
+      },
+      "ptc_incident_triage_small": {
+        "laneId": "incident_triage",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 9,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "regionCount": 3,
+          "alertsPerRegion": 2,
+          "samplesPerRegion": 2
+        }
+      },
+      "ptc_fraud_investigation_small": {
+        "laneId": "fraud_investigation",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "transactionCount": 24,
+          "accountCount": 8,
+          "entityCount": 6,
+          "cardCount": 5
+        }
+      },
+      "ptc_vendor_review_small": {
+        "laneId": "vendor_review",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 3,
+          "flowCount": 4,
+          "subprocessorCount": 4
+        }
+      },
+      "ptc_website_demo_medium": {
+        "laneId": "website_demo",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+        "toolFamilyCount": 4,
+        "logicalPeakFanout": 1,
+        "finalAction": false,
+        "usesPromiseAll": false,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "alertCount": 10,
+          "deployCount": 4,
+          "logCount": 24
+        }
+      },
+      "ptc_incident_triage_medium": {
+        "laneId": "incident_triage",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 18,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "regionCount": 6,
+          "alertsPerRegion": 3,
+          "samplesPerRegion": 3
+        }
+      },
+      "ptc_fraud_investigation_medium": {
+        "laneId": "fraud_investigation",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "transactionCount": 96,
+          "accountCount": 24,
+          "entityCount": 16,
+          "cardCount": 12
+        }
+      },
+      "ptc_vendor_review_medium": {
+        "laneId": "vendor_review",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 5,
+          "flowCount": 10,
+          "subprocessorCount": 10
+        }
+      },
+      "ptc_website_demo_large": {
+        "laneId": "website_demo",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+        "toolFamilyCount": 4,
+        "logicalPeakFanout": 1,
+        "finalAction": false,
+        "usesPromiseAll": false,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "alertCount": 24,
+          "deployCount": 8,
+          "logCount": 60
+        }
+      },
+      "ptc_incident_triage_large": {
+        "laneId": "incident_triage",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 36,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "regionCount": 12,
+          "alertsPerRegion": 4,
+          "samplesPerRegion": 4
+        }
+      },
+      "ptc_fraud_investigation_large": {
+        "laneId": "fraud_investigation",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "transactionCount": 384,
+          "accountCount": 96,
+          "entityCount": 64,
+          "cardCount": 48
+        }
+      },
+      "ptc_vendor_review_large": {
+        "laneId": "vendor_review",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 7,
+          "flowCount": 24,
+          "subprocessorCount": 24
+        }
+      }
+    },
+    "durableScenarios": {
+      "ptc_vendor_review_durable_small": {
+        "laneId": "vendor_review_durable",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "durableBoundary": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 3,
+          "flowCount": 4,
+          "subprocessorCount": 4
+        }
+      },
+      "ptc_vendor_review_durable_medium": {
+        "laneId": "vendor_review_durable",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "durableBoundary": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 5,
+          "flowCount": 10,
+          "subprocessorCount": 10
+        }
+      },
+      "ptc_vendor_review_durable_large": {
+        "laneId": "vendor_review_durable",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "durableBoundary": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 7,
+          "flowCount": 24,
+          "subprocessorCount": 24
+        }
+      }
+    }
+  },
+  "notes": {
+    "suspendResumeIsolate": "isolated-vm cannot snapshot continuations here; suspend_resume_* is measured as repeated isolate re-entry with explicit host-carried state rebuild.",
+    "sidecarMemory": "sidecar memory deltas include parent Node process RSS plus the live child sidecar RSS sampled via ps.",
+    "phaseSplitDefinitions": "addon.phases isolates compile-free runtime slices: runtime_init_only uses a precompiled trivial program, execution_only_small resumes pre-created suspended progress, snapshot_load_only uses raw native detached-snapshot inspection, and Progress.load_only measures the public JS wrapper before cleanup.",
+    "sidecarPhaseDefinitions": "sidecar.phases separates process startup from warm execution and transport-dominated resume work: startup_only measures spawn plus clean shutdown, execution_only_small reuses a precompiled program in a warm sidecar, and transport_resume_only replays an already-suspended minimal snapshot so snapshot bytes, auth metadata, and stdio round-trips dominate the timed region.",
+    "boundaryDefinitions": "addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.",
+    "counterDefinitions": "addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, and full accounting refresh counts.",
+    "suspendStateDefinitions": "addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.",
+    "ptcDefinitions": "Representative PTC lanes are sourced from the real programmatic-tool-call gallery: ptc_website_demo_* uses operations/triage-production-incident.js, ptc_incident_triage_* uses operations/triage-multi-region-auth-outage.js, ptc_fraud_investigation_* uses analytics/investigate-fraud-ring.js, and ptc_vendor_review_* uses workflows/vendor-compliance-renewal.js. addon/sidecar/isolate all run the same guest source with deterministic synthetic tool fixtures.",
+    "ptcWeightedScoreDefinitions": "runtime.ptc.weightedScore.medium is a weighted median/p95 rollup of ptc_incident_triage_medium (40%), ptc_fraud_investigation_medium (35%), and ptc_vendor_review_medium (25%). runtime.ptc.transfer records actual tool call counts plus JSON-encoded tool/result payload sizes for one untimed representative run of each PTC lane.",
+    "ptcBreakdownDefinitions": "addon.ptc.breakdown records representative profiled addon runs for the website-small lane plus the medium primary lanes. hostCallbacks measures JS time spent inside host tool handlers, guestExecution measures Rust runtime execution between boundaries, boundaryParse measures native addon decode/parse of live start/resume payloads, boundaryEncode measures native addon encoding of step results, and boundaryCodec is parse+encode combined.",
+    "sidecarPtcBreakdownDefinitions": "sidecar.ptc.breakdown separates sidecar startup from representative lane-level request flow. processStartup reuses sidecar.phases.startup_only, while the lane entries split client-observed requestTransport from sidecar execution and combined response materialization (sidecar response preparation plus client response decode/copy).",
+    "durablePtcDefinitions": "runtime.durablePtc.resumeOnly measures restore/resume from a persisted vendor-review checkpoint through the post-approval final action. addon.durablePtc.state records dumped snapshot bytes, detached suspended-manifest bytes, and the review-draft checkpoint payload size; sidecar.durablePtc.state records raw snapshot bytes, full raw-resume policy bytes, and the same checkpoint payload size; isolate.durablePtc.state records the explicit carried-state bytes required to emulate the same pause without continuation snapshots."
+  },
+  "addon": {
+    "latency": {
+      "cold_start_small": {
+        "iterations": 3,
+        "minMs": 1.0085419999999772,
+        "medianMs": 1.0129160000000184,
+        "p95Ms": 1.0313749999999686,
+        "maxMs": 1.0313749999999686,
+        "meanMs": 1.017610999999988
+      },
+      "warm_run_small": {
+        "iterations": 3,
+        "minMs": 0.9434170000000108,
+        "medianMs": 0.9497079999999869,
+        "p95Ms": 0.95474999999999,
+        "maxMs": 0.95474999999999,
+        "meanMs": 0.9492916666666625
+      },
+      "cold_start_code_mode_search": {
+        "iterations": 2,
+        "minMs": 0.8518329999999992,
+        "medianMs": 0.8518329999999992,
+        "p95Ms": 0.8870000000000005,
+        "maxMs": 0.8870000000000005,
+        "meanMs": 0.8694164999999998
+      },
+      "warm_run_code_mode_search": {
+        "iterations": 3,
+        "minMs": 0.43087500000001455,
+        "medianMs": 0.4316249999999968,
+        "p95Ms": 0.43820800000003146,
+        "maxMs": 0.43820800000003146,
+        "meanMs": 0.43356933333334763
+      },
+      "programmatic_tool_workflow": {
+        "iterations": 3,
+        "minMs": 1.3965420000000108,
+        "medianMs": 1.4562080000000037,
+        "p95Ms": 1.4945000000000164,
+        "maxMs": 1.4945000000000164,
+        "meanMs": 1.4490833333333437
+      },
+      "ptc_website_demo_small": {
+        "iterations": 3,
+        "minMs": 0.13175000000001091,
+        "medianMs": 0.133041999999989,
+        "p95Ms": 0.15904199999999946,
+        "maxMs": 0.15904199999999946,
+        "meanMs": 0.1412779999999998
+      },
+      "ptc_incident_triage_small": {
+        "iterations": 3,
+        "minMs": 0.24079100000000153,
+        "medianMs": 0.24645900000001575,
+        "p95Ms": 0.26325000000002774,
+        "maxMs": 0.26325000000002774,
+        "meanMs": 0.2501666666666817
+      },
+      "ptc_fraud_investigation_small": {
+        "iterations": 3,
+        "minMs": 0.48483299999998053,
+        "medianMs": 0.49891700000000583,
+        "p95Ms": 0.5595830000000319,
+        "maxMs": 0.5595830000000319,
+        "meanMs": 0.5144443333333394
+      },
+      "ptc_vendor_review_small": {
+        "iterations": 3,
+        "minMs": 0.1530419999999708,
+        "medianMs": 0.15820899999999938,
+        "p95Ms": 0.16250000000002274,
+        "maxMs": 0.16250000000002274,
+        "meanMs": 0.15791699999999764
+      },
+      "ptc_website_demo_medium": {
+        "iterations": 3,
+        "minMs": 0.14016700000001947,
+        "medianMs": 0.14204200000000355,
+        "p95Ms": 0.3031670000000304,
+        "maxMs": 0.3031670000000304,
+        "meanMs": 0.19512533333335114
+      },
+      "ptc_incident_triage_medium": {
+        "iterations": 3,
+        "minMs": 0.3639170000000149,
+        "medianMs": 0.36891599999995606,
+        "p95Ms": 0.3816659999999956,
+        "maxMs": 0.3816659999999956,
+        "meanMs": 0.3714996666666555
+      },
+      "ptc_fraud_investigation_medium": {
+        "iterations": 3,
+        "minMs": 1.2997500000000173,
+        "medianMs": 1.3319999999999936,
+        "p95Ms": 1.413167000000044,
+        "maxMs": 1.413167000000044,
+        "meanMs": 1.348305666666685
+      },
+      "ptc_vendor_review_medium": {
+        "iterations": 3,
+        "minMs": 0.18416600000000471,
+        "medianMs": 0.19137499999999363,
+        "p95Ms": 0.1921670000000404,
+        "maxMs": 0.1921670000000404,
+        "meanMs": 0.18923600000001292
+      },
+      "ptc_website_demo_large": {
+        "iterations": 3,
+        "minMs": 0.33066699999994853,
+        "medianMs": 0.3322920000000522,
+        "p95Ms": 0.3326250000000073,
+        "maxMs": 0.3326250000000073,
+        "meanMs": 0.331861333333336
+      },
+      "ptc_incident_triage_large": {
+        "iterations": 3,
+        "minMs": 0.6780830000000151,
+        "medianMs": 0.6922500000000582,
+        "p95Ms": 0.7055829999999332,
+        "maxMs": 0.7055829999999332,
+        "meanMs": 0.6919720000000021
+      },
+      "ptc_fraud_investigation_large": {
+        "iterations": 3,
+        "minMs": 4.824082999999973,
+        "medianMs": 4.899125000000026,
+        "p95Ms": 4.908999999999992,
+        "maxMs": 4.908999999999992,
+        "meanMs": 4.877402666666664
+      },
+      "ptc_vendor_review_large": {
+        "iterations": 3,
+        "minMs": 0.29129199999999855,
+        "medianMs": 0.2998340000000326,
+        "p95Ms": 0.3061250000000655,
+        "maxMs": 0.3061250000000655,
+        "meanMs": 0.2990836666666989
+      },
+      "host_fanout_1": {
+        "iterations": 3,
+        "minMs": 0.011667000000102234,
+        "medianMs": 0.01191700000003948,
+        "p95Ms": 0.014083000000027823,
+        "maxMs": 0.014083000000027823,
+        "meanMs": 0.012555666666723178
+      },
+      "host_fanout_10": {
+        "iterations": 3,
+        "minMs": 0.04712500000005093,
+        "medianMs": 0.04750000000001364,
+        "p95Ms": 0.050167000000101325,
+        "maxMs": 0.050167000000101325,
+        "meanMs": 0.0482640000000553
+      },
+      "host_fanout_50": {
+        "iterations": 3,
+        "minMs": 0.20820799999989958,
+        "medianMs": 0.2274170000000595,
+        "p95Ms": 0.23133399999994708,
+        "maxMs": 0.23133399999994708,
+        "meanMs": 0.22231966666663538
+      },
+      "host_fanout_100": {
+        "iterations": 3,
+        "minMs": 0.4111250000000837,
+        "medianMs": 0.4244579999999587,
+        "p95Ms": 0.5764580000000024,
+        "maxMs": 0.5764580000000024,
+        "meanMs": 0.47068033333334824
+      },
+      "suspend_resume_1": {
+        "iterations": 3,
+        "minMs": 0.13591700000006313,
+        "medianMs": 0.14037499999994907,
+        "p95Ms": 0.16208300000005238,
+        "maxMs": 0.16208300000005238,
+        "meanMs": 0.14612500000002152
+      },
+      "suspend_resume_5": {
+        "iterations": 3,
+        "minMs": 0.5742500000000064,
+        "medianMs": 0.5958329999999705,
+        "p95Ms": 0.6104579999999942,
+        "maxMs": 0.6104579999999942,
+        "meanMs": 0.5935136666666571
+      },
+      "suspend_resume_20": {
+        "iterations": 3,
+        "minMs": 2.272707999999966,
+        "medianMs": 2.298750000000041,
+        "p95Ms": 2.3139589999999544,
+        "maxMs": 2.3139589999999544,
+        "meanMs": 2.295138999999987
+      }
+    },
+    "phases": {
+      "runtime_init_only": {
+        "iterations": 3,
+        "minMs": 0.035041999999975815,
+        "medianMs": 0.04216600000000881,
+        "p95Ms": 0.0524159999999938,
+        "maxMs": 0.0524159999999938,
+        "meanMs": 0.04320799999999281
+      },
+      "execution_only_small": {
+        "iterations": 3,
+        "minMs": 1.8906660000000102,
+        "medianMs": 2.0190830000000233,
+        "p95Ms": 2.3272910000000024,
+        "maxMs": 2.3272910000000024,
+        "meanMs": 2.079013333333345
+      },
+      "suspend_only": {
+        "iterations": 3,
+        "minMs": 0.05912499999999454,
+        "medianMs": 0.06725000000000136,
+        "p95Ms": 0.10849999999999227,
+        "maxMs": 0.10849999999999227,
+        "meanMs": 0.07829166666666272
+      },
+      "snapshot_dump_only": {
+        "iterations": 3,
+        "minMs": 0.06895800000000918,
+        "medianMs": 0.08491599999996424,
+        "p95Ms": 0.09816699999998946,
+        "maxMs": 0.09816699999998946,
+        "meanMs": 0.08401366666665429
+      },
+      "apply_snapshot_policy_only": {
+        "iterations": 3,
+        "minMs": 0.03104200000001356,
+        "medianMs": 0.03104200000001356,
+        "p95Ms": 0.04258300000003601,
+        "maxMs": 0.04258300000003601,
+        "meanMs": 0.03488900000002104
+      },
+      "snapshot_load_only": {
+        "iterations": 3,
+        "minMs": 0.054040999999983796,
+        "medianMs": 0.05654200000003584,
+        "p95Ms": 0.06824999999997772,
+        "maxMs": 0.06824999999997772,
+        "meanMs": 0.059610999999999116
+      },
+      "Progress.load_only": {
+        "iterations": 3,
+        "minMs": 0.227374999999995,
+        "medianMs": 0.22791699999999082,
+        "p95Ms": 0.25674999999995407,
+        "maxMs": 0.25674999999995407,
+        "meanMs": 0.2373473333333133
+      }
+    },
+    "boundary": {
+      "startInputs": {
+        "small": {
+          "iterations": 3,
+          "minMs": 0.2010829999999828,
+          "medianMs": 0.21058300000004238,
+          "p95Ms": 0.2270000000000323,
+          "maxMs": 0.2270000000000323,
+          "meanMs": 0.21288866666668582
+        },
+        "medium": {
+          "iterations": 3,
+          "minMs": 0.28087499999998045,
+          "medianMs": 0.3372919999999908,
+          "p95Ms": 0.3477500000000191,
+          "maxMs": 0.3477500000000191,
+          "meanMs": 0.32197233333333014
+        },
+        "large": {
+          "iterations": 3,
+          "minMs": 0.8585419999999999,
+          "medianMs": 0.9780000000000086,
+          "p95Ms": 0.9992500000000177,
+          "maxMs": 0.9992500000000177,
+          "meanMs": 0.9452640000000088
+        }
+      },
+      "suspendedArgs": {
+        "small": {
+          "iterations": 3,
+          "minMs": 0.24099999999998545,
+          "medianMs": 0.25841700000000856,
+          "p95Ms": 0.2642919999999549,
+          "maxMs": 0.2642919999999549,
+          "meanMs": 0.25456966666664965
+        },
+        "medium": {
+          "iterations": 3,
+          "minMs": 0.6627919999999676,
+          "medianMs": 0.7803749999999923,
+          "p95Ms": 0.9240419999999858,
+          "maxMs": 0.9240419999999858,
+          "meanMs": 0.7890696666666486
+        },
+        "large": {
+          "iterations": 3,
+          "minMs": 1.7662920000000213,
+          "medianMs": 1.9456670000000145,
+          "p95Ms": 2.026957999999979,
+          "maxMs": 2.026957999999979,
+          "meanMs": 1.9129723333333384
+        }
+      },
+      "resumeValues": {
+        "small": {
+          "iterations": 3,
+          "minMs": 0.1344169999999849,
+          "medianMs": 0.13716699999997672,
+          "p95Ms": 0.17475000000001728,
+          "maxMs": 0.17475000000001728,
+          "meanMs": 0.14877799999999297
+        },
+        "medium": {
+          "iterations": 3,
+          "minMs": 0.23324999999999818,
+          "medianMs": 0.23841600000002927,
+          "p95Ms": 0.2550410000000056,
+          "maxMs": 0.2550410000000056,
+          "meanMs": 0.2422356666666777
+        },
+        "large": {
+          "iterations": 3,
+          "minMs": 0.6072500000000218,
+          "medianMs": 0.6790839999999889,
+          "p95Ms": 0.7719169999999735,
+          "maxMs": 0.7719169999999735,
+          "meanMs": 0.6860836666666614
+        }
+      },
+      "resumeErrors": {
+        "small": {
+          "iterations": 3,
+          "minMs": 0.10995900000000347,
+          "medianMs": 0.11666700000000674,
+          "p95Ms": 0.141666999999984,
+          "maxMs": 0.141666999999984,
+          "meanMs": 0.12276433333333141
+        },
+        "medium": {
+          "iterations": 3,
+          "minMs": 0.24370800000002646,
+          "medianMs": 0.24883299999999053,
+          "p95Ms": 0.382458999999983,
+          "maxMs": 0.382458999999983,
+          "meanMs": 0.2916666666666667
+        },
+        "large": {
+          "iterations": 3,
+          "minMs": 0.500583000000006,
+          "medianMs": 0.5134160000000065,
+          "p95Ms": 0.5320839999999976,
+          "maxMs": 0.5320839999999976,
+          "meanMs": 0.5153610000000034
+        }
+      }
+    },
+    "counters": {
+      "warm_run_small": {
+        "gc_collections": 1,
+        "gc_total_time_ns": 17042,
+        "gc_reclaimed_bytes": 178861,
+        "gc_reclaimed_allocations": 2038,
+        "accounting_refreshes": 0,
+        "queued_microtasks": 0,
+        "executed_microtasks": 0,
+        "peak_microtask_queue_len": 0,
+        "queued_resume_async_microtasks": 0,
+        "executed_resume_async_microtasks": 0,
+        "queued_promise_reactions": 0,
+        "executed_promise_reactions": 0,
+        "queued_promise_combinators": 0,
+        "executed_promise_combinators": 0
+      },
+      "programmatic_tool_workflow": {
+        "gc_collections": 1,
+        "gc_total_time_ns": 1167,
+        "gc_reclaimed_bytes": 160,
+        "gc_reclaimed_allocations": 1,
+        "accounting_refreshes": 0,
+        "queued_microtasks": 0,
+        "executed_microtasks": 0,
+        "peak_microtask_queue_len": 0,
+        "queued_resume_async_microtasks": 0,
+        "executed_resume_async_microtasks": 0,
+        "queued_promise_reactions": 0,
+        "executed_promise_reactions": 0,
+        "queued_promise_combinators": 0,
+        "executed_promise_combinators": 0
+      },
+      "host_fanout_100": {
+        "gc_collections": 100,
+        "gc_total_time_ns": 73667,
+        "gc_reclaimed_bytes": 8872,
+        "gc_reclaimed_allocations": 100,
+        "accounting_refreshes": 0,
+        "queued_microtasks": 0,
+        "executed_microtasks": 0,
+        "peak_microtask_queue_len": 0,
+        "queued_resume_async_microtasks": 0,
+        "executed_resume_async_microtasks": 0,
+        "queued_promise_reactions": 0,
+        "executed_promise_reactions": 0,
+        "queued_promise_combinators": 0,
+        "executed_promise_combinators": 0
+      },
+      "execution_only_small": {
+        "gc_collections": 2,
+        "gc_total_time_ns": 18376,
+        "gc_reclaimed_bytes": 179141,
+        "gc_reclaimed_allocations": 2042,
+        "accounting_refreshes": 0,
+        "queued_microtasks": 0,
+        "executed_microtasks": 0,
+        "peak_microtask_queue_len": 0,
+        "queued_resume_async_microtasks": 0,
+        "executed_resume_async_microtasks": 0,
+        "queued_promise_reactions": 0,
+        "executed_promise_reactions": 0,
+        "queued_promise_combinators": 0,
+        "executed_promise_combinators": 0
+      },
+      "suspend_resume_20": {
+        "gc_collections": 20,
+        "gc_total_time_ns": 14042,
+        "gc_reclaimed_bytes": 1672,
+        "gc_reclaimed_allocations": 19,
+        "accounting_refreshes": 0,
+        "queued_microtasks": 0,
+        "executed_microtasks": 0,
+        "peak_microtask_queue_len": 0,
+        "queued_resume_async_microtasks": 0,
+        "executed_resume_async_microtasks": 0,
+        "queued_promise_reactions": 0,
+        "executed_promise_reactions": 0,
+        "queued_promise_combinators": 0,
+        "executed_promise_combinators": 0
+      },
+      "snapshot_load_only": {
+        "gc_collections": 0,
+        "gc_total_time_ns": 0,
+        "gc_reclaimed_bytes": 0,
+        "gc_reclaimed_allocations": 0,
+        "accounting_refreshes": 1,
+        "queued_microtasks": 0,
+        "executed_microtasks": 0,
+        "peak_microtask_queue_len": 0,
+        "queued_resume_async_microtasks": 0,
+        "executed_resume_async_microtasks": 0,
+        "queued_promise_reactions": 0,
+        "executed_promise_reactions": 0,
+        "queued_promise_combinators": 0,
+        "executed_promise_combinators": 0
+      },
+      "ptc_incident_triage_medium": {
+        "gc_collections": 20,
+        "gc_total_time_ns": 45126,
+        "gc_reclaimed_bytes": 3035,
+        "gc_reclaimed_allocations": 30,
+        "accounting_refreshes": 0,
+        "queued_microtasks": 24,
+        "executed_microtasks": 24,
+        "peak_microtask_queue_len": 1,
+        "queued_resume_async_microtasks": 1,
+        "executed_resume_async_microtasks": 1,
+        "queued_promise_reactions": 0,
+        "executed_promise_reactions": 0,
+        "queued_promise_combinators": 23,
+        "executed_promise_combinators": 23
+      },
+      "ptc_fraud_investigation_medium": {
+        "gc_collections": 6,
+        "gc_total_time_ns": 25502,
+        "gc_reclaimed_bytes": 29501,
+        "gc_reclaimed_allocations": 304,
+        "accounting_refreshes": 0,
+        "queued_microtasks": 7,
+        "executed_microtasks": 7,
+        "peak_microtask_queue_len": 1,
+        "queued_resume_async_microtasks": 3,
+        "executed_resume_async_microtasks": 3,
+        "queued_promise_reactions": 0,
+        "executed_promise_reactions": 0,
+        "queued_promise_combinators": 4,
+        "executed_promise_combinators": 4
+      },
+      "ptc_vendor_review_medium": {
+        "gc_collections": 5,
+        "gc_total_time_ns": 15667,
+        "gc_reclaimed_bytes": 35682,
+        "gc_reclaimed_allocations": 373,
+        "accounting_refreshes": 0,
+        "queued_microtasks": 6,
+        "executed_microtasks": 6,
+        "peak_microtask_queue_len": 1,
+        "queued_resume_async_microtasks": 2,
+        "executed_resume_async_microtasks": 2,
+        "queued_promise_reactions": 0,
+        "executed_promise_reactions": 0,
+        "queued_promise_combinators": 4,
+        "executed_promise_combinators": 4
+      }
+    },
+    "ptc": {
+      "transfer": {
+        "ptc_website_demo_small": {
+          "laneId": "website_demo",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+          "toolFamilyCount": 4,
+          "logicalPeakFanout": 1,
+          "finalAction": false,
+          "usesPromiseAll": false,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "alertCount": 4,
+            "deployCount": 2,
+            "logCount": 9
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 1109,
+          "resultBytesOut": 227,
+          "reductionRatio": 4.88546255506608
+        },
+        "ptc_incident_triage_small": {
+          "laneId": "incident_triage",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 9,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "regionCount": 3,
+            "alertsPerRegion": 2,
+            "samplesPerRegion": 2
+          },
+          "toolCallCount": 11,
+          "toolBytesIn": 1954,
+          "resultBytesOut": 1505,
+          "reductionRatio": 1.2983388704318937
+        },
+        "ptc_fraud_investigation_small": {
+          "laneId": "fraud_investigation",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "transactionCount": 24,
+            "accountCount": 8,
+            "entityCount": 6,
+            "cardCount": 5
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 7432,
+          "resultBytesOut": 4570,
+          "reductionRatio": 1.6262582056892778
+        },
+        "ptc_vendor_review_small": {
+          "laneId": "vendor_review",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "finalAction": true,
+          "usesPromiseAll": true,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "frameworkCount": 3,
+            "flowCount": 4,
+            "subprocessorCount": 4
+          },
+          "toolCallCount": 5,
+          "toolBytesIn": 1295,
+          "resultBytesOut": 626,
+          "reductionRatio": 2.0686900958466454
+        },
+        "ptc_website_demo_medium": {
+          "laneId": "website_demo",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+          "toolFamilyCount": 4,
+          "logicalPeakFanout": 1,
+          "finalAction": false,
+          "usesPromiseAll": false,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "alertCount": 10,
+            "deployCount": 4,
+            "logCount": 24
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 2450,
+          "resultBytesOut": 398,
+          "reductionRatio": 6.155778894472362
+        },
+        "ptc_incident_triage_medium": {
+          "laneId": "incident_triage",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 18,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "regionCount": 6,
+            "alertsPerRegion": 3,
+            "samplesPerRegion": 3
+          },
+          "toolCallCount": 20,
+          "toolBytesIn": 4340,
+          "resultBytesOut": 2463,
+          "reductionRatio": 1.762078765732846
+        },
+        "ptc_fraud_investigation_medium": {
+          "laneId": "fraud_investigation",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "transactionCount": 96,
+            "accountCount": 24,
+            "entityCount": 16,
+            "cardCount": 12
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 26818,
+          "resultBytesOut": 17579,
+          "reductionRatio": 1.5255702827237043
+        },
+        "ptc_vendor_review_medium": {
+          "laneId": "vendor_review",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "finalAction": true,
+          "usesPromiseAll": true,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "frameworkCount": 5,
+            "flowCount": 10,
+            "subprocessorCount": 10
+          },
+          "toolCallCount": 5,
+          "toolBytesIn": 2639,
+          "resultBytesOut": 967,
+          "reductionRatio": 2.7290589451913134
+        },
+        "ptc_website_demo_large": {
+          "laneId": "website_demo",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+          "toolFamilyCount": 4,
+          "logicalPeakFanout": 1,
+          "finalAction": false,
+          "usesPromiseAll": false,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "alertCount": 24,
+            "deployCount": 8,
+            "logCount": 60
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 5565,
+          "resultBytesOut": 823,
+          "reductionRatio": 6.761846901579587
+        },
+        "ptc_incident_triage_large": {
+          "laneId": "incident_triage",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 36,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "regionCount": 12,
+            "alertsPerRegion": 4,
+            "samplesPerRegion": 4
+          },
+          "toolCallCount": 38,
+          "toolBytesIn": 10126,
+          "resultBytesOut": 4577,
+          "reductionRatio": 2.2123661787196855
+        },
+        "ptc_fraud_investigation_large": {
+          "laneId": "fraud_investigation",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "transactionCount": 384,
+            "accountCount": 96,
+            "entityCount": 64,
+            "cardCount": 48
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 107540,
+          "resultBytesOut": 69245,
+          "reductionRatio": 1.553036320311936
+        },
+        "ptc_vendor_review_large": {
+          "laneId": "vendor_review",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "finalAction": true,
+          "usesPromiseAll": true,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "frameworkCount": 7,
+            "flowCount": 24,
+            "subprocessorCount": 24
+          },
+          "toolCallCount": 5,
+          "toolBytesIn": 5491,
+          "resultBytesOut": 1592,
+          "reductionRatio": 3.4491206030150754
+        }
+      },
+      "breakdown": {
+        "ptc_website_demo_small": {
+          "hostCallbacks": {
+            "iterations": 3,
+            "minMs": 0.005666999999903055,
+            "medianMs": 0.005751999999972668,
+            "p95Ms": 0.005790999999931046,
+            "maxMs": 0.005790999999931046,
+            "meanMs": 0.0057366666666022565
+          },
+          "guestExecution": {
+            "iterations": 3,
+            "minMs": 0.053959,
+            "medianMs": 0.055333,
+            "p95Ms": 0.057831999999999995,
+            "maxMs": 0.057831999999999995,
+            "meanMs": 0.055708
+          },
+          "boundaryParse": {
+            "iterations": 3,
+            "minMs": 0.002792,
+            "medianMs": 0.0028740000000000003,
+            "p95Ms": 0.0030850000000000005,
+            "maxMs": 0.0030850000000000005,
+            "meanMs": 0.0029170000000000008
+          },
+          "boundaryEncode": {
+            "iterations": 3,
+            "minMs": 0.004,
+            "medianMs": 0.004084,
+            "p95Ms": 0.0041670000000000006,
+            "maxMs": 0.0041670000000000006,
+            "meanMs": 0.004083666666666667
+          },
+          "boundaryCodec": {
+            "iterations": 3,
+            "minMs": 0.006958000000000001,
+            "medianMs": 0.006959000000000001,
+            "p95Ms": 0.007085000000000001,
+            "maxMs": 0.007085000000000001,
+            "meanMs": 0.007000666666666668
+          }
+        },
+        "ptc_incident_triage_medium": {
+          "hostCallbacks": {
+            "iterations": 3,
+            "minMs": 0.008710000000178297,
+            "medianMs": 0.009210000000052787,
+            "p95Ms": 0.016624000000149408,
+            "maxMs": 0.016624000000149408,
+            "meanMs": 0.011514666666793497
+          },
+          "guestExecution": {
+            "iterations": 3,
+            "minMs": 0.20791600000000002,
+            "medianMs": 0.20966500000000005,
+            "p95Ms": 0.21303900000000003,
+            "maxMs": 0.21303900000000003,
+            "meanMs": 0.21020666666666674
+          },
+          "boundaryParse": {
+            "iterations": 3,
+            "minMs": 0.008667000000000001,
+            "medianMs": 0.008749999999999999,
+            "p95Ms": 0.009292000000000002,
+            "maxMs": 0.009292000000000002,
+            "meanMs": 0.008903000000000001
+          },
+          "boundaryEncode": {
+            "iterations": 3,
+            "minMs": 0.013166,
+            "medianMs": 0.013375,
+            "p95Ms": 0.013999,
+            "maxMs": 0.013999,
+            "meanMs": 0.013513333333333334
+          },
+          "boundaryCodec": {
+            "iterations": 3,
+            "minMs": 0.021915999999999998,
+            "medianMs": 0.022042,
+            "p95Ms": 0.023291,
+            "maxMs": 0.023291,
+            "meanMs": 0.022416333333333333
+          }
+        },
+        "ptc_fraud_investigation_medium": {
+          "hostCallbacks": {
+            "iterations": 3,
+            "minMs": 0.006498999999962507,
+            "medianMs": 0.007372999999915919,
+            "p95Ms": 0.0074999999998226485,
+            "maxMs": 0.0074999999998226485,
+            "meanMs": 0.0071239999999003585
+          },
+          "guestExecution": {
+            "iterations": 3,
+            "minMs": 0.817834,
+            "medianMs": 0.822501,
+            "p95Ms": 0.826043,
+            "maxMs": 0.826043,
+            "meanMs": 0.8221259999999999
+          },
+          "boundaryParse": {
+            "iterations": 3,
+            "minMs": 0.051792000000000005,
+            "medianMs": 0.05204200000000001,
+            "p95Ms": 0.05279000000000001,
+            "maxMs": 0.05279000000000001,
+            "meanMs": 0.052208000000000004
+          },
+          "boundaryEncode": {
+            "iterations": 3,
+            "minMs": 0.023791,
+            "medianMs": 0.023915,
+            "p95Ms": 0.024083,
+            "maxMs": 0.024083,
+            "meanMs": 0.023929666666666665
+          },
+          "boundaryCodec": {
+            "iterations": 3,
+            "minMs": 0.07558300000000001,
+            "medianMs": 0.07612500000000001,
+            "p95Ms": 0.07670500000000001,
+            "maxMs": 0.07670500000000001,
+            "meanMs": 0.07613766666666667
+          }
+        },
+        "ptc_vendor_review_medium": {
+          "hostCallbacks": {
+            "iterations": 3,
+            "minMs": 0.003208000000086031,
+            "medianMs": 0.003248999999982516,
+            "p95Ms": 0.003543000000036045,
+            "maxMs": 0.003543000000036045,
+            "meanMs": 0.003333333333368197
+          },
+          "guestExecution": {
+            "iterations": 3,
+            "minMs": 0.094624,
+            "medianMs": 0.094708,
+            "p95Ms": 0.095667,
+            "maxMs": 0.095667,
+            "meanMs": 0.09499966666666666
+          },
+          "boundaryParse": {
+            "iterations": 3,
+            "minMs": 0.006835,
+            "medianMs": 0.006958000000000001,
+            "p95Ms": 0.007083000000000001,
+            "maxMs": 0.007083000000000001,
+            "meanMs": 0.006958666666666666
+          },
+          "boundaryEncode": {
+            "iterations": 3,
+            "minMs": 0.004999,
+            "medianMs": 0.005041,
+            "p95Ms": 0.0050420000000000005,
+            "maxMs": 0.0050420000000000005,
+            "meanMs": 0.005027333333333334
+          },
+          "boundaryCodec": {
+            "iterations": 3,
+            "minMs": 0.011877,
+            "medianMs": 0.011957,
+            "p95Ms": 0.012124000000000001,
+            "maxMs": 0.012124000000000001,
+            "meanMs": 0.011986000000000002
+          }
+        }
+      },
+      "weightedScore": {
+        "medium": {
+          "medianMs": 0.6616101499999786,
+          "p95Ms": 0.6953166000000237
+        }
+      }
+    },
+    "durablePtc": {
+      "resumeOnly": {
+        "ptc_vendor_review_durable_small": {
+          "iterations": 3,
+          "minMs": 0.36262499999998,
+          "medianMs": 0.37287500000002183,
+          "p95Ms": 0.39745800000002873,
+          "maxMs": 0.39745800000002873,
+          "meanMs": 0.37765266666667685
+        },
+        "ptc_vendor_review_durable_medium": {
+          "iterations": 3,
+          "minMs": 0.470957999999996,
+          "medianMs": 0.47374999999999545,
+          "p95Ms": 0.47804199999995944,
+          "maxMs": 0.47804199999995944,
+          "meanMs": 0.47424999999998363
+        },
+        "ptc_vendor_review_durable_large": {
+          "iterations": 3,
+          "minMs": 0.6372089999999844,
+          "medianMs": 0.6612089999999853,
+          "p95Ms": 0.7375829999999723,
+          "maxMs": 0.7375829999999723,
+          "meanMs": 0.6786669999999807
+        }
+      },
+      "state": {
+        "ptc_vendor_review_durable_small": {
+          "snapshotBytes": 9721,
+          "detachedManifestBytes": 2451,
+          "checkpointArgsBytes": 1406
+        },
+        "ptc_vendor_review_durable_medium": {
+          "snapshotBytes": 14930,
+          "detachedManifestBytes": 4770,
+          "checkpointArgsBytes": 2764
+        },
+        "ptc_vendor_review_durable_large": {
+          "snapshotBytes": 25817,
+          "detachedManifestBytes": 9585,
+          "checkpointArgsBytes": 5630
+        }
+      }
+    },
+    "suspendState": {
+      "suspend_resume_1": {
+        "serializedProgramBytes": 486,
+        "snapshotBytes": 2774,
+        "retainedLiveProgressCount": 20,
+        "retainedLiveHeapBytes": -46808,
+        "retainedLiveRssBytes": 393216
+      },
+      "suspend_resume_5": {
+        "serializedProgramBytes": 486,
+        "snapshotBytes": 2774,
+        "retainedLiveProgressCount": 20,
+        "retainedLiveHeapBytes": 11048,
+        "retainedLiveRssBytes": 458752
+      },
+      "suspend_resume_20": {
+        "serializedProgramBytes": 486,
+        "snapshotBytes": 2774,
+        "retainedLiveProgressCount": 20,
+        "retainedLiveHeapBytes": 23552,
+        "retainedLiveRssBytes": 425984
+      }
+    },
+    "memory": {
+      "heapUsedDeltaBytes": 49056,
+      "rssDeltaBytes": 409600
+    },
+    "failureCleanup": {
+      "limitFailure": {
+        "iterations": 3,
+        "minMs": 0.7701670000000149,
+        "medianMs": 0.7740000000000009,
+        "p95Ms": 0.8111250000000609,
+        "maxMs": 0.8111250000000609,
+        "meanMs": 0.785097333333359
+      },
+      "hostFailure": {
+        "iterations": 3,
+        "minMs": 0.7863750000000209,
+        "medianMs": 0.8089579999999614,
+        "p95Ms": 0.8092080000000124,
+        "maxMs": 0.8092080000000124,
+        "meanMs": 0.8015136666666649
+      }
+    }
+  },
+  "sidecar": {
+    "latency": {
+      "cold_start_small": {
+        "iterations": 2,
+        "minMs": 7.272207999999978,
+        "medianMs": 7.272207999999978,
+        "p95Ms": 12.331207999999947,
+        "maxMs": 12.331207999999947,
+        "meanMs": 9.801707999999962
+      },
+      "cold_start_code_mode_search": {
+        "iterations": 2,
+        "minMs": 5.6512500000000045,
+        "medianMs": 5.6512500000000045,
+        "p95Ms": 5.7305829999999105,
+        "maxMs": 5.7305829999999105,
+        "meanMs": 5.6909164999999575
+      },
+      "warm_run_small": {
+        "iterations": 3,
+        "minMs": 1.4112500000001091,
+        "medianMs": 1.5380830000000287,
+        "p95Ms": 1.5671250000000327,
+        "maxMs": 1.5671250000000327,
+        "meanMs": 1.505486000000057
+      },
+      "warm_run_code_mode_search": {
+        "iterations": 3,
+        "minMs": 0.6695000000000846,
+        "medianMs": 0.6875830000000178,
+        "p95Ms": 0.68912499999999,
+        "maxMs": 0.68912499999999,
+        "meanMs": 0.6820693333333642
+      },
+      "programmatic_tool_workflow": {
+        "iterations": 3,
+        "minMs": 10.288332999999966,
+        "medianMs": 11.142207999999982,
+        "p95Ms": 12.334459000000038,
+        "maxMs": 12.334459000000038,
+        "meanMs": 11.254999999999995
+      },
+      "ptc_website_demo_small": {
+        "iterations": 3,
+        "minMs": 0.48795899999993253,
+        "medianMs": 0.5325409999999238,
+        "p95Ms": 0.5384579999999914,
+        "maxMs": 0.5384579999999914,
+        "meanMs": 0.5196526666666159
+      },
+      "ptc_incident_triage_small": {
+        "iterations": 3,
+        "minMs": 1.5352920000000267,
+        "medianMs": 1.8614999999999782,
+        "p95Ms": 2.213707999999997,
+        "maxMs": 2.213707999999997,
+        "meanMs": 1.8701666666666672
+      },
+      "ptc_fraud_investigation_small": {
+        "iterations": 3,
+        "minMs": 1.55987499999992,
+        "medianMs": 1.5838330000001406,
+        "p95Ms": 1.65099999999984,
+        "maxMs": 1.65099999999984,
+        "meanMs": 1.598235999999967
+      },
+      "ptc_vendor_review_small": {
+        "iterations": 3,
+        "minMs": 0.6148749999999836,
+        "medianMs": 0.6332919999999831,
+        "p95Ms": 0.9246249999998781,
+        "maxMs": 0.9246249999998781,
+        "meanMs": 0.7242639999999483
+      },
+      "ptc_website_demo_medium": {
+        "iterations": 3,
+        "minMs": 0.5437919999999394,
+        "medianMs": 0.5786250000001019,
+        "p95Ms": 0.6942500000000109,
+        "maxMs": 0.6942500000000109,
+        "meanMs": 0.605555666666684
+      },
+      "ptc_incident_triage_medium": {
+        "iterations": 3,
+        "minMs": 2.9388750000000528,
+        "medianMs": 2.9764999999999873,
+        "p95Ms": 3.0052080000000387,
+        "maxMs": 3.0052080000000387,
+        "meanMs": 2.9735276666666928
+      },
+      "ptc_fraud_investigation_medium": {
+        "iterations": 3,
+        "minMs": 3.0659579999999096,
+        "medianMs": 3.1684580000001006,
+        "p95Ms": 3.196124999999938,
+        "maxMs": 3.196124999999938,
+        "meanMs": 3.1435136666666494
+      },
+      "ptc_vendor_review_medium": {
+        "iterations": 3,
+        "minMs": 0.7632079999998496,
+        "medianMs": 0.7653749999999491,
+        "p95Ms": 0.7815829999999551,
+        "maxMs": 0.7815829999999551,
+        "meanMs": 0.7700553333332513
+      },
+      "ptc_website_demo_large": {
+        "iterations": 3,
+        "minMs": 0.820709000000079,
+        "medianMs": 0.8265830000000278,
+        "p95Ms": 0.8350000000000364,
+        "maxMs": 0.8350000000000364,
+        "meanMs": 0.8274306666667144
+      },
+      "ptc_incident_triage_large": {
+        "iterations": 3,
+        "minMs": 6.854957999999897,
+        "medianMs": 6.869750000000067,
+        "p95Ms": 6.9217919999998685,
+        "maxMs": 6.9217919999998685,
+        "meanMs": 6.882166666666611
+      },
+      "ptc_fraud_investigation_large": {
+        "iterations": 3,
+        "minMs": 10.077625000000126,
+        "medianMs": 10.228749999999991,
+        "p95Ms": 10.240082999999913,
+        "maxMs": 10.240082999999913,
+        "meanMs": 10.182152666666676
+      },
+      "ptc_vendor_review_large": {
+        "iterations": 3,
+        "minMs": 0.9975409999999556,
+        "medianMs": 1.0348750000000564,
+        "p95Ms": 1.038041000000021,
+        "maxMs": 1.038041000000021,
+        "meanMs": 1.0234856666666776
+      },
+      "host_fanout_1": {
+        "iterations": 2,
+        "minMs": 0.08512499999983447,
+        "medianMs": 0.08512499999983447,
+        "p95Ms": 0.11845800000014606,
+        "maxMs": 0.11845800000014606,
+        "meanMs": 0.10179149999999026
+      },
+      "host_fanout_10": {
+        "iterations": 2,
+        "minMs": 0.48329100000000835,
+        "medianMs": 0.48329100000000835,
+        "p95Ms": 0.487041999999974,
+        "maxMs": 0.487041999999974,
+        "meanMs": 0.4851664999999912
+      },
+      "host_fanout_50": {
+        "iterations": 2,
+        "minMs": 2.079875000000129,
+        "medianMs": 2.079875000000129,
+        "p95Ms": 2.2650840000001153,
+        "maxMs": 2.2650840000001153,
+        "meanMs": 2.1724795000001222
+      },
+      "host_fanout_100": {
+        "iterations": 2,
+        "minMs": 4.130625000000009,
+        "medianMs": 4.130625000000009,
+        "p95Ms": 4.229916999999887,
+        "maxMs": 4.229916999999887,
+        "meanMs": 4.180270999999948
+      },
+      "suspend_resume_1": {
+        "iterations": 2,
+        "minMs": 0.06387499999982538,
+        "medianMs": 0.06387499999982538,
+        "p95Ms": 0.095833999999968,
+        "maxMs": 0.095833999999968,
+        "meanMs": 0.07985449999989669
+      },
+      "suspend_resume_5": {
+        "iterations": 2,
+        "minMs": 0.22854099999995015,
+        "medianMs": 0.22854099999995015,
+        "p95Ms": 0.2615000000000691,
+        "maxMs": 0.2615000000000691,
+        "meanMs": 0.24502050000000963
+      },
+      "suspend_resume_20": {
+        "iterations": 2,
+        "minMs": 0.81899999999996,
+        "medianMs": 0.81899999999996,
+        "p95Ms": 0.8385410000000775,
+        "maxMs": 0.8385410000000775,
+        "meanMs": 0.8287705000000187
+      }
+    },
+    "phases": {
+      "startup_only": {
+        "iterations": 2,
+        "minMs": 8.451791000000071,
+        "medianMs": 8.451791000000071,
+        "p95Ms": 287.65662499999996,
+        "maxMs": 287.65662499999996,
+        "meanMs": 148.05420800000002
+      },
+      "execution_only_small": {
+        "iterations": 3,
+        "minMs": 1.4112500000001091,
+        "medianMs": 1.5380830000000287,
+        "p95Ms": 1.5671250000000327,
+        "maxMs": 1.5671250000000327,
+        "meanMs": 1.505486000000057
+      },
+      "transport_resume_only": {
+        "iterations": 3,
+        "minMs": 0.0893749999999045,
+        "medianMs": 0.0971670000000131,
+        "p95Ms": 0.1139580000000251,
+        "maxMs": 0.1139580000000251,
+        "meanMs": 0.10016666666664757
+      }
+    },
+    "ptc": {
+      "transfer": {
+        "ptc_website_demo_small": {
+          "laneId": "website_demo",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+          "toolFamilyCount": 4,
+          "logicalPeakFanout": 1,
+          "finalAction": false,
+          "usesPromiseAll": false,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "alertCount": 4,
+            "deployCount": 2,
+            "logCount": 9
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 1109,
+          "resultBytesOut": 227,
+          "reductionRatio": 4.88546255506608
+        },
+        "ptc_incident_triage_small": {
+          "laneId": "incident_triage",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 9,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "regionCount": 3,
+            "alertsPerRegion": 2,
+            "samplesPerRegion": 2
+          },
+          "toolCallCount": 11,
+          "toolBytesIn": 1954,
+          "resultBytesOut": 1505,
+          "reductionRatio": 1.2983388704318937
+        },
+        "ptc_fraud_investigation_small": {
+          "laneId": "fraud_investigation",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "transactionCount": 24,
+            "accountCount": 8,
+            "entityCount": 6,
+            "cardCount": 5
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 7432,
+          "resultBytesOut": 4570,
+          "reductionRatio": 1.6262582056892778
+        },
+        "ptc_vendor_review_small": {
+          "laneId": "vendor_review",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "finalAction": true,
+          "usesPromiseAll": true,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "frameworkCount": 3,
+            "flowCount": 4,
+            "subprocessorCount": 4
+          },
+          "toolCallCount": 5,
+          "toolBytesIn": 1295,
+          "resultBytesOut": 626,
+          "reductionRatio": 2.0686900958466454
+        },
+        "ptc_website_demo_medium": {
+          "laneId": "website_demo",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+          "toolFamilyCount": 4,
+          "logicalPeakFanout": 1,
+          "finalAction": false,
+          "usesPromiseAll": false,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "alertCount": 10,
+            "deployCount": 4,
+            "logCount": 24
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 2450,
+          "resultBytesOut": 398,
+          "reductionRatio": 6.155778894472362
+        },
+        "ptc_incident_triage_medium": {
+          "laneId": "incident_triage",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 18,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "regionCount": 6,
+            "alertsPerRegion": 3,
+            "samplesPerRegion": 3
+          },
+          "toolCallCount": 20,
+          "toolBytesIn": 4340,
+          "resultBytesOut": 2463,
+          "reductionRatio": 1.762078765732846
+        },
+        "ptc_fraud_investigation_medium": {
+          "laneId": "fraud_investigation",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "transactionCount": 96,
+            "accountCount": 24,
+            "entityCount": 16,
+            "cardCount": 12
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 26818,
+          "resultBytesOut": 17579,
+          "reductionRatio": 1.5255702827237043
+        },
+        "ptc_vendor_review_medium": {
+          "laneId": "vendor_review",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "finalAction": true,
+          "usesPromiseAll": true,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "frameworkCount": 5,
+            "flowCount": 10,
+            "subprocessorCount": 10
+          },
+          "toolCallCount": 5,
+          "toolBytesIn": 2639,
+          "resultBytesOut": 967,
+          "reductionRatio": 2.7290589451913134
+        },
+        "ptc_website_demo_large": {
+          "laneId": "website_demo",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+          "toolFamilyCount": 4,
+          "logicalPeakFanout": 1,
+          "finalAction": false,
+          "usesPromiseAll": false,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "alertCount": 24,
+            "deployCount": 8,
+            "logCount": 60
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 5565,
+          "resultBytesOut": 823,
+          "reductionRatio": 6.761846901579587
+        },
+        "ptc_incident_triage_large": {
+          "laneId": "incident_triage",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 36,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "regionCount": 12,
+            "alertsPerRegion": 4,
+            "samplesPerRegion": 4
+          },
+          "toolCallCount": 38,
+          "toolBytesIn": 10126,
+          "resultBytesOut": 4577,
+          "reductionRatio": 2.2123661787196855
+        },
+        "ptc_fraud_investigation_large": {
+          "laneId": "fraud_investigation",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "transactionCount": 384,
+            "accountCount": 96,
+            "entityCount": 64,
+            "cardCount": 48
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 107540,
+          "resultBytesOut": 69245,
+          "reductionRatio": 1.553036320311936
+        },
+        "ptc_vendor_review_large": {
+          "laneId": "vendor_review",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "finalAction": true,
+          "usesPromiseAll": true,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "frameworkCount": 7,
+            "flowCount": 24,
+            "subprocessorCount": 24
+          },
+          "toolCallCount": 5,
+          "toolBytesIn": 5491,
+          "resultBytesOut": 1592,
+          "reductionRatio": 3.4491206030150754
+        }
+      },
+      "breakdown": {
+        "processStartup": {
+          "iterations": 2,
+          "minMs": 8.451791000000071,
+          "medianMs": 8.451791000000071,
+          "p95Ms": 287.65662499999996,
+          "maxMs": 287.65662499999996,
+          "meanMs": 148.05420800000002
+        },
+        "ptc_website_demo_small": {
+          "requestTransport": {
+            "iterations": 3,
+            "minMs": 0.13374900000044637,
+            "medianMs": 0.134001000000103,
+            "p95Ms": 0.20766599999995616,
+            "maxMs": 0.20766599999995616,
+            "meanMs": 0.1584720000001685
+          },
+          "execution": {
+            "iterations": 3,
+            "minMs": 0.061626,
+            "medianMs": 0.063251,
+            "p95Ms": 0.095,
+            "maxMs": 0.095,
+            "meanMs": 0.07329233333333333
+          },
+          "responseMaterialization": {
+            "iterations": 3,
+            "minMs": 0.12166500000006657,
+            "medianMs": 0.12254199999963311,
+            "p95Ms": 0.13975000000002402,
+            "maxMs": 0.13975000000002402,
+            "meanMs": 0.12798566666657457
+          }
+        },
+        "ptc_incident_triage_medium": {
+          "requestTransport": {
+            "iterations": 3,
+            "minMs": 0.40258200000007904,
+            "medianMs": 0.40328899999951295,
+            "p95Ms": 0.4469610000015971,
+            "maxMs": 0.4469610000015971,
+            "meanMs": 0.417610666667063
+          },
+          "execution": {
+            "iterations": 3,
+            "minMs": 0.281583,
+            "medianMs": 0.2874570000000001,
+            "p95Ms": 0.301543,
+            "maxMs": 0.301543,
+            "meanMs": 0.2901943333333334
+          },
+          "responseMaterialization": {
+            "iterations": 3,
+            "minMs": 1.087834999999804,
+            "medianMs": 1.1141689999988609,
+            "p95Ms": 1.1255830000006173,
+            "maxMs": 1.1255830000006173,
+            "meanMs": 1.1091956666664273
+          }
+        },
+        "ptc_fraud_investigation_medium": {
+          "requestTransport": {
+            "iterations": 3,
+            "minMs": 0.3879589999995331,
+            "medianMs": 0.3887510000001302,
+            "p95Ms": 0.44583299999994475,
+            "maxMs": 0.44583299999994475,
+            "meanMs": 0.4075143333332027
+          },
+          "execution": {
+            "iterations": 3,
+            "minMs": 0.919707,
+            "medianMs": 0.921207,
+            "p95Ms": 0.9729159999999999,
+            "maxMs": 0.9729159999999999,
+            "meanMs": 0.9379433333333335
+          },
+          "responseMaterialization": {
+            "iterations": 3,
+            "minMs": 0.7173760000000754,
+            "medianMs": 0.725209999999904,
+            "p95Ms": 0.7412089999997884,
+            "maxMs": 0.7412089999997884,
+            "meanMs": 0.7279316666665894
+          }
+        },
+        "ptc_vendor_review_medium": {
+          "requestTransport": {
+            "iterations": 3,
+            "minMs": 0.13137599999983468,
+            "medianMs": 0.13670899999976663,
+            "p95Ms": 0.1376269999999283,
+            "maxMs": 0.1376269999999283,
+            "meanMs": 0.13523733333317656
+          },
+          "execution": {
+            "iterations": 3,
+            "minMs": 0.114209,
+            "medianMs": 0.114584,
+            "p95Ms": 0.116166,
+            "maxMs": 0.116166,
+            "meanMs": 0.11498633333333334
+          },
+          "responseMaterialization": {
+            "iterations": 3,
+            "minMs": 0.2299150000003085,
+            "medianMs": 0.23604000000013622,
+            "p95Ms": 0.240165999999976,
+            "maxMs": 0.240165999999976,
+            "meanMs": 0.23537366666680692
+          }
+        }
+      },
+      "weightedScore": {
+        "medium": {
+          "medianMs": 2.4909040500000175,
+          "p95Ms": 2.5161226999999826
+        }
+      }
+    },
+    "durablePtc": {
+      "resumeOnly": {
+        "ptc_vendor_review_durable_small": {
+          "iterations": 3,
+          "minMs": 0.3683330000001206,
+          "medianMs": 0.39604099999996834,
+          "p95Ms": 0.47887500000001637,
+          "maxMs": 0.47887500000001637,
+          "meanMs": 0.4144163333333684
+        },
+        "ptc_vendor_review_durable_medium": {
+          "iterations": 3,
+          "minMs": 0.521167000000105,
+          "medianMs": 0.5217089999998734,
+          "p95Ms": 0.5654170000000249,
+          "maxMs": 0.5654170000000249,
+          "meanMs": 0.5360976666666678
+        },
+        "ptc_vendor_review_durable_large": {
+          "iterations": 3,
+          "minMs": 0.7455419999998867,
+          "medianMs": 0.759916000000203,
+          "p95Ms": 0.7956659999999829,
+          "maxMs": 0.7956659999999829,
+          "meanMs": 0.7670413333333576
+        }
+      },
+      "state": {
+        "ptc_vendor_review_durable_small": {
+          "snapshotBytes": 20584,
+          "fullPolicyBytes": 502,
+          "checkpointArgsBytes": 1406
+        },
+        "ptc_vendor_review_durable_medium": {
+          "snapshotBytes": 25793,
+          "fullPolicyBytes": 502,
+          "checkpointArgsBytes": 2764
+        },
+        "ptc_vendor_review_durable_large": {
+          "snapshotBytes": 36680,
+          "fullPolicyBytes": 502,
+          "checkpointArgsBytes": 5630
+        }
+      }
+    },
+    "memory": {
+      "heapUsedDeltaBytes": -8944,
+      "rssDeltaBytes": 65421312
+    },
+    "failureCleanup": {
+      "limitFailure": {
+        "iterations": 2,
+        "minMs": 0.8505000000000109,
+        "medianMs": 0.8505000000000109,
+        "p95Ms": 0.9329169999998612,
+        "maxMs": 0.9329169999998612,
+        "meanMs": 0.8917084999999361
+      },
+      "hostFailure": {
+        "iterations": 2,
+        "minMs": 0.940708000000086,
+        "medianMs": 0.940708000000086,
+        "p95Ms": 1.0219580000000406,
+        "maxMs": 1.0219580000000406,
+        "meanMs": 0.9813330000000633
+      }
+    }
+  },
+  "isolate": {
+    "latency": {
+      "cold_start_small": {
+        "iterations": 3,
+        "minMs": 0.5570840000000317,
+        "medianMs": 0.6372079999998732,
+        "p95Ms": 0.6516249999999673,
+        "maxMs": 0.6516249999999673,
+        "meanMs": 0.615305666666624
+      },
+      "cold_start_code_mode_search": {
+        "iterations": 3,
+        "minMs": 0.6637920000000577,
+        "medianMs": 0.6642499999998108,
+        "p95Ms": 0.6694170000000668,
+        "maxMs": 0.6694170000000668,
+        "meanMs": 0.665819666666645
+      },
+      "warm_run_small": {
+        "iterations": 3,
+        "minMs": 0.19541599999979553,
+        "medianMs": 0.20000000000004547,
+        "p95Ms": 0.22758399999997891,
+        "maxMs": 0.22758399999997891,
+        "meanMs": 0.20766666666660663
+      },
+      "warm_run_code_mode_search": {
+        "iterations": 3,
+        "minMs": 0.21983299999988049,
+        "medianMs": 0.23612499999990177,
+        "p95Ms": 0.24129199999993034,
+        "maxMs": 0.24129199999993034,
+        "meanMs": 0.23241666666657088
+      },
+      "programmatic_tool_workflow": {
+        "iterations": 3,
+        "minMs": 0.8740410000000338,
+        "medianMs": 0.9116669999998521,
+        "p95Ms": 0.9691669999999704,
+        "maxMs": 0.9691669999999704,
+        "meanMs": 0.9182916666666188
+      },
+      "ptc_website_demo_small": {
+        "iterations": 3,
+        "minMs": 0.25337500000000546,
+        "medianMs": 0.25491699999997763,
+        "p95Ms": 0.25812500000006366,
+        "maxMs": 0.25812500000006366,
+        "meanMs": 0.2554723333333489
+      },
+      "ptc_incident_triage_small": {
+        "iterations": 3,
+        "minMs": 0.3162080000001879,
+        "medianMs": 0.3381660000000011,
+        "p95Ms": 0.4656670000001668,
+        "maxMs": 0.4656670000001668,
+        "meanMs": 0.3733470000001186
+      },
+      "ptc_fraud_investigation_small": {
+        "iterations": 3,
+        "minMs": 0.3218329999999696,
+        "medianMs": 0.33849999999983993,
+        "p95Ms": 0.345459000000119,
+        "maxMs": 0.345459000000119,
+        "meanMs": 0.3352639999999762
+      },
+      "ptc_vendor_review_small": {
+        "iterations": 3,
+        "minMs": 0.24462500000004184,
+        "medianMs": 0.27395800000022064,
+        "p95Ms": 0.3722500000001219,
+        "maxMs": 0.3722500000001219,
+        "meanMs": 0.29694433333346143
+      },
+      "ptc_website_demo_medium": {
+        "iterations": 3,
+        "minMs": 0.2335840000000644,
+        "medianMs": 0.2407500000001619,
+        "p95Ms": 0.2672500000001037,
+        "maxMs": 0.2672500000001037,
+        "meanMs": 0.24719466666677667
+      },
+      "ptc_incident_triage_medium": {
+        "iterations": 3,
+        "minMs": 0.3967089999998734,
+        "medianMs": 0.4163330000001224,
+        "p95Ms": 0.4193750000001728,
+        "maxMs": 0.4193750000001728,
+        "meanMs": 0.41080566666672286
+      },
+      "ptc_fraud_investigation_medium": {
+        "iterations": 3,
+        "minMs": 0.4548330000000078,
+        "medianMs": 0.45937499999990905,
+        "p95Ms": 0.4823749999998199,
+        "maxMs": 0.4823749999998199,
+        "meanMs": 0.4655276666665789
+      },
+      "ptc_vendor_review_medium": {
+        "iterations": 3,
+        "minMs": 0.2690829999999096,
+        "medianMs": 0.28862500000013824,
+        "p95Ms": 0.2965830000000551,
+        "maxMs": 0.2965830000000551,
+        "meanMs": 0.284763666666701
+      },
+      "ptc_website_demo_large": {
+        "iterations": 3,
+        "minMs": 0.2520409999999629,
+        "medianMs": 0.26120800000012423,
+        "p95Ms": 0.2712500000000091,
+        "maxMs": 0.2712500000000091,
+        "meanMs": 0.2614996666666987
+      },
+      "ptc_incident_triage_large": {
+        "iterations": 3,
+        "minMs": 0.558917000000065,
+        "medianMs": 0.5746659999999792,
+        "p95Ms": 0.6670000000001437,
+        "maxMs": 0.6670000000001437,
+        "meanMs": 0.600194333333396
+      },
+      "ptc_fraud_investigation_large": {
+        "iterations": 3,
+        "minMs": 0.9540419999998448,
+        "medianMs": 0.9837079999999787,
+        "p95Ms": 1.0308749999999236,
+        "maxMs": 1.0308749999999236,
+        "meanMs": 0.9895416666665824
+      },
+      "ptc_vendor_review_large": {
+        "iterations": 3,
+        "minMs": 0.2915419999999358,
+        "medianMs": 0.2994589999998425,
+        "p95Ms": 0.3235420000000886,
+        "maxMs": 0.3235420000000886,
+        "meanMs": 0.3048476666666223
+      },
+      "host_fanout_1": {
+        "iterations": 3,
+        "minMs": 0.16262499999993452,
+        "medianMs": 0.18108299999994415,
+        "p95Ms": 0.18650000000002365,
+        "maxMs": 0.18650000000002365,
+        "meanMs": 0.17673599999996745
+      },
+      "host_fanout_10": {
+        "iterations": 3,
+        "minMs": 0.22500000000013642,
+        "medianMs": 0.24358299999994415,
+        "p95Ms": 0.24583399999983158,
+        "maxMs": 0.24583399999983158,
+        "meanMs": 0.2381389999999707
+      },
+      "host_fanout_50": {
+        "iterations": 3,
+        "minMs": 0.47679100000004837,
+        "medianMs": 0.4862920000000486,
+        "p95Ms": 0.5104999999998654,
+        "maxMs": 0.5104999999998654,
+        "meanMs": 0.4911943333333208
+      },
+      "host_fanout_100": {
+        "iterations": 3,
+        "minMs": 0.751790999999912,
+        "medianMs": 0.7599169999998594,
+        "p95Ms": 0.789209000000028,
+        "maxMs": 0.789209000000028,
+        "meanMs": 0.7669723333332664
+      },
+      "suspend_resume_1": {
+        "iterations": 3,
+        "minMs": 0.9357499999998709,
+        "medianMs": 0.943042000000105,
+        "p95Ms": 0.9435840000001008,
+        "maxMs": 0.9435840000001008,
+        "meanMs": 0.9407920000000255
+      },
+      "suspend_resume_5": {
+        "iterations": 3,
+        "minMs": 2.782124999999951,
+        "medianMs": 2.7899580000000697,
+        "p95Ms": 2.8040840000001026,
+        "maxMs": 2.8040840000001026,
+        "meanMs": 2.7920556666667076
+      },
+      "suspend_resume_20": {
+        "iterations": 3,
+        "minMs": 9.83483299999989,
+        "medianMs": 9.985584000000017,
+        "p95Ms": 10.17516599999999,
+        "maxMs": 10.17516599999999,
+        "meanMs": 9.998527666666632
+      }
+    },
+    "ptc": {
+      "transfer": {
+        "ptc_website_demo_small": {
+          "laneId": "website_demo",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+          "toolFamilyCount": 4,
+          "logicalPeakFanout": 1,
+          "finalAction": false,
+          "usesPromiseAll": false,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "alertCount": 4,
+            "deployCount": 2,
+            "logCount": 9
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 1109,
+          "resultBytesOut": 227,
+          "reductionRatio": 4.88546255506608
+        },
+        "ptc_incident_triage_small": {
+          "laneId": "incident_triage",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 9,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "regionCount": 3,
+            "alertsPerRegion": 2,
+            "samplesPerRegion": 2
+          },
+          "toolCallCount": 11,
+          "toolBytesIn": 1954,
+          "resultBytesOut": 1505,
+          "reductionRatio": 1.2983388704318937
+        },
+        "ptc_fraud_investigation_small": {
+          "laneId": "fraud_investigation",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "transactionCount": 24,
+            "accountCount": 8,
+            "entityCount": 6,
+            "cardCount": 5
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 7432,
+          "resultBytesOut": 4570,
+          "reductionRatio": 1.6262582056892778
+        },
+        "ptc_vendor_review_small": {
+          "laneId": "vendor_review",
+          "sizeName": "small",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "finalAction": true,
+          "usesPromiseAll": true,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "frameworkCount": 3,
+            "flowCount": 4,
+            "subprocessorCount": 4
+          },
+          "toolCallCount": 5,
+          "toolBytesIn": 1295,
+          "resultBytesOut": 626,
+          "reductionRatio": 2.0686900958466454
+        },
+        "ptc_website_demo_medium": {
+          "laneId": "website_demo",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+          "toolFamilyCount": 4,
+          "logicalPeakFanout": 1,
+          "finalAction": false,
+          "usesPromiseAll": false,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "alertCount": 10,
+            "deployCount": 4,
+            "logCount": 24
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 2450,
+          "resultBytesOut": 398,
+          "reductionRatio": 6.155778894472362
+        },
+        "ptc_incident_triage_medium": {
+          "laneId": "incident_triage",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 18,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "regionCount": 6,
+            "alertsPerRegion": 3,
+            "samplesPerRegion": 3
+          },
+          "toolCallCount": 20,
+          "toolBytesIn": 4340,
+          "resultBytesOut": 2463,
+          "reductionRatio": 1.762078765732846
+        },
+        "ptc_fraud_investigation_medium": {
+          "laneId": "fraud_investigation",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "transactionCount": 96,
+            "accountCount": 24,
+            "entityCount": 16,
+            "cardCount": 12
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 26818,
+          "resultBytesOut": 17579,
+          "reductionRatio": 1.5255702827237043
+        },
+        "ptc_vendor_review_medium": {
+          "laneId": "vendor_review",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "finalAction": true,
+          "usesPromiseAll": true,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "frameworkCount": 5,
+            "flowCount": 10,
+            "subprocessorCount": 10
+          },
+          "toolCallCount": 5,
+          "toolBytesIn": 2639,
+          "resultBytesOut": 967,
+          "reductionRatio": 2.7290589451913134
+        },
+        "ptc_website_demo_large": {
+          "laneId": "website_demo",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+          "toolFamilyCount": 4,
+          "logicalPeakFanout": 1,
+          "finalAction": false,
+          "usesPromiseAll": false,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "alertCount": 24,
+            "deployCount": 8,
+            "logCount": 60
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 5565,
+          "resultBytesOut": 823,
+          "reductionRatio": 6.761846901579587
+        },
+        "ptc_incident_triage_large": {
+          "laneId": "incident_triage",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 36,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "regionCount": 12,
+            "alertsPerRegion": 4,
+            "samplesPerRegion": 4
+          },
+          "toolCallCount": 38,
+          "toolBytesIn": 10126,
+          "resultBytesOut": 4577,
+          "reductionRatio": 2.2123661787196855
+        },
+        "ptc_fraud_investigation_large": {
+          "laneId": "fraud_investigation",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "finalAction": false,
+          "usesPromiseAll": true,
+          "usesMap": true,
+          "usesSet": true,
+          "scale": {
+            "transactionCount": 384,
+            "accountCount": 96,
+            "entityCount": 64,
+            "cardCount": 48
+          },
+          "toolCallCount": 6,
+          "toolBytesIn": 107540,
+          "resultBytesOut": 69245,
+          "reductionRatio": 1.553036320311936
+        },
+        "ptc_vendor_review_large": {
+          "laneId": "vendor_review",
+          "sizeName": "large",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "finalAction": true,
+          "usesPromiseAll": true,
+          "usesMap": false,
+          "usesSet": false,
+          "scale": {
+            "frameworkCount": 7,
+            "flowCount": 24,
+            "subprocessorCount": 24
+          },
+          "toolCallCount": 5,
+          "toolBytesIn": 5491,
+          "resultBytesOut": 1592,
+          "reductionRatio": 3.4491206030150754
+        }
+      },
+      "weightedScore": {
+        "medium": {
+          "medianMs": 0.3994707000000517,
+          "p95Ms": 0.4107270000000198
+        }
+      }
+    },
+    "durablePtc": {
+      "resumeOnly": {
+        "ptc_vendor_review_durable_small": {
+          "iterations": 3,
+          "minMs": 0.5451249999998709,
+          "medianMs": 0.5609580000000278,
+          "p95Ms": 0.5715000000000146,
+          "maxMs": 0.5715000000000146,
+          "meanMs": 0.5591943333333044
+        },
+        "ptc_vendor_review_durable_medium": {
+          "iterations": 3,
+          "minMs": 0.5498340000001463,
+          "medianMs": 0.5529999999998836,
+          "p95Ms": 0.5723749999999654,
+          "maxMs": 0.5723749999999654,
+          "meanMs": 0.5584029999999984
+        },
+        "ptc_vendor_review_durable_large": {
+          "iterations": 3,
+          "minMs": 0.5762080000001788,
+          "medianMs": 0.5831670000000031,
+          "p95Ms": 0.5946670000000722,
+          "maxMs": 0.5946670000000722,
+          "meanMs": 0.5846806666667513
+        }
+      },
+      "state": {
+        "ptc_vendor_review_durable_small": {
+          "carriedStateBytes": 1406
+        },
+        "ptc_vendor_review_durable_medium": {
+          "carriedStateBytes": 2764
+        },
+        "ptc_vendor_review_durable_large": {
+          "carriedStateBytes": 5630
+        }
+      }
+    },
+    "memory": {
+      "heapUsedDeltaBytes": -14624,
+      "rssDeltaBytes": -10911744
+    },
+    "failureCleanup": {
+      "limitFailure": {
+        "iterations": 3,
+        "minMs": 2.448916000000054,
+        "medianMs": 2.4889170000001286,
+        "p95Ms": 4.258624999999938,
+        "maxMs": 4.258624999999938,
+        "meanMs": 3.0654860000000403
+      },
+      "hostFailure": {
+        "iterations": 3,
+        "minMs": 0.7464999999999691,
+        "medianMs": 0.7611249999999927,
+        "p95Ms": 0.80012499999998,
+        "maxMs": 0.80012499999998,
+        "meanMs": 0.7692499999999806
+      }
+    }
+  },
+  "ratios": {
+    "latency": {
+      "sidecarVsAddon": {
+        "cold_start_small": {
+          "medianRatio": 7.1794778639095895,
+          "p95Ratio": 11.956085807781188
+        },
+        "warm_run_small": {
+          "medianRatio": 1.6195325299987469,
+          "p95Ratio": 1.6413982717989517
+        },
+        "cold_start_code_mode_search": {
+          "medianRatio": 6.63422290519387,
+          "p95Ratio": 6.460634723787946
+        },
+        "warm_run_code_mode_search": {
+          "medianRatio": 1.5930101361135776,
+          "p95Ratio": 1.5725979443550564
+        },
+        "programmatic_tool_workflow": {
+          "medianRatio": 7.651522309999638,
+          "p95Ratio": 8.25323452659746
+        },
+        "ptc_website_demo_small": {
+          "medianRatio": 4.0028036259223985,
+          "p95Ratio": 3.3856339834760205
+        },
+        "ptc_incident_triage_small": {
+          "medianRatio": 7.552980414591714,
+          "p95Ratio": 8.409147198479634
+        },
+        "ptc_fraud_investigation_small": {
+          "medianRatio": 3.1745420580980848,
+          "p95Ratio": 2.9504112884053764
+        },
+        "ptc_vendor_review_small": {
+          "medianRatio": 4.002882263335118,
+          "p95Ratio": 5.689999999998454
+        },
+        "ptc_website_demo_medium": {
+          "medianRatio": 4.073619070416408,
+          "p95Ratio": 2.2899919846155465
+        },
+        "ptc_incident_triage_medium": {
+          "medianRatio": 8.068232334732953,
+          "p95Ratio": 7.873921177155086
+        },
+        "ptc_fraud_investigation_medium": {
+          "medianRatio": 2.3787222222223092,
+          "p95Ratio": 2.2616753717004703
+        },
+        "ptc_vendor_review_medium": {
+          "medianRatio": 3.9993468321357257,
+          "p95Ratio": 4.06720716876358
+        },
+        "ptc_website_demo_large": {
+          "medianRatio": 2.4875200125188024,
+          "p95Ratio": 2.5103344607291036
+        },
+        "ptc_incident_triage_large": {
+          "medianRatio": 9.92379920548861,
+          "p95Ratio": 9.810032271186413
+        },
+        "ptc_fraud_investigation_large": {
+          "medianRatio": 2.0878728344347075,
+          "p95Ratio": 2.0859814626196638
+        },
+        "ptc_vendor_review_large": {
+          "medianRatio": 3.4514931595480967,
+          "p95Ratio": 3.390905675785379
+        },
+        "host_fanout_1": {
+          "medianRatio": 7.143156834736298,
+          "p95Ratio": 8.411418021722078
+        },
+        "host_fanout_10": {
+          "medianRatio": 10.174547368418306,
+          "p95Ratio": 9.708413897561949
+        },
+        "host_fanout_50": {
+          "medianRatio": 9.14564434496799,
+          "p95Ratio": 9.791401177520958
+        },
+        "host_fanout_100": {
+          "medianRatio": 9.731528207738837,
+          "p95Ratio": 7.337771355415086
+        },
+        "suspend_resume_1": {
+          "medianRatio": 0.4550311665171758,
+          "p95Ratio": 0.5912649691820674
+        },
+        "suspend_resume_5": {
+          "medianRatio": 0.38356552926736426,
+          "p95Ratio": 0.42836689829615077
+        },
+        "suspend_resume_20": {
+          "medianRatio": 0.3562805872756696,
+          "p95Ratio": 0.36238368959868955
+        }
+      },
+      "isolateVsAddon": {
+        "cold_start_small": {
+          "medianRatio": 0.6290827669815282,
+          "p95Ratio": 0.6318022057932247
+        },
+        "warm_run_small": {
+          "medianRatio": 0.2105910448264606,
+          "p95Ratio": 0.23837025399317235
+        },
+        "cold_start_code_mode_search": {
+          "medianRatio": 0.7797889961997381,
+          "p95Ratio": 0.7546978579482146
+        },
+        "warm_run_code_mode_search": {
+          "medianRatio": 0.5470605270776797,
+          "p95Ratio": 0.5506334891191238
+        },
+        "programmatic_tool_workflow": {
+          "medianRatio": 0.6260554810850165,
+          "p95Ratio": 0.6484891267982333
+        },
+        "ptc_website_demo_small": {
+          "medianRatio": 1.9160641000586183,
+          "p95Ratio": 1.622998956250956
+        },
+        "ptc_incident_triage_small": {
+          "medianRatio": 1.3720984017624818,
+          "p95Ratio": 1.7689154795825934
+        },
+        "ptc_fraud_investigation_small": {
+          "medianRatio": 0.6784695650776301,
+          "p95Ratio": 0.6173507772753984
+        },
+        "ptc_vendor_review_small": {
+          "medianRatio": 1.7316208306747511,
+          "p95Ratio": 2.2907692307696603
+        },
+        "ptc_website_demo_medium": {
+          "medianRatio": 1.6949212204851796,
+          "p95Ratio": 0.8815273430158194
+        },
+        "ptc_incident_triage_medium": {
+          "medianRatio": 1.1285306140155809,
+          "p95Ratio": 1.098801045941157
+        },
+        "ptc_fraud_investigation_medium": {
+          "medianRatio": 0.3448761261260595,
+          "p95Ratio": 0.3413432382724794
+        },
+        "ptc_vendor_review_medium": {
+          "medianRatio": 1.508164598302536,
+          "p95Ratio": 1.5433607227046933
+        },
+        "ptc_website_demo_large": {
+          "medianRatio": 0.7860797130237357,
+          "p95Ratio": 0.8154829011649851
+        },
+        "ptc_incident_triage_large": {
+          "medianRatio": 0.8301422896351476,
+          "p95Ratio": 0.9453175600889007
+        },
+        "ptc_fraud_investigation_large": {
+          "medianRatio": 0.2007925905136067,
+          "p95Ratio": 0.20999694438784383
+        },
+        "ptc_vendor_review_large": {
+          "medianRatio": 0.9987493079497654,
+          "p95Ratio": 1.0568950592079032
+        },
+        "host_fanout_1": {
+          "medianRatio": 15.195351178932974,
+          "p95Ratio": 13.242916992093672
+        },
+        "host_fanout_10": {
+          "medianRatio": 5.128063157892088,
+          "p95Ratio": 4.900312954717943
+        },
+        "host_fanout_50": {
+          "medianRatio": 2.1383273897726265,
+          "p95Ratio": 2.2067659747377477
+        },
+        "host_fanout_100": {
+          "medianRatio": 1.7903231886309914,
+          "p95Ratio": 1.3690659163373997
+        },
+        "suspend_resume_1": {
+          "medianRatio": 6.718019590386088,
+          "p95Ratio": 5.821609915906023
+        },
+        "suspend_resume_5": {
+          "medianRatio": 4.682449612559572,
+          "p95Ratio": 4.593410193658088
+        },
+        "suspend_resume_20": {
+          "medianRatio": 4.343919086459962,
+          "p95Ratio": 4.397297445633303
+        }
+      },
+      "sidecarVsIsolate": {
+        "cold_start_small": {
+          "medianRatio": 11.412612522130019,
+          "p95Ratio": 18.92377978131681
+        },
+        "cold_start_code_mode_search": {
+          "medianRatio": 8.50771546857601,
+          "p95Ratio": 8.560557918307033
+        },
+        "warm_run_small": {
+          "medianRatio": 7.690414999998395,
+          "p95Ratio": 6.885919045276372
+        },
+        "warm_run_code_mode_search": {
+          "medianRatio": 2.9119449444163212,
+          "p95Ratio": 2.8559794771488027
+        },
+        "programmatic_tool_workflow": {
+          "medianRatio": 12.221795896968729,
+          "p95Ratio": 12.726866473993043
+        },
+        "ptc_website_demo_small": {
+          "medianRatio": 2.0890760522051117,
+          "p95Ratio": 2.086035835350542
+        },
+        "ptc_incident_triage_small": {
+          "medianRatio": 5.5046929614448885,
+          "p95Ratio": 4.753843411706657
+        },
+        "ptc_fraud_investigation_small": {
+          "medianRatio": 4.678974889219762,
+          "p95Ratio": 4.7791489004462795
+        },
+        "ptc_vendor_review_small": {
+          "medianRatio": 2.3116390103573288,
+          "p95Ratio": 2.483881799864541
+        },
+        "ptc_website_demo_medium": {
+          "medianRatio": 2.4034267912760656,
+          "p95Ratio": 2.597754911130932
+        },
+        "ptc_incident_triage_medium": {
+          "medianRatio": 7.149325179601694,
+          "p95Ratio": 7.165920715347363
+        },
+        "ptc_fraud_investigation_medium": {
+          "medianRatio": 6.8973235374165505,
+          "p95Ratio": 6.625809795286098
+        },
+        "ptc_vendor_review_medium": {
+          "medianRatio": 2.651797314853469,
+          "p95Ratio": 2.6352926499489513
+        },
+        "ptc_website_demo_large": {
+          "medianRatio": 3.164462803588078,
+          "p95Ratio": 3.078341013824916
+        },
+        "ptc_incident_triage_large": {
+          "medianRatio": 11.954335213846505,
+          "p95Ratio": 10.377499250372379
+        },
+        "ptc_fraud_investigation_large": {
+          "medianRatio": 10.398156770098659,
+          "p95Ratio": 9.933389596217458
+        },
+        "ptc_vendor_review_large": {
+          "medianRatio": 3.45581532029627,
+          "p95Ratio": 3.208365529049511
+        },
+        "host_fanout_1": {
+          "medianRatio": 0.4700883020485674,
+          "p95Ratio": 0.6351635388746972
+        },
+        "host_fanout_10": {
+          "medianRatio": 1.9840916648539477,
+          "p95Ratio": 1.9811824239133222
+        },
+        "host_fanout_50": {
+          "medianRatio": 4.277008464050244,
+          "p95Ratio": 4.436991185114031
+        },
+        "host_fanout_100": {
+          "medianRatio": 5.435626522371224,
+          "p95Ratio": 5.359691792668022
+        },
+        "suspend_resume_1": {
+          "medianRatio": 0.06773293236125037,
+          "p95Ratio": 0.10156382473627971
+        },
+        "suspend_resume_5": {
+          "medianRatio": 0.08191557005515654,
+          "p95Ratio": 0.09325683538726356
+        },
+        "suspend_resume_20": {
+          "medianRatio": 0.08201823749116312,
+          "p95Ratio": 0.08241054740532766
+        }
+      }
+    },
+    "ptcWeightedScore": {
+      "sidecarVsAddon": {
+        "medium": {
+          "medianRatio": 3.764912086067752,
+          "p95Ratio": 3.618671983381235
+        }
+      },
+      "isolateVsAddon": {
+        "medium": {
+          "medianRatio": 0.6037856281377555,
+          "p95Ratio": 0.5907050112136052
+        }
+      },
+      "sidecarVsIsolate": {
+        "medium": {
+          "medianRatio": 6.235511265281021,
+          "p95Ratio": 6.126022150966119
+        }
+      }
+    },
+    "failureCleanup": {
+      "sidecarVsAddon": {
+        "limitFailure": {
+          "medianRatio": 1.0988372093023384,
+          "p95Ratio": 1.1501519494526629
+        },
+        "hostFailure": {
+          "medianRatio": 1.162863832238671,
+          "p95Ratio": 1.2629113899022562
+        }
+      },
+      "isolateVsAddon": {
+        "limitFailure": {
+          "medianRatio": 3.215655038759852,
+          "p95Ratio": 5.250269687162421
+        },
+        "hostFailure": {
+          "medianRatio": 0.9408708486720312,
+          "p95Ratio": 0.9887754446322427
+        }
+      },
+      "sidecarVsIsolate": {
+        "limitFailure": {
+          "medianRatio": 0.3417148904523401,
+          "p95Ratio": 0.2190653086383222
+        },
+        "hostFailure": {
+          "medianRatio": 1.2359441616030153,
+          "p95Ratio": 1.2772479300110184
+        }
+      }
+    }
+  }
+}

@@ -16,9 +16,12 @@ const { createBinarySidecarClient } = require('../lib/sidecar.ts');
 const {
   decodeStructured,
   encodeResumePayloadError,
+  encodeResumePayloadErrorBuffer,
   encodeResumePayloadValue,
-  encodeStartOptions,
+  encodeResumePayloadValueBuffer,
+  encodeStartOptionsBuffer,
   encodeStructuredInputs,
+  encodeStructuredInputsBuffer,
 } = require('../lib/structured.ts');
 const {
   encodeSnapshotPolicy,
@@ -1307,12 +1310,12 @@ async function collectAddonStepCounters(runtime, options, resumeValueForStep = u
   const programHandle = runtime._ensureProgramHandle();
   const startProgram =
     typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
-      ? native.startProgramWithExecutionContextHandle
-      : native.startProgramWithSnapshotHandle;
+      ? native.startProgramWithExecutionContextHandleBuffer
+      : native.startProgramWithSnapshotHandleBuffer;
   const startArgs =
     typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
-      ? [programHandle, nativeContextHandle, encodeStructuredInputs(options.inputs)]
-      : [programHandle, encodeStartOptions(options.inputs, policy)];
+      ? [programHandle, nativeContextHandle, encodeStructuredInputsBuffer(options.inputs)]
+      : [programHandle, encodeStartOptionsBuffer(options.inputs, policy)];
   let step = parseNativeStepWithMetrics(
     callNative(startProgram, ...startArgs),
   );
@@ -1324,7 +1327,11 @@ async function collectAddonStepCounters(runtime, options, resumeValueForStep = u
       const nextValue =
         resumeValueForStep === undefined ? step.args[0] : resumeValueForStep(step);
       step = parseNativeStepWithMetrics(
-        callNative(native.resumeSnapshotHandle, snapshotHandle, encodeResumePayloadValue(nextValue)),
+        callNative(
+          native.resumeSnapshotHandleBuffer,
+          snapshotHandle,
+          encodeResumePayloadValueBuffer(nextValue),
+        ),
       );
       metrics = step.metrics;
     } finally {
@@ -1371,12 +1378,12 @@ async function runAddonPtcBoundaryBreakdownSample(runtime, scenario) {
   const programHandle = runtime._ensureProgramHandle();
   const startProgram =
     typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
-      ? native.profileStartProgramWithExecutionContextHandle
-      : native.profileStartProgramWithSnapshotHandle;
+      ? native.profileStartProgramWithExecutionContextHandleBuffer
+      : native.profileStartProgramWithSnapshotHandleBuffer;
   const startArgs =
     typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
-      ? [programHandle, nativeContextHandle, encodeStructuredInputs(scenario.inputs)]
-      : [programHandle, encodeStartOptions(scenario.inputs, policy)];
+      ? [programHandle, nativeContextHandle, encodeStructuredInputsBuffer(scenario.inputs)]
+      : [programHandle, encodeStartOptionsBuffer(scenario.inputs, policy)];
   const totals = {
     hostCallbacksMs: 0,
     guestExecutionMs: 0,
@@ -1395,12 +1402,12 @@ async function runAddonPtcBoundaryBreakdownSample(runtime, scenario) {
       let payload;
       try {
         const value = await invokeAddonCapability(hostHandlers, step, totals, scenario);
-        payload = encodeResumePayloadValue(value);
+        payload = encodeResumePayloadValueBuffer(value);
       } catch (error) {
-        payload = encodeResumePayloadError(error);
+        payload = encodeResumePayloadErrorBuffer(error);
       }
       ({ step, profile } = parseNativeProfiledStepWithMetrics(
-        callNative(native.profileResumeSnapshotHandle, snapshotHandle, payload),
+        callNative(native.profileResumeSnapshotHandleBuffer, snapshotHandle, payload),
       ));
       totals.guestExecutionMs += profile.executeMs;
       totals.boundaryParseMs += profile.parseMs;
@@ -2582,7 +2589,7 @@ async function main() {
       ptcWeightedScoreDefinitions:
         'runtime.ptc.weightedScore.medium is a weighted median/p95 rollup of ptc_incident_triage_medium (40%), ptc_fraud_investigation_medium (35%), and ptc_vendor_review_medium (25%). runtime.ptc.transfer records actual tool call counts plus JSON-encoded tool/result payload sizes for one untimed representative run of each PTC lane.',
       ptcBreakdownDefinitions:
-        'addon.ptc.breakdown records representative profiled addon runs for the website-small lane plus the medium primary lanes. hostCallbacks measures JS time spent inside host tool handlers, guestExecution measures Rust runtime execution between boundaries, boundaryParse measures native JSON decode/parse of start/resume payloads, boundaryEncode measures native JSON encoding of step results, and boundaryCodec is parse+encode combined.',
+        'addon.ptc.breakdown records representative profiled addon runs for the website-small lane plus the medium primary lanes. hostCallbacks measures JS time spent inside host tool handlers, guestExecution measures Rust runtime execution between boundaries, boundaryParse measures native addon decode/parse of live start/resume payloads, boundaryEncode measures native addon encoding of step results, and boundaryCodec is parse+encode combined.',
       sidecarPtcBreakdownDefinitions:
         'sidecar.ptc.breakdown separates sidecar startup from representative lane-level request flow. processStartup reuses sidecar.phases.startup_only, while the lane entries split client-observed requestTransport from sidecar execution and combined response materialization (sidecar response preparation plus client response decode/copy).',
       durablePtcDefinitions:

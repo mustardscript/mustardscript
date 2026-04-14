@@ -159,6 +159,10 @@ test('execution contexts reuse one native handle across repeated start and load 
   const originalCreateExecutionContext = native.createExecutionContext;
   const originalStartProgramWithExecutionContextHandle =
     native.startProgramWithExecutionContextHandle;
+  const originalStartProgramWithExecutionContextHandleBuffer =
+    native.startProgramWithExecutionContextHandleBuffer;
+  const originalResumeSnapshotHandle = native.resumeSnapshotHandle;
+  const originalResumeSnapshotHandleBuffer = native.resumeSnapshotHandleBuffer;
   const originalLoadSnapshotHandleWithExecutionContext =
     native.loadSnapshotHandleWithExecutionContext;
   const originalLoadDetachedSnapshotHandleWithExecutionContext =
@@ -166,6 +170,9 @@ test('execution contexts reuse one native handle across repeated start and load 
   const counts = {
     createExecutionContext: 0,
     startProgramWithExecutionContextHandle: 0,
+    startProgramWithExecutionContextHandleBuffer: 0,
+    resumeSnapshotHandle: 0,
+    resumeSnapshotHandleBuffer: 0,
     loadSnapshotHandleWithExecutionContext: 0,
     loadDetachedSnapshotHandleWithExecutionContext: 0,
   };
@@ -176,6 +183,18 @@ test('execution contexts reuse one native handle across repeated start and load 
   native.startProgramWithExecutionContextHandle = (...args) => {
     counts.startProgramWithExecutionContextHandle += 1;
     return originalStartProgramWithExecutionContextHandle(...args);
+  };
+  native.startProgramWithExecutionContextHandleBuffer = (...args) => {
+    counts.startProgramWithExecutionContextHandleBuffer += 1;
+    return originalStartProgramWithExecutionContextHandleBuffer(...args);
+  };
+  native.resumeSnapshotHandle = (...args) => {
+    counts.resumeSnapshotHandle += 1;
+    return originalResumeSnapshotHandle(...args);
+  };
+  native.resumeSnapshotHandleBuffer = (...args) => {
+    counts.resumeSnapshotHandleBuffer += 1;
+    return originalResumeSnapshotHandleBuffer(...args);
   };
   native.loadSnapshotHandleWithExecutionContext = (...args) => {
     counts.loadSnapshotHandleWithExecutionContext += 1;
@@ -204,13 +223,20 @@ test('execution contexts reuse one native handle across repeated start and load 
     assert.equal(restored.resume(10).resume(11), 11);
 
     assert.equal(counts.createExecutionContext, 1);
-    assert.equal(counts.startProgramWithExecutionContextHandle, 3);
+    assert.equal(counts.startProgramWithExecutionContextHandle, 0);
+    assert.equal(counts.startProgramWithExecutionContextHandleBuffer, 3);
+    assert.equal(counts.resumeSnapshotHandle, 0);
+    assert.equal(counts.resumeSnapshotHandleBuffer, 6);
     assert.equal(counts.loadSnapshotHandleWithExecutionContext, 0);
     assert.equal(counts.loadDetachedSnapshotHandleWithExecutionContext, 1);
   } finally {
     native.createExecutionContext = originalCreateExecutionContext;
     native.startProgramWithExecutionContextHandle =
       originalStartProgramWithExecutionContextHandle;
+    native.startProgramWithExecutionContextHandleBuffer =
+      originalStartProgramWithExecutionContextHandleBuffer;
+    native.resumeSnapshotHandle = originalResumeSnapshotHandle;
+    native.resumeSnapshotHandleBuffer = originalResumeSnapshotHandleBuffer;
     native.loadSnapshotHandleWithExecutionContext =
       originalLoadSnapshotHandleWithExecutionContext;
     native.loadDetachedSnapshotHandleWithExecutionContext =

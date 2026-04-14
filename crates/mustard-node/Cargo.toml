@@ -11,6 +11,7 @@ description = "Node-API addon for the MustardScript runtime"
 crate-type = ["cdylib"]
 
 [dependencies]
+anyhow.workspace = true
 base64 = "0.22.1"
 mustard = { path = "../mustard" }
 mustard-bridge = { path = "../mustard-bridge" }

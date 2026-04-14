@@ -30,9 +30,15 @@ export declare function loadSnapshotHandleWithExecutionContext(contextHandle: st
 
 export declare function profileResumeSnapshotHandle(snapshotHandle: string, payloadJson: string, cancellationTokenId?: string | undefined | null): string
 
+export declare function profileResumeSnapshotHandleBuffer(snapshotHandle: string, payloadBuffer: Buffer, cancellationTokenId?: string | undefined | null): string
+
 export declare function profileStartProgramWithExecutionContextHandle(programHandle: string, contextHandle: string, inputsJson: string, cancellationTokenId?: string | undefined | null): string
 
+export declare function profileStartProgramWithExecutionContextHandleBuffer(programHandle: string, contextHandle: string, inputsBuffer: Buffer, cancellationTokenId?: string | undefined | null): string
+
 export declare function profileStartProgramWithSnapshotHandle(programHandle: string, optionsJson: string, cancellationTokenId?: string | undefined | null): string
+
+export declare function profileStartProgramWithSnapshotHandleBuffer(programHandle: string, optionsBuffer: Buffer, cancellationTokenId?: string | undefined | null): string
 
 export declare function releaseCancellationToken(tokenId: string): void
 
@@ -48,6 +54,8 @@ export declare function resumeProgram(snapshot: Buffer, payloadJson: string, pol
 
 export declare function resumeSnapshotHandle(snapshotHandle: string, payloadJson: string, cancellationTokenId?: string | undefined | null): string
 
+export declare function resumeSnapshotHandleBuffer(snapshotHandle: string, payloadBuffer: Buffer, cancellationTokenId?: string | undefined | null): string
+
 export declare function retainProgram(programHandle: string): string
 
 export declare function snapshotIdentity(snapshot: Buffer): string
@@ -56,4 +64,8 @@ export declare function startProgram(programHandle: string, optionsJson: string,
 
 export declare function startProgramWithExecutionContextHandle(programHandle: string, contextHandle: string, inputsJson: string, cancellationTokenId?: string | undefined | null): string
 
+export declare function startProgramWithExecutionContextHandleBuffer(programHandle: string, contextHandle: string, inputsBuffer: Buffer, cancellationTokenId?: string | undefined | null): string
+
 export declare function startProgramWithSnapshotHandle(programHandle: string, optionsJson: string, cancellationTokenId?: string | undefined | null): string
+
+export declare function startProgramWithSnapshotHandleBuffer(programHandle: string, optionsBuffer: Buffer, cancellationTokenId?: string | undefined | null): string

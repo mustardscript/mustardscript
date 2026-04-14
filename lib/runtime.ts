@@ -9,11 +9,11 @@ const {
 } = require('./cancellation.ts');
 const { resolveExecutionContext } = require('./policy.ts');
 const {
-  encodeResumePayloadCancel,
-  encodeResumePayloadError,
-  encodeResumePayloadValue,
-  encodeStartOptions,
-  encodeStructuredInputs,
+  encodeResumePayloadCancelBuffer,
+  encodeResumePayloadErrorBuffer,
+  encodeResumePayloadValueBuffer,
+  encodeStartOptionsBuffer,
+  encodeStructuredInputsBuffer,
 } = require('./structured.ts');
 
 function createMustardClass({ native, materializeStep, parseStep }) {
@@ -71,12 +71,12 @@ function createMustardClass({ native, materializeStep, parseStep }) {
       const programHandle = this._ensureProgramHandle();
       const startProgram =
         typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
-          ? native.startProgramWithExecutionContextHandle
-          : native.startProgramWithSnapshotHandle;
+          ? native.startProgramWithExecutionContextHandleBuffer
+          : native.startProgramWithSnapshotHandleBuffer;
       const startArgs =
         typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
-          ? [programHandle, nativeContextHandle, encodeStructuredInputs(options.inputs)]
-          : [programHandle, encodeStartOptions(options.inputs, policy)];
+          ? [programHandle, nativeContextHandle, encodeStructuredInputsBuffer(options.inputs)]
+          : [programHandle, encodeStartOptionsBuffer(options.inputs, policy)];
       let step = parseStep(
         withCancellationSignal(
           native,
@@ -95,18 +95,22 @@ function createMustardClass({ native, materializeStep, parseStep }) {
           const outcome = await settleCapabilityInvocation(capability, step.args, signal);
           if (outcome.type === 'cancelled') {
             step = parseStep(
-              callNative(native.resumeSnapshotHandle, snapshotHandle, encodeResumePayloadCancel()),
+              callNative(
+                native.resumeSnapshotHandleBuffer,
+                snapshotHandle,
+                encodeResumePayloadCancelBuffer(),
+              ),
             );
             continue;
           }
           const payload =
             outcome.type === 'value'
-              ? encodeResumePayloadValue(outcome.value)
-              : encodeResumePayloadError(outcome.error);
+              ? encodeResumePayloadValueBuffer(outcome.value)
+              : encodeResumePayloadErrorBuffer(outcome.error);
           step = parseStep(
             withCancellationSignal(
               native,
-              native.resumeSnapshotHandle,
+              native.resumeSnapshotHandleBuffer,
               [snapshotHandle, payload],
               signal,
             ),
@@ -134,12 +138,12 @@ function createMustardClass({ native, materializeStep, parseStep }) {
       const programHandle = this._ensureProgramHandle();
       const startProgram =
         typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
-          ? native.startProgramWithExecutionContextHandle
-          : native.startProgramWithSnapshotHandle;
+          ? native.startProgramWithExecutionContextHandleBuffer
+          : native.startProgramWithSnapshotHandleBuffer;
       const startArgs =
         typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
-          ? [programHandle, nativeContextHandle, encodeStructuredInputs(options.inputs)]
-          : [programHandle, encodeStartOptions(options.inputs, policy)];
+          ? [programHandle, nativeContextHandle, encodeStructuredInputsBuffer(options.inputs)]
+          : [programHandle, encodeStartOptionsBuffer(options.inputs, policy)];
       const step = parseStep(
         withCancellationSignal(
           native,

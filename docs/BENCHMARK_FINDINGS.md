@@ -11,7 +11,7 @@ lastUpdated: "2026-04-14"
 
 This document summarizes the latest kept benchmark evidence from:
 
-- workload suite: `benchmarks/results/2026-04-14T03-01-24-879Z-workloads.json`
+- workload suite: `benchmarks/results/2026-04-14T03-41-06-633Z-workloads.json`
 - release smoke suite: `benchmarks/results/2026-04-13T23-00-15-361Z-smoke-release.json`
 
 Machine and environment:
@@ -20,101 +20,119 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA in workload artifact: `bc3158a`
+- Git SHA in workload artifact: `043e182`
 - Workload fixture version: `6`
 - Smoke fixture version: `2`
 
 ## Headline Results
 
-### 1. Real local-reduction cleanup cut the representative addon PTC score materially
+### 1. Binary live-addon boundary transport cut the representative addon PTC score again
 
 Compared with the previous kept representative artifact
-`benchmarks/results/2026-04-14T02-12-56-211Z-workloads.json`, the primary
-medium-lane scorecard moved materially on addon and modestly on sidecar:
+`benchmarks/results/2026-04-14T03-01-24-879Z-workloads.json`, the new kept
+artifact moved the representative addon scorecard in the right direction:
 
 | Metric | Previous Kept | Latest Kept | Delta |
 | --- | ---: | ---: | ---: |
-| `addon.ptc.weightedScore.medium` | `0.87 ms` | `0.71 ms` | `-18.4%` |
-| `sidecar.ptc.weightedScore.medium` | `2.64 ms` | `2.50 ms` | `-5.6%` |
-| `addon.latency.ptc_incident_triage_medium` | `0.59 ms` | `0.37 ms` | `-38.1%` |
-| `addon.latency.ptc_fraud_investigation_medium` | `1.65 ms` | `1.46 ms` | `-11.5%` |
-| `addon.latency.ptc_vendor_review_medium` | `0.23 ms` | `0.22 ms` | `-6.3%` |
-| `addon.latency.ptc_website_demo_small` | `0.16 ms` | `0.15 ms` | `-6.0%` |
+| `addon.ptc.weightedScore.medium` | `0.71 ms` | `0.66 ms` | `-7.0%` |
+| `addon.latency.ptc_website_demo_small` | `0.15 ms` | `0.13 ms` | `-11.6%` |
+| `addon.latency.ptc_fraud_investigation_medium` | `1.46 ms` | `1.33 ms` | `-8.7%` |
+| `addon.latency.ptc_vendor_review_medium` | `0.22 ms` | `0.19 ms` | `-11.1%` |
+| `addon.latency.ptc_incident_triage_medium` | `0.37 ms` | `0.37 ms` | `+0.2%` |
 
-This slice was real runtime speed work, not just measurement coverage. The kept
-changes cached compiled regexes across calls, avoided repeated `Vec<char>`
-materialization in hot string helpers, fast-pathed regex matches that do not
-need capture allocation, and removed a full-array clone from
-`Array.prototype.join`.
+This slice replaced the live addon start/resume JSON path with a binary request
+format, removed the JS-side structured DTO materialization on the hot addon
+path, and kept the public wrapper on thin native-handle calls.
 
-### 2. The kept win landed in guest execution, not addon boundary codec
+### 2. The win landed in native boundary decode/codec, not in guest execution
 
-Representative addon breakdowns on the primary medium lanes moved like this:
+Representative addon breakdowns on the primary lanes moved like this:
 
 | Metric | Previous Kept | Latest Kept | Delta |
 | --- | ---: | ---: | ---: |
-| `ptc_incident_triage_medium guestExecution` | `0.46 ms` | `0.20 ms` | `-55.7%` |
-| `ptc_fraud_investigation_medium guestExecution` | `1.00 ms` | `0.83 ms` | `-17.1%` |
-| `ptc_fraud_investigation_medium boundaryCodec` | `0.18 ms` | `0.18 ms` | `+0.4%` |
+| `ptc_website_demo_small boundaryCodec` | `0.012 ms` | `0.007 ms` | `-42.8%` |
+| `ptc_incident_triage_medium boundaryCodec` | `0.036 ms` | `0.021 ms` | `-40.5%` |
+| `ptc_fraud_investigation_medium boundaryCodec` | `0.183 ms` | `0.078 ms` | `-57.4%` |
+| `ptc_vendor_review_medium boundaryCodec` | `0.026 ms` | `0.012 ms` | `-53.6%` |
+| `ptc_fraud_investigation_medium guestExecution` | `0.831 ms` | `0.827 ms` | `-0.5%` |
 
-That matters because it rules out the wrong conclusion. The representative gain
-did not come from addon boundary transport; it came from reducing temporary
-allocation and cloning inside the guest runtime on the incident and fraud
-shapes that are heavy on regex/string work.
+That matters because it isolates the kept improvement correctly. The binary
+transport work materially reduced live addon boundary overhead while guest
+execution stayed essentially flat on the representative fraud lane.
 
-### 3. Rust-core local-reduction microbenches stayed mostly flat on the same kept code
+### 3. The Node wrapper stayed thin and the binary path still fails closed
 
-`npm run bench:rust` on the kept runtime state reported:
+The public wrapper now uses native buffer entrypoints for live addon
+`run()` / `start()` / `resume()` traffic, while raw detached snapshot restore
+paths keep their existing JSON/policy flow.
 
-- `ptc_local_reduction/map_join_update`: `19.65 ms`
-- `ptc_local_reduction/set_dedupe`: `20.08 ms`
-- `ptc_local_reduction/token_normalize`: `70.95 ms`
-- `ptc_local_reduction/top_k_sort`: `211.43 ms`
-- `ptc_local_reduction/array_from_object_from_entries`: `17.60 ms`
+The binary Rust decoder in `crates/mustard-node/src/boundary_binary.rs`
+revalidates the payload shape and rejects:
 
-These benches were directionally flat overall, which matches the workload
-story. The representative scorecard improved because the real audited lanes were
-paying avoidable temporary-allocation cost in string/regex-heavy helpers, not
-because every synthetic local-reduction kernel got broadly faster. Sort and
-token normalization still remain the largest synthetic local hot spots.
+- malformed or truncated binary payloads
+- unknown payload kinds or structured tags
+- nesting beyond the host-boundary depth limit
+- arrays beyond the existing host-boundary array-length limit
+- non-finite or negative integer runtime limits
 
-### 4. A narrower collection-promotion experiment was rejected and reverted
+The JS encoder still preserves the existing fail-closed boundary checks for
+proxies, accessor properties, cycles, sparse arrays, and unsupported values,
+but it no longer allocates a structured JSON DTO tree on the hot addon path.
 
-A temporary experiment lowering `COLLECTION_LOOKUP_PROMOTION_LEN` from `32` to
-`12` made the representative addon score worse in the rerun. The rejected
-candidate reached `addon.ptc.weightedScore.medium 0.74 ms`, about `4.1%` slower
-than the kept `0.71 ms`, and also worsened `ptc_fraud_investigation_medium`.
-That candidate was fully reverted before the kept artifact was regenerated, so
-the checked-in result is the post-revert runtime state.
+### 4. The remaining async-clone checkbox no longer points at the representative bottleneck
 
-### 5. The website export and repo verification are aligned with the kept artifact
+The remaining open Milestone 1 item was audited against the current async
+runtime and the Rust-core bench suite.
+
+What the code now does:
+
+- settled awaiters queue `ResumeAsync { source: PromiseKey }` instead of cloned
+  outcomes
+- settled combinator work queues `PromiseCombinatorInput::Promise(...)` and
+  resolves from the settled source on activation
+- promise settlement drains awaiters/reactions/dependents with `std::mem::take`
+  and schedules keyed work rather than cloning `PromiseOutcome` into queue
+  payloads
+
+What the current Rust benches show:
+
+- `promise_all_immediate_fanout`: about `0.38 ms`
+- `promise_all_settled_immediate`: about `3.39 ms`
+- `promise_all_derived_ids_fanout`: about `6.21 ms`
+- `promise_all_map_set_reduction`: about `8.44 ms`
+
+Those async benches remain materially below the dominant synthetic local
+hotspots such as `token_normalize` (`~70 ms`) and `top_k_sort` (`~208 ms`), and
+the representative addon breakdowns are now dominated by guest execution or
+already-reduced boundary work instead of unresolved queue-time outcome cloning.
+
+### 5. The website export and verification are aligned with the kept artifact
 
 `website/src/generated/benchmarkData.ts` now points to
-`2026-04-14T03-01-24-879Z-workloads.json` and reports
-`ptc_website_demo_small` at `0.151 ms` median and `0.163 ms` p95 for addon.
+`2026-04-14T03-41-06-633Z-workloads.json` and reports
+`ptc_website_demo_small` at `0.133 ms` median and `0.159 ms` p95 for addon.
 
-The broader repo verification for this slice passed:
+The broader repo verification for the current kept state passed:
 
-- `npm test`
-- `npm run lint`
-- `cargo test --workspace`
-- `npm run test:use-cases`
 - `npm run bench:rust`
 - `npm run bench:workloads:release`
+- `cargo test --workspace`
+- `npm test`
+- `npm run lint`
+- `npm run test:use-cases`
 
 ## Conclusions
 
-1. The current best local-reduction win came from eliminating avoidable
-   temporary allocation and cloning on real representative PTC lanes, not from
-   boundary transport changes.
-2. Milestone 3 now has benchmark-backed evidence that the primary addon
-   incident, fraud, and vendor lanes each improved materially or meaningfully
-   on the representative scorecard.
-3. Addon boundary transport is still open work. On the kept fraud lane,
-   `boundaryParse` plus `boundaryCodec` still cost about `0.33 ms` while guest
-   execution costs about `0.83 ms`, so Milestone 2 remains a real opportunity.
-4. Promise clone amplification in settlement and awaiter scheduling is also
-   still open. The representative score improved here without finishing the
-   remaining Milestone 1 async clone cleanup.
-5. The next highest-value plan items remain the unfinished addon start/resume
-   transport path and the remaining async settlement-clone reductions.
+1. The current best remaining addon PTC win came from making live start/resume
+   transport cheaper, not from another guest-runtime change.
+2. The binary addon path cut representative boundary codec time by about
+   `40%` to `57%` on the primary lanes and lowered the representative addon
+   weighted score from `0.71 ms` to `0.66 ms`.
+3. The current async promise-settlement code no longer has an obvious separate
+   representative bottleneck after the earlier key-based queueing cleanup, so
+   the remaining Milestone 1 checkbox was closed by audit rather than by a new
+   runtime rewrite.
+4. From the first representative PTC scorecard at `0.88 ms` to the current
+   kept artifact at `0.66 ms`, the addon weighted medium-lane score is down by
+   about `25%`, which satisfies the plan’s requirement that large gains be
+   measured on the representative suite before calling the work done.

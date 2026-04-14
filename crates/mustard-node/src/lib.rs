@@ -1,3 +1,5 @@
+mod boundary_binary;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use hmac::{Hmac, Mac};
 use indexmap::IndexMap;
@@ -29,6 +31,10 @@ use mustard_bridge::{
 use napi::bindgen_prelude::Buffer;
 use napi::{Error, Result};
 use napi_derive::napi;
+
+use crate::boundary_binary::{
+    decode_resume_payload_bytes, decode_start_options_bytes, decode_structured_inputs_bytes,
+};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -695,6 +701,21 @@ pub fn start_program_with_snapshot_handle(
 }
 
 #[napi]
+pub fn start_program_with_snapshot_handle_buffer(
+    program_handle: String,
+    options_buffer: Buffer,
+    cancellation_token_id: Option<String>,
+) -> Result<String> {
+    let program = lookup_program(&program_handle)?;
+    let options = decode_start_options_bytes(options_buffer.as_ref()).map_err(to_napi_error)?;
+    let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
+    let (step, metrics) =
+        start_shared_bytecode_with_metrics(program, execution_options(options, cancellation_token))
+            .map_err(to_napi_error)?;
+    encode_step_with_snapshot_handle(step, metrics, SnapshotHandleFormat::Detached)
+}
+
+#[napi]
 pub fn start_program_with_execution_context_handle(
     program_handle: String,
     context_handle: String,
@@ -704,6 +725,25 @@ pub fn start_program_with_execution_context_handle(
     let program = lookup_program(&program_handle)?;
     let context = lookup_execution_context(&context_handle)?;
     let inputs = parse_json(&inputs_json).map_err(to_napi_error)?;
+    let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
+    let (step, metrics) = start_shared_bytecode_with_metrics(
+        program,
+        execution_options_from_context(&context, inputs, cancellation_token),
+    )
+    .map_err(to_napi_error)?;
+    encode_step_with_snapshot_handle(step, metrics, SnapshotHandleFormat::Detached)
+}
+
+#[napi]
+pub fn start_program_with_execution_context_handle_buffer(
+    program_handle: String,
+    context_handle: String,
+    inputs_buffer: Buffer,
+    cancellation_token_id: Option<String>,
+) -> Result<String> {
+    let program = lookup_program(&program_handle)?;
+    let context = lookup_execution_context(&context_handle)?;
+    let inputs = decode_structured_inputs_bytes(inputs_buffer.as_ref()).map_err(to_napi_error)?;
     let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
     let (step, metrics) = start_shared_bytecode_with_metrics(
         program,
@@ -739,6 +779,31 @@ pub fn profile_start_program_with_snapshot_handle(
 }
 
 #[napi]
+pub fn profile_start_program_with_snapshot_handle_buffer(
+    program_handle: String,
+    options_buffer: Buffer,
+    cancellation_token_id: Option<String>,
+) -> Result<String> {
+    let program = lookup_program(&program_handle)?;
+    let parse_started = Instant::now();
+    let options = decode_start_options_bytes(options_buffer.as_ref()).map_err(to_napi_error)?;
+    let parse_ns = elapsed_nanos(parse_started);
+    let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
+    let execute_started = Instant::now();
+    let (step, metrics) =
+        start_shared_bytecode_with_metrics(program, execution_options(options, cancellation_token))
+            .map_err(to_napi_error)?;
+    let execute_ns = elapsed_nanos(execute_started);
+    encode_profiled_step_with_snapshot_handle(
+        step,
+        metrics,
+        SnapshotHandleFormat::Detached,
+        parse_ns,
+        execute_ns,
+    )
+}
+
+#[napi]
 pub fn profile_start_program_with_execution_context_handle(
     program_handle: String,
     context_handle: String,
@@ -749,6 +814,35 @@ pub fn profile_start_program_with_execution_context_handle(
     let context = lookup_execution_context(&context_handle)?;
     let parse_started = Instant::now();
     let inputs = parse_json(&inputs_json).map_err(to_napi_error)?;
+    let parse_ns = elapsed_nanos(parse_started);
+    let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
+    let execute_started = Instant::now();
+    let (step, metrics) = start_shared_bytecode_with_metrics(
+        program,
+        execution_options_from_context(&context, inputs, cancellation_token),
+    )
+    .map_err(to_napi_error)?;
+    let execute_ns = elapsed_nanos(execute_started);
+    encode_profiled_step_with_snapshot_handle(
+        step,
+        metrics,
+        SnapshotHandleFormat::Detached,
+        parse_ns,
+        execute_ns,
+    )
+}
+
+#[napi]
+pub fn profile_start_program_with_execution_context_handle_buffer(
+    program_handle: String,
+    context_handle: String,
+    inputs_buffer: Buffer,
+    cancellation_token_id: Option<String>,
+) -> Result<String> {
+    let program = lookup_program(&program_handle)?;
+    let context = lookup_execution_context(&context_handle)?;
+    let parse_started = Instant::now();
+    let inputs = decode_structured_inputs_bytes(inputs_buffer.as_ref()).map_err(to_napi_error)?;
     let parse_ns = elapsed_nanos(parse_started);
     let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
     let execute_started = Instant::now();
@@ -1024,6 +1118,27 @@ pub fn resume_snapshot_handle(
 }
 
 #[napi]
+pub fn resume_snapshot_handle_buffer(
+    snapshot_handle: String,
+    payload_buffer: Buffer,
+    cancellation_token_id: Option<String>,
+) -> Result<String> {
+    let payload = decode_resume_payload_bytes(payload_buffer.as_ref()).map_err(to_napi_error)?;
+    let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
+    let entry = take_snapshot(&snapshot_handle)?;
+    let (step, metrics) = resume_with_options_and_metrics(
+        entry.snapshot,
+        payload.into_resume_payload(),
+        ResumeOptions {
+            cancellation_token,
+            snapshot_policy: None,
+        },
+    )
+    .map_err(to_napi_error)?;
+    encode_step_with_snapshot_handle(step, metrics, entry.format)
+}
+
+#[napi]
 pub fn profile_resume_snapshot_handle(
     snapshot_handle: String,
     payload_json: String,
@@ -1031,6 +1146,31 @@ pub fn profile_resume_snapshot_handle(
 ) -> Result<String> {
     let parse_started = Instant::now();
     let payload: ResumeDto = parse_json(&payload_json).map_err(to_napi_error)?;
+    let parse_ns = elapsed_nanos(parse_started);
+    let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
+    let entry = take_snapshot(&snapshot_handle)?;
+    let execute_started = Instant::now();
+    let (step, metrics) = resume_with_options_and_metrics(
+        entry.snapshot,
+        payload.into_resume_payload(),
+        ResumeOptions {
+            cancellation_token,
+            snapshot_policy: None,
+        },
+    )
+    .map_err(to_napi_error)?;
+    let execute_ns = elapsed_nanos(execute_started);
+    encode_profiled_step_with_snapshot_handle(step, metrics, entry.format, parse_ns, execute_ns)
+}
+
+#[napi]
+pub fn profile_resume_snapshot_handle_buffer(
+    snapshot_handle: String,
+    payload_buffer: Buffer,
+    cancellation_token_id: Option<String>,
+) -> Result<String> {
+    let parse_started = Instant::now();
+    let payload = decode_resume_payload_bytes(payload_buffer.as_ref()).map_err(to_napi_error)?;
     let parse_ns = elapsed_nanos(parse_started);
     let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
     let entry = take_snapshot(&snapshot_handle)?;
