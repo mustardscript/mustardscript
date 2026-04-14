@@ -1,3 +1,5 @@
+#[cfg(test)]
+use std::sync::{Mutex, MutexGuard};
 use std::{
     collections::{HashMap, VecDeque},
     hash::{Hash, Hasher},
@@ -42,6 +44,8 @@ const STRING_LOOKUP_OVERRIDE_DISABLED: u8 = 1;
 const STRING_LOOKUP_OVERRIDE_ENABLED: u8 = 2;
 
 static STRING_LOOKUP_OVERRIDE: AtomicU8 = AtomicU8::new(STRING_LOOKUP_OVERRIDE_UNSET);
+#[cfg(test)]
+static STRING_LOOKUP_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(super) enum Value {
@@ -146,6 +150,7 @@ pub(super) fn string_heavy_collection_lookup_enabled() -> bool {
 #[cfg(test)]
 pub(super) struct StringHeavyCollectionLookupOverrideGuard {
     previous: u8,
+    _lock: MutexGuard<'static, ()>,
 }
 
 #[cfg(test)]
@@ -159,13 +164,19 @@ impl Drop for StringHeavyCollectionLookupOverrideGuard {
 pub(super) fn override_string_heavy_collection_lookup_for_tests(
     enabled: bool,
 ) -> StringHeavyCollectionLookupOverrideGuard {
+    let lock = STRING_LOOKUP_TEST_LOCK
+        .lock()
+        .expect("string-heavy lookup test override lock should not be poisoned");
     let next = if enabled {
         STRING_LOOKUP_OVERRIDE_ENABLED
     } else {
         STRING_LOOKUP_OVERRIDE_DISABLED
     };
     let previous = STRING_LOOKUP_OVERRIDE.swap(next, Ordering::Relaxed);
-    StringHeavyCollectionLookupOverrideGuard { previous }
+    StringHeavyCollectionLookupOverrideGuard {
+        previous,
+        _lock: lock,
+    }
 }
 
 impl Hash for CollectionIndexKey {

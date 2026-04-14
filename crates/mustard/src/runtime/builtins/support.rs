@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(test)]
+use std::sync::{Mutex, MutexGuard};
 use std::sync::{
     OnceLock,
     atomic::{AtomicU8, Ordering},
@@ -16,6 +18,8 @@ const ASCII_STRING_FAST_PATH_OVERRIDE_ENABLED: u8 = 2;
 
 static ASCII_STRING_FAST_PATH_OVERRIDE: AtomicU8 =
     AtomicU8::new(ASCII_STRING_FAST_PATH_OVERRIDE_UNSET);
+#[cfg(test)]
+static ASCII_STRING_FAST_PATH_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 fn env_flag_enabled(name: &str) -> bool {
     std::env::var(name).is_ok_and(|value| {
@@ -36,6 +40,7 @@ pub(super) fn ascii_string_fast_paths_enabled() -> bool {
 #[cfg(test)]
 pub(super) struct AsciiStringFastPathOverrideGuard {
     previous: u8,
+    _lock: MutexGuard<'static, ()>,
 }
 
 #[cfg(test)]
@@ -49,13 +54,19 @@ impl Drop for AsciiStringFastPathOverrideGuard {
 pub(super) fn override_ascii_string_fast_paths_for_tests(
     enabled: bool,
 ) -> AsciiStringFastPathOverrideGuard {
+    let lock = ASCII_STRING_FAST_PATH_TEST_LOCK
+        .lock()
+        .expect("ascii string fast path test override lock should not be poisoned");
     let next = if enabled {
         ASCII_STRING_FAST_PATH_OVERRIDE_ENABLED
     } else {
         ASCII_STRING_FAST_PATH_OVERRIDE_DISABLED
     };
     let previous = ASCII_STRING_FAST_PATH_OVERRIDE.swap(next, Ordering::Relaxed);
-    AsciiStringFastPathOverrideGuard { previous }
+    AsciiStringFastPathOverrideGuard {
+        previous,
+        _lock: lock,
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

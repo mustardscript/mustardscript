@@ -8,6 +8,8 @@ mod statements;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::sync::atomic::{AtomicU8, Ordering};
+#[cfg(test)]
+use std::sync::{Mutex, MutexGuard};
 
 use bindings::collect_block_bindings;
 use context::{CompileContext, KnownCollectionKind};
@@ -62,6 +64,10 @@ const DIRECT_SET_CALL_OVERRIDE_ENABLED: u8 = 2;
 
 static MAP_COUNTER_UPDATE_OVERRIDE: AtomicU8 = AtomicU8::new(MAP_COUNTER_UPDATE_OVERRIDE_UNSET);
 static DIRECT_SET_CALL_OVERRIDE: AtomicU8 = AtomicU8::new(DIRECT_SET_CALL_OVERRIDE_UNSET);
+#[cfg(test)]
+static MAP_COUNTER_UPDATE_TEST_LOCK: Mutex<()> = Mutex::new(());
+#[cfg(test)]
+static DIRECT_SET_CALL_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum AbstractBinding {
@@ -1186,6 +1192,7 @@ impl Compiler {
 #[cfg(test)]
 struct MapCounterUpdateFastPathOverrideGuard {
     previous: u8,
+    _lock: MutexGuard<'static, ()>,
 }
 
 #[cfg(test)]
@@ -1199,18 +1206,25 @@ impl Drop for MapCounterUpdateFastPathOverrideGuard {
 fn override_map_counter_update_fast_path_for_tests(
     enabled: bool,
 ) -> MapCounterUpdateFastPathOverrideGuard {
+    let lock = MAP_COUNTER_UPDATE_TEST_LOCK
+        .lock()
+        .expect("map counter update test override lock should not be poisoned");
     let next = if enabled {
         MAP_COUNTER_UPDATE_OVERRIDE_ENABLED
     } else {
         MAP_COUNTER_UPDATE_OVERRIDE_DISABLED
     };
     let previous = MAP_COUNTER_UPDATE_OVERRIDE.swap(next, Ordering::Relaxed);
-    MapCounterUpdateFastPathOverrideGuard { previous }
+    MapCounterUpdateFastPathOverrideGuard {
+        previous,
+        _lock: lock,
+    }
 }
 
 #[cfg(test)]
 struct DirectSetCallOverrideGuard {
     previous: u8,
+    _lock: MutexGuard<'static, ()>,
 }
 
 #[cfg(test)]
@@ -1222,13 +1236,19 @@ impl Drop for DirectSetCallOverrideGuard {
 
 #[cfg(test)]
 fn override_direct_set_calls_for_tests(enabled: bool) -> DirectSetCallOverrideGuard {
+    let lock = DIRECT_SET_CALL_TEST_LOCK
+        .lock()
+        .expect("direct set call test override lock should not be poisoned");
     let next = if enabled {
         DIRECT_SET_CALL_OVERRIDE_ENABLED
     } else {
         DIRECT_SET_CALL_OVERRIDE_DISABLED
     };
     let previous = DIRECT_SET_CALL_OVERRIDE.swap(next, Ordering::Relaxed);
-    DirectSetCallOverrideGuard { previous }
+    DirectSetCallOverrideGuard {
+        previous,
+        _lock: lock,
+    }
 }
 
 #[cfg(test)]
