@@ -1,10 +1,62 @@
 use super::*;
+use std::sync::{
+    OnceLock,
+    atomic::{AtomicU8, Ordering},
+};
 
 const MAX_TIME_MS: f64 = 8_640_000_000_000_000.0;
 const MS_PER_SECOND: i64 = 1_000;
 const MS_PER_MINUTE: i64 = 60 * MS_PER_SECOND;
 const MS_PER_HOUR: i64 = 60 * MS_PER_MINUTE;
 const MS_PER_DAY: i64 = 24 * MS_PER_HOUR;
+
+const ASCII_STRING_FAST_PATH_OVERRIDE_UNSET: u8 = 0;
+const ASCII_STRING_FAST_PATH_OVERRIDE_DISABLED: u8 = 1;
+const ASCII_STRING_FAST_PATH_OVERRIDE_ENABLED: u8 = 2;
+
+static ASCII_STRING_FAST_PATH_OVERRIDE: AtomicU8 =
+    AtomicU8::new(ASCII_STRING_FAST_PATH_OVERRIDE_UNSET);
+
+fn env_flag_enabled(name: &str) -> bool {
+    std::env::var(name).is_ok_and(|value| {
+        !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
+    })
+}
+
+pub(super) fn ascii_string_fast_paths_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+
+    match ASCII_STRING_FAST_PATH_OVERRIDE.load(Ordering::Relaxed) {
+        ASCII_STRING_FAST_PATH_OVERRIDE_DISABLED => false,
+        ASCII_STRING_FAST_PATH_OVERRIDE_ENABLED => true,
+        _ => *ENABLED.get_or_init(|| env_flag_enabled("MUSTARD_ENABLE_ASCII_STRING_FAST_PATHS")),
+    }
+}
+
+#[cfg(test)]
+pub(super) struct AsciiStringFastPathOverrideGuard {
+    previous: u8,
+}
+
+#[cfg(test)]
+impl Drop for AsciiStringFastPathOverrideGuard {
+    fn drop(&mut self) {
+        ASCII_STRING_FAST_PATH_OVERRIDE.store(self.previous, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+pub(super) fn override_ascii_string_fast_paths_for_tests(
+    enabled: bool,
+) -> AsciiStringFastPathOverrideGuard {
+    let next = if enabled {
+        ASCII_STRING_FAST_PATH_OVERRIDE_ENABLED
+    } else {
+        ASCII_STRING_FAST_PATH_OVERRIDE_DISABLED
+    };
+    let previous = ASCII_STRING_FAST_PATH_OVERRIDE.swap(next, Ordering::Relaxed);
+    AsciiStringFastPathOverrideGuard { previous }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct RegExpFlagsState {
@@ -341,6 +393,139 @@ pub(super) fn normalize_search_index(index: i64, len: usize) -> usize {
     }
 }
 
+pub(super) fn ascii_to_lowercase(value: &str) -> Option<String> {
+    if !value.is_ascii() {
+        return None;
+    }
+    let mut bytes = value.as_bytes().to_vec();
+    for byte in &mut bytes {
+        *byte = byte.to_ascii_lowercase();
+    }
+    Some(String::from_utf8(bytes).expect("ASCII lowercase should stay UTF-8"))
+}
+
+pub(super) fn ascii_to_uppercase(value: &str) -> Option<String> {
+    if !value.is_ascii() {
+        return None;
+    }
+    let mut bytes = value.as_bytes().to_vec();
+    for byte in &mut bytes {
+        *byte = byte.to_ascii_uppercase();
+    }
+    Some(String::from_utf8(bytes).expect("ASCII uppercase should stay UTF-8"))
+}
+
+fn is_ascii_js_space(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\n' | 0x0B | 0x0C | b'\r')
+}
+
+fn replace_ascii_matching_runs<F>(value: &str, replacement: &str, mut matches: F) -> String
+where
+    F: FnMut(u8) -> bool,
+{
+    let bytes = value.as_bytes();
+    let mut result = String::with_capacity(value.len().max(replacement.len()));
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if matches(bytes[index]) {
+            result.push_str(replacement);
+            index += 1;
+            while index < bytes.len() && matches(bytes[index]) {
+                index += 1;
+            }
+            continue;
+        }
+        result.push(bytes[index] as char);
+        index += 1;
+    }
+    result
+}
+
+pub(super) fn try_ascii_cleanup_replace_all(
+    value: &str,
+    pattern: &str,
+    flags: &str,
+    replacement: &str,
+) -> Option<String> {
+    if !value.is_ascii() || flags != "g" || replacement.contains('$') {
+        return None;
+    }
+    match pattern {
+        r"\s+" => Some(replace_ascii_matching_runs(
+            value,
+            replacement,
+            is_ascii_js_space,
+        )),
+        r"[^\w ]+" => Some(replace_ascii_matching_runs(value, replacement, |byte| {
+            !(byte.is_ascii_alphanumeric() || byte == b'_' || byte == b' ')
+        })),
+        r"[^a-z0-9 ]+" => Some(replace_ascii_matching_runs(
+            value,
+            replacement,
+            |byte| !matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b' '),
+        )),
+        _ => None,
+    }
+}
+
+fn is_ascii_literal_regex_byte(byte: u8) -> bool {
+    !matches!(
+        byte,
+        b'\\' | b'.' | b'^' | b'$' | b'*' | b'+' | b'?' | b'(' | b')' | b'[' | b']' | b'{' | b'}'
+    )
+}
+
+pub(super) fn is_ascii_literal_alternation_regex(pattern: &str, flags: &str) -> bool {
+    if flags != "g" || !pattern.is_ascii() || !pattern.contains('|') {
+        return false;
+    }
+    pattern.split('|').all(|alternative| {
+        !alternative.is_empty() && alternative.bytes().all(is_ascii_literal_regex_byte)
+    })
+}
+
+pub(super) fn collect_ascii_literal_alternation_matches(
+    value: &str,
+    pattern: &str,
+    flags: &str,
+    all: bool,
+) -> Option<Vec<RegExpMatchData>> {
+    if !value.is_ascii() || !is_ascii_literal_alternation_regex(pattern, flags) {
+        return None;
+    }
+
+    let alternatives = pattern.split('|').collect::<Vec<_>>();
+    let bytes = value.as_bytes();
+    let mut matches = Vec::new();
+    let mut index = 0usize;
+
+    while index < bytes.len() {
+        let matched = alternatives
+            .iter()
+            .find(|alternative| bytes[index..].starts_with(alternative.as_bytes()))
+            .copied();
+        if let Some(matched) = matched {
+            let end = index + matched.len();
+            matches.push(RegExpMatchData {
+                start_byte: index,
+                end_byte: end,
+                start_index: index,
+                end_index: end,
+                captures: Vec::new(),
+                named_groups: IndexMap::new(),
+            });
+            if !all {
+                break;
+            }
+            index = end;
+        } else {
+            index += 1;
+        }
+    }
+
+    Some(matches)
+}
+
 pub(super) fn collect_literal_matches(value: &str, needle: &str) -> Vec<RegExpMatchData> {
     if needle.is_empty() {
         let total = value.chars().count();
@@ -381,6 +566,9 @@ pub(super) fn collect_literal_matches(value: &str, needle: &str) -> Vec<RegExpMa
 }
 
 pub(super) fn char_index_to_byte_index(value: &str, index: usize) -> usize {
+    if value.is_ascii() {
+        return index.min(value.len());
+    }
     if index == 0 {
         return 0;
     }
@@ -392,15 +580,27 @@ pub(super) fn char_index_to_byte_index(value: &str, index: usize) -> usize {
 }
 
 pub(super) fn byte_index_to_char_index(value: &str, byte_index: usize) -> usize {
+    if value.is_ascii() {
+        return byte_index.min(value.len());
+    }
     value[..byte_index].chars().count()
 }
 
 pub(super) fn advance_char_index(value: &str, index: usize) -> usize {
+    if value.is_ascii() {
+        return (index + 1).min(value.len());
+    }
     let total = value.chars().count();
     (index + 1).min(total)
 }
 
 pub(super) fn find_string_pattern(value: &str, needle: &str, start: usize) -> Option<usize> {
+    if value.is_ascii() && needle.is_ascii() {
+        let start = start.min(value.len());
+        return value[start..]
+            .find(needle)
+            .map(|byte_index| start + byte_index);
+    }
     let start_byte = char_index_to_byte_index(value, start);
     value[start_byte..]
         .find(needle)

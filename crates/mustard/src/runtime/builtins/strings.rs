@@ -2,7 +2,11 @@ use super::*;
 
 impl Runtime {
     fn string_char_len(value: &str) -> usize {
-        value.chars().count()
+        if value.is_ascii() {
+            value.len()
+        } else {
+            value.chars().count()
+        }
     }
 
     fn string_slice_by_char_range(value: &str, start: usize, end: usize) -> String {
@@ -133,6 +137,39 @@ impl Runtime {
         self.to_string(value)
     }
 
+    fn record_ascii_substring_fast_path(&mut self, value: &str, needle: &str) -> bool {
+        if !ascii_string_fast_paths_enabled() {
+            return false;
+        }
+        if value.is_ascii() && needle.is_ascii() {
+            self.record_ascii_substring_fast_path_hit();
+            true
+        } else {
+            self.record_ascii_substring_fast_path_fallback();
+            false
+        }
+    }
+
+    fn try_ascii_token_regex_matches(
+        &mut self,
+        value: &str,
+        regex: &RegExpObject,
+        all: bool,
+    ) -> Option<Vec<RegExpMatchData>> {
+        if !is_ascii_literal_alternation_regex(&regex.pattern, &regex.flags) {
+            return None;
+        }
+        if let Some(matches) =
+            collect_ascii_literal_alternation_matches(value, &regex.pattern, &regex.flags, all)
+        {
+            self.record_ascii_token_regex_fast_path_hit();
+            Some(matches)
+        } else {
+            self.record_ascii_token_regex_fast_path_fallback();
+            None
+        }
+    }
+
     pub(crate) fn call_string_trim(&self, this_value: Value) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "trim")?;
         Ok(Value::String(value.trim().to_string()))
@@ -168,10 +205,12 @@ impl Runtime {
         let value = self.string_receiver(this_value, "includes")?;
         let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
         self.record_literal_string_search();
-        let position = clamp_index(
-            self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
-            Self::string_char_len(&value),
-        );
+        let position = self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?;
+        if self.record_ascii_substring_fast_path(&value, &needle) {
+            let position = clamp_index(position, value.len());
+            return Ok(Value::Bool(value[position..].contains(&needle)));
+        }
+        let position = clamp_index(position, Self::string_char_len(&value));
         let start_byte = char_index_to_byte_index(&value, position);
         Ok(Value::Bool(value[start_byte..].contains(&needle)))
     }
@@ -184,10 +223,12 @@ impl Runtime {
         let value = self.string_receiver(this_value, "startsWith")?;
         let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
         self.record_literal_string_search();
-        let position = clamp_index(
-            self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
-            Self::string_char_len(&value),
-        );
+        let position = self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?;
+        if self.record_ascii_substring_fast_path(&value, &needle) {
+            let position = clamp_index(position, value.len());
+            return Ok(Value::Bool(value[position..].starts_with(&needle)));
+        }
+        let position = clamp_index(position, Self::string_char_len(&value));
         let start_byte = char_index_to_byte_index(&value, position);
         Ok(Value::Bool(value[start_byte..].starts_with(&needle)))
     }
@@ -200,6 +241,13 @@ impl Runtime {
         let value = self.string_receiver(this_value, "endsWith")?;
         let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
         self.record_literal_string_search();
+        if self.record_ascii_substring_fast_path(&value, &needle) {
+            let end = match args.get(1) {
+                Some(position) => clamp_index(self.to_integer(position.clone())?, value.len()),
+                None => value.len(),
+            };
+            return Ok(Value::Bool(value[..end].ends_with(&needle)));
+        }
         let length = Self::string_char_len(&value);
         let end = match args.get(1) {
             Some(position) => clamp_index(self.to_integer(position.clone())?, length),
@@ -217,10 +265,20 @@ impl Runtime {
         let value = self.string_receiver(this_value, "indexOf")?;
         let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
         self.record_literal_string_search();
-        let position = clamp_index(
-            self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
-            Self::string_char_len(&value),
-        );
+        let position = self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?;
+        if self.record_ascii_substring_fast_path(&value, &needle) {
+            let position = clamp_index(position, value.len());
+            let index = if needle.is_empty() {
+                position as f64
+            } else {
+                value[position..]
+                    .find(&needle)
+                    .map(|byte_index| (position + byte_index) as f64)
+                    .unwrap_or(-1.0)
+            };
+            return Ok(Value::Number(index));
+        }
+        let position = clamp_index(position, Self::string_char_len(&value));
         let index = if needle.is_empty() {
             position as f64
         } else {
@@ -352,12 +410,26 @@ impl Runtime {
     pub(crate) fn call_string_to_lower_case(&mut self, this_value: Value) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "toLowerCase")?;
         self.record_string_case_conversion();
+        if ascii_string_fast_paths_enabled() {
+            if let Some(lowered) = ascii_to_lowercase(&value) {
+                self.record_ascii_case_fast_path_hit();
+                return Ok(Value::String(lowered));
+            }
+            self.record_ascii_case_fast_path_fallback();
+        }
         Ok(Value::String(value.to_lowercase()))
     }
 
     pub(crate) fn call_string_to_upper_case(&mut self, this_value: Value) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "toUpperCase")?;
         self.record_string_case_conversion();
+        if ascii_string_fast_paths_enabled() {
+            if let Some(upper) = ascii_to_uppercase(&value) {
+                self.record_ascii_case_fast_path_hit();
+                return Ok(Value::String(upper));
+            }
+            self.record_ascii_case_fast_path_fallback();
+        }
         Ok(Value::String(value.to_uppercase()))
     }
 
@@ -665,25 +737,26 @@ impl Runtime {
                         "TypeError: String.prototype.replaceAll requires a global RegExp",
                     ));
                 }
-                let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
-                if matches.is_empty() {
-                    return Ok(Value::String(value));
-                }
-                let mut result = String::new();
-                let mut last_end = 0usize;
-                if is_callable(&replacement) {
-                    for matched in &matches {
-                        result.push_str(&value[last_end..matched.start_byte]);
-                        result.push_str(&self.string_callback_replacement(
-                            "replaceAll",
-                            replacement.clone(),
+                if !is_callable(&replacement) {
+                    let replacement = self.to_string(replacement.clone())?;
+                    if ascii_string_fast_paths_enabled() {
+                        if let Some(cleaned) = try_ascii_cleanup_replace_all(
                             &value,
-                            matched,
-                        )?);
-                        last_end = matched.end_byte;
+                            &regex.pattern,
+                            &regex.flags,
+                            &replacement,
+                        ) {
+                            self.record_ascii_cleanup_fast_path_hit();
+                            return Ok(Value::String(cleaned));
+                        }
+                        self.record_ascii_cleanup_fast_path_fallback();
                     }
-                } else {
-                    let replacement = self.to_string(replacement)?;
+                    let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
+                    if matches.is_empty() {
+                        return Ok(Value::String(value));
+                    }
+                    let mut result = String::new();
+                    let mut last_end = 0usize;
                     for matched in &matches {
                         result.push_str(&value[last_end..matched.start_byte]);
                         result.push_str(&expand_regexp_replacement_template(
@@ -693,6 +766,24 @@ impl Runtime {
                         ));
                         last_end = matched.end_byte;
                     }
+                    result.push_str(&value[last_end..]);
+                    return Ok(Value::String(result));
+                }
+                let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
+                if matches.is_empty() {
+                    return Ok(Value::String(value));
+                }
+                let mut result = String::new();
+                let mut last_end = 0usize;
+                for matched in &matches {
+                    result.push_str(&value[last_end..matched.start_byte]);
+                    result.push_str(&self.string_callback_replacement(
+                        "replaceAll",
+                        replacement.clone(),
+                        &value,
+                        matched,
+                    )?);
+                    last_end = matched.end_byte;
                 }
                 result.push_str(&value[last_end..]);
                 Ok(Value::String(result))
@@ -711,15 +802,23 @@ impl Runtime {
         Ok(Value::Number(match needle {
             StringSearchPattern::Literal(needle) => {
                 self.record_literal_string_search();
+                self.record_ascii_substring_fast_path(&value, &needle);
                 find_string_pattern(&value, &needle, 0)
                     .map(|index| index as f64)
                     .unwrap_or(-1.0)
             }
             StringSearchPattern::RegExp { regex, .. } => {
                 self.record_regex_search_or_replacement();
-                self.first_regexp_match_from_state(&regex, &value, 0)?
-                    .map(|matched| matched.start_index as f64)
-                    .unwrap_or(-1.0)
+                if let Some(matches) = self.try_ascii_token_regex_matches(&value, &regex, false) {
+                    matches
+                        .first()
+                        .map(|matched| matched.start_index as f64)
+                        .unwrap_or(-1.0)
+                } else {
+                    self.first_regexp_match_from_state(&regex, &value, 0)?
+                        .map(|matched| matched.start_index as f64)
+                        .unwrap_or(-1.0)
+                }
             }
         }))
     }
@@ -735,6 +834,7 @@ impl Runtime {
         match needle {
             StringSearchPattern::Literal(needle) => {
                 self.record_literal_string_search();
+                self.record_ascii_substring_fast_path(&value, &needle);
                 let Some(index) = find_string_pattern(&value, &needle, 0) else {
                     return Ok(Value::Null);
                 };
@@ -751,7 +851,13 @@ impl Runtime {
                 self.record_regex_search_or_replacement();
                 if regex.flags.contains('g') {
                     self.regexp_object_mut(object)?.last_index = 0;
-                    let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
+                    let matches = if let Some(matches) =
+                        self.try_ascii_token_regex_matches(&value, &regex, true)
+                    {
+                        matches
+                    } else {
+                        self.collect_regexp_matches_from_state(&regex, &value, true)?
+                    };
                     if matches.is_empty() {
                         return Ok(Value::Null);
                     }
@@ -801,7 +907,11 @@ impl Runtime {
                     ));
                 }
                 self.regexp_object_mut(object)?.last_index = 0;
-                self.collect_regexp_matches_from_state(&regex, &value, true)?
+                if let Some(matches) = self.try_ascii_token_regex_matches(&value, &regex, true) {
+                    matches
+                } else {
+                    self.collect_regexp_matches_from_state(&regex, &value, true)?
+                }
             }
         };
         let mut values = Vec::with_capacity(matches.len());
@@ -830,5 +940,160 @@ impl Runtime {
             captures: Vec::new(),
             named_groups: IndexMap::new(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use indexmap::IndexMap;
+    use std::sync::Arc;
+
+    use crate::{
+        ExecutionOptions, ExecutionStep, RuntimeLimits, StructuredValue, compile,
+        lower_to_bytecode, start_shared_bytecode_with_metrics,
+    };
+
+    fn run_with_metrics(source: &str) -> (StructuredValue, RuntimeDebugMetrics) {
+        let program = compile(source).expect("source should compile");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+        let (step, metrics) = start_shared_bytecode_with_metrics(
+            Arc::new(bytecode),
+            ExecutionOptions {
+                inputs: IndexMap::new(),
+                capabilities: Vec::new(),
+                limits: RuntimeLimits::default(),
+                cancellation_token: None,
+            },
+        )
+        .expect("program should execute");
+        match step {
+            ExecutionStep::Completed(value) => (value, metrics),
+            ExecutionStep::Suspended(_) => panic!("program should not suspend"),
+        }
+    }
+
+    #[test]
+    fn ascii_string_fast_paths_record_hits_when_enabled() {
+        let _guard = super::support::override_ascii_string_fast_paths_for_tests(true);
+        let (value, metrics) = run_with_metrics(
+            r#"
+            const lower = "FOO".toLowerCase();
+            const found = lower.includes("oo");
+            const compact = "A\tB\nC".replaceAll(/\s+/g, " ");
+            [lower, found, compact];
+            "#,
+        );
+
+        assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                StructuredValue::from("foo"),
+                StructuredValue::Bool(true),
+                StructuredValue::from("A B C"),
+            ])
+        );
+        assert!(metrics.ascii_case_fast_path_hits > 0);
+        assert_eq!(metrics.ascii_case_fast_path_fallbacks, 0);
+        assert!(metrics.ascii_substring_fast_path_hits > 0);
+        assert_eq!(metrics.ascii_substring_fast_path_fallbacks, 0);
+        assert!(metrics.ascii_cleanup_fast_path_hits > 0);
+        assert_eq!(metrics.ascii_cleanup_fast_path_fallbacks, 0);
+    }
+
+    #[test]
+    fn ascii_string_fast_paths_record_fallbacks_for_non_ascii_when_enabled() {
+        let _guard = super::support::override_ascii_string_fast_paths_for_tests(true);
+        let (value, metrics) = run_with_metrics(
+            r#"
+            const lower = "CAFÉ".toLowerCase();
+            const found = lower.includes("fé");
+            const compact = "CAFÉ\n".replaceAll(/\s+/g, " ");
+            [lower, found, compact];
+            "#,
+        );
+
+        assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                StructuredValue::from("café"),
+                StructuredValue::Bool(true),
+                StructuredValue::from("CAFÉ "),
+            ])
+        );
+        assert_eq!(metrics.ascii_case_fast_path_hits, 0);
+        assert!(metrics.ascii_case_fast_path_fallbacks > 0);
+        assert_eq!(metrics.ascii_substring_fast_path_hits, 0);
+        assert!(metrics.ascii_substring_fast_path_fallbacks > 0);
+        assert_eq!(metrics.ascii_cleanup_fast_path_hits, 0);
+        assert!(metrics.ascii_cleanup_fast_path_fallbacks > 0);
+    }
+
+    #[test]
+    fn ascii_token_regex_fast_path_hits_for_global_literal_alternations() {
+        let (value, metrics) = run_with_metrics(
+            r#"
+            const found = "jwks timeout token rate limit dns certificate"
+              .match(/jwks|timeout|token|rate limit|dns|certificate/g);
+            const first = "jwks timeout".search(/jwks|timeout/g);
+            const all = Array.from("throttle timeout".matchAll(/timeout|throttle/g)).length;
+            [found.length, found[3], first, all];
+            "#,
+        );
+
+        assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                StructuredValue::from(6.0),
+                StructuredValue::from("rate limit"),
+                StructuredValue::from(0.0),
+                StructuredValue::from(2.0),
+            ])
+        );
+        assert!(metrics.ascii_token_regex_fast_path_hits >= 3);
+        assert_eq!(metrics.ascii_token_regex_fast_path_fallbacks, 0);
+    }
+
+    #[test]
+    fn ascii_token_regex_fast_path_preserves_alternative_order() {
+        let (value, metrics) = run_with_metrics(
+            r#"
+            const found = "rate limit".match(/rate|rate limit/g);
+            [found.length, found[0]];
+            "#,
+        );
+
+        assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                StructuredValue::from(1.0),
+                StructuredValue::from("rate"),
+            ])
+        );
+        assert!(metrics.ascii_token_regex_fast_path_hits > 0);
+    }
+
+    #[test]
+    fn ascii_token_regex_fast_path_records_fallbacks_for_non_ascii_input() {
+        let (value, metrics) = run_with_metrics(
+            r#"
+            const lowered = "CAFÉ timeout".toLowerCase();
+            const found = lowered.match(/caf|timeout/g);
+            const first = lowered.search(/caf|timeout/g);
+            [found.length, found[0], found[1], first];
+            "#,
+        );
+
+        assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                StructuredValue::from(2.0),
+                StructuredValue::from("caf"),
+                StructuredValue::from("timeout"),
+                StructuredValue::from(0.0),
+            ])
+        );
+        assert_eq!(metrics.ascii_token_regex_fast_path_hits, 0);
+        assert!(metrics.ascii_token_regex_fast_path_fallbacks >= 2);
     }
 }

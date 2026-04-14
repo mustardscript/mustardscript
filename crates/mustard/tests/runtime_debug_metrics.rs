@@ -41,7 +41,10 @@ fn runtime_debug_metrics_track_ptc_relevant_operations() {
         const lower = "FOO-bar".toLowerCase();
         const includes = lower.includes("foo");
         const literalMatch = lower.match("bar");
+        const tokenMatch = "jwks timeout dns".match(/jwks|timeout|dns/g);
         const replaced = lower.replace(/bar/g, "baz");
+        const compact = "A\tB\nC".replaceAll(/\s+/g, " ");
+        const filtered = "a?!b".replaceAll(/[^a-z0-9 ]+/g, " ");
         values.sort((left, right) => left - right);
         [
           row.foo,
@@ -50,7 +53,10 @@ fn runtime_debug_metrics_track_ptc_relevant_operations() {
           set.has(2),
           includes,
           literalMatch.length,
+          tokenMatch.length,
           replaced,
+          compact,
+          filtered,
           values[0],
         ];
         "#,
@@ -79,7 +85,10 @@ fn runtime_debug_metrics_track_ptc_relevant_operations() {
                     StructuredValue::Bool(true),
                     StructuredValue::Bool(true),
                     number(1.0),
+                    number(3.0),
                     StructuredValue::from("foo-baz"),
+                    StructuredValue::from("A B C"),
+                    StructuredValue::from("a b"),
                     number(1.0),
                 ])
             );
@@ -99,7 +108,53 @@ fn runtime_debug_metrics_track_ptc_relevant_operations() {
     assert!(metrics.string_case_conversions > 0);
     assert!(metrics.literal_string_searches > 0);
     assert!(metrics.regex_search_or_replacements > 0);
+    assert!(metrics.ascii_token_regex_fast_path_hits > 0);
     assert!(metrics.comparator_sort_invocations > 0);
+}
+
+#[test]
+fn non_ascii_string_paths_preserve_results() {
+    let program = compile(
+        r#"
+        const lower = "CAFÉ".toLowerCase();
+        const includes = lower.includes("fé");
+        const compact = "CAFÉ\n".replaceAll(/\s+/g, " ");
+        const tokens = "CAFÉ timeout".toLowerCase().match(/caf|timeout/g);
+        [lower, includes, compact, tokens.length];
+        "#,
+    )
+    .expect("source should compile");
+    let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+    let (step, metrics) = start_shared_bytecode_with_metrics(
+        Arc::new(bytecode),
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: Vec::new(),
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("program should execute");
+
+    match step {
+        ExecutionStep::Completed(value) => {
+            assert_eq!(
+                value,
+                StructuredValue::Array(vec![
+                    StructuredValue::from("café"),
+                    StructuredValue::Bool(true),
+                    StructuredValue::from("CAFÉ "),
+                    number(2.0),
+                ])
+            );
+        }
+        ExecutionStep::Suspended(_) => panic!("program should not suspend"),
+    }
+
+    assert!(metrics.string_case_conversions > 0);
+    assert!(metrics.literal_string_searches > 0);
+    assert!(metrics.regex_search_or_replacements > 0);
+    assert!(metrics.ascii_token_regex_fast_path_fallbacks > 0);
 }
 
 #[test]

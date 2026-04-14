@@ -112,8 +112,24 @@ pub struct RuntimeDebugMetrics {
     pub set_add_calls: u64,
     pub set_has_calls: u64,
     pub string_case_conversions: u64,
+    #[serde(default)]
+    pub ascii_case_fast_path_hits: u64,
+    #[serde(default)]
+    pub ascii_case_fast_path_fallbacks: u64,
     pub literal_string_searches: u64,
+    #[serde(default)]
+    pub ascii_substring_fast_path_hits: u64,
+    #[serde(default)]
+    pub ascii_substring_fast_path_fallbacks: u64,
     pub regex_search_or_replacements: u64,
+    #[serde(default)]
+    pub ascii_token_regex_fast_path_hits: u64,
+    #[serde(default)]
+    pub ascii_token_regex_fast_path_fallbacks: u64,
+    #[serde(default)]
+    pub ascii_cleanup_fast_path_hits: u64,
+    #[serde(default)]
+    pub ascii_cleanup_fast_path_fallbacks: u64,
     pub comparator_sort_invocations: u64,
     pub queued_microtasks: u64,
     pub executed_microtasks: u64,

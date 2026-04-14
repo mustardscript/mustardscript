@@ -166,15 +166,63 @@ impl Runtime {
         }
     }
 
+    pub(super) fn record_ascii_case_fast_path_hit(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.ascii_case_fast_path_hits);
+        }
+    }
+
+    pub(super) fn record_ascii_case_fast_path_fallback(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.ascii_case_fast_path_fallbacks);
+        }
+    }
+
     pub(super) fn record_literal_string_search(&mut self) {
         if self.operation_counters_enabled {
             Self::bump_metric(&mut self.debug_metrics.literal_string_searches);
         }
     }
 
+    pub(super) fn record_ascii_substring_fast_path_hit(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.ascii_substring_fast_path_hits);
+        }
+    }
+
+    pub(super) fn record_ascii_substring_fast_path_fallback(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.ascii_substring_fast_path_fallbacks);
+        }
+    }
+
     pub(super) fn record_regex_search_or_replacement(&mut self) {
         if self.operation_counters_enabled {
             Self::bump_metric(&mut self.debug_metrics.regex_search_or_replacements);
+        }
+    }
+
+    pub(super) fn record_ascii_token_regex_fast_path_hit(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.ascii_token_regex_fast_path_hits);
+        }
+    }
+
+    pub(super) fn record_ascii_token_regex_fast_path_fallback(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.ascii_token_regex_fast_path_fallbacks);
+        }
+    }
+
+    pub(super) fn record_ascii_cleanup_fast_path_hit(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.ascii_cleanup_fast_path_hits);
+        }
+    }
+
+    pub(super) fn record_ascii_cleanup_fast_path_fallback(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.ascii_cleanup_fast_path_fallbacks);
         }
     }
 

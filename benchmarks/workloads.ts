@@ -3176,8 +3176,12 @@ function printSummary(results) {
         `Map get/set ${metric.map_get_calls}/${metric.map_set_calls}`,
         `Set add/has ${metric.set_add_calls}/${metric.set_has_calls}`,
         `string case ${metric.string_case_conversions}`,
+        `ASCII case hit/fallback ${metric.ascii_case_fast_path_hits}/${metric.ascii_case_fast_path_fallbacks}`,
         `literal search ${metric.literal_string_searches}`,
+        `ASCII substring hit/fallback ${metric.ascii_substring_fast_path_hits}/${metric.ascii_substring_fast_path_fallbacks}`,
         `regex search/replace ${metric.regex_search_or_replacements}`,
+        `ASCII token regex hit/fallback ${metric.ascii_token_regex_fast_path_hits}/${metric.ascii_token_regex_fast_path_fallbacks}`,
+        `ASCII cleanup hit/fallback ${metric.ascii_cleanup_fast_path_hits}/${metric.ascii_cleanup_fast_path_fallbacks}`,
         `comparator sorts ${metric.comparator_sort_invocations}`,
       ].join(', ');
       console.log(
@@ -3474,7 +3478,7 @@ async function main() {
       boundaryDefinitions:
         'addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.',
       counterDefinitions:
-        'addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, accounting refresh counts, dynamic instruction dispatch count, static/computed property reads, object/array allocations, Map.get/Map.set, Set.add/Set.has, string case conversion, literal string search, regex search or replacement, comparator-based sort invocations, and line/column-resolved collection call-site hotspots for representative phase-2 gallery lanes.',
+        'addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, accounting refresh counts, dynamic instruction dispatch count, static/computed property reads, object/array allocations, Map.get/Map.set, Set.add/Set.has, string case conversion, ASCII string case fast-path hit/fallback counts, literal string search, ASCII substring-search hit/fallback counts, regex search or replacement, ASCII cleanup replaceAll hit/fallback counts, comparator-based sort invocations, and line/column-resolved collection call-site hotspots for representative phase-2 gallery lanes.',
       suspendStateDefinitions:
         'addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.',
       ptcDefinitions:
