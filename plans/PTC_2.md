@@ -690,7 +690,7 @@ Action items:
   have to be eagerly written back to the frame stack.
 - [ ] Track stack-value equivalence classes so redundant reloads, stores, and
   `Push` / `Pop` churn can be removed when semantics allow it.
-- [ ] Add a dynamic-instruction counter to the representative addon artifact so
+- [x] Add a dynamic-instruction counter to the representative addon artifact so
   reduced dispatch is measured directly instead of inferred.
 - [ ] Add at least three generic superinstruction candidates derived from broad
   baseline traces rather than from one hand-picked benchmark.
@@ -914,4 +914,4 @@ Reject if:
 
 | UTC Timestamp | Summary | Evidence | Blockers |
 | --- | --- | --- | --- |
-| 2026-04-14T08:04:25Z | Closed milestones 0-4 by landing the audited phase-2 portfolio, skewed headline seeds, durable breadth, anti-overfit scorecards with regression guards, and deeper headline-lane attribution with a fresh broad baseline. | Commits `316ad5e`, `afd8cf6`, `3890be7`; verified `node --test tests/node/benchmark-compare.test.js`, `node scripts/audit-ptc-headline-seeds.ts --json`, `npm run bench:ptc:broad`, `npm run bench:ptc:holdout`, `npm run bench:regress:ptc`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases`; kept artifacts `benchmarks/results/2026-04-14T07-56-52-011Z-ptc_broad_release-release.json`, `benchmarks/results/2026-04-14T07-38-31-068Z-ptc_holdout_release-release.json`, `benchmarks/results/2026-04-14T07-34-21-584Z-ptc_sentinel_release-release.json` | None; the async headline counter collector and a `cargo fmt --check` diff both failed once and were fixed in-loop. |
+| 2026-04-14T08:04:25Z | Closed milestones 0-4 and landed the first Milestone 5 measurement hook by adding dynamic instruction counts to the representative PTC artifact alongside the audited phase-2 portfolio, skewed headline seeds, durable breadth, anti-overfit scorecards, regression guards, and deeper headline-lane attribution. | Commits `316ad5e`, `afd8cf6`, `3890be7`, `ff894d6`; verified `node --test tests/node/benchmark-compare.test.js`, `node scripts/audit-ptc-headline-seeds.ts --json`, `cargo test -p mustard --test runtime_debug_metrics`, `npm run bench:ptc:broad`, `npm run bench:ptc:holdout`, `npm run bench:regress:ptc`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases`; kept artifacts `benchmarks/results/2026-04-14T08-07-26-092Z-ptc_broad_release-release.json`, `benchmarks/results/2026-04-14T07-38-31-068Z-ptc_holdout_release-release.json`, `benchmarks/results/2026-04-14T07-34-21-584Z-ptc_sentinel_release-release.json` | None; the async headline counter collector and a `cargo fmt --check` diff both failed once and were fixed in-loop. |
