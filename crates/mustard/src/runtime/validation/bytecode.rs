@@ -231,12 +231,17 @@ fn apply_validation_effect(
         | Instruction::PushString(_)
         | Instruction::PushRegExp { .. }
         | Instruction::LoadSlot { .. }
+        | Instruction::LoadSlotGetPropStatic { .. }
         | Instruction::LoadName(_)
         | Instruction::LoadGlobal(_)
         | Instruction::LoadGlobalObject
         | Instruction::MakeClosure { .. }
         | Instruction::BeginCatch => ValidationState {
             stack_depth: state.stack_depth + 1,
+            ..state
+        },
+        Instruction::LoadSlotDupGetPropStatic { .. } => ValidationState {
+            stack_depth: state.stack_depth + 2,
             ..state
         },
         Instruction::StoreSlot { .. } | Instruction::StoreName(_) | Instruction::StoreGlobal(_) => {
@@ -328,6 +333,13 @@ fn apply_validation_effect(
         Instruction::GetPropStatic { .. } => {
             require_stack(1)?;
             state
+        }
+        Instruction::DupGetPropStatic { .. } => {
+            require_stack(1)?;
+            ValidationState {
+                stack_depth: state.stack_depth + 1,
+                ..state
+            }
         }
         Instruction::GetPropComputed { .. } => {
             require_stack(2)?;

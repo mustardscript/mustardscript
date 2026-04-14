@@ -43,6 +43,18 @@ pub enum Instruction {
         depth: usize,
         slot: usize,
     },
+    LoadSlotGetPropStatic {
+        depth: usize,
+        slot: usize,
+        name: String,
+        optional: bool,
+    },
+    LoadSlotDupGetPropStatic {
+        depth: usize,
+        slot: usize,
+        name: String,
+        optional: bool,
+    },
     LoadName(String),
     LoadGlobal(String),
     LoadGlobalObject,
@@ -103,6 +115,10 @@ pub enum Instruction {
     PatternObjectRest(Vec<String>),
     Pop,
     Dup,
+    DupGetPropStatic {
+        name: String,
+        optional: bool,
+    },
     Dup2,
     PushHandler {
         catch: Option<usize>,

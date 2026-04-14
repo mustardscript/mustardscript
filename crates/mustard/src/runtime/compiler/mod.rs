@@ -46,7 +46,10 @@ struct Compiler {
 struct BytecodeOptimizerConfig {
     disable_discard_peephole: bool,
     disable_stack_noop_peephole: bool,
+    disable_superinstruction_peephole: bool,
 }
+
+type BlockLocalRewrite = fn(&[Instruction]) -> (Vec<Instruction>, Vec<usize>);
 
 impl Compiler {
     fn compile_root(&mut self, statements: &[Stmt], span: SourceSpan) -> MustardResult<usize> {
@@ -271,10 +274,15 @@ impl Compiler {
         } else {
             Self::apply_discard_peephole(code)
         };
-        if config.disable_stack_noop_peephole {
+        let code = if config.disable_stack_noop_peephole {
             code
         } else {
             Self::apply_stack_noop_peephole(code)
+        };
+        if config.disable_superinstruction_peephole {
+            code
+        } else {
+            Self::apply_superinstruction_peephole(code)
         }
     }
 
@@ -285,6 +293,9 @@ impl Compiler {
             ),
             disable_stack_noop_peephole: Self::env_flag_enabled(
                 "MUSTARD_DISABLE_BYTECODE_STACK_NOOP_PEEPHOLE",
+            ),
+            disable_superinstruction_peephole: Self::env_flag_enabled(
+                "MUSTARD_DISABLE_BYTECODE_SUPERINSTRUCTION_PEEPHOLE",
             ),
         }
     }
@@ -375,6 +386,16 @@ impl Compiler {
         optimized
     }
 
+    fn apply_superinstruction_peephole(code: Vec<Instruction>) -> Vec<Instruction> {
+        if !code.windows(2).any(Self::supports_superinstruction_pair)
+            && !code.windows(3).any(Self::supports_superinstruction_triplet)
+        {
+            return code;
+        }
+
+        Self::apply_block_local_peephole(code, Self::rewrite_superinstruction_block)
+    }
+
     fn can_remove_dup_pop(code: &[Instruction], index: usize, protected_targets: &[bool]) -> bool {
         let next = index + 1;
         next < code.len()
@@ -424,6 +445,166 @@ impl Compiler {
             }
         }
         targets
+    }
+
+    fn optimizer_block_starts(code: &[Instruction]) -> Vec<bool> {
+        let mut starts = vec![false; code.len() + 1];
+        starts[0] = true;
+        let protected_targets = Self::protected_jump_targets(code);
+        for (index, targeted) in protected_targets.into_iter().enumerate() {
+            if targeted {
+                starts[index] = true;
+            }
+        }
+        for (index, instruction) in code.iter().enumerate() {
+            if Self::optimizer_flush_after(instruction) {
+                starts[index + 1] = true;
+            }
+        }
+        starts
+    }
+
+    fn optimizer_flush_after(instruction: &Instruction) -> bool {
+        matches!(
+            instruction,
+            Instruction::PushHandler { .. }
+                | Instruction::PopHandler
+                | Instruction::EnterFinally { .. }
+                | Instruction::BeginCatch
+                | Instruction::Throw { .. }
+                | Instruction::PushPendingJump { .. }
+                | Instruction::PushPendingReturn
+                | Instruction::PushPendingThrow
+                | Instruction::ContinuePending
+                | Instruction::Jump(_)
+                | Instruction::JumpIfFalse(_)
+                | Instruction::JumpIfTrue(_)
+                | Instruction::JumpIfNullish(_)
+                | Instruction::Call { .. }
+                | Instruction::CallWithArray { .. }
+                | Instruction::Await
+                | Instruction::Construct { .. }
+                | Instruction::ConstructWithArray
+                | Instruction::Return
+        )
+    }
+
+    fn apply_block_local_peephole(
+        code: Vec<Instruction>,
+        rewrite_block: BlockLocalRewrite,
+    ) -> Vec<Instruction> {
+        let block_starts = Self::optimizer_block_starts(&code);
+        let mut old_to_new = vec![0; code.len() + 1];
+        let mut optimized = Vec::with_capacity(code.len());
+        let mut block_start = 0;
+        while block_start < code.len() {
+            debug_assert!(block_starts[block_start]);
+            let mut block_end = block_start + 1;
+            while block_end < code.len() && !block_starts[block_end] {
+                block_end += 1;
+            }
+            let base = optimized.len();
+            let (rewritten, local_map) = rewrite_block(&code[block_start..block_end]);
+            debug_assert_eq!(local_map.len(), block_end - block_start + 1);
+            for (offset, mapped) in local_map.into_iter().enumerate() {
+                old_to_new[block_start + offset] = base + mapped;
+            }
+            optimized.extend(rewritten);
+            block_start = block_end;
+        }
+        old_to_new[code.len()] = optimized.len();
+        for instruction in &mut optimized {
+            Self::remap_targets(instruction, &old_to_new);
+        }
+        optimized
+    }
+
+    fn supports_superinstruction_pair(window: &[Instruction]) -> bool {
+        matches!(
+            window,
+            [
+                Instruction::LoadSlot { .. },
+                Instruction::GetPropStatic { .. }
+            ] | [Instruction::Dup, Instruction::GetPropStatic { .. }]
+        )
+    }
+
+    fn supports_superinstruction_triplet(window: &[Instruction]) -> bool {
+        matches!(
+            window,
+            [
+                Instruction::LoadSlot { .. },
+                Instruction::Dup,
+                Instruction::GetPropStatic { .. },
+            ]
+        )
+    }
+
+    fn rewrite_superinstruction_block(block: &[Instruction]) -> (Vec<Instruction>, Vec<usize>) {
+        let mut old_to_new = vec![0; block.len() + 1];
+        let mut optimized = Vec::with_capacity(block.len());
+        let mut index = 0;
+        while index < block.len() {
+            old_to_new[index] = optimized.len();
+            if let Some(instruction) = Self::rewrite_superinstruction_triplet(block, index) {
+                optimized.push(instruction);
+                old_to_new[index + 1] = optimized.len();
+                old_to_new[index + 2] = optimized.len();
+                index += 3;
+                continue;
+            }
+            if let Some(instruction) = Self::rewrite_superinstruction_pair(block, index) {
+                optimized.push(instruction);
+                old_to_new[index + 1] = optimized.len();
+                index += 2;
+                continue;
+            }
+            optimized.push(block[index].clone());
+            index += 1;
+        }
+        old_to_new[block.len()] = optimized.len();
+        (optimized, old_to_new)
+    }
+
+    fn rewrite_superinstruction_pair(block: &[Instruction], index: usize) -> Option<Instruction> {
+        let next = block.get(index + 1)?;
+        match (&block[index], next) {
+            (
+                Instruction::LoadSlot { depth, slot },
+                Instruction::GetPropStatic { name, optional },
+            ) => Some(Instruction::LoadSlotGetPropStatic {
+                depth: *depth,
+                slot: *slot,
+                name: name.clone(),
+                optional: *optional,
+            }),
+            (Instruction::Dup, Instruction::GetPropStatic { name, optional }) => {
+                Some(Instruction::DupGetPropStatic {
+                    name: name.clone(),
+                    optional: *optional,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn rewrite_superinstruction_triplet(
+        block: &[Instruction],
+        index: usize,
+    ) -> Option<Instruction> {
+        match block.get(index..index + 3)? {
+            [
+                Instruction::LoadSlot { depth, slot },
+                Instruction::Dup,
+                Instruction::GetPropStatic { name, optional },
+            ] => Some(Instruction::LoadSlotDupGetPropStatic {
+                depth: *depth,
+                slot: *slot,
+                name: name.clone(),
+                optional: *optional,
+            }),
+            _ => None,
+        }
     }
 
     fn supports_discard_peephole(instruction: &Instruction) -> bool {
@@ -542,6 +723,80 @@ mod tests {
                 Instruction::Pop,
                 Instruction::Return,
             ]
+        ));
+    }
+
+    #[test]
+    fn superinstruction_peephole_fuses_load_slot_get_prop_static_pairs() {
+        let optimized = Compiler::apply_superinstruction_peephole(vec![
+            Instruction::LoadSlot { depth: 0, slot: 1 },
+            Instruction::GetPropStatic {
+                name: "value".to_string(),
+                optional: false,
+            },
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [
+                Instruction::LoadSlotGetPropStatic {
+                    depth: 0,
+                    slot: 1,
+                    name,
+                    optional: false,
+                },
+                Instruction::Return,
+            ] if name == "value"
+        ));
+    }
+
+    #[test]
+    fn superinstruction_peephole_fuses_dup_get_prop_static_pairs() {
+        let optimized = Compiler::apply_superinstruction_peephole(vec![
+            Instruction::Dup,
+            Instruction::GetPropStatic {
+                name: "value".to_string(),
+                optional: true,
+            },
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [
+                Instruction::DupGetPropStatic {
+                    name,
+                    optional: true,
+                },
+                Instruction::Return,
+            ] if name == "value"
+        ));
+    }
+
+    #[test]
+    fn superinstruction_peephole_fuses_load_slot_dup_get_prop_static_triplets() {
+        let optimized = Compiler::apply_superinstruction_peephole(vec![
+            Instruction::LoadSlot { depth: 0, slot: 1 },
+            Instruction::Dup,
+            Instruction::GetPropStatic {
+                name: "value".to_string(),
+                optional: false,
+            },
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [
+                Instruction::LoadSlotDupGetPropStatic {
+                    depth: 0,
+                    slot: 1,
+                    name,
+                    optional: false,
+                },
+                Instruction::Return,
+            ] if name == "value"
         ));
     }
 }

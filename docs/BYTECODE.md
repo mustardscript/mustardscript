@@ -4,7 +4,7 @@ description: "Stack-based bytecode VM architecture and instruction set"
 category: "Language & Runtime"
 order: 3
 slug: "bytecode"
-lastUpdated: "2026-04-13"
+lastUpdated: "2026-04-14"
 ---
 
 # Bytecode VM Model
@@ -27,10 +27,23 @@ lastUpdated: "2026-04-13"
   assignment expressions still produce a result.
 - `JumpIfFalse`, `JumpIfTrue`, and `JumpIfNullish` inspect the top-of-stack
   value without popping it.
+- The optimizer may emit private combined handlers such as
+  `LoadSlotGetPropStatic`, `DupGetPropStatic`, and
+  `LoadSlotDupGetPropStatic` when the same semantics can be preserved with
+  fewer dispatches.
 - `Await` pops one value, coerces it to an internal guest promise, and
   suspends the current async continuation until a later microtask checkpoint.
 - `Return` completes the current frame and returns the top value, defaulting to
   `undefined` if the stack is empty.
+
+## Optimizer Boundaries
+
+- Post-lowering bytecode optimization stays inside block-local regions.
+- Jump targets always start a fresh optimization block.
+- The optimizer flushes at handler and pending-completion edges, control-flow
+  transfers, `await`, calls, construction, `return`, and `throw`.
+- There is no bytecode-level source-position marker today, so no additional
+  source-position flush boundary is currently encoded.
 
 ## Frame Layout
 

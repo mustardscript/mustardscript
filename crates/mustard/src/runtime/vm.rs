@@ -66,6 +66,31 @@ impl Runtime {
                 let value = self.lookup_slot(env, *depth, *slot)?;
                 self.frames[frame_index].stack.push(value);
             }
+            Instruction::LoadSlotGetPropStatic {
+                depth,
+                slot,
+                name,
+                optional,
+            } => {
+                let env = self.frames[frame_index].env;
+                let object = self.lookup_slot(env, *depth, *slot)?;
+                self.record_static_property_read();
+                let value = self.get_property_static(object, name, *optional)?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::LoadSlotDupGetPropStatic {
+                depth,
+                slot,
+                name,
+                optional,
+            } => {
+                let env = self.frames[frame_index].env;
+                let object = self.lookup_slot(env, *depth, *slot)?;
+                self.record_static_property_read();
+                let value = self.get_property_static(object.clone(), name, *optional)?;
+                self.frames[frame_index].stack.push(object);
+                self.frames[frame_index].stack.push(value);
+            }
             Instruction::LoadName(name) => {
                 let env = self.frames[frame_index].env;
                 let value = self.lookup_name(env, name)?;
@@ -384,6 +409,16 @@ impl Runtime {
                     .last()
                     .cloned()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::DupGetPropStatic { name, optional } => {
+                let object = self.frames[frame_index]
+                    .stack
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                self.record_static_property_read();
+                let value = self.get_property_static(object, name, *optional)?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::Dup2 => {
