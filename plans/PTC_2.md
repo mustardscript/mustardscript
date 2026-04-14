@@ -686,9 +686,9 @@ Action items:
 - [x] Define optimizer flush boundaries at jumps, exception edges, `await`,
   calls, returns, throws, and any source-position boundary that must preserve
   observability.
-- [ ] Track virtual `TOS` / `TOS1` in the optimizer so recent values do not
+- [x] Track virtual `TOS` / `TOS1` in the optimizer so recent values do not
   have to be eagerly written back to the frame stack.
-- [ ] Track stack-value equivalence classes so redundant reloads, stores, and
+- [x] Track stack-value equivalence classes so redundant reloads, stores, and
   `Push` / `Pop` churn can be removed when semantics allow it.
 - [x] Add a dynamic-instruction counter to the representative addon artifact so
   reduced dispatch is measured directly instead of inferred.
@@ -916,3 +916,4 @@ Reject if:
 | --- | --- | --- | --- |
 | 2026-04-14T08:04:25Z | Closed milestones 0-4 and started Milestone 5 by adding dynamic instruction counts to the representative PTC artifact plus a post-lowering bytecode optimizer pipeline with conservative stack-noop rewrites behind kill switches. | Commits `316ad5e`, `afd8cf6`, `3890be7`, `ff894d6`, `e4645fe`; verified `node --test tests/node/benchmark-compare.test.js`, `node scripts/audit-ptc-headline-seeds.ts --json`, `cargo test -p mustard --test runtime_debug_metrics`, `cargo test -p mustard stack_noop_peephole`, `npm run bench:ptc:broad`, `npm run bench:ptc:holdout`, `npm run bench:regress:ptc`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases`; kept artifacts `benchmarks/results/2026-04-14T08-07-26-092Z-ptc_broad_release-release.json`, `benchmarks/results/2026-04-14T07-38-31-068Z-ptc_holdout_release-release.json`, `benchmarks/results/2026-04-14T07-34-21-584Z-ptc_sentinel_release-release.json` | None; the async headline counter collector and a `cargo fmt --check` diff both failed once and were fixed in-loop. |
 | 2026-04-14T08:34:04Z | Added explicit optimizer block flush boundaries plus three broad-panel-derived property-load superinstructions (`LoadSlot -> GetPropStatic`, `Dup -> GetPropStatic`, `LoadSlot -> Dup -> GetPropStatic`) behind a dedicated kill switch, and documented the bytecode boundary rules. | Commit `9bf555a`; verified `cargo test -p mustard superinstruction_peephole`, `cargo test -p mustard --test async_runtime promise_constructors_bridge_async_host_calls_and_thenable_adoption`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases` | None; an initial `JumpIf* -> Pop` fusion regressed async-runtime validation and was removed before the final verified commit. |
+| 2026-04-14T08:44:53Z | Added a block-local abstract stack/binding equivalence pass with a dedicated kill switch so repeated literal and binding loads collapse into `Dup`, letting the existing stack-noop and superinstruction stages remove more redundant reload and stack churn. | Commit `247ab13`; verified `cargo test -p mustard top_of_stack_peephole`, `cargo test -p mustard superinstruction_peephole`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases` | None. |
