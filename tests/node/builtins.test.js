@@ -1,6 +1,8 @@
 'use strict';
 
-const { assert, isMustardError, runtime, test } = require('./support/helpers.js');
+const { assert, isMustardError, Progress, runtime, test } = require('./support/helpers.js');
+
+const BUILTINS_SNAPSHOT_KEY = Buffer.from('builtins-test-snapshot-key');
 
 test('run executes sync programs', async () => {
   const result = await runtime(`
@@ -87,6 +89,33 @@ test('run supports conservative array, string, object, and Math helper surface',
     sign: -0,
   });
   assert.ok(Object.is(result.sign, -0));
+});
+
+test('string helpers preserve current unicode character indexing semantics', async () => {
+  const result = await runtime(`
+    const value = "A🙂éB";
+    ({
+      includes: value.includes("🙂é", 1),
+      startsWith: value.startsWith("🙂", 1),
+      endsWith: value.endsWith("🙂é", 3),
+      indexOf: value.indexOf("é", 1),
+      charAt: value.charAt(1),
+      at: value.at(-2),
+      slice: value.slice(1, 3),
+      substring: value.substring(3, 1),
+    });
+  `).run();
+
+  assert.deepEqual(result, {
+    includes: true,
+    startsWith: true,
+    endsWith: true,
+    indexOf: 2,
+    charAt: '🙂',
+    at: 'é',
+    slice: '🙂é',
+    substring: '🙂é',
+  });
 });
 
 test('JSON.stringify matches Node ordering and omission semantics for supported values', async () => {
@@ -565,6 +594,40 @@ test('run supports RegExp helpers, regex string patterns, and callback replaceme
     testState: [true, 2, false, 0],
     stickyState: ['a', 1, 2, true, 0],
     ctor: ['gi', 'b', 'g'],
+  });
+});
+
+test('regexp helpers preserve lastIndex and match state across snapshot round-trips', () => {
+  const first = runtime(`
+    const regex = /(?<letters>[a-z]+)(\\d+)/g;
+    const initial = regex.exec("ab12cd34");
+    checkpoint(initial[0]);
+    const next = regex.exec("ab12cd34");
+    ({
+      initial: [initial[0], initial.index],
+      next: [next[0], next.index],
+      lastIndex: regex.lastIndex,
+    });
+  `).start({
+    capabilities: {
+      checkpoint() {},
+    },
+    snapshotKey: BUILTINS_SNAPSHOT_KEY,
+  });
+
+  const restored = Progress.load(first.dump(), {
+    capabilities: {
+      checkpoint() {},
+    },
+    limits: {},
+    snapshotKey: BUILTINS_SNAPSHOT_KEY,
+  });
+
+  const result = restored.resume('ab12');
+  assert.deepEqual(result, {
+    initial: ['ab12', 0],
+    next: ['cd34', 4],
+    lastIndex: 8,
   });
 });
 

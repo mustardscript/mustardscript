@@ -35,7 +35,7 @@ pub use serialization::{
 
 use indexmap::IndexMap;
 use slotmap::SlotMap;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, OnceLock};
 
 use self::properties::{
@@ -133,6 +133,7 @@ impl Runtime {
             debug_metrics: RuntimeDebugMetrics::default(),
             accounting_recount_required: false,
             cancellation_token,
+            regex_cache: HashMap::new(),
             pending_internal_exception: None,
             pending_sync_callback_result: None,
             snapshot_policy_required: false,
@@ -176,6 +177,7 @@ impl Runtime {
             debug_metrics: RuntimeDebugMetrics::default(),
             accounting_recount_required: false,
             cancellation_token,
+            regex_cache: HashMap::new(),
             pending_internal_exception: None,
             pending_sync_callback_result: None,
             snapshot_policy_required: false,

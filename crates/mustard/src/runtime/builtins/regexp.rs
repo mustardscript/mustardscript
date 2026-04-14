@@ -1,11 +1,6 @@
 use super::*;
 use regex::{Captures, Regex, RegexBuilder};
 
-struct CompiledRegExp {
-    flags: RegExpFlagsState,
-    regex: Regex,
-}
-
 impl Runtime {
     pub(crate) fn construct_regexp(&mut self, args: &[Value]) -> MustardResult<Value> {
         let pattern_arg = args.first().cloned().unwrap_or(Value::Undefined);
@@ -113,8 +108,7 @@ impl Runtime {
         pattern: String,
         flags: String,
     ) -> MustardResult<Value> {
-        self.validate_regexp_flags(&flags)?;
-        self.compile_regexp(&pattern, &flags)?;
+        self.compiled_regexp(&pattern, &flags)?;
         let object = self.insert_object(
             IndexMap::new(),
             ObjectKind::RegExp(RegExpObject {
@@ -159,12 +153,20 @@ impl Runtime {
         Ok(state)
     }
 
-    fn compile_regexp(&self, pattern: &str, flags: &str) -> MustardResult<CompiledRegExp> {
-        let flags = self.validate_regexp_flags(flags)?;
+    fn compiled_regexp(
+        &mut self,
+        pattern: &str,
+        flags: &str,
+    ) -> MustardResult<(RegExpFlagsState, Regex)> {
+        let flags_state = self.validate_regexp_flags(flags)?;
+        let cache_key = (pattern.to_string(), flags.to_string());
+        if let Some(regex) = self.regex_cache.get(&cache_key) {
+            return Ok((flags_state, regex.clone()));
+        }
         let mut builder = RegexBuilder::new(pattern);
-        builder.case_insensitive(flags.ignore_case);
-        builder.multi_line(flags.multiline);
-        builder.dot_matches_new_line(flags.dot_all);
+        builder.case_insensitive(flags_state.ignore_case);
+        builder.multi_line(flags_state.multiline);
+        builder.dot_matches_new_line(flags_state.dot_all);
         // The Rust engine operates over UTF-8 strings, so keep Unicode mode
         // enabled even without the JS `u` flag. This preserves the supported
         // text-regexp subset while avoiding non-UTF-8 byte classes.
@@ -172,7 +174,8 @@ impl Runtime {
         let regex = builder.build().map_err(|error| {
             MustardError::runtime(format!("SyntaxError: invalid regular expression: {error}"))
         })?;
-        Ok(CompiledRegExp { flags, regex })
+        self.regex_cache.insert(cache_key, regex.clone());
+        Ok((flags_state, regex))
     }
 
     pub(crate) fn is_regexp_object(&self, key: ObjectKey) -> bool {
@@ -225,7 +228,7 @@ impl Runtime {
 
     fn regexp_match_data_from_captures(
         &self,
-        compiled: &CompiledRegExp,
+        compiled: &Regex,
         text: &str,
         captures: &Captures<'_>,
     ) -> MustardResult<RegExpMatchData> {
@@ -233,7 +236,6 @@ impl Runtime {
             .get(0)
             .ok_or_else(|| MustardError::runtime("regex match missing full capture"))?;
         let named_groups = compiled
-            .regex
             .capture_names()
             .enumerate()
             .skip(1)
@@ -266,19 +268,36 @@ impl Runtime {
 
     fn first_regexp_match_with_compiled(
         &self,
-        compiled: &CompiledRegExp,
+        compiled: &Regex,
+        flags: RegExpFlagsState,
         text: &str,
         start_index: usize,
     ) -> MustardResult<Option<RegExpMatchData>> {
         self.check_cancellation()?;
         let start_byte = char_index_to_byte_index(text, start_index);
-        let Some(captures) = compiled.regex.captures_at(text, start_byte) else {
+        if compiled.captures_len() == 1 {
+            let Some(matched) = compiled.find_at(text, start_byte) else {
+                return Ok(None);
+            };
+            if flags.sticky && matched.start() != start_byte {
+                return Ok(None);
+            }
+            return Ok(Some(RegExpMatchData {
+                start_byte: matched.start(),
+                end_byte: matched.end(),
+                start_index: byte_index_to_char_index(text, matched.start()),
+                end_index: byte_index_to_char_index(text, matched.end()),
+                captures: Vec::new(),
+                named_groups: IndexMap::new(),
+            }));
+        }
+        let Some(captures) = compiled.captures_at(text, start_byte) else {
             return Ok(None);
         };
         let matched = captures
             .get(0)
             .ok_or_else(|| MustardError::runtime("regex match missing full capture"))?;
-        if compiled.flags.sticky && matched.start() != start_byte {
+        if flags.sticky && matched.start() != start_byte {
             return Ok(None);
         }
         self.regexp_match_data_from_captures(compiled, text, &captures)
@@ -286,13 +305,13 @@ impl Runtime {
     }
 
     pub(crate) fn first_regexp_match_from_state(
-        &self,
+        &mut self,
         regex: &RegExpObject,
         text: &str,
         start_index: usize,
     ) -> MustardResult<Option<RegExpMatchData>> {
-        let compiled = self.compile_regexp(&regex.pattern, &regex.flags)?;
-        self.first_regexp_match_with_compiled(&compiled, text, start_index)
+        let (flags, compiled) = self.compiled_regexp(&regex.pattern, &regex.flags)?;
+        self.first_regexp_match_with_compiled(&compiled, flags, text, start_index)
     }
 
     fn first_regexp_match(
@@ -322,17 +341,17 @@ impl Runtime {
     }
 
     pub(crate) fn collect_regexp_matches_from_state(
-        &self,
+        &mut self,
         regex: &RegExpObject,
         text: &str,
         all: bool,
     ) -> MustardResult<Vec<RegExpMatchData>> {
-        let compiled = self.compile_regexp(&regex.pattern, &regex.flags)?;
+        let (flags, compiled) = self.compiled_regexp(&regex.pattern, &regex.flags)?;
         let mut matches = Vec::new();
         let mut start_index = 0usize;
         loop {
             let Some(matched) =
-                self.first_regexp_match_with_compiled(&compiled, text, start_index)?
+                self.first_regexp_match_with_compiled(&compiled, flags, text, start_index)?
             else {
                 break;
             };

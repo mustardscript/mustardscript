@@ -11,7 +11,7 @@ lastUpdated: "2026-04-14"
 
 This document summarizes the latest kept benchmark evidence from:
 
-- workload suite: `benchmarks/results/2026-04-14T02-12-56-211Z-workloads.json`
+- workload suite: `benchmarks/results/2026-04-14T03-01-24-879Z-workloads.json`
 - release smoke suite: `benchmarks/results/2026-04-13T23-00-15-361Z-smoke-release.json`
 
 Machine and environment:
@@ -20,128 +20,101 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA in workload artifact: `a948ead`
+- Git SHA in workload artifact: `bc3158a`
 - Workload fixture version: `6`
 - Smoke fixture version: `2`
 
 ## Headline Results
 
-### 1. Durable checkpoint coverage landed without regressing the ordinary representative PTC scorecard
+### 1. Real local-reduction cleanup cut the representative addon PTC score materially
 
 Compared with the previous kept representative artifact
-`benchmarks/results/2026-04-14T01-49-28-550Z-workloads.json`, the primary
-ordinary PTC medians stayed effectively flat while the durable checkpoint lane
-was added:
+`benchmarks/results/2026-04-14T02-12-56-211Z-workloads.json`, the primary
+medium-lane scorecard moved materially on addon and modestly on sidecar:
 
 | Metric | Previous Kept | Latest Kept | Delta |
 | --- | ---: | ---: | ---: |
-| `addon.ptc.weightedScore.medium` | `0.90 ms` | `0.87 ms` | `-3.2%` |
-| `sidecar.ptc.weightedScore.medium` | `2.65 ms` | `2.64 ms` | `-0.3%` |
-| `sidecar.latency.ptc_incident_triage_medium` | `3.25 ms` | `3.25 ms` | `-0.1%` |
-| `sidecar.latency.ptc_fraud_investigation_medium` | `3.32 ms` | `3.30 ms` | `-0.7%` |
-| `sidecar.latency.ptc_vendor_review_medium` | `0.75 ms` | `0.75 ms` | `+0.5%` |
+| `addon.ptc.weightedScore.medium` | `0.87 ms` | `0.71 ms` | `-18.4%` |
+| `sidecar.ptc.weightedScore.medium` | `2.64 ms` | `2.50 ms` | `-5.6%` |
+| `addon.latency.ptc_incident_triage_medium` | `0.59 ms` | `0.37 ms` | `-38.1%` |
+| `addon.latency.ptc_fraud_investigation_medium` | `1.65 ms` | `1.46 ms` | `-11.5%` |
+| `addon.latency.ptc_vendor_review_medium` | `0.23 ms` | `0.22 ms` | `-6.3%` |
+| `addon.latency.ptc_website_demo_small` | `0.16 ms` | `0.15 ms` | `-6.0%` |
 
-This was benchmark-coverage work, not a general sidecar speedup. Some
-sidecar-only startup and cold-start medians moved around more than the primary
-PTC lanes in this rerun, so the kept decision stayed anchored on the
-representative medium-lane scorecard instead of the noisier tiny startup paths.
+This slice was real runtime speed work, not just measurement coverage. The kept
+changes cached compiled regexes across calls, avoided repeated `Vec<char>`
+materialization in hot string helpers, fast-pathed regex matches that do not
+need capture allocation, and removed a full-array clone from
+`Array.prototype.join`.
 
-### 2. The medium durable lane preserves the addon and sidecar resume-only edge over isolates
+### 2. The kept win landed in guest execution, not addon boundary codec
 
-Durable resume-only medians from the kept workload artifact:
+Representative addon breakdowns on the primary medium lanes moved like this:
 
-| Lane | Addon | Sidecar | Isolate |
+| Metric | Previous Kept | Latest Kept | Delta |
 | --- | ---: | ---: | ---: |
-| `ptc_vendor_review_durable_small` | `0.39 ms` | `0.42 ms` | `0.57 ms` |
-| `ptc_vendor_review_durable_medium` | `0.48 ms` | `0.52 ms` | `0.56 ms` |
-| `ptc_vendor_review_durable_large` | `0.67 ms` | `0.73 ms` | `0.57 ms` |
+| `ptc_incident_triage_medium guestExecution` | `0.46 ms` | `0.20 ms` | `-55.7%` |
+| `ptc_fraud_investigation_medium guestExecution` | `1.00 ms` | `0.83 ms` | `-17.1%` |
+| `ptc_fraud_investigation_medium boundaryCodec` | `0.18 ms` | `0.18 ms` | `+0.4%` |
 
-The milestone gate is the medium lane because it is the representative durable
-variant: there is a real checkpoint after enrichment, before the final review
-writeback, and both addon and sidecar still resume faster than the isolate
-baseline there. The large lane remains informative but not decisive for the
-milestone because the isolate harness still has to emulate the pause with
-explicit carried state instead of a true continuation snapshot.
+That matters because it rules out the wrong conclusion. The representative gain
+did not come from addon boundary transport; it came from reducing temporary
+allocation and cloning inside the guest runtime on the incident and fraud
+shapes that are heavy on regex/string work.
 
-Persisted state tracked for that durable checkpoint:
+### 3. Rust-core local-reduction microbenches stayed mostly flat on the same kept code
 
-| Size | Addon Snapshot / Manifest | Sidecar Snapshot / Policy | Isolate Carried State |
-| --- | ---: | ---: | ---: |
-| `small` | `9721 B / 2451 B` | `20584 B / 502 B` | `1406 B` |
-| `medium` | `14930 B / 4770 B` | `25793 B / 502 B` | `2764 B` |
-| `large` | `25817 B / 9585 B` | `36680 B / 502 B` | `5630 B` |
+`npm run bench:rust` on the kept runtime state reported:
 
-The medium durable checkpoint now exposes the concrete storage tradeoff:
-addon persists about `14.9 KB` of snapshot plus a `4.8 KB` detached manifest,
-sidecar persists about `25.8 KB` of snapshot plus a `502 B` raw-resume policy,
-and the isolate harness has to carry `2764 B` of explicit reconstructed state.
+- `ptc_local_reduction/map_join_update`: `19.65 ms`
+- `ptc_local_reduction/set_dedupe`: `20.08 ms`
+- `ptc_local_reduction/token_normalize`: `70.95 ms`
+- `ptc_local_reduction/top_k_sort`: `211.43 ms`
+- `ptc_local_reduction/array_from_object_from_entries`: `17.60 ms`
 
-### 3. Restore semantics and final-action failure behavior are now aligned across addon and sidecar
+These benches were directionally flat overall, which matches the workload
+story. The representative scorecard improved because the real audited lanes were
+paying avoidable temporary-allocation cost in string/regex-heavy helpers, not
+because every synthetic local-reduction kernel got broadly faster. Sort and
+token normalization still remain the largest synthetic local hot spots.
 
-`tests/node/durable-ptc-equivalence.test.js` now drives both restore paths from
-the same durable checkpoint shape:
+### 4. A narrower collection-promotion experiment was rejected and reverted
 
-- addon: `Progress.dump()` -> `Progress.load(...)` -> resume approval -> final action
-- sidecar: raw snapshot capture -> authenticated raw `resume` -> final action
+A temporary experiment lowering `COLLECTION_LOOKUP_PROMOTION_LEN` from `32` to
+`12` made the representative addon score worse in the rerun. The rejected
+candidate reached `addon.ptc.weightedScore.medium 0.74 ms`, about `4.1%` slower
+than the kept `0.71 ms`, and also worsened `ptc_fraud_investigation_medium`.
+That candidate was fully reverted before the kept artifact was regenerated, so
+the checked-in result is the post-revert runtime state.
 
-The test suite asserts both successful-result parity and matching final-action
-failure messages (`durable final action failed`). This passed in the broader
-repo verification under `npm test`, so the benchmark lane is not just measured;
-it is covered for success and failure semantics across both runtime surfaces.
+### 5. The website export and repo verification are aligned with the kept artifact
 
-### 4. Representative PTC attribution remains in the kept artifact
+`website/src/generated/benchmarkData.ts` now points to
+`2026-04-14T03-01-24-879Z-workloads.json` and reports
+`ptc_website_demo_small` at `0.151 ms` median and `0.163 ms` p95 for addon.
 
-The kept workload artifact still carries the representative sidecar and addon
-lane breakdowns that landed in the previous slice. For the current kept run,
-the medium sidecar lanes still break down as:
-
-| Lane | Request Transport | Execution | Response Materialization |
-| --- | ---: | ---: | ---: |
-| `ptc_incident_triage_medium` | `0.44 ms` | `0.53 ms` | `1.14 ms` |
-| `ptc_fraud_investigation_medium` | `0.37 ms` | `1.04 ms` | `0.71 ms` |
-| `ptc_vendor_review_medium` | `0.15 ms` | `0.13 ms` | `0.23 ms` |
-
-That matters because Milestone 5 added the durable resume-only coverage without
-losing the earlier attribution needed for follow-up work on request transport
-and response materialization.
-
-### 5. Smoke was not the focus of this slice
-
-This change set focused on durable PTC checkpoint coverage and refreshed
-representative workload evidence. The kept release smoke artifact remains:
-
-- `benchmarks/results/2026-04-13T23-00-15-361Z-smoke-release.json`
-
-Release smoke was not rerun because the smoke suite itself was not modified.
-The broader repo verification still passed:
+The broader repo verification for this slice passed:
 
 - `npm test`
 - `npm run lint`
 - `cargo test --workspace`
 - `npm run test:use-cases`
+- `npm run bench:rust`
 - `npm run bench:workloads:release`
 
 ## Conclusions
 
-1. The representative suite now includes a realistic durable-boundary PTC lane
-   with checked-in resume-only timings plus persisted-state byte accounting.
-2. The primary durable lane (`ptc_vendor_review_durable_medium`) preserves the
-   addon and sidecar resume-only edge over isolates while modeling a real pause
-   between enrichment and final writeback.
-3. Ordinary representative PTC medians stayed effectively flat, so this slice
-   should be read as measurement and coverage work rather than a runtime speedup.
-4. The large durable lane is still useful evidence: explicit-state isolate
-   re-entry becomes competitive there, which means future durable work can
-   still target snapshot size and resume-path overhead.
-5. The new representative PTC evidence says string/key interning is not the
-   next local-execution priority yet. In the kept artifact,
-   `ptc_fraud_investigation_medium` still spends about `1.00 ms` in guest
-   execution versus `0.18 ms` in addon boundary codec time, and the new
-   Rust-core local-reduction benches show `top_k_sort 207.23 ms` and
-   `token_normalize 68.62 ms` dominating `map_join_update 18.74 ms`,
-   `set_dedupe 19.60 ms`, and `array_from_object_from_entries 17.17 ms`.
-   That makes sort and temporary-allocation work the next higher-value local
-   optimization path before wider string/key interning.
-6. The next highest-value work remains the unfinished addon-side transport path
-   and runtime changes that can move the primary representative weighted score
-   materially on the local-reduction-heavy lanes.
+1. The current best local-reduction win came from eliminating avoidable
+   temporary allocation and cloning on real representative PTC lanes, not from
+   boundary transport changes.
+2. Milestone 3 now has benchmark-backed evidence that the primary addon
+   incident, fraud, and vendor lanes each improved materially or meaningfully
+   on the representative scorecard.
+3. Addon boundary transport is still open work. On the kept fraud lane,
+   `boundaryParse` plus `boundaryCodec` still cost about `0.33 ms` while guest
+   execution costs about `0.83 ms`, so Milestone 2 remains a real opportunity.
+4. Promise clone amplification in settlement and awaiter scheduling is also
+   still open. The representative score improved here without finishing the
+   remaining Milestone 1 async clone cleanup.
+5. The next highest-value plan items remain the unfinished addon start/resume
+   transport path and the remaining async settlement-clone reductions.

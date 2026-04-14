@@ -2,7 +2,10 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use slotmap::SlotMap;
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+};
 
 use crate::{
     RuntimeDebugMetrics,
@@ -328,6 +331,7 @@ impl DetachedRuntime {
             debug_metrics: RuntimeDebugMetrics::default(),
             accounting_recount_required: true,
             cancellation_token: None,
+            regex_cache: HashMap::new(),
             pending_internal_exception: None,
             pending_sync_callback_result: None,
             snapshot_policy_required: false,

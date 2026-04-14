@@ -1,6 +1,16 @@
 use super::*;
 
 impl Runtime {
+    fn string_char_len(value: &str) -> usize {
+        value.chars().count()
+    }
+
+    fn string_slice_by_char_range(value: &str, start: usize, end: usize) -> String {
+        let start_byte = char_index_to_byte_index(value, start);
+        let end_byte = char_index_to_byte_index(value, end);
+        value[start_byte..end_byte].to_string()
+    }
+
     fn string_value_receiver(&self, value: Value, method: &str) -> MustardResult<String> {
         match value {
             Value::String(value) => Ok(value),
@@ -156,19 +166,13 @@ impl Runtime {
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "includes")?;
-        let chars = value.chars().collect::<Vec<_>>();
-        let needle = self
-            .to_string(args.first().cloned().unwrap_or(Value::Undefined))?
-            .chars()
-            .collect::<Vec<_>>();
+        let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
         let position = clamp_index(
             self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
-            chars.len(),
+            Self::string_char_len(&value),
         );
-        let haystack = chars[position..].iter().collect::<String>();
-        Ok(Value::Bool(
-            haystack.contains(&needle.iter().collect::<String>()),
-        ))
+        let start_byte = char_index_to_byte_index(&value, position);
+        Ok(Value::Bool(value[start_byte..].contains(&needle)))
     }
 
     pub(crate) fn call_string_starts_with(
@@ -177,16 +181,13 @@ impl Runtime {
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "startsWith")?;
-        let chars = value.chars().collect::<Vec<_>>();
-        let needle = self
-            .to_string(args.first().cloned().unwrap_or(Value::Undefined))?
-            .chars()
-            .collect::<Vec<_>>();
+        let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
         let position = clamp_index(
             self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
-            chars.len(),
+            Self::string_char_len(&value),
         );
-        Ok(Value::Bool(chars[position..].starts_with(&needle)))
+        let start_byte = char_index_to_byte_index(&value, position);
+        Ok(Value::Bool(value[start_byte..].starts_with(&needle)))
     }
 
     pub(crate) fn call_string_ends_with(
@@ -195,16 +196,14 @@ impl Runtime {
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "endsWith")?;
-        let chars = value.chars().collect::<Vec<_>>();
-        let needle = self
-            .to_string(args.first().cloned().unwrap_or(Value::Undefined))?
-            .chars()
-            .collect::<Vec<_>>();
+        let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        let length = Self::string_char_len(&value);
         let end = match args.get(1) {
-            Some(value) => clamp_index(self.to_integer(value.clone())?, chars.len()),
-            None => chars.len(),
+            Some(position) => clamp_index(self.to_integer(position.clone())?, length),
+            None => length,
         };
-        Ok(Value::Bool(chars[..end].ends_with(&needle)))
+        let end_byte = char_index_to_byte_index(&value, end);
+        Ok(Value::Bool(value[..end_byte].ends_with(&needle)))
     }
 
     pub(crate) fn call_string_index_of(
@@ -213,22 +212,16 @@ impl Runtime {
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "indexOf")?;
-        let chars = value.chars().collect::<Vec<_>>();
-        let needle = self
-            .to_string(args.first().cloned().unwrap_or(Value::Undefined))?
-            .chars()
-            .collect::<Vec<_>>();
+        let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
         let position = clamp_index(
             self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
-            chars.len(),
+            Self::string_char_len(&value),
         );
         let index = if needle.is_empty() {
             position as f64
         } else {
-            chars[position..]
-                .windows(needle.len())
-                .position(|window| window == needle.as_slice())
-                .map(|offset| (position + offset) as f64)
+            find_string_pattern(&value, &needle, position)
+                .map(|index| index as f64)
                 .unwrap_or(-1.0)
         };
         Ok(Value::Number(index))
@@ -270,32 +263,35 @@ impl Runtime {
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "charAt")?;
-        let chars = value.chars().collect::<Vec<_>>();
+        let len = Self::string_char_len(&value);
         let index = clamp_index(
             self.to_integer(args.first().cloned().unwrap_or(Value::Number(0.0)))?,
-            chars.len(),
+            len,
         );
-        Ok(Value::String(
-            chars
-                .get(index)
-                .map(|ch| ch.to_string())
-                .unwrap_or_default(),
-        ))
+        if index >= len {
+            return Ok(Value::String(String::new()));
+        }
+        Ok(Value::String(Self::string_slice_by_char_range(
+            &value,
+            index,
+            index + 1,
+        )))
     }
 
     pub(crate) fn call_string_at(&self, this_value: Value, args: &[Value]) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "at")?;
-        let chars = value.chars().collect::<Vec<_>>();
+        let len = Self::string_char_len(&value);
         let index = self.to_integer(args.first().cloned().unwrap_or(Value::Undefined))?;
-        let index = if index < 0 {
-            chars.len() as i64 + index
-        } else {
-            index
-        };
-        if index < 0 || index >= chars.len() as i64 {
+        let index = if index < 0 { len as i64 + index } else { index };
+        if index < 0 || index >= len as i64 {
             Ok(Value::Undefined)
         } else {
-            Ok(Value::String(chars[index as usize].to_string()))
+            let index = index as usize;
+            Ok(Value::String(Self::string_slice_by_char_range(
+                &value,
+                index,
+                index + 1,
+            )))
         }
     }
 
@@ -305,20 +301,22 @@ impl Runtime {
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "slice")?;
-        let chars = value.chars().collect::<Vec<_>>();
+        let len = Self::string_char_len(&value);
         let start = normalize_relative_bound(
             self.to_integer(args.first().cloned().unwrap_or(Value::Number(0.0)))?,
-            chars.len(),
+            len,
         );
         let end = normalize_relative_bound(
             match args.get(1) {
                 Some(value) => self.to_integer(value.clone())?,
-                None => chars.len() as i64,
+                None => len as i64,
             },
-            chars.len(),
+            len,
         );
         let end = end.max(start);
-        Ok(Value::String(chars[start..end].iter().collect()))
+        Ok(Value::String(Self::string_slice_by_char_range(
+            &value, start, end,
+        )))
     }
 
     pub(crate) fn call_string_substring(
@@ -327,21 +325,23 @@ impl Runtime {
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "substring")?;
-        let chars = value.chars().collect::<Vec<_>>();
+        let len = Self::string_char_len(&value);
         let start = clamp_index(
             self.to_integer(args.first().cloned().unwrap_or(Value::Number(0.0)))?,
-            chars.len(),
+            len,
         );
         let end = match args.get(1) {
-            Some(value) => clamp_index(self.to_integer(value.clone())?, chars.len()),
-            None => chars.len(),
+            Some(value) => clamp_index(self.to_integer(value.clone())?, len),
+            None => len,
         };
         let (start, end) = if start <= end {
             (start, end)
         } else {
             (end, start)
         };
-        Ok(Value::String(chars[start..end].iter().collect()))
+        Ok(Value::String(Self::string_slice_by_char_range(
+            &value, start, end,
+        )))
     }
 
     pub(crate) fn call_string_to_lower_case(&self, this_value: Value) -> MustardResult<Value> {
@@ -679,7 +679,7 @@ impl Runtime {
     }
 
     pub(crate) fn call_string_search(
-        &self,
+        &mut self,
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {

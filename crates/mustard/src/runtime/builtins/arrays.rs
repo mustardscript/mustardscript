@@ -442,18 +442,26 @@ impl Runtime {
             Some(value) => self.to_string(value.clone())?,
             None => ",".to_string(),
         };
-        let elements = self
+        let element_count = self
             .arrays
             .get(array)
             .ok_or_else(|| MustardError::runtime("array missing"))?
             .elements
-            .clone();
-        let mut parts = Vec::with_capacity(elements.len());
-        for value in &elements {
+            .len();
+        let mut parts = Vec::with_capacity(element_count);
+        for index in 0..element_count {
             self.charge_native_helper_work(1)?;
+            let value = self
+                .arrays
+                .get(array)
+                .ok_or_else(|| MustardError::runtime("array missing"))?
+                .elements
+                .get(index)
+                .cloned()
+                .flatten();
             parts.push(match value {
                 None | Some(Value::Undefined) | Some(Value::Null) => String::new(),
-                Some(other) => self.to_string(other.clone())?,
+                Some(other) => self.to_string(other)?,
             });
         }
         Ok(Value::String(parts.join(&separator)))

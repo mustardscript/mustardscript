@@ -1,5 +1,5 @@
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     hash::{Hash, Hasher},
     sync::Arc,
 };
@@ -7,6 +7,7 @@ use std::{
 use crate::RuntimeDebugMetrics;
 use indexmap::{Equivalent, IndexMap};
 use num_bigint::BigInt;
+use regex::Regex;
 
 use serde::{Deserialize, Serialize};
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
@@ -969,6 +970,8 @@ pub(super) struct Runtime {
     pub(super) accounting_recount_required: bool,
     #[serde(skip, default)]
     pub(super) cancellation_token: Option<CancellationToken>,
+    #[serde(skip, default)]
+    pub(super) regex_cache: HashMap<(String, String), Regex>,
     #[serde(skip, default)]
     pub(super) pending_internal_exception: Option<PromiseRejection>,
     #[serde(skip, default)]
