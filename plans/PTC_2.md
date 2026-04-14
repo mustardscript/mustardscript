@@ -726,23 +726,23 @@ Why this is a V8-shaped idea:
 
 Action items:
 
-- [ ] Add shared shapes for homogeneous boundary-decoded host rows.
-- [ ] Store row payloads in slot arrays or an equivalent compact shape-backed
+- [x] Add shared shapes for homogeneous boundary-decoded host rows.
+- [x] Store row payloads in slot arrays or an equivalent compact shape-backed
   representation.
-- [ ] Keep a precise fallback to the existing plain-object path on mutation,
+- [x] Keep a precise fallback to the existing plain-object path on mutation,
   computed-property access that needs it, or any unsupported escape.
-- [ ] Add `GetPropStatic` inline caches keyed by program counter plus shape id.
-- [ ] Support at least monomorphic then small polymorphic fast paths before
+- [x] Add `GetPropStatic` inline caches keyed by program counter plus shape id.
+- [x] Support at least monomorphic then small polymorphic fast paths before
   falling back to generic lookup.
-- [ ] Add cache hit, miss, and deopt counters to the benchmark artifact.
-- [ ] Measure whether row shaping helps both read-heavy workflows and
+- [x] Add cache hit, miss, and deopt counters to the benchmark artifact.
+- [x] Measure whether row shaping helps both read-heavy workflows and
   analytics-heavy lanes, not just one fraud dataset.
 
 Success checks:
 
 - [ ] Improve all lanes dominated by repeated static property reads.
-- [ ] Show a clear IC hit rate on the broad panel.
-- [ ] Keep correctness identical on the full-gallery canary.
+- [x] Show a clear IC hit rate on the broad panel.
+- [x] Keep correctness identical on the full-gallery canary.
 - [ ] Avoid material regressions on object mutation or escape-heavy holdouts.
 
 Reject if:
@@ -918,3 +918,4 @@ Reject if:
 | 2026-04-14T08:34:04Z | Added explicit optimizer block flush boundaries plus three broad-panel-derived property-load superinstructions (`LoadSlot -> GetPropStatic`, `Dup -> GetPropStatic`, `LoadSlot -> Dup -> GetPropStatic`) behind a dedicated kill switch, and documented the bytecode boundary rules. | Commit `9bf555a`; verified `cargo test -p mustard superinstruction_peephole`, `cargo test -p mustard --test async_runtime promise_constructors_bridge_async_host_calls_and_thenable_adoption`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases` | None; an initial `JumpIf* -> Pop` fusion regressed async-runtime validation and was removed before the final verified commit. |
 | 2026-04-14T08:44:53Z | Added a block-local abstract stack/binding equivalence pass with a dedicated kill switch so repeated literal and binding loads collapse into `Dup`, letting the existing stack-noop and superinstruction stages remove more redundant reload and stack churn. | Commit `247ab13`; verified `cargo test -p mustard top_of_stack_peephole`, `cargo test -p mustard superinstruction_peephole`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases` | None. |
 | 2026-04-14T08:55:52Z | Kept the new top-of-stack equivalence pass implemented but flipped it to opt-in because the broad phase-2 scorecards regressed even though representative dynamic instruction counts dropped; this preserves the generic optimizer work without falsely calling Milestone 5 a net broad-panel win. | Commit `113d880`; benchmarked `npm run bench:ptc:broad`, `npm run bench:ptc:holdout`, `npm run bench:regress:ptc`, `node scripts/benchmark-compare.ts --kind ptc_holdout_release --profile release --tracked-baseline --include-prefix addon.ptc.phase2.scorecards.holdoutScore.medium --require-path addon.ptc.phase2.scorecards.holdoutScore.medium --max-regression-pct 10`, and `MUSTARD_DISABLE_BYTECODE_TOP_OF_STACK_PEEPHOLE=1 npm run bench:ptc:broad`; broad compare versus `benchmarks/results/2026-04-14T08-07-26-092Z-ptc_broad_release-release.json` moved headline `0.64 ms -> 0.65 ms`, broad `0.58 ms -> 0.60 ms`, `p90` ratio `1.04x -> 1.49x`, and worst-lane ratio `1.11x -> 1.45x`, while holdout stayed flat at `0.67 ms -> 0.67 ms` and representative dynamic instructions fell on multiple lanes; re-verified `cargo test --workspace`, `npm test`, `npm run lint`, and `npm run test:use-cases` after switching the pass to `MUSTARD_ENABLE_BYTECODE_TOP_OF_STACK_PEEPHOLE` | None; `npm run bench:regress:ptc` correctly failed the broad compare guardrails, so the follow-up change was to contain the pass behind an opt-in flag rather than keep it on by default. |
+| 2026-04-14T09:23:48Z | Added shared shape-backed storage for repeated boundary-decoded row objects, slot-array property storage, program-counter-local `GetPropStatic` inline caches, and benchmark-visible hit/miss/deopt counters while keeping mutation and computed-property access on a precise plain-object fallback path. Narrowing shaping to repeated row objects improved the phase-2 headline, broad, and holdout medians, but the broad-panel tail ratios still regressed enough to keep Milestone 6 open. | Commit `53ffaa1`; verified `cargo test -p mustard --test runtime_debug_metrics --test async_runtime shape_backed -- --nocapture`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases`, `npm run bench:ptc:broad`, `npm run bench:ptc:holdout`, `npm run bench:regress:ptc:broad`, and `npm run bench:regress:ptc:holdout`; broad compare versus the kept baseline moved headline `0.64 ms -> 0.60 ms`, broad `0.58 ms -> 0.57 ms`, holdout `0.67 ms -> 0.64 ms`, `p90` ratio `1.04x -> 1.45x`, and worst-lane ratio `1.11x -> 1.43x`, while representative broad-panel cache hit rates landed at roughly `45%` to `72%` across the instrumented lanes | None; `npm run bench:regress:ptc:broad` still failed because the broad-panel `p90` and worst-lane ratios regressed materially even after the shaping heuristic was narrowed to repeated row objects. |
