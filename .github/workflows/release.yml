@@ -152,6 +152,8 @@ jobs:
 
       - name: Publish optional prebuilt packages and root package
         run: |
-          npx napi pre-publish --tag-style npm
+          find npm -mindepth 1 -maxdepth 1 -type d | sort | while read -r package_dir; do
+            npm publish "${package_dir}" --tag "${npm_config_tag}" --access public
+          done
           npm publish --tag "${npm_config_tag}" --access public
         shell: bash

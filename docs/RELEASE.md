@@ -258,6 +258,9 @@ Current mechanics:
   and only publishes when `workflow_dispatch` is invoked with `publish=true`.
 - The publish job uses npm Trusted Publishing through GitHub Actions OIDC
   rather than an `NPM_TOKEN` secret.
+- The publish job now publishes each generated `npm/<target>/` package with
+  `npm publish` directly before publishing the root package, rather than routing
+  through `napi pre-publish`.
 
 Local verification hook:
 
@@ -273,6 +276,6 @@ External blocker for a real prebuilt publish:
 
 - The workflow requires npm Trusted Publishing to stay configured for
   `mustardscript` and its optional prebuilt packages before
-  `npx napi pre-publish` and the final root `npm publish` can succeed through
-  GitHub OIDC. Repository-local verification cannot prove that registry-side
-  trust configuration.
+  the per-package `npm publish` steps and the final root `npm publish` can
+  succeed through GitHub OIDC. Repository-local verification cannot prove that
+  registry-side trust configuration.
