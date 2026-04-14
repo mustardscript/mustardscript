@@ -158,7 +158,7 @@ impl Runtime {
             if !matches!(promise_ref.state, PromiseState::Pending) {
                 return Ok(());
             }
-            let old_dynamic_bytes = Self::promise_dynamic_bytes(promise_ref);
+            let old_dynamic_bytes = Self::promise_dynamic_accounted_bytes(promise_ref);
             promise_ref.state = settled_state;
             promise_ref.driver = None;
             let awaiters = std::mem::take(&mut promise_ref.awaiters);

@@ -11,7 +11,7 @@ lastUpdated: "2026-04-14"
 
 This document summarizes the latest kept benchmark evidence from:
 
-- workload suite: `benchmarks/results/2026-04-14T00-42-49-648Z-workloads.json`
+- workload suite: `benchmarks/results/2026-04-14T00-59-31-034Z-workloads.json`
 - release smoke suite: `benchmarks/results/2026-04-13T23-00-15-361Z-smoke-release.json`
 
 Machine and environment:
@@ -20,46 +20,50 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA in workload artifact: `a14fb52`
+- Git SHA in workload artifact: `9ab8b16`
 - Workload fixture version: `6`
 - Smoke fixture version: `2`
 
 ## Headline Results
 
-### 1. Addon weighted PTC latency stayed effectively flat while the benchmark gained async attribution
+### 1. Rust-core promise benches improved, but representative addon PTC latency stayed effectively flat
 
-The latest kept representative workload artifact keeps the addon headline nearly
-unchanged:
+The latest kept representative workload artifact still leaves the addon
+headline essentially unchanged:
 
 | Metric | Median | p95 |
 | --- | ---: | ---: |
 | `ptc_website_demo_small` | `0.16 ms` | `0.17 ms` |
 | `ptc_incident_triage_medium` | `0.59 ms` | `0.60 ms` |
-| `ptc_fraud_investigation_medium` | `1.68 ms` | `1.73 ms` |
-| `ptc_vendor_review_medium` | `0.20 ms` | `0.21 ms` |
-| `addon.ptc.weightedScore.medium` | `0.87 ms` | `0.90 ms` |
+| `ptc_fraud_investigation_medium` | `1.69 ms` | `1.80 ms` |
+| `ptc_vendor_review_medium` | `0.21 ms` | `0.21 ms` |
+| `addon.ptc.weightedScore.medium` | `0.88 ms` | `0.93 ms` |
 
 The old synthetic control metric is still present:
 
 | Metric | Median | p95 |
 | --- | ---: | ---: |
-| `programmatic_tool_workflow` | `1.44 ms` | `1.49 ms` |
+| `programmatic_tool_workflow` | `1.45 ms` | `1.49 ms` |
 
 That control remains useful for continuity, but it should no longer be treated
 as the primary “real-world PTC” number. The weighted medium-lane score is now
 the better addon optimization target.
 
 Compared with the immediately previous kept representative artifact
-`benchmarks/results/2026-04-14T00-14-51-582Z-workloads.json`, the main
-representative medians stayed effectively flat while this slice added
-attribution:
+`benchmarks/results/2026-04-14T00-42-49-648Z-workloads.json`, the primary
+addon medians remained effectively flat:
 
-- `addon.ptc.weightedScore.medium`: `0.88 ms -> 0.87 ms` (`-0.9%`)
-- `addon.latency.ptc_incident_triage_medium`: `0.59 ms -> 0.59 ms` (`-0.3%`)
-- `addon.latency.ptc_fraud_investigation_medium`: `1.70 ms -> 1.68 ms` (`-1.2%`)
-- `addon.latency.ptc_vendor_review_medium`: `0.20 ms -> 0.20 ms` (`+0.1%`)
+- `addon.ptc.weightedScore.medium`: `0.87 ms -> 0.88 ms` (`+1.2%`)
+- `addon.latency.ptc_incident_triage_medium`: `0.59 ms -> 0.59 ms` (`+0.8%`)
+- `addon.latency.ptc_fraud_investigation_medium`: `1.68 ms -> 1.69 ms` (`+1.1%`)
+- `addon.latency.ptc_vendor_review_medium`: `0.20 ms -> 0.21 ms` (`+3.5%`)
+- `addon.latency.ptc_website_demo_small`: `0.16 ms -> 0.16 ms` (`+3.6%`)
 
-### 2. Primary PTC lanes now expose queued/executed microtask pressure directly
+That means this slice did not yet produce the representative medium-lane win
+required to call Milestone 1 complete, even though the core async benches moved
+in the right direction.
+
+### 2. Primary PTC lanes still expose queued/executed microtask pressure directly
 
 The addon runtime counters now include queued/executed microtask totals plus
 resume/combinator breakdowns for the three primary medium lanes:
@@ -89,22 +93,25 @@ This is the most important improvement in the benchmark itself: it now makes it
 visible when `mustard` is reducing tool payloads locally instead of just
 reporting one total latency number.
 
-### 4. The Rust-core suite now covers the missing PTC async shapes
+### 4. Cached promise accounting removed expensive full-driver walks in the Rust-core async benches
 
-Current weighted medium-lane medians:
+`npm run bench:rust` was rerun in this slice alongside the workload suite, and
+the promise-heavy core benches improved after settlement/combinator accounting
+switched from full promise/driver remeasurement to cached accounted-byte reuse:
 
-- existing immediate fanout coverage remains in
-  `runtime_execution/promise_all_immediate_fanout`
-- mixed fulfilled/rejected fanout remains in
-  `runtime_execution/promise_all_settled_immediate`
-- the suite now also covers
-  `runtime_execution/promise_all_derived_ids_fanout`
-- and
-  `runtime_execution/promise_all_map_set_reduction`
+- `runtime_execution/promise_all_immediate_fanout` now runs at about
+  `0.392 ms -> 0.398 ms`, with Criterion reporting roughly `51%` to `52%`
+  improvement versus the previous baseline.
+- `runtime_execution/promise_all_settled_immediate` now runs at about
+  `3.41 ms -> 3.47 ms`, about `4%` to `5%` faster.
+- `runtime_execution/promise_all_derived_ids_fanout` now runs at about
+  `6.30 ms -> 6.36 ms`, about `1%` to `3%` faster.
+- `runtime_execution/promise_all_map_set_reduction` now runs at about
+  `8.58 ms -> 8.67 ms`, about `1%` to `3%` faster.
 
-`npm run bench:rust` was rerun in this slice alongside the workload suite, so
-future async-fanout optimization work now has PTC-shaped core benches instead
-of only the smaller immediate-fanout control.
+The immediate-fanout win is real at the core-runtime level, but the kept
+representative PTC artifact shows that those savings are still being diluted by
+other costs in the full addon path.
 
 ### 5. Sidecar is still materially slower than addon on representative medium lanes
 
@@ -112,25 +119,26 @@ Current weighted medium-lane medians:
 
 | Runtime | Median | p95 |
 | --- | ---: | ---: |
-| addon | `0.87 ms` | `0.90 ms` |
-| sidecar | `2.66 ms` | `2.98 ms` |
-| isolate | `0.41 ms` | `0.43 ms` |
+| addon | `0.88 ms` | `0.93 ms` |
+| sidecar | `2.66 ms` | `3.01 ms` |
+| isolate | `0.39 ms` | `0.39 ms` |
 
 Current weighted-score ratios:
 
 | Ratio | Value |
 | --- | ---: |
-| `sidecar / addon` | `3.04x` |
-| `isolate / addon` | `0.47x` |
+| `sidecar / addon` | `3.02x` |
+| `isolate / addon` | `0.44x` |
 
-The key point from this slice is not a new sidecar win. It is that the
-benchmark can now attribute async work precisely while keeping the existing
-sidecar/addon gap visible.
+The key point from this slice is not a new sidecar win. It is that core async
+bookkeeping got cheaper while the representative medium-lane score stayed
+effectively flat, which pushes the next likely win toward boundary transport
+and local reduction costs rather than more bookkeeping-only cleanup.
 
 ### 6. Smoke was not the focus of this slice
 
-This change set focused on PTC async attribution, missing Rust-core PTC
-microbenches, and refreshed representative workload evidence. The kept release
+This change set focused on cached promise-accounting reuse, reran the Rust-core
+async benches, and refreshed representative workload evidence. The kept release
 smoke artifact remains:
 
 - `benchmarks/results/2026-04-13T23-00-15-361Z-smoke-release.json`
@@ -149,17 +157,16 @@ repo verification still passed:
 ## Conclusions
 
 1. `addon.ptc.weightedScore.medium` is still the right real-world signal for
-   addon optimization work, and this slice kept it essentially flat while
-   adding better attribution.
-2. The primary representative lanes now show whether async cost is coming from
-   resumed awaits or from queued promise combinators, which is exactly the
-   missing evidence needed before more async-runtime tuning.
-3. The Rust-core suite now covers staged derived-ID fanout and fanout-plus-
-   reduction shapes, so future core changes no longer have to rely only on the
-   smaller immediate-fanout bench.
+   addon optimization work, and this slice kept it effectively flat rather than
+   delivering a representative win.
+2. Cached promise-accounting reuse clearly improved the Rust-core
+   `Promise.all` benches, especially the immediate-fanout path, so repeated
+   full-driver remeasurement is no longer the dominant cost there.
+3. The primary representative lanes still show the same combinator-heavy async
+   shapes, but the flat weighted score says those async bookkeeping savings are
+   not yet the main end-to-end bottleneck.
 4. Sidecar remains the largest remaining performance gap on representative
-   medium lanes, but the benchmark story is now more complete on both the core
-   and end-to-end sides.
-5. The next highest-value work is still the unfinished async clone-amplification
-   reduction called out in `plans/performance.md`, now backed by direct
-   PTC-lane microtask counts instead of inference alone.
+   medium lanes.
+5. The next highest-value work is likely the unfinished addon boundary
+   transport path and/or the local reduction primitives used most heavily by
+   the fraud and incident lanes.

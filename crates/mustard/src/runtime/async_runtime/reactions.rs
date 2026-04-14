@@ -231,6 +231,28 @@ impl Runtime {
                 let mut resolved_values = None;
                 let mut rejection = None;
                 let mut driver_delta = None;
+                let final_driver_bytes = {
+                    let promise = self
+                        .promises
+                        .get(target)
+                        .ok_or_else(|| MustardError::runtime("promise missing"))?;
+                    let PromiseState::Pending = promise.state else {
+                        return Ok(());
+                    };
+                    match promise
+                        .driver
+                        .as_ref()
+                        .ok_or_else(|| MustardError::runtime("promise combinator state missing"))?
+                    {
+                        PromiseDriver::All { remaining, .. } if *remaining == 1 => {
+                            Self::promise_driver_accounted_bytes(promise)
+                        }
+                        PromiseDriver::All { .. } => 0,
+                        _ => {
+                            return Err(MustardError::runtime("promise combinator kind mismatch"));
+                        }
+                    }
+                };
                 {
                     let promise = self
                         .promises
@@ -248,11 +270,6 @@ impl Runtime {
                     };
                     match outcome {
                         PromiseOutcome::Fulfilled(value) => {
-                            let old_driver_bytes = values
-                                .iter()
-                                .flatten()
-                                .map(Self::value_bytes)
-                                .sum::<usize>();
                             let old_entry_bytes =
                                 values[index].as_ref().map_or(0, Self::value_bytes);
                             let new_entry_bytes = Self::value_bytes(&value);
@@ -265,7 +282,7 @@ impl Runtime {
                                         .map(|value| value.unwrap_or(Value::Undefined))
                                         .collect::<Vec<_>>(),
                                 );
-                                driver_delta = Some((old_driver_bytes, 0));
+                                driver_delta = Some((final_driver_bytes, 0));
                             } else {
                                 driver_delta = Some((old_entry_bytes, new_entry_bytes));
                             }
@@ -286,6 +303,28 @@ impl Runtime {
             }
             PromiseCombinatorKind::AllSettled => {
                 let mut settled_results = None;
+                let final_driver_bytes = {
+                    let promise = self
+                        .promises
+                        .get(target)
+                        .ok_or_else(|| MustardError::runtime("promise missing"))?;
+                    let PromiseState::Pending = promise.state else {
+                        return Ok(());
+                    };
+                    match promise
+                        .driver
+                        .as_ref()
+                        .ok_or_else(|| MustardError::runtime("promise combinator state missing"))?
+                    {
+                        PromiseDriver::AllSettled { remaining, .. } if *remaining == 1 => {
+                            Self::promise_driver_accounted_bytes(promise)
+                        }
+                        PromiseDriver::AllSettled { .. } => 0,
+                        _ => {
+                            return Err(MustardError::runtime("promise combinator kind mismatch"));
+                        }
+                    }
+                };
                 let driver_delta;
                 {
                     let promise = self
@@ -305,11 +344,6 @@ impl Runtime {
                     let old_entry_bytes = results[index]
                         .as_ref()
                         .map_or(0, Self::promise_settled_result_bytes);
-                    let old_driver_bytes = results
-                        .iter()
-                        .flatten()
-                        .map(Self::promise_settled_result_bytes)
-                        .sum::<usize>();
                     let new_result = match outcome {
                         PromiseOutcome::Fulfilled(value) => PromiseSettledResult::Fulfilled(value),
                         PromiseOutcome::Rejected(reason) => {
@@ -330,7 +364,7 @@ impl Runtime {
                                 })
                                 .collect::<Vec<_>>(),
                         );
-                        driver_delta = (old_driver_bytes, 0);
+                        driver_delta = (final_driver_bytes, 0);
                     } else {
                         driver_delta = (old_entry_bytes, new_entry_bytes);
                     }
@@ -350,6 +384,28 @@ impl Runtime {
                 let mut rejection_values = None;
                 let mut fulfillment = None;
                 let mut driver_delta = None;
+                let final_driver_bytes = {
+                    let promise = self
+                        .promises
+                        .get(target)
+                        .ok_or_else(|| MustardError::runtime("promise missing"))?;
+                    let PromiseState::Pending = promise.state else {
+                        return Ok(());
+                    };
+                    match promise
+                        .driver
+                        .as_ref()
+                        .ok_or_else(|| MustardError::runtime("promise combinator state missing"))?
+                    {
+                        PromiseDriver::Any { remaining, .. } if *remaining == 1 => {
+                            Self::promise_driver_accounted_bytes(promise)
+                        }
+                        PromiseDriver::Any { .. } => 0,
+                        _ => {
+                            return Err(MustardError::runtime("promise combinator kind mismatch"));
+                        }
+                    }
+                };
                 {
                     let promise = self
                         .promises
@@ -368,11 +424,6 @@ impl Runtime {
                     match outcome {
                         PromiseOutcome::Fulfilled(value) => fulfillment = Some(value),
                         PromiseOutcome::Rejected(reason) => {
-                            let old_driver_bytes = reasons
-                                .iter()
-                                .flatten()
-                                .map(Self::value_bytes)
-                                .sum::<usize>();
                             let old_entry_bytes =
                                 reasons[index].as_ref().map_or(0, Self::value_bytes);
                             let new_entry_bytes = Self::value_bytes(&reason.value);
@@ -385,7 +436,7 @@ impl Runtime {
                                         .map(|value| value.unwrap_or(Value::Undefined))
                                         .collect::<Vec<_>>(),
                                 );
-                                driver_delta = Some((old_driver_bytes, 0));
+                                driver_delta = Some((final_driver_bytes, 0));
                             } else {
                                 driver_delta = Some((old_entry_bytes, new_entry_bytes));
                             }

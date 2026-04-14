@@ -240,8 +240,20 @@ impl Runtime {
         measure_promise_settled_result_bytes(result)
     }
 
-    pub(super) fn promise_dynamic_bytes(promise: &PromiseObject) -> usize {
-        measure_promise_dynamic_bytes(promise)
+    pub(super) fn promise_dynamic_accounted_bytes(promise: &PromiseObject) -> usize {
+        let static_bytes = std::mem::size_of::<PromiseObject>();
+        debug_assert!(promise.accounted_bytes >= static_bytes);
+        promise.accounted_bytes.saturating_sub(static_bytes)
+    }
+
+    pub(super) fn promise_driver_accounted_bytes(promise: &PromiseObject) -> usize {
+        let non_driver_bytes = Self::promise_state_bytes(&promise.state)
+            + Self::promise_awaiters_bytes(promise.awaiters.len())
+            + Self::promise_dependents_bytes(promise.dependents.len())
+            + measure_promise_reactions_bytes(&promise.reactions);
+        let dynamic_bytes = Self::promise_dynamic_accounted_bytes(promise);
+        debug_assert!(dynamic_bytes >= non_driver_bytes);
+        dynamic_bytes.saturating_sub(non_driver_bytes)
     }
 
     pub(super) fn apply_object_component_delta(
@@ -446,7 +458,7 @@ impl Runtime {
                 .promises
                 .get(key)
                 .ok_or_else(|| MustardError::runtime("promise missing"))?;
-            Self::promise_driver_bytes(&promise.driver)
+            Self::promise_driver_accounted_bytes(promise)
         };
         let new_driver_bytes = Self::promise_driver_bytes(&driver);
         self.promises
