@@ -10,6 +10,61 @@ impl Runtime {
             self.debug_metrics.accounting_refreshes.saturating_add(1);
     }
 
+    pub(super) fn queue_microtask(&mut self, job: MicrotaskJob) {
+        self.debug_metrics.queued_microtasks =
+            self.debug_metrics.queued_microtasks.saturating_add(1);
+        match &job {
+            MicrotaskJob::ResumeAsync { .. } => {
+                self.debug_metrics.queued_resume_async_microtasks = self
+                    .debug_metrics
+                    .queued_resume_async_microtasks
+                    .saturating_add(1);
+            }
+            MicrotaskJob::PromiseReaction { .. } => {
+                self.debug_metrics.queued_promise_reactions = self
+                    .debug_metrics
+                    .queued_promise_reactions
+                    .saturating_add(1);
+            }
+            MicrotaskJob::PromiseCombinator { .. } => {
+                self.debug_metrics.queued_promise_combinators = self
+                    .debug_metrics
+                    .queued_promise_combinators
+                    .saturating_add(1);
+            }
+        }
+        self.microtasks.push_back(job);
+        self.debug_metrics.peak_microtask_queue_len = self
+            .debug_metrics
+            .peak_microtask_queue_len
+            .max(self.microtasks.len() as u64);
+    }
+
+    pub(super) fn record_executed_microtask(&mut self, job: &MicrotaskJob) {
+        self.debug_metrics.executed_microtasks =
+            self.debug_metrics.executed_microtasks.saturating_add(1);
+        match job {
+            MicrotaskJob::ResumeAsync { .. } => {
+                self.debug_metrics.executed_resume_async_microtasks = self
+                    .debug_metrics
+                    .executed_resume_async_microtasks
+                    .saturating_add(1);
+            }
+            MicrotaskJob::PromiseReaction { .. } => {
+                self.debug_metrics.executed_promise_reactions = self
+                    .debug_metrics
+                    .executed_promise_reactions
+                    .saturating_add(1);
+            }
+            MicrotaskJob::PromiseCombinator { .. } => {
+                self.debug_metrics.executed_promise_combinators = self
+                    .debug_metrics
+                    .executed_promise_combinators
+                    .saturating_add(1);
+            }
+        }
+    }
+
     fn enforce_loaded_accounting_limits(
         &self,
         heap_bytes_used: usize,

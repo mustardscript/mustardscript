@@ -121,8 +121,7 @@ impl Runtime {
         reaction: PromiseReaction,
         source: PromiseKey,
     ) -> MustardResult<()> {
-        self.microtasks
-            .push_back(MicrotaskJob::PromiseReaction { reaction, source });
+        self.queue_microtask(MicrotaskJob::PromiseReaction { reaction, source });
         Ok(())
     }
 
@@ -133,7 +132,7 @@ impl Runtime {
         kind: PromiseCombinatorKind,
         input: PromiseCombinatorInput,
     ) -> MustardResult<()> {
-        self.microtasks.push_back(MicrotaskJob::PromiseCombinator {
+        self.queue_microtask(MicrotaskJob::PromiseCombinator {
             target,
             index,
             kind,
@@ -176,7 +175,7 @@ impl Runtime {
         };
         self.apply_promise_component_delta(promise, old_dynamic_bytes, new_dynamic_bytes)?;
         for continuation in awaiters {
-            self.microtasks.push_back(MicrotaskJob::ResumeAsync {
+            self.queue_microtask(MicrotaskJob::ResumeAsync {
                 continuation,
                 source: promise,
             });
@@ -311,7 +310,7 @@ impl Runtime {
             PromiseState::Pending
         );
         if is_settled {
-            self.microtasks.push_back(MicrotaskJob::ResumeAsync {
+            self.queue_microtask(MicrotaskJob::ResumeAsync {
                 continuation,
                 source: promise,
             });

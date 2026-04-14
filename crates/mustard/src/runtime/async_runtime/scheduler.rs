@@ -10,6 +10,7 @@ impl Runtime {
                 "microtask checkpoint ran while frames were still active",
             ));
         }
+        self.record_executed_microtask(&job);
         match job {
             MicrotaskJob::ResumeAsync {
                 continuation,

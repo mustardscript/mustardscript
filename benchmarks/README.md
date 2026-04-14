@@ -92,8 +92,9 @@ machine metadata and latency summaries for:
 - addon boundary-only measurements for start inputs, suspended args, resume
   values, and resume errors across small/medium/large nested payloads
 - addon runtime counter snapshots for representative paths, including GC
-  collection count, cumulative GC time, reclaimed bytes/allocations, and full
-  accounting refresh count
+  collection count, cumulative GC time, reclaimed bytes/allocations, full
+  accounting refresh count, and queued/executed microtask breakdowns for
+  async-heavy primary PTC lanes
 - addon suspend/resume state-size summaries for serialized program bytes,
   dumped snapshot bytes, and retained live `Progress` heap deltas
 - addon phase-split measurements for:
@@ -148,6 +149,9 @@ The suite covers:
 - runtime initialization with empty, capability-heavy, and input-heavy startup
 - validated start vs trusted shared-program execution
 - VM hot loops, lexical/env lookup, property access, and `Map`/`Set` hot paths
+- representative async fanout hot paths for immediate `Promise.all`,
+  staged derived-ID `Promise.all`, mixed fulfilled/rejected fanout, and
+  fanout followed by `Map`/`Set`-backed local reduction
 - structured boundary decode and suspend-time encode
 - snapshot dump and load
 

@@ -78,6 +78,15 @@ pub struct RuntimeDebugMetrics {
     pub gc_reclaimed_bytes: u64,
     pub gc_reclaimed_allocations: u64,
     pub accounting_refreshes: u64,
+    pub queued_microtasks: u64,
+    pub executed_microtasks: u64,
+    pub peak_microtask_queue_len: u64,
+    pub queued_resume_async_microtasks: u64,
+    pub executed_resume_async_microtasks: u64,
+    pub queued_promise_reactions: u64,
+    pub executed_promise_reactions: u64,
+    pub queued_promise_combinators: u64,
+    pub executed_promise_combinators: u64,
 }
 
 #[derive(Debug, Clone)]

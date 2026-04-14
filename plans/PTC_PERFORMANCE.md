@@ -28,7 +28,7 @@ Audited inputs and evidence:
 - Existing workload harness: `benchmarks/workloads.ts`
 - Existing benchmark protocol: `benchmarks/README.md`
 - Latest checked-in workload artifact:
-  `benchmarks/results/2026-04-13T20-23-24-663Z-workloads.json`
+  `benchmarks/results/2026-04-14T00-42-49-648Z-workloads.json`
 - Latest checked-in findings summary: `docs/BENCHMARK_FINDINGS.md`
 - Public website speed story: `website/src/components/SpeedSection.tsx`
 - Audited use-case docs: `docs/USE_CASE_EXAMPLES.md` and `docs/USE_CASE_GAPS.md`
@@ -53,27 +53,29 @@ Current audited gallery characteristics across the 24 cataloged use cases:
 - about `10` workflows with an obvious final action/writeback step
 
 Current checked-in release medians from
-`benchmarks/results/2026-04-13T20-23-24-663Z-workloads.json`:
+`benchmarks/results/2026-04-14T00-42-49-648Z-workloads.json`:
 
 | Runtime | `programmatic_tool_workflow` | `host_fanout_100` | `suspend_resume_20` |
 | --- | ---: | ---: | ---: |
-| addon | `1.47 ms` | `0.42 ms` | `2.45 ms` |
-| sidecar | `18.60 ms` | `6.94 ms` | `1.33 ms` |
-| isolate | `0.36 ms` | `0.25 ms` | `10.87 ms` |
+| addon | `1.44 ms` | `0.40 ms` | `2.27 ms` |
+| sidecar | `11.29 ms` | `4.26 ms` | `0.84 ms` |
+| isolate | `0.92 ms` | `0.77 ms` | `10.04 ms` |
 
 Current addon phase and boundary medians from the same artifact:
 
-- `runtime_init_only`: `0.013 ms`
-- `execution_only_small`: `0.863 ms`
-- `startInputs.medium`: `0.200 ms`
-- `suspendedArgs.medium`: `0.419 ms`
-- `resumeValues.medium`: `0.180 ms`
-- `resumeErrors.medium`: `0.187 ms`
+- `runtime_init_only`: `0.031 ms`
+- `execution_only_small`: `1.902 ms`
+- `startInputs.medium`: `0.339 ms`
+- `suspendedArgs.medium`: `0.614 ms`
+- `resumeValues.medium`: `0.275 ms`
+- `resumeErrors.medium`: `0.244 ms`
 
 Current addon counters for `programmatic_tool_workflow`:
 
 - `gc_collections`: `1`
 - `accounting_refreshes`: `0`
+- `queued_microtasks`: `0`
+- `queued_promise_combinators`: `0`
 
 These numbers are useful, but they no longer reflect the workload we most care
 about.
@@ -106,15 +108,14 @@ What it does not model well:
 - a benchmarkable gap between “large intermediate data kept inside the sandbox”
   and “small final result returned to the host”
 
-There is also a public-story mismatch:
+The earlier public-story mismatch is now closed in the current checkout:
 
-- the website currently hardcodes `43ms` for a “4-tool orchestration workflow”
-  in `website/src/components/SpeedSection.tsx`
-- the checked-in benchmark artifact currently reports `1.47 ms` for
-  `programmatic_tool_workflow`
-
-That means the website narrative and the engineering benchmark are not talking
-about the same thing. This plan fixes that.
+- the website speed section reads `website/src/generated/benchmarkData.ts`
+  instead of a hardcoded latency literal
+- the generated export currently reports `0.155 ms` median / `0.170 ms` p95
+  for `ptc_website_demo_small`
+- the old `programmatic_tool_workflow` fixture remains useful only as a
+  secondary control metric
 
 ## PTC Benchmark Requirements
 
@@ -336,18 +337,18 @@ Target by end of milestone:
 
 Action items:
 
-- [ ] Add the four new PTC lanes to the workload benchmark harness.
-- [ ] Back each lane with deterministic seeded fixtures and `small` / `medium`
+- [x] Add the four new PTC lanes to the workload benchmark harness.
+- [x] Back each lane with deterministic seeded fixtures and `small` / `medium`
   / `large` sizes.
-- [ ] Add exact expected-result checks so addon, sidecar, and isolate outputs
+- [x] Add exact expected-result checks so addon, sidecar, and isolate outputs
   are forced to stay aligned.
-- [ ] Rename or demote the current synthetic `programmatic_tool_workflow`
+- [x] Rename or demote the current synthetic `programmatic_tool_workflow`
   metric so it stops reading like the primary real-world benchmark.
-- [ ] Add artifact metadata for tool-call count, awaited-call count,
+- [x] Add artifact metadata for tool-call count, awaited-call count,
   outstanding-call peak, tool-bytes-in, result-bytes-out, and reduction ratio.
-- [ ] Add a dedicated website-export path so `ptc_website_demo.small` can drive
+- [x] Add a dedicated website-export path so `ptc_website_demo.small` can drive
   `website/src/components/SpeedSection.tsx`.
-- [ ] Capture and check in the first representative release artifact.
+- [x] Capture and check in the first representative release artifact.
 
 ## Milestone 1: Reduce Async Fanout And Promise Settlement Overhead
 
@@ -368,14 +369,14 @@ Action items:
 
 - [ ] Finish reducing promise-outcome clone amplification in settlement,
   combinators, and awaiter scheduling.
-- [ ] Add PTC-specific Rust microbench coverage for:
+- [x] Add PTC-specific Rust microbench coverage for:
   - immediate `Promise.all`
   - staged `Promise.all` from derived IDs
   - mixed fulfilled/rejected fanout
   - fanout followed by Map/Set-backed local reduction
-- [ ] Add benchmark counters for queued microtasks and promise-reaction work so
+- [x] Add benchmark counters for queued microtasks and promise-reaction work so
   improvements can be attributed.
-- [ ] Re-run workload and Rust microbench suites and record before/after
+- [x] Re-run workload and Rust microbench suites and record before/after
   numbers for the new PTC lanes.
 
 ## Milestone 2: Make Host Boundary Transport Cheap Enough For PTC
@@ -451,15 +452,15 @@ Target by end of milestone:
 
 Action items:
 
-- [ ] Replace line-delimited JSON/base64 framing with length-prefixed binary
+- [x] Replace line-delimited JSON/base64 framing with length-prefixed binary
   framing while preserving protocol hardening and versioning.
-- [ ] Keep program and snapshot bytes binary end to end.
+- [x] Keep program and snapshot bytes binary end to end.
 - [ ] Add PTC-sidecar metrics that separate:
   - process startup
   - request transport
   - execution
   - response materialization
-- [ ] Keep protocol tests and hostile-protocol coverage passing after the wire
+- [x] Keep protocol tests and hostile-protocol coverage passing after the wire
   format changes.
 
 ## Milestone 5: Durable-Boundary PTC Variant
@@ -487,27 +488,27 @@ Action items:
 
 ## Measurement Rules
 
-- [ ] The source of truth for PTC performance is the release-profile benchmark
+- [x] The source of truth for PTC performance is the release-profile benchmark
   artifact, not the website literal and not the tiny smoke compute numbers.
-- [ ] Every optimization PR touching runtime, boundary, or sidecar internals
+- [x] Every optimization PR touching runtime, boundary, or sidecar internals
   must include before/after numbers for the primary PTC lanes.
-- [ ] `docs/BENCHMARK_FINDINGS.md` must call out the weighted PTC score once the
+- [x] `docs/BENCHMARK_FINDINGS.md` must call out the weighted PTC score once the
   suite lands.
-- [ ] The website speed section must not be updated by hand once the export path
+- [x] The website speed section must not be updated by hand once the export path
   exists.
 - [ ] No milestone may be checked off without benchmark evidence on the new PTC
   suite plus the relevant correctness tests.
 
 ## Verification And Completion Criteria
 
-- [ ] `npm run test:use-cases` stays green as the benchmark suite evolves.
-- [ ] `cargo test --workspace` passes for any runtime or sidecar changes.
-- [ ] `npm test` passes for any Node-wrapper or benchmark-harness changes.
-- [ ] `npm run lint` passes for every substantial milestone.
-- [ ] `npm run bench:workloads:release` produces a checked-in representative PTC
+- [x] `npm run test:use-cases` stays green as the benchmark suite evolves.
+- [x] `cargo test --workspace` passes for any runtime or sidecar changes.
+- [x] `npm test` passes for any Node-wrapper or benchmark-harness changes.
+- [x] `npm run lint` passes for every substantial milestone.
+- [x] `npm run bench:workloads:release` produces a checked-in representative PTC
   artifact.
-- [ ] `npm run bench:rust` is run alongside any engine-level optimization work.
-- [ ] `website/src/components/SpeedSection.tsx` is driven from measured PTC
+- [x] `npm run bench:rust` is run alongside any engine-level optimization work.
+- [x] `website/src/components/SpeedSection.tsx` is driven from measured PTC
   data before this plan is considered complete.
 
 ## Iteration Log
@@ -515,3 +516,4 @@ Action items:
 | UTC Timestamp | Summary | Evidence | Blockers |
 | --- | --- | --- | --- |
 | 2026-04-13T21:48:32Z | Created the initial PTC-focused performance plan after auditing the current benchmark harness, website speed story, checked-in benchmark artifacts, and the cataloged programmatic tool-call gallery. | Audited `benchmarks/workloads.ts`, `benchmarks/README.md`, `website/src/components/SpeedSection.tsx`, `docs/USE_CASE_EXAMPLES.md`, `docs/USE_CASE_GAPS.md`, `scripts/audit-use-cases.ts`, `tests/node/use-cases.test.js`, and representative example files. Verified `npm run test:use-cases` in the worktree after building the addon. | Fresh worktree initially lacked local build tooling and addon artifacts. `npm run build` failed until `napi` was provided from the existing root checkout toolchain; after that, the use-case audit passed. |
+| 2026-04-14T00:42:49Z | On top of `a14fb52`, added queued/executed microtask attribution for addon debug metrics, extended the Rust-core PTC async bench set with staged derived-ID and Map/Set reduction lanes, refreshed the representative workload artifact, and updated the findings/plan evidence. | Updated `crates/mustard/src/runtime/api.rs`, `accounting.rs`, `async_runtime/promises.rs`, `async_runtime/scheduler.rs`, `gc_trigger_tests.rs`, `crates/mustard/benches/runtime_core.rs`, `benchmarks/workloads.ts`, `benchmarks/README.md`, `docs/BENCHMARK_FINDINGS.md`, and `website/src/generated/benchmarkData.ts`. Verified `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases`, `npm run bench:rust`, `npm run bench:workloads:release`, and `npm run bench:compare -- --baseline benchmarks/results/2026-04-14T00-14-51-582Z-workloads.json --candidate benchmarks/results/2026-04-14T00-42-49-648Z-workloads.json`. The kept artifact shows `addon.ptc.weightedScore.medium 0.88 ms -> 0.87 ms` (`-0.9%`), `ptc_incident_triage_medium 0.59 ms -> 0.59 ms` (`-0.3%`), `ptc_fraud_investigation_medium 1.70 ms -> 1.68 ms` (`-1.2%`), and `ptc_vendor_review_medium 0.20 ms -> 0.20 ms` (`+0.1%`) while adding primary-lane microtask counters such as `ptc_incident_triage_medium queued_microtasks=24` / `queued_promise_combinators=23`. | The first `npm run bench:workloads:release` attempt failed in the new PTC counter loop with `ReferenceError: \`regions\` is not defined` because the harness incorrectly tried to seed lane inputs inside `ExecutionContext`; moving those lane inputs back to top-level start options fixed the run in the same iteration. |

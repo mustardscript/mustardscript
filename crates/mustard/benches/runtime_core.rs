@@ -30,6 +30,8 @@ struct BenchFixtures {
     collection_callback_shared: Arc<BytecodeProgram>,
     promise_all_immediate_shared: Arc<BytecodeProgram>,
     promise_all_settled_immediate_shared: Arc<BytecodeProgram>,
+    promise_all_derived_ids_shared: Arc<BytecodeProgram>,
+    promise_all_map_set_reduction_shared: Arc<BytecodeProgram>,
     map_set_shared: Arc<BytecodeProgram>,
     map_ctor_large_shared: Arc<BytecodeProgram>,
     set_ctor_large_shared: Arc<BytecodeProgram>,
@@ -72,6 +74,10 @@ impl BenchFixtures {
             Arc::new(compile_to_bytecode(promise_all_immediate_source()));
         let promise_all_settled_immediate_shared =
             Arc::new(compile_to_bytecode(promise_all_settled_immediate_source()));
+        let promise_all_derived_ids_shared =
+            Arc::new(compile_to_bytecode(promise_all_derived_ids_source()));
+        let promise_all_map_set_reduction_shared =
+            Arc::new(compile_to_bytecode(promise_all_map_set_reduction_source()));
         let map_set_shared = Arc::new(compile_to_bytecode(map_set_source()));
         let map_ctor_large_shared = Arc::new(compile_to_bytecode(map_ctor_large_source()));
         let set_ctor_large_shared = Arc::new(compile_to_bytecode(set_ctor_large_source()));
@@ -115,6 +121,8 @@ impl BenchFixtures {
             collection_callback_shared,
             promise_all_immediate_shared,
             promise_all_settled_immediate_shared,
+            promise_all_derived_ids_shared,
+            promise_all_map_set_reduction_shared,
             map_set_shared,
             map_ctor_large_shared,
             set_ctor_large_shared,
@@ -498,6 +506,34 @@ fn runtime_execution_benches(c: &mut Criterion) {
                     options,
                 )
                 .expect("Promise.allSettled immediate bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("promise_all_derived_ids_fanout", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.promise_all_derived_ids_shared),
+                    options,
+                )
+                .expect("Promise.all derived-ID fanout should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("promise_all_map_set_reduction", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.promise_all_map_set_reduction_shared),
+                    options,
+                )
+                .expect("Promise.all map/set reduction bench should execute");
                 consume_completed(step);
             },
             BatchSize::SmallInput,
@@ -928,6 +964,88 @@ fn promise_all_settled_immediate_source() -> &'static str {
           if (settled[index].status === "fulfilled") {
             total += settled[index].value;
           }
+        }
+      }
+      return total;
+    }
+    main();
+    "#
+}
+
+fn promise_all_derived_ids_source() -> &'static str {
+    r#"
+    async function main() {
+      const base = [];
+      for (let i = 0; i < 96; i += 1) {
+        base.push({
+          accountId: "acct_" + (i % 24),
+          entityId: "ent_" + (i % 18),
+          score: (i % 11) + 1,
+        });
+      }
+      let total = 0;
+      for (let round = 0; round < 24; round += 1) {
+        const firstStage = await Promise.all(base.map((record, index) => ({
+          accountId: record.accountId,
+          entityId: record.entityId,
+          signalId: "sig_" + ((index + round) % 32),
+          score: record.score + (round % 5),
+        })));
+        const accountIds = new Set();
+        const entityIds = new Set();
+        for (let index = 0; index < firstStage.length; index += 1) {
+          accountIds.add(firstStage[index].accountId);
+          entityIds.add(firstStage[index].entityId);
+        }
+        const derivedIds = Array.from(accountIds).concat(Array.from(entityIds));
+        const secondStage = await Promise.all(derivedIds.map((id, index) => ({
+          id,
+          weight: (index % 7) + round + id.length,
+        })));
+        total += firstStage.length + secondStage.length + accountIds.size + entityIds.size;
+      }
+      return total;
+    }
+    main();
+    "#
+}
+
+fn promise_all_map_set_reduction_source() -> &'static str {
+    r#"
+    async function main() {
+      const seed = [];
+      for (let i = 0; i < 128; i += 1) {
+        seed.push(i);
+      }
+      let total = 0;
+      for (let round = 0; round < 24; round += 1) {
+        const records = await Promise.all(seed.map((value) => ({
+          accountId: "acct_" + (value % 32),
+          entityId: "ent_" + (value % 24),
+          score: ((value + round) % 13) + 1,
+          tag: value % 5 === 0 ? "priority" : "routine",
+        })));
+        const dedupedAccounts = new Set();
+        const totalsByEntity = new Map();
+        for (let index = 0; index < records.length; index += 1) {
+          const record = records[index];
+          dedupedAccounts.add(record.accountId);
+          const current = totalsByEntity.get(record.entityId);
+          if (current === undefined) {
+            totalsByEntity.set(record.entityId, {
+              score: record.score,
+              priorityHits: record.tag === "priority" ? 1 : 0,
+            });
+          } else {
+            current.score += record.score;
+            if (record.tag === "priority") {
+              current.priorityHits += 1;
+            }
+          }
+        }
+        total += dedupedAccounts.size + totalsByEntity.size;
+        for (const [entityId, bucket] of totalsByEntity) {
+          total += bucket.score + bucket.priorityHits + entityId.length;
         }
       }
       return total;

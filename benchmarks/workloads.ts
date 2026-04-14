@@ -632,6 +632,24 @@ async function capturePtcTransfer(runScenario, scenario) {
   };
 }
 
+function createPtcCounterResumeResolver(scenario) {
+  const capabilities = scenario.createCapabilities();
+  return (step) => {
+    const handler = capabilities[step.capability];
+    assert.equal(
+      typeof handler,
+      'function',
+      `PTC counter collection is missing capability \`${step.capability}\` for ${scenario.metricName}`,
+    );
+    const value = handler(...step.args);
+    assert.ok(
+      !(value && typeof value.then === 'function'),
+      `PTC counter collection only supports synchronous fixture capabilities for ${scenario.metricName}`,
+    );
+    return value;
+  };
+}
+
 async function measureRetainedMemory(runMany, options = {}) {
   const sample = options.sample ?? processMemorySnapshot;
   global.gc();
@@ -1166,6 +1184,25 @@ async function benchmarkAddon(fixtures) {
     snapshot_load_only: snapshotCounterInspection.metrics,
   };
 
+  for (const metricName of [
+    'ptc_incident_triage_medium',
+    'ptc_fraud_investigation_medium',
+    'ptc_vendor_review_medium',
+  ]) {
+    const scenario = ptcScenarios[metricName];
+    counters[metricName] = await collectAddonStepCounters(
+      new Mustard(scenario.source),
+      {
+        inputs: scenario.inputs,
+        context: new ExecutionContext({
+          capabilities: scenario.createCapabilities(),
+          limits: {},
+        }),
+      },
+      createPtcCounterResumeResolver(scenario),
+    );
+  }
+
   return { latency, phases, boundary, counters, ptc, suspendState, memory, failureCleanup };
 }
 
@@ -1651,8 +1688,15 @@ function printSummary(results) {
   console.log('');
   console.log('Addon runtime counters:');
   for (const [name, metric] of Object.entries(results.addon.counters)) {
+    const microtaskSummary = [
+      `microtasks ${metric.executed_microtasks}/${metric.queued_microtasks} executed/queued`,
+      `peak queued ${metric.peak_microtask_queue_len}`,
+      `resume ${metric.executed_resume_async_microtasks}/${metric.queued_resume_async_microtasks}`,
+      `reactions ${metric.executed_promise_reactions}/${metric.queued_promise_reactions}`,
+      `combinators ${metric.executed_promise_combinators}/${metric.queued_promise_combinators}`,
+    ].join(', ');
     console.log(
-      `${name}: gc collections ${metric.gc_collections}, gc time ${(metric.gc_total_time_ns / 1e6).toFixed(3)}ms, reclaimed ${metric.gc_reclaimed_bytes}B/${metric.gc_reclaimed_allocations} allocs, accounting refreshes ${metric.accounting_refreshes}`,
+      `${name}: gc collections ${metric.gc_collections}, gc time ${(metric.gc_total_time_ns / 1e6).toFixed(3)}ms, reclaimed ${metric.gc_reclaimed_bytes}B/${metric.gc_reclaimed_allocations} allocs, accounting refreshes ${metric.accounting_refreshes}, ${microtaskSummary}`,
     );
   }
   console.log('');

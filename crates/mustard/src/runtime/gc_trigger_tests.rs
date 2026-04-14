@@ -136,6 +136,12 @@ fn runtime_debug_metrics_track_gc_and_accounting_refreshes() {
         gc_metrics_after.gc_reclaimed_allocations,
         gc_metrics_before.gc_reclaimed_allocations + stats.reclaimed_allocations as u64
     );
+    assert_eq!(gc_metrics_after.queued_microtasks, 0);
+    assert_eq!(gc_metrics_after.executed_microtasks, 0);
+    assert_eq!(gc_metrics_after.queued_promise_reactions, 0);
+    assert_eq!(gc_metrics_after.executed_promise_reactions, 0);
+    assert_eq!(gc_metrics_after.queued_promise_combinators, 0);
+    assert_eq!(gc_metrics_after.executed_promise_combinators, 0);
 }
 
 #[test]
@@ -619,6 +625,22 @@ fn promise_accounting_deltas_preserve_cached_totals_without_full_refreshes() {
         settled_metrics.accounting_refreshes,
         baseline_metrics.accounting_refreshes
     );
+    assert_eq!(
+        settled_metrics.queued_microtasks,
+        baseline_metrics.queued_microtasks + 2
+    );
+    assert_eq!(
+        settled_metrics.queued_resume_async_microtasks,
+        baseline_metrics.queued_resume_async_microtasks + 1
+    );
+    assert_eq!(
+        settled_metrics.queued_promise_reactions,
+        baseline_metrics.queued_promise_reactions + 1
+    );
+    assert_eq!(
+        settled_metrics.peak_microtask_queue_len,
+        baseline_metrics.peak_microtask_queue_len.max(2)
+    );
     #[cfg(debug_assertions)]
     runtime.debug_assert_cached_accounting_matches_full_walk();
 
@@ -711,6 +733,26 @@ fn promise_combinator_fast_paths_avoid_synthetic_promises_for_immediate_inputs()
         final_metrics.accounting_refreshes,
         baseline_metrics.accounting_refreshes
     );
+    assert_eq!(
+        final_metrics.queued_microtasks,
+        baseline_metrics.queued_microtasks + 3
+    );
+    assert_eq!(
+        final_metrics.executed_microtasks,
+        baseline_metrics.executed_microtasks + 3
+    );
+    assert_eq!(
+        final_metrics.queued_promise_combinators,
+        baseline_metrics.queued_promise_combinators + 3
+    );
+    assert_eq!(
+        final_metrics.executed_promise_combinators,
+        baseline_metrics.executed_promise_combinators + 3
+    );
+    assert_eq!(
+        final_metrics.peak_microtask_queue_len,
+        baseline_metrics.peak_microtask_queue_len.max(3)
+    );
     #[cfg(debug_assertions)]
     runtime.debug_assert_cached_accounting_matches_full_walk();
 
@@ -733,6 +775,68 @@ fn promise_combinator_fast_paths_avoid_synthetic_promises_for_immediate_inputs()
         result_values.as_slice(),
         [Value::Number(first), Value::String(second), Value::String(third)]
             if *first == 1.0 && second == "ready" && third == "tail"
+    ));
+}
+
+#[test]
+fn promise_reaction_metrics_track_queued_and_executed_work() {
+    let mut runtime = test_runtime();
+    let source = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("source promise should allocate");
+    let target = runtime
+        .insert_promise(PromiseState::Pending)
+        .expect("target promise should allocate");
+    runtime
+        .resolve_promise(source, Value::String("ready".to_string()))
+        .expect("source promise should resolve");
+
+    let baseline_metrics = runtime.debug_metrics();
+    runtime
+        .attach_promise_reaction(
+            source,
+            PromiseReaction::Then {
+                target,
+                on_fulfilled: None,
+                on_rejected: None,
+            },
+        )
+        .expect("reaction should queue immediately for a settled source");
+
+    let queued_metrics = runtime.debug_metrics();
+    assert_eq!(
+        queued_metrics.queued_microtasks,
+        baseline_metrics.queued_microtasks + 1
+    );
+    assert_eq!(
+        queued_metrics.queued_promise_reactions,
+        baseline_metrics.queued_promise_reactions + 1
+    );
+    assert_eq!(
+        queued_metrics.peak_microtask_queue_len,
+        baseline_metrics.peak_microtask_queue_len.max(1)
+    );
+
+    let job = runtime
+        .microtasks
+        .pop_front()
+        .expect("queued reaction microtask should exist");
+    runtime
+        .activate_microtask(job)
+        .expect("queued reaction microtask should execute");
+
+    let final_metrics = runtime.debug_metrics();
+    assert_eq!(
+        final_metrics.executed_microtasks,
+        baseline_metrics.executed_microtasks + 1
+    );
+    assert_eq!(
+        final_metrics.executed_promise_reactions,
+        baseline_metrics.executed_promise_reactions + 1
+    );
+    assert!(matches!(
+        runtime.promise_outcome(target).expect("target outcome should exist"),
+        Some(PromiseOutcome::Fulfilled(Value::String(ref value))) if value == "ready"
     ));
 }
 
