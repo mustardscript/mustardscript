@@ -65,11 +65,11 @@ test('flattenMetricTree collects nested median/p95 metrics and skips derived sec
   });
 
   assert.deepEqual(metrics, {
-    'addon.latency.warm_run_small': { medianMs: 10, p95Ms: 12 },
-    'addon.ptc.weightedScore.medium': { medianMs: 7.8, p95Ms: 9.35 },
-    'addon.phases.execution_only_small': { medianMs: 1, p95Ms: 2 },
-    'addon.boundary.startInputs.medium': { medianMs: 0.3, p95Ms: 0.4 },
-    'sidecar.phases.startup_only': { medianMs: 2, p95Ms: 3 },
+    'addon.latency.warm_run_small': { kind: 'ms', medianMs: 10, p95Ms: 12 },
+    'addon.ptc.weightedScore.medium': { kind: 'ms', medianMs: 7.8, p95Ms: 9.35 },
+    'addon.phases.execution_only_small': { kind: 'ms', medianMs: 1, p95Ms: 2 },
+    'addon.boundary.startInputs.medium': { kind: 'ms', medianMs: 0.3, p95Ms: 0.4 },
+    'sidecar.phases.startup_only': { kind: 'ms', medianMs: 2, p95Ms: 3 },
   });
 });
 
@@ -93,8 +93,37 @@ test('compareArtifacts reports median and p95 percent changes', () => {
 
   assert.equal(comparisons.length, 1);
   assert.equal(comparisons[0].path, 'addon.latency.warm_run_small');
+  assert.equal(comparisons[0].kind, 'ms');
+  assert.equal(comparisons[0].baselineMedian, 10);
+  assert.equal(comparisons[0].candidateMedian, 12);
   assert.equal(comparisons[0].medianPct, 20);
+  assert.equal(comparisons[0].baselineP95, 20);
+  assert.equal(comparisons[0].candidateP95, 18);
   assert.equal(comparisons[0].p95Pct, -10);
+});
+
+test('flattenMetricTree captures ratio leaves for phase-2 scorecards', () => {
+  const metrics = flattenMetricTree({
+    addon: {
+      ptc: {
+        phase2: {
+          scorecards: {
+            p90LaneRatio: {
+              medium: { medianRatio: 1.4, p95Ratio: 1.7 },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(metrics, {
+    'addon.ptc.phase2.scorecards.p90LaneRatio.medium': {
+      kind: 'ratio',
+      medianRatio: 1.4,
+      p95Ratio: 1.7,
+    },
+  });
 });
 
 test('resolveLatestArtifacts selects the previous matching artifact as the baseline', () => {

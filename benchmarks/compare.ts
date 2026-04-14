@@ -7,21 +7,47 @@ const path = require('node:path');
 const { RESULTS_DIR } = require('./support.ts');
 const REPO_ROOT = path.join(__dirname, '..');
 
-function isMetricLeaf(value) {
-  return (
+function metricLeafKind(value) {
+  if (
     value !== null &&
     typeof value === 'object' &&
     !Array.isArray(value) &&
     typeof value.medianMs === 'number' &&
     typeof value.p95Ms === 'number'
-  );
+  ) {
+    return 'ms';
+  }
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    typeof value.medianRatio === 'number' &&
+    typeof value.p95Ratio === 'number'
+  ) {
+    return 'ratio';
+  }
+  return null;
+}
+
+function isMetricLeaf(value) {
+  return metricLeafKind(value) !== null;
 }
 
 function flattenMetricTree(value, prefix = '', metrics = {}) {
-  if (isMetricLeaf(value)) {
+  const kind = metricLeafKind(value);
+  if (kind === 'ms') {
     metrics[prefix] = {
+      kind,
       medianMs: value.medianMs,
       p95Ms: value.p95Ms,
+    };
+    return metrics;
+  }
+  if (kind === 'ratio') {
+    metrics[prefix] = {
+      kind,
+      medianRatio: value.medianRatio,
+      p95Ratio: value.p95Ratio,
     };
     return metrics;
   }
@@ -45,6 +71,19 @@ function percentChange(from, to) {
   return ((to - from) / from) * 100;
 }
 
+function metricValues(metric) {
+  if (metric.kind === 'ratio') {
+    return {
+      median: metric.medianRatio,
+      p95: metric.p95Ratio,
+    };
+  }
+  return {
+    median: metric.medianMs,
+    p95: metric.p95Ms,
+  };
+}
+
 function compareArtifacts(baselineArtifact, candidateArtifact) {
   const baselineMetrics = flattenMetricTree(baselineArtifact);
   const candidateMetrics = flattenMetricTree(candidateArtifact);
@@ -52,17 +91,20 @@ function compareArtifacts(baselineArtifact, candidateArtifact) {
 
   for (const [pathKey, candidateMetric] of Object.entries(candidateMetrics)) {
     const baselineMetric = baselineMetrics[pathKey];
-    if (!baselineMetric) {
+    if (!baselineMetric || baselineMetric.kind !== candidateMetric.kind) {
       continue;
     }
+    const baselineValues = metricValues(baselineMetric);
+    const candidateValues = metricValues(candidateMetric);
     comparisons.push({
       path: pathKey,
-      baselineMedianMs: baselineMetric.medianMs,
-      candidateMedianMs: candidateMetric.medianMs,
-      medianPct: percentChange(baselineMetric.medianMs, candidateMetric.medianMs),
-      baselineP95Ms: baselineMetric.p95Ms,
-      candidateP95Ms: candidateMetric.p95Ms,
-      p95Pct: percentChange(baselineMetric.p95Ms, candidateMetric.p95Ms),
+      kind: candidateMetric.kind,
+      baselineMedian: baselineValues.median,
+      candidateMedian: candidateValues.median,
+      medianPct: percentChange(baselineValues.median, candidateValues.median),
+      baselineP95: baselineValues.p95,
+      candidateP95: candidateValues.p95,
+      p95Pct: percentChange(baselineValues.p95, candidateValues.p95),
     });
   }
 
@@ -184,6 +226,13 @@ function resolveLatestArtifacts({
   };
 }
 
+function formatMetricValue(kind, value) {
+  if (!Number.isFinite(value)) {
+    return kind === 'ratio' ? 'infx' : 'infms';
+  }
+  return kind === 'ratio' ? `${value.toFixed(2)}x` : `${value.toFixed(2)}ms`;
+}
+
 function formatPercent(value) {
   if (!Number.isFinite(value)) {
     return '+inf%';
@@ -192,15 +241,22 @@ function formatPercent(value) {
   return `${sign}${value.toFixed(1)}%`;
 }
 
+function printComparisonLine(entry) {
+  return `${entry.path}: median ${formatMetricValue(entry.kind, entry.baselineMedian)} -> ${formatMetricValue(entry.kind, entry.candidateMedian)} (${formatPercent(entry.medianPct)}), p95 ${formatMetricValue(entry.kind, entry.baselineP95)} -> ${formatMetricValue(entry.kind, entry.candidateP95)} (${formatPercent(entry.p95Pct)})`;
+}
+
 module.exports = {
   RESULTS_DIR,
   artifactIdentity,
   compareArtifacts,
   flattenMetricTree,
+  formatMetricValue,
   formatPercent,
   inferIdentityFromFilename,
+  isMetricLeaf,
   listArtifacts,
   loadArtifact,
+  printComparisonLine,
   resolveLatestArtifacts,
   listTrackedArtifacts,
 };

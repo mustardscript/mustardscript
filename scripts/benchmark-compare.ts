@@ -4,9 +4,9 @@ const path = require('node:path');
 
 const {
   compareArtifacts,
-  formatPercent,
   listTrackedArtifacts,
   loadArtifact,
+  printComparisonLine,
   resolveLatestArtifacts,
 } = require('../benchmarks/compare.ts');
 
@@ -67,9 +67,6 @@ function parseArgs(argv) {
     throw new Error(`Unknown benchmark compare argument: ${value}`);
   }
 
-  if (options.kind && options.kind !== 'smoke' && options.kind !== 'workloads') {
-    throw new Error(`Unsupported benchmark kind: ${options.kind}`);
-  }
   if (options.profile && options.profile !== 'dev' && options.profile !== 'release') {
     throw new Error(`Unsupported benchmark profile: ${options.profile}`);
   }
@@ -85,9 +82,7 @@ function printComparison(baselinePath, candidatePath, comparisons) {
   console.log(`Candidate: ${candidatePath}`);
   console.log('');
   for (const entry of comparisons) {
-    console.log(
-      `${entry.path}: median ${entry.baselineMedianMs.toFixed(2)}ms -> ${entry.candidateMedianMs.toFixed(2)}ms (${formatPercent(entry.medianPct)}), p95 ${entry.baselineP95Ms.toFixed(2)}ms -> ${entry.candidateP95Ms.toFixed(2)}ms (${formatPercent(entry.p95Pct)})`,
-    );
+    console.log(printComparisonLine(entry));
   }
 }
 
