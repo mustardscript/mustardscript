@@ -681,7 +681,7 @@ Guardrail:
 
 Action items:
 
-- [ ] Add a post-lowering bytecode optimization stage after current lowering and
+- [x] Add a post-lowering bytecode optimization stage after current lowering and
   peephole cleanup.
 - [ ] Define optimizer flush boundaries at jumps, exception edges, `await`,
   calls, returns, throws, and any source-position boundary that must preserve
@@ -694,7 +694,7 @@ Action items:
   reduced dispatch is measured directly instead of inferred.
 - [ ] Add at least three generic superinstruction candidates derived from broad
   baseline traces rather than from one hand-picked benchmark.
-- [ ] Keep each optimization class behind a kill switch until broad-panel data
+- [x] Keep each optimization class behind a kill switch until broad-panel data
   proves it is a net win.
 
 Success checks:
@@ -914,4 +914,4 @@ Reject if:
 
 | UTC Timestamp | Summary | Evidence | Blockers |
 | --- | --- | --- | --- |
-| 2026-04-14T08:04:25Z | Closed milestones 0-4 and landed the first Milestone 5 measurement hook by adding dynamic instruction counts to the representative PTC artifact alongside the audited phase-2 portfolio, skewed headline seeds, durable breadth, anti-overfit scorecards, regression guards, and deeper headline-lane attribution. | Commits `316ad5e`, `afd8cf6`, `3890be7`, `ff894d6`; verified `node --test tests/node/benchmark-compare.test.js`, `node scripts/audit-ptc-headline-seeds.ts --json`, `cargo test -p mustard --test runtime_debug_metrics`, `npm run bench:ptc:broad`, `npm run bench:ptc:holdout`, `npm run bench:regress:ptc`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases`; kept artifacts `benchmarks/results/2026-04-14T08-07-26-092Z-ptc_broad_release-release.json`, `benchmarks/results/2026-04-14T07-38-31-068Z-ptc_holdout_release-release.json`, `benchmarks/results/2026-04-14T07-34-21-584Z-ptc_sentinel_release-release.json` | None; the async headline counter collector and a `cargo fmt --check` diff both failed once and were fixed in-loop. |
+| 2026-04-14T08:04:25Z | Closed milestones 0-4 and started Milestone 5 by adding dynamic instruction counts to the representative PTC artifact plus a post-lowering bytecode optimizer pipeline with conservative stack-noop rewrites behind kill switches. | Commits `316ad5e`, `afd8cf6`, `3890be7`, `ff894d6`, `e4645fe`; verified `node --test tests/node/benchmark-compare.test.js`, `node scripts/audit-ptc-headline-seeds.ts --json`, `cargo test -p mustard --test runtime_debug_metrics`, `cargo test -p mustard stack_noop_peephole`, `npm run bench:ptc:broad`, `npm run bench:ptc:holdout`, `npm run bench:regress:ptc`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases`; kept artifacts `benchmarks/results/2026-04-14T08-07-26-092Z-ptc_broad_release-release.json`, `benchmarks/results/2026-04-14T07-38-31-068Z-ptc_holdout_release-release.json`, `benchmarks/results/2026-04-14T07-34-21-584Z-ptc_sentinel_release-release.json` | None; the async headline counter collector and a `cargo fmt --check` diff both failed once and were fixed in-loop. |
