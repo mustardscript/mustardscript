@@ -651,6 +651,34 @@ impl Runtime {
                 self.map_set(map, key, next)?;
                 self.frames[frame_index].stack.push(Value::Map(map));
             }
+            Instruction::SetAddDirect { .. } => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let receiver = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let set = self.set_receiver(receiver, "add")?;
+                self.record_set_add_call();
+                self.set_add(set, value)?;
+                self.frames[frame_index].stack.push(Value::Set(set));
+            }
+            Instruction::SetHasDirect { .. } => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let receiver = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let set = self.set_receiver(receiver, "has")?;
+                self.record_set_has_call();
+                let present = self.set_contains(set, &value)?;
+                self.frames[frame_index].stack.push(Value::Bool(present));
+            }
             Instruction::Await => {
                 let value = self.frames[frame_index]
                     .stack

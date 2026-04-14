@@ -59,7 +59,11 @@ impl Runtime {
         Ok(Value::Set(set))
     }
 
-    fn map_receiver(&self, value: Value, method: &str) -> MustardResult<MapKey> {
+    pub(in crate::runtime) fn map_receiver(
+        &self,
+        value: Value,
+        method: &str,
+    ) -> MustardResult<MapKey> {
         match value {
             Value::Map(key) => Ok(key),
             _ => Err(MustardError::runtime(format!(
@@ -68,7 +72,11 @@ impl Runtime {
         }
     }
 
-    fn set_receiver(&self, value: Value, method: &str) -> MustardResult<SetKey> {
+    pub(in crate::runtime) fn set_receiver(
+        &self,
+        value: Value,
+        method: &str,
+    ) -> MustardResult<SetKey> {
         match value {
             Value::Set(key) => Ok(key),
             _ => Err(MustardError::runtime(format!(
@@ -409,7 +417,7 @@ impl Runtime {
         self.apply_map_component_delta(map, removed_bytes, 0)
     }
 
-    fn set_add(&mut self, set: SetKey, value: Value) -> MustardResult<()> {
+    pub(in crate::runtime) fn set_add(&mut self, set: SetKey, value: Value) -> MustardResult<()> {
         let value = canonicalize_collection_key(value);
         let string_key = uses_string_heavy_collection_lookup(&value);
         let index_key = CollectionIndexKey::from_value(&value);
@@ -543,7 +551,11 @@ impl Runtime {
         self.apply_set_component_delta(set, removed_bytes, 0)
     }
 
-    fn set_contains(&self, set: SetKey, value: &Value) -> MustardResult<bool> {
+    pub(in crate::runtime) fn set_contains(
+        &self,
+        set: SetKey,
+        value: &Value,
+    ) -> MustardResult<bool> {
         let set_ref = self
             .sets
             .get(set)

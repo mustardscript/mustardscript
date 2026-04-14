@@ -56,8 +56,12 @@ type BlockLocalRewrite = fn(&[Instruction]) -> (Vec<Instruction>, Vec<usize>);
 const MAP_COUNTER_UPDATE_OVERRIDE_UNSET: u8 = 0;
 const MAP_COUNTER_UPDATE_OVERRIDE_DISABLED: u8 = 1;
 const MAP_COUNTER_UPDATE_OVERRIDE_ENABLED: u8 = 2;
+const DIRECT_SET_CALL_OVERRIDE_UNSET: u8 = 0;
+const DIRECT_SET_CALL_OVERRIDE_DISABLED: u8 = 1;
+const DIRECT_SET_CALL_OVERRIDE_ENABLED: u8 = 2;
 
 static MAP_COUNTER_UPDATE_OVERRIDE: AtomicU8 = AtomicU8::new(MAP_COUNTER_UPDATE_OVERRIDE_UNSET);
+static DIRECT_SET_CALL_OVERRIDE: AtomicU8 = AtomicU8::new(DIRECT_SET_CALL_OVERRIDE_UNSET);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum AbstractBinding {
@@ -157,6 +161,14 @@ impl TopOfStackState {
 }
 
 impl Compiler {
+    fn direct_set_calls_enabled() -> bool {
+        match DIRECT_SET_CALL_OVERRIDE.load(Ordering::Relaxed) {
+            DIRECT_SET_CALL_OVERRIDE_DISABLED => false,
+            DIRECT_SET_CALL_OVERRIDE_ENABLED => true,
+            _ => Self::env_flag_enabled("MUSTARD_ENABLE_DIRECT_SET_CALLS"),
+        }
+    }
+
     fn map_counter_update_fast_path_enabled() -> bool {
         match MAP_COUNTER_UPDATE_OVERRIDE.load(Ordering::Relaxed) {
             MAP_COUNTER_UPDATE_OVERRIDE_DISABLED => false,
@@ -689,6 +701,8 @@ impl Compiler {
                 | Instruction::JumpIfNullish(_)
                 | Instruction::Call { .. }
                 | Instruction::MapSetCounter { .. }
+                | Instruction::SetAddDirect { .. }
+                | Instruction::SetHasDirect { .. }
                 | Instruction::CallWithArray { .. }
                 | Instruction::Await
                 | Instruction::Construct { .. }
@@ -982,7 +996,9 @@ impl Compiler {
                 }
                 state.push_temporary();
             }
-            Instruction::MapSetCounter { .. } => {
+            Instruction::MapSetCounter { .. }
+            | Instruction::SetAddDirect { .. }
+            | Instruction::SetHasDirect { .. } => {
                 state.pop_value();
                 state.pop_value();
                 state.push_temporary();
@@ -1190,6 +1206,29 @@ fn override_map_counter_update_fast_path_for_tests(
     };
     let previous = MAP_COUNTER_UPDATE_OVERRIDE.swap(next, Ordering::Relaxed);
     MapCounterUpdateFastPathOverrideGuard { previous }
+}
+
+#[cfg(test)]
+struct DirectSetCallOverrideGuard {
+    previous: u8,
+}
+
+#[cfg(test)]
+impl Drop for DirectSetCallOverrideGuard {
+    fn drop(&mut self) {
+        DIRECT_SET_CALL_OVERRIDE.store(self.previous, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+fn override_direct_set_calls_for_tests(enabled: bool) -> DirectSetCallOverrideGuard {
+    let next = if enabled {
+        DIRECT_SET_CALL_OVERRIDE_ENABLED
+    } else {
+        DIRECT_SET_CALL_OVERRIDE_DISABLED
+    };
+    let previous = DIRECT_SET_CALL_OVERRIDE.swap(next, Ordering::Relaxed);
+    DirectSetCallOverrideGuard { previous }
 }
 
 #[cfg(test)]
@@ -1489,6 +1528,121 @@ mod tests {
         assert!(
             body.iter()
                 .any(|instruction| matches!(instruction, Instruction::MapSetCounter { .. }))
+        );
+    }
+
+    #[test]
+    fn lowering_emits_direct_set_calls_for_const_bindings() {
+        let _guard = override_direct_set_calls_for_tests(true);
+        let program = compile(
+            r#"
+            function summarize(values) {
+              const counts = new Map();
+              const seen = new Set();
+              for (const value of values) {
+                counts.set(value.id, value.score);
+                seen.add(value.id);
+              }
+              return [counts.get(values[0].id), seen.has(values[0].id)];
+            }
+            summarize([{ id: "a", score: 3 }]);
+            "#,
+        )
+        .expect("source should compile");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+        let body = &bytecode.functions[0].code;
+        assert!(
+            body.iter()
+                .any(|instruction| matches!(instruction, Instruction::SetAddDirect { .. }))
+        );
+        assert!(
+            body.iter()
+                .any(|instruction| matches!(instruction, Instruction::SetHasDirect { .. }))
+        );
+    }
+
+    #[test]
+    fn lowering_keeps_mutable_direct_set_receivers_generic() {
+        let _guard = override_direct_set_calls_for_tests(true);
+        let program = compile(
+            r#"
+            function summarize(values) {
+              let seen = new Set();
+              seen = new Set();
+              for (const value of values) {
+                seen.add(value.id);
+              }
+              return seen.has(values[0]?.id);
+            }
+            summarize([{ id: "a" }]);
+            "#,
+        )
+        .expect("source should compile");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+        let body = &bytecode.functions[0].code;
+        assert!(
+            !body
+                .iter()
+                .any(|instruction| matches!(instruction, Instruction::SetAddDirect { .. }))
+        );
+        assert!(
+            !body
+                .iter()
+                .any(|instruction| matches!(instruction, Instruction::SetHasDirect { .. }))
+        );
+    }
+
+    #[test]
+    fn direct_set_calls_record_collection_metrics() {
+        let _guard = override_direct_set_calls_for_tests(true);
+        let program = compile(
+            r#"
+            const seen = new Set();
+            seen.add("a");
+            [seen.has("a"), seen.has("b")];
+            "#,
+        )
+        .expect("source should compile");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+        let (step, metrics) = start_shared_bytecode_with_metrics(
+            Arc::new(bytecode),
+            ExecutionOptions {
+                inputs: IndexMap::new(),
+                capabilities: Vec::new(),
+                limits: RuntimeLimits::default(),
+                cancellation_token: None,
+            },
+        )
+        .expect("program should execute");
+
+        match step {
+            ExecutionStep::Completed(value) => {
+                assert_eq!(
+                    value,
+                    StructuredValue::Array(vec![
+                        StructuredValue::Bool(true),
+                        StructuredValue::Bool(false),
+                    ])
+                );
+            }
+            ExecutionStep::Suspended(_) => panic!("program should not suspend"),
+        }
+
+        assert_eq!(metrics.set_add_calls, 1);
+        assert_eq!(metrics.set_has_calls, 2);
+        assert!(
+            metrics
+                .collection_call_sites
+                .iter()
+                .any(|site| site.set_add_calls == 1 && site.total_calls() == 1)
+        );
+        assert_eq!(
+            metrics
+                .collection_call_sites
+                .iter()
+                .map(|site| site.set_has_calls)
+                .sum::<u64>(),
+            2
         );
     }
 

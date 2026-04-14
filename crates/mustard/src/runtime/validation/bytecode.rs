@@ -506,7 +506,9 @@ fn apply_validation_effect(
                 ..state
             }
         }
-        Instruction::MapSetCounter { .. } => {
+        Instruction::SetAddDirect { .. }
+        | Instruction::SetHasDirect { .. }
+        | Instruction::MapSetCounter { .. } => {
             require_stack(2)?;
             ValidationState {
                 stack_depth: state.stack_depth - 1,

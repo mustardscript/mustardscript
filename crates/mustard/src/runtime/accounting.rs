@@ -40,7 +40,9 @@ impl Runtime {
         let instruction_offset = frame.ip.checked_sub(1)?;
         let function = self.program.functions.get(frame.function_id)?;
         let span = match function.code.get(instruction_offset)? {
-            Instruction::MapSetCounter { span } => *span,
+            Instruction::MapSetCounter { span }
+            | Instruction::SetAddDirect { span }
+            | Instruction::SetHasDirect { span } => *span,
             Instruction::Call { span, .. } | Instruction::CallWithArray { span, .. } => *span,
             _ => return None,
         };

@@ -153,6 +153,12 @@ pub enum Instruction {
     MapSetCounter {
         span: SourceSpan,
     },
+    SetAddDirect {
+        span: SourceSpan,
+    },
+    SetHasDirect {
+        span: SourceSpan,
+    },
     CallWithArray {
         with_this: bool,
         optional: bool,

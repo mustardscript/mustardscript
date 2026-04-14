@@ -13,6 +13,10 @@ use crate::{
 };
 
 impl Compiler {
+    fn supports_direct_set_calls(&self) -> bool {
+        Self::direct_set_calls_enabled()
+    }
+
     fn supports_collection_counter_fast_path(&self) -> bool {
         Self::map_counter_update_fast_path_enabled()
     }
@@ -173,6 +177,55 @@ impl Compiler {
         self.compile_expr(context, object)?;
         self.compile_expr(context, key)?;
         context.code.push(Instruction::MapSetCounter { span });
+        Ok(true)
+    }
+
+    fn try_compile_direct_set_call(
+        &mut self,
+        context: &mut CompileContext,
+        span: SourceSpan,
+        callee: &Expr,
+        arguments: &[CallArgument],
+        optional: bool,
+    ) -> MustardResult<bool> {
+        if optional || !self.supports_direct_set_calls() {
+            return Ok(false);
+        }
+        let Expr::Member {
+            object,
+            property,
+            optional: false,
+            ..
+        } = callee
+        else {
+            return Ok(false);
+        };
+        let Some(kind) = self.expr_known_collection_kind(context, object) else {
+            return Ok(false);
+        };
+        let (MemberProperty::Static(PropertyName::Identifier(method))
+        | MemberProperty::Static(PropertyName::String(method))) = property
+        else {
+            return Ok(false);
+        };
+        let instruction = match (kind, method.as_str(), arguments) {
+            (KnownCollectionKind::Set, "add", [CallArgument::Value(_)]) => {
+                Instruction::SetAddDirect { span }
+            }
+            (KnownCollectionKind::Set, "has", [CallArgument::Value(_)]) => {
+                Instruction::SetHasDirect { span }
+            }
+            _ => return Ok(false),
+        };
+
+        self.compile_expr(context, object)?;
+        for argument in arguments {
+            let CallArgument::Value(argument) = argument else {
+                unreachable!("direct collection calls require non-spread arguments");
+            };
+            self.compile_expr(context, argument)?;
+        }
+        context.code.push(instruction);
         Ok(true)
     }
 
@@ -418,6 +471,15 @@ impl Compiler {
                 optional,
             } => {
                 if self.try_compile_map_counter_update(
+                    context,
+                    *span,
+                    callee.as_ref(),
+                    arguments,
+                    *optional,
+                )? {
+                    return Ok(());
+                }
+                if self.try_compile_direct_set_call(
                     context,
                     *span,
                     callee.as_ref(),
