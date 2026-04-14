@@ -330,6 +330,8 @@ impl DetachedRuntime {
             object_shapes: HashMap::new(),
             next_object_shape_id: 1,
             static_property_inline_caches: HashMap::new(),
+            property_feedback_sites: HashMap::new(),
+            builtin_feedback_sites: HashMap::new(),
             collection_call_sites: self.collection_call_sites,
             snapshot_nonce: self.snapshot_nonce,
             instruction_counter: self.instruction_counter,

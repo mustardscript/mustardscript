@@ -4,6 +4,26 @@ impl Runtime {
     pub(super) fn debug_metrics(&self) -> RuntimeDebugMetrics {
         let mut metrics = self.debug_metrics.clone();
         metrics.dynamic_instructions = self.instruction_counter as u64;
+        metrics.feedback_hot_property_sites = self
+            .property_feedback_sites
+            .values()
+            .filter(|site| site.hot)
+            .count() as u64;
+        metrics.feedback_hot_collection_sites = self
+            .builtin_feedback_sites
+            .values()
+            .filter(|site| site.kind == BuiltinFeedbackKind::Collection && site.hot)
+            .count() as u64;
+        metrics.feedback_hot_string_sites = self
+            .builtin_feedback_sites
+            .values()
+            .filter(|site| site.kind == BuiltinFeedbackKind::String && site.hot)
+            .count() as u64;
+        metrics.feedback_patch_sites = self
+            .property_feedback_sites
+            .values()
+            .filter(|site| site.ever_patched)
+            .count() as u64;
         let mut collection_call_sites = self
             .collection_call_sites
             .values()
@@ -33,11 +53,17 @@ impl Runtime {
         *counter = counter.saturating_add(1);
     }
 
+    pub(super) fn current_program_counter_site(&self) -> Option<(usize, usize)> {
+        let frame = self.frames.last()?;
+        let instruction_offset = frame.ip.checked_sub(1)?;
+        Some((frame.function_id, instruction_offset))
+    }
+
     fn current_collection_call_site(
         &self,
     ) -> Option<(CollectionCallSiteKey, CollectionCallSiteMetrics)> {
+        let (function_id, instruction_offset) = self.current_program_counter_site()?;
         let frame = self.frames.last()?;
-        let instruction_offset = frame.ip.checked_sub(1)?;
         let function = self.program.functions.get(frame.function_id)?;
         let span = match function.code.get(instruction_offset)? {
             Instruction::MapSetCounter { span }
@@ -48,7 +74,7 @@ impl Runtime {
         };
         Some((
             CollectionCallSiteKey {
-                function_id: frame.function_id,
+                function_id,
                 instruction_offset,
             },
             CollectionCallSiteMetrics {
@@ -75,6 +101,82 @@ impl Runtime {
             .entry(key)
             .or_insert(default_metrics);
         bump(metrics);
+    }
+
+    fn builtin_feedback_kind(function: BuiltinFunction) -> Option<BuiltinFeedbackKind> {
+        match function {
+            BuiltinFunction::MapGet
+            | BuiltinFunction::MapSet
+            | BuiltinFunction::MapHas
+            | BuiltinFunction::MapDelete
+            | BuiltinFunction::MapClear
+            | BuiltinFunction::MapEntries
+            | BuiltinFunction::MapKeys
+            | BuiltinFunction::MapValues
+            | BuiltinFunction::MapForEach
+            | BuiltinFunction::SetAdd
+            | BuiltinFunction::SetHas
+            | BuiltinFunction::SetDelete
+            | BuiltinFunction::SetClear
+            | BuiltinFunction::SetEntries
+            | BuiltinFunction::SetKeys
+            | BuiltinFunction::SetValues
+            | BuiltinFunction::SetForEach => Some(BuiltinFeedbackKind::Collection),
+            BuiltinFunction::StringCtor
+            | BuiltinFunction::StringTrim
+            | BuiltinFunction::StringTrimStart
+            | BuiltinFunction::StringTrimEnd
+            | BuiltinFunction::StringIncludes
+            | BuiltinFunction::StringStartsWith
+            | BuiltinFunction::StringEndsWith
+            | BuiltinFunction::StringIndexOf
+            | BuiltinFunction::StringLastIndexOf
+            | BuiltinFunction::StringCharAt
+            | BuiltinFunction::StringAt
+            | BuiltinFunction::StringSlice
+            | BuiltinFunction::StringSubstring
+            | BuiltinFunction::StringToLowerCase
+            | BuiltinFunction::StringToUpperCase
+            | BuiltinFunction::StringRepeat
+            | BuiltinFunction::StringConcat
+            | BuiltinFunction::StringPadStart
+            | BuiltinFunction::StringPadEnd
+            | BuiltinFunction::StringSplit
+            | BuiltinFunction::StringReplace
+            | BuiltinFunction::StringReplaceAll
+            | BuiltinFunction::StringSearch
+            | BuiltinFunction::StringMatch
+            | BuiltinFunction::StringMatchAll
+            | BuiltinFunction::StringToString
+            | BuiltinFunction::StringValueOf => Some(BuiltinFeedbackKind::String),
+            _ => None,
+        }
+    }
+
+    pub(super) fn record_builtin_feedback_site(&mut self, function: BuiltinFunction) {
+        let Some(kind) = Self::builtin_feedback_kind(function) else {
+            return;
+        };
+        let Some(site) = self.current_program_counter_site() else {
+            return;
+        };
+        let feedback = self
+            .builtin_feedback_sites
+            .entry(site)
+            .or_insert(BuiltinFeedbackSite {
+                kind,
+                builtin: function,
+                hits: 0,
+                hot: false,
+                polymorphic: false,
+            });
+        if feedback.kind != kind || feedback.builtin != function {
+            feedback.polymorphic = true;
+        }
+        feedback.hits = feedback.hits.saturating_add(1);
+        if !feedback.polymorphic && feedback.hits >= BUILTIN_FEEDBACK_HOT_SITE_THRESHOLD {
+            feedback.hot = true;
+        }
     }
 
     pub(super) fn record_accounting_refresh(&mut self) {
@@ -109,6 +211,30 @@ impl Runtime {
     pub(super) fn record_property_ic_deopt(&mut self) {
         if self.operation_counters_enabled {
             Self::bump_metric(&mut self.debug_metrics.property_ic_deopts);
+        }
+    }
+
+    pub(super) fn record_feedback_patch_hit(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.feedback_patch_hits);
+        }
+    }
+
+    pub(super) fn record_feedback_patch_fallback(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.feedback_patch_fallbacks);
+        }
+    }
+
+    pub(super) fn record_feedback_patch_invalidation(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.feedback_patch_invalidations);
+        }
+    }
+
+    pub(super) fn record_feedback_patch_deopt(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.feedback_patch_deopts);
         }
     }
 

@@ -38,14 +38,24 @@ new_key_type! { pub(super) struct PromiseKey; }
 
 pub(super) const COLLECTION_LOOKUP_PROMOTION_LEN: usize = 32;
 pub(super) const COLLECTION_STRING_LOOKUP_PROMOTION_LEN: usize = 8;
+pub(super) const PROPERTY_FEEDBACK_HOT_SITE_THRESHOLD: u32 = 8;
+pub(super) const PROPERTY_FEEDBACK_PATCH_WARM_THRESHOLD: u32 = 16;
+pub(super) const PROPERTY_FEEDBACK_PATCH_MAX_INVALIDATIONS: u32 = 2;
+pub(super) const BUILTIN_FEEDBACK_HOT_SITE_THRESHOLD: u32 = 8;
 
 const STRING_LOOKUP_OVERRIDE_UNSET: u8 = 0;
 const STRING_LOOKUP_OVERRIDE_DISABLED: u8 = 1;
 const STRING_LOOKUP_OVERRIDE_ENABLED: u8 = 2;
+const PROPERTY_PATCH_OVERRIDE_UNSET: u8 = 0;
+const PROPERTY_PATCH_OVERRIDE_DISABLED: u8 = 1;
+const PROPERTY_PATCH_OVERRIDE_ENABLED: u8 = 2;
 
 static STRING_LOOKUP_OVERRIDE: AtomicU8 = AtomicU8::new(STRING_LOOKUP_OVERRIDE_UNSET);
+static PROPERTY_PATCH_OVERRIDE: AtomicU8 = AtomicU8::new(PROPERTY_PATCH_OVERRIDE_UNSET);
 #[cfg(test)]
 static STRING_LOOKUP_TEST_LOCK: Mutex<()> = Mutex::new(());
+#[cfg(test)]
+static PROPERTY_PATCH_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(super) enum Value {
@@ -147,6 +157,16 @@ pub(super) fn string_heavy_collection_lookup_enabled() -> bool {
     }
 }
 
+pub(super) fn feedback_property_patching_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+
+    match PROPERTY_PATCH_OVERRIDE.load(Ordering::Relaxed) {
+        PROPERTY_PATCH_OVERRIDE_DISABLED => false,
+        PROPERTY_PATCH_OVERRIDE_ENABLED => true,
+        _ => *ENABLED.get_or_init(|| env_flag_enabled("MUSTARD_ENABLE_FEEDBACK_PROPERTY_PATCHING")),
+    }
+}
+
 #[cfg(test)]
 pub(super) struct StringHeavyCollectionLookupOverrideGuard {
     previous: u8,
@@ -174,6 +194,38 @@ pub(super) fn override_string_heavy_collection_lookup_for_tests(
     };
     let previous = STRING_LOOKUP_OVERRIDE.swap(next, Ordering::Relaxed);
     StringHeavyCollectionLookupOverrideGuard {
+        previous,
+        _lock: lock,
+    }
+}
+
+#[cfg(test)]
+pub(super) struct FeedbackPropertyPatchingOverrideGuard {
+    previous: u8,
+    _lock: MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl Drop for FeedbackPropertyPatchingOverrideGuard {
+    fn drop(&mut self) {
+        PROPERTY_PATCH_OVERRIDE.store(self.previous, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+pub(super) fn override_feedback_property_patching_for_tests(
+    enabled: bool,
+) -> FeedbackPropertyPatchingOverrideGuard {
+    let lock = PROPERTY_PATCH_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let next = if enabled {
+        PROPERTY_PATCH_OVERRIDE_ENABLED
+    } else {
+        PROPERTY_PATCH_OVERRIDE_DISABLED
+    };
+    let previous = PROPERTY_PATCH_OVERRIDE.swap(next, Ordering::Relaxed);
+    FeedbackPropertyPatchingOverrideGuard {
         previous,
         _lock: lock,
     }
@@ -1267,6 +1319,38 @@ pub(super) struct GetPropStaticInlineCacheEntry {
     pub(super) slot: Option<usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PropertyPatch {
+    pub(super) shape_id: u64,
+    pub(super) slot: Option<usize>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(super) struct PropertyFeedbackSite {
+    pub(super) last_observation: Option<(u64, Option<usize>)>,
+    pub(super) stable_hits: u32,
+    pub(super) hot: bool,
+    pub(super) ever_patched: bool,
+    pub(super) patched: Option<PropertyPatch>,
+    pub(super) invalidations: u32,
+    pub(super) disabled: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum BuiltinFeedbackKind {
+    Collection,
+    String,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct BuiltinFeedbackSite {
+    pub(super) kind: BuiltinFeedbackKind,
+    pub(super) builtin: BuiltinFunction,
+    pub(super) hits: u32,
+    pub(super) hot: bool,
+    pub(super) polymorphic: bool,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub(super) struct CollectionCallSiteKey {
     pub(super) function_id: usize,
@@ -1312,6 +1396,10 @@ pub(super) struct Runtime {
     pub(super) next_object_shape_id: u64,
     #[serde(skip, default)]
     pub(super) static_property_inline_caches: HashMap<(usize, usize), GetPropStaticInlineCache>,
+    #[serde(skip, default)]
+    pub(super) property_feedback_sites: HashMap<(usize, usize), PropertyFeedbackSite>,
+    #[serde(skip, default)]
+    pub(super) builtin_feedback_sites: HashMap<(usize, usize), BuiltinFeedbackSite>,
     #[serde(default)]
     pub(super) collection_call_sites: HashMap<CollectionCallSiteKey, CollectionCallSiteMetrics>,
     pub(super) snapshot_nonce: u64,

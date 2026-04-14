@@ -1201,6 +1201,180 @@ impl Runtime {
         }
     }
 
+    fn property_site_supports_feedback_patch(&self, site: (usize, usize)) -> bool {
+        matches!(
+            self.program
+                .functions
+                .get(site.0)
+                .and_then(|function| function.code.get(site.1)),
+            Some(
+                Instruction::GetPropStatic {
+                    optional: false,
+                    ..
+                } | Instruction::DupGetPropStatic {
+                    optional: false,
+                    ..
+                } | Instruction::LoadSlotGetPropStatic {
+                    optional: false,
+                    ..
+                } | Instruction::LoadSlotDupGetPropStatic {
+                    optional: false,
+                    ..
+                }
+            )
+        )
+    }
+
+    fn property_site_is_polymorphic(&self, site: (usize, usize)) -> bool {
+        matches!(
+            self.static_property_inline_caches.get(&site),
+            Some(GetPropStaticInlineCache::Polymorphic(_) | GetPropStaticInlineCache::Megamorphic)
+        )
+    }
+
+    fn invalidate_property_patch_site(&mut self, site: (usize, usize)) {
+        let mut invalidated = false;
+        if let Some(feedback) = self.property_feedback_sites.get_mut(&site)
+            && feedback.patched.take().is_some()
+        {
+            feedback.invalidations = feedback.invalidations.saturating_add(1);
+            feedback.stable_hits = 0;
+            feedback.last_observation = None;
+            if feedback.invalidations >= PROPERTY_FEEDBACK_PATCH_MAX_INVALIDATIONS {
+                feedback.disabled = true;
+            }
+            invalidated = true;
+        }
+        if invalidated {
+            self.record_feedback_patch_fallback();
+            self.record_feedback_patch_invalidation();
+            self.record_feedback_patch_deopt();
+        }
+    }
+
+    fn record_property_feedback_site(
+        &mut self,
+        site: (usize, usize),
+        shape_id: u64,
+        slot: Option<usize>,
+    ) {
+        let supports_patch = self.property_site_supports_feedback_patch(site);
+        let polymorphic = self.property_site_is_polymorphic(site);
+        let patching_enabled = feedback_property_patching_enabled();
+        let mut invalidated = false;
+        if let Some(feedback) = self.property_feedback_sites.get_mut(&site) {
+            if feedback.last_observation == Some((shape_id, slot)) {
+                feedback.stable_hits = feedback.stable_hits.saturating_add(1);
+            } else {
+                feedback.last_observation = Some((shape_id, slot));
+                feedback.stable_hits = 1;
+            }
+            if feedback.stable_hits >= PROPERTY_FEEDBACK_HOT_SITE_THRESHOLD {
+                feedback.hot = true;
+            }
+            if polymorphic {
+                if feedback.patched.take().is_some() {
+                    feedback.invalidations = feedback.invalidations.saturating_add(1);
+                    invalidated = true;
+                }
+                feedback.disabled = true;
+                feedback.stable_hits = 0;
+                feedback.last_observation = None;
+            } else if patching_enabled
+                && supports_patch
+                && !feedback.disabled
+                && feedback.patched.is_none()
+                && feedback.stable_hits >= PROPERTY_FEEDBACK_PATCH_WARM_THRESHOLD
+            {
+                feedback.patched = Some(PropertyPatch { shape_id, slot });
+                feedback.ever_patched = true;
+            }
+        } else {
+            let hot = PROPERTY_FEEDBACK_HOT_SITE_THRESHOLD <= 1;
+            let mut feedback = PropertyFeedbackSite {
+                last_observation: Some((shape_id, slot)),
+                stable_hits: 1,
+                hot,
+                ever_patched: false,
+                patched: None,
+                invalidations: 0,
+                disabled: false,
+            };
+            if polymorphic {
+                feedback.disabled = true;
+                feedback.stable_hits = 0;
+                feedback.last_observation = None;
+            } else if patching_enabled
+                && supports_patch
+                && PROPERTY_FEEDBACK_PATCH_WARM_THRESHOLD <= 1
+            {
+                feedback.patched = Some(PropertyPatch { shape_id, slot });
+                feedback.ever_patched = true;
+            }
+            self.property_feedback_sites.insert(site, feedback);
+        }
+        if invalidated {
+            self.record_feedback_patch_invalidation();
+            self.record_feedback_patch_deopt();
+        }
+    }
+
+    pub(super) fn try_get_patched_property_value(
+        &mut self,
+        site: (usize, usize),
+        object: &Value,
+    ) -> MustardResult<Option<Value>> {
+        let Some(patch) = self
+            .property_feedback_sites
+            .get(&site)
+            .and_then(|feedback| feedback.patched)
+        else {
+            return Ok(None);
+        };
+
+        let Value::Object(object) = object else {
+            self.invalidate_property_patch_site(site);
+            return Ok(None);
+        };
+
+        let value =
+            {
+                let object_ref = self
+                    .objects
+                    .get(*object)
+                    .ok_or_else(|| MustardError::runtime("object missing"))?;
+                if !matches!(object_ref.kind, ObjectKind::Plain) {
+                    None
+                } else {
+                    let ObjectProperties::Shaped(properties) = &object_ref.properties else {
+                        self.invalidate_property_patch_site(site);
+                        return Ok(None);
+                    };
+                    if properties.shape.id != patch.shape_id {
+                        None
+                    } else {
+                        Some(match patch.slot {
+                            Some(slot) => properties.slots.get(slot).cloned().ok_or_else(|| {
+                                MustardError::runtime("object shape slot missing")
+                            })?,
+                            None => Value::Undefined,
+                        })
+                    }
+                }
+            };
+
+        match value {
+            Some(value) => {
+                self.record_feedback_patch_hit();
+                Ok(Some(value))
+            }
+            None => {
+                self.invalidate_property_patch_site(site);
+                Ok(None)
+            }
+        }
+    }
+
     fn get_shape_backed_property_static(
         &mut self,
         object: ObjectKey,
@@ -1250,6 +1424,7 @@ impl Runtime {
                 self.record_property_ic_miss();
                 self.update_get_prop_static_inline_cache(site, shape_id, slot);
             }
+            self.record_property_feedback_site(site, shape_id, slot);
         }
         Ok(Some(value))
     }
@@ -2058,4 +2233,152 @@ where
     );
 
     keys
+}
+
+#[cfg(test)]
+mod tests {
+    use indexmap::IndexMap;
+    use std::sync::Arc;
+
+    use crate::{
+        ExecutionOptions, ExecutionStep, RuntimeDebugMetrics, RuntimeLimits, StructuredValue,
+        compile, lower_to_bytecode, start_shared_bytecode_with_metrics,
+        structured::StructuredNumber,
+    };
+
+    fn run_with_metrics(
+        source: &str,
+        inputs: IndexMap<String, StructuredValue>,
+    ) -> (StructuredValue, RuntimeDebugMetrics) {
+        let program = compile(source).expect("source should compile");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+        let (step, metrics) = start_shared_bytecode_with_metrics(
+            Arc::new(bytecode),
+            ExecutionOptions {
+                inputs,
+                capabilities: Vec::new(),
+                limits: RuntimeLimits::default(),
+                cancellation_token: None,
+            },
+        )
+        .expect("program should execute");
+        match step {
+            ExecutionStep::Completed(value) => (value, metrics),
+            ExecutionStep::Suspended(_) => panic!("program should not suspend"),
+        }
+    }
+
+    #[test]
+    fn feedback_property_patching_records_hot_sites_and_patch_hits() {
+        let _guard = super::super::state::override_feedback_property_patching_for_tests(true);
+        let (value, metrics) = run_with_metrics(
+            r#"
+            let total = 0;
+            for (let round = 0; round < 5; round += 1) {
+              for (const row of rows) {
+                total += row.score;
+              }
+            }
+            total;
+            "#,
+            IndexMap::from([(
+                "rows".to_string(),
+                StructuredValue::Array(vec![
+                    StructuredValue::Object(IndexMap::from([(
+                        "score".to_string(),
+                        StructuredValue::Number(StructuredNumber::Finite(7.0)),
+                    )])),
+                    StructuredValue::Object(IndexMap::from([(
+                        "score".to_string(),
+                        StructuredValue::Number(StructuredNumber::Finite(3.0)),
+                    )])),
+                    StructuredValue::Object(IndexMap::from([(
+                        "score".to_string(),
+                        StructuredValue::Number(StructuredNumber::Finite(5.0)),
+                    )])),
+                    StructuredValue::Object(IndexMap::from([(
+                        "score".to_string(),
+                        StructuredValue::Number(StructuredNumber::Finite(9.0)),
+                    )])),
+                ]),
+            )]),
+        );
+
+        assert_eq!(
+            value,
+            StructuredValue::Number(StructuredNumber::Finite(120.0))
+        );
+        assert!(metrics.feedback_hot_property_sites >= 1);
+        assert!(metrics.feedback_patch_sites >= 1);
+        assert!(metrics.feedback_patch_hits > 0);
+    }
+
+    #[test]
+    fn feedback_property_patching_invalidates_after_shape_escape() {
+        let _guard = super::super::state::override_feedback_property_patching_for_tests(true);
+        let (value, metrics) = run_with_metrics(
+            r#"
+            const row = rows[0];
+            function readScore() {
+              return row.score;
+            }
+            let total = 0;
+            for (let i = 0; i < 20; i += 1) {
+              total += readScore();
+            }
+            row.extra = 1;
+            total += readScore();
+            total;
+            "#,
+            IndexMap::from([(
+                "rows".to_string(),
+                StructuredValue::Array(vec![
+                    StructuredValue::Object(IndexMap::from([(
+                        "score".to_string(),
+                        StructuredValue::Number(StructuredNumber::Finite(7.0)),
+                    )])),
+                    StructuredValue::Object(IndexMap::from([(
+                        "score".to_string(),
+                        StructuredValue::Number(StructuredNumber::Finite(3.0)),
+                    )])),
+                ]),
+            )]),
+        );
+
+        assert_eq!(
+            value,
+            StructuredValue::Number(StructuredNumber::Finite(147.0))
+        );
+        assert!(metrics.feedback_patch_hits > 0);
+        assert!(metrics.feedback_patch_fallbacks >= 1);
+        assert!(metrics.feedback_patch_invalidations >= 1);
+        assert!(metrics.feedback_patch_deopts >= 1);
+    }
+
+    #[test]
+    fn feedback_builtin_sites_track_hot_collection_and_string_calls() {
+        let (value, metrics) = run_with_metrics(
+            r#"
+            const seen = new Set(["alpha", "beta"]);
+            let total = 0;
+            for (let i = 0; i < 10; i += 1) {
+              if (seen.has("alpha")) {
+                const label = "HELLO WORLD".toLowerCase();
+                if (label.includes("hello")) {
+                  total += 1;
+                }
+              }
+            }
+            total;
+            "#,
+            IndexMap::new(),
+        );
+
+        assert_eq!(
+            value,
+            StructuredValue::Number(StructuredNumber::Finite(10.0))
+        );
+        assert!(metrics.feedback_hot_collection_sites >= 1);
+        assert!(metrics.feedback_hot_string_sites >= 1);
+    }
 }

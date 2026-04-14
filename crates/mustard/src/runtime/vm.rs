@@ -75,12 +75,13 @@ impl Runtime {
                 let env = self.frames[frame_index].env;
                 let object = self.lookup_slot(env, *depth, *slot)?;
                 self.record_static_property_read();
-                let value = self.get_property_static_at_site(
-                    object,
-                    name,
-                    *optional,
-                    Some((function_id, ip)),
-                )?;
+                let site = (function_id, ip);
+                let value =
+                    if let Some(value) = self.try_get_patched_property_value(site, &object)? {
+                        value
+                    } else {
+                        self.get_property_static_at_site(object, name, *optional, Some(site))?
+                    };
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::LoadSlotDupGetPropStatic {
@@ -92,12 +93,14 @@ impl Runtime {
                 let env = self.frames[frame_index].env;
                 let object = self.lookup_slot(env, *depth, *slot)?;
                 self.record_static_property_read();
-                let value = self.get_property_static_at_site(
-                    object.clone(),
-                    name,
-                    *optional,
-                    Some((function_id, ip)),
-                )?;
+                let site = (function_id, ip);
+                let value = if let Some(value) =
+                    self.try_get_patched_property_value(site, &object)?
+                {
+                    value
+                } else {
+                    self.get_property_static_at_site(object.clone(), name, *optional, Some(site))?
+                };
                 self.frames[frame_index].stack.push(object);
                 self.frames[frame_index].stack.push(value);
             }
@@ -283,17 +286,25 @@ impl Runtime {
                 self.frames[frame_index].stack.push(Value::Bool(done));
             }
             Instruction::GetPropStatic { name, optional } => {
-                let object = self.frames[frame_index]
-                    .stack
-                    .pop()
-                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 self.record_static_property_read();
-                let value = self.get_property_static_at_site(
-                    object,
-                    name,
-                    *optional,
-                    Some((function_id, ip)),
-                )?;
+                let site = (function_id, ip);
+                let value = if let Some(object) = self.frames[frame_index].stack.last().cloned() {
+                    if let Some(value) = self.try_get_patched_property_value(site, &object)? {
+                        self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                        value
+                    } else {
+                        let object = self.frames[frame_index]
+                            .stack
+                            .pop()
+                            .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                        self.get_property_static_at_site(object, name, *optional, Some(site))?
+                    }
+                } else {
+                    return Err(MustardError::runtime("stack underflow"));
+                };
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::GetPropComputed { optional } => {
@@ -433,12 +444,13 @@ impl Runtime {
                     .cloned()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 self.record_static_property_read();
-                let value = self.get_property_static_at_site(
-                    object,
-                    name,
-                    *optional,
-                    Some((function_id, ip)),
-                )?;
+                let site = (function_id, ip);
+                let value =
+                    if let Some(value) = self.try_get_patched_property_value(site, &object)? {
+                        value
+                    } else {
+                        self.get_property_static_at_site(object, name, *optional, Some(site))?
+                    };
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::Dup2 => {
@@ -624,6 +636,7 @@ impl Runtime {
                 }
             }
             Instruction::MapSetCounter { .. } => {
+                self.record_builtin_feedback_site(BuiltinFunction::MapSet);
                 let key = self.frames[frame_index]
                     .stack
                     .pop()
@@ -652,6 +665,7 @@ impl Runtime {
                 self.frames[frame_index].stack.push(Value::Map(map));
             }
             Instruction::SetAddDirect { .. } => {
+                self.record_builtin_feedback_site(BuiltinFunction::SetAdd);
                 let value = self.frames[frame_index]
                     .stack
                     .pop()
@@ -666,6 +680,7 @@ impl Runtime {
                 self.frames[frame_index].stack.push(Value::Set(set));
             }
             Instruction::SetHasDirect { .. } => {
+                self.record_builtin_feedback_site(BuiltinFunction::SetHas);
                 let value = self.frames[frame_index]
                     .stack
                     .pop()
@@ -925,9 +940,12 @@ impl Runtime {
                 BuiltinFunction::FunctionBind => Ok(RunState::Completed(
                     self.call_function_bind(this_value, args)?,
                 )),
-                _ => Ok(RunState::Completed(
-                    self.call_builtin(function, this_value, args)?,
-                )),
+                _ => {
+                    self.record_builtin_feedback_site(function);
+                    Ok(RunState::Completed(
+                        self.call_builtin(function, this_value, args)?,
+                    ))
+                }
             },
             Value::Object(object)
                 if self

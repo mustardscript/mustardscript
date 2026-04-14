@@ -105,6 +105,22 @@ pub struct RuntimeDebugMetrics {
     pub property_ic_hits: u64,
     pub property_ic_misses: u64,
     pub property_ic_deopts: u64,
+    #[serde(default)]
+    pub feedback_hot_property_sites: u64,
+    #[serde(default)]
+    pub feedback_hot_collection_sites: u64,
+    #[serde(default)]
+    pub feedback_hot_string_sites: u64,
+    #[serde(default)]
+    pub feedback_patch_sites: u64,
+    #[serde(default)]
+    pub feedback_patch_hits: u64,
+    #[serde(default)]
+    pub feedback_patch_fallbacks: u64,
+    #[serde(default)]
+    pub feedback_patch_invalidations: u64,
+    #[serde(default)]
+    pub feedback_patch_deopts: u64,
     pub object_allocations: u64,
     pub array_allocations: u64,
     pub map_get_calls: u64,
