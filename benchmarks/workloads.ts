@@ -62,7 +62,7 @@ const {
 } = require('./ptc-sentinels.ts');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const FIXTURE_VERSION = 9;
+const FIXTURE_VERSION = 10;
 const SNAPSHOT_KEY = 'benchmark-workloads-snapshot-key';
 const SNAPSHOT_KEY_BASE64 = Buffer.from(SNAPSHOT_KEY, 'utf8').toString('base64');
 const WEBSITE_PTC_EXPORT_PATH = path.join(
@@ -3165,6 +3165,7 @@ function printSummary(results) {
         `combinators ${metric.executed_promise_combinators}/${metric.queued_promise_combinators}`,
       ].join(', ');
       const operationSummary = [
+        `dynamic instructions ${metric.dynamic_instructions}`,
         `static/computed props ${metric.static_property_reads}/${metric.computed_property_reads}`,
         `object/array allocs ${metric.object_allocations}/${metric.array_allocations}`,
         `Map get/set ${metric.map_get_calls}/${metric.map_set_calls}`,
@@ -3461,7 +3462,7 @@ async function main() {
       boundaryDefinitions:
         'addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.',
       counterDefinitions:
-        'addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, accounting refresh counts, static/computed property reads, object/array allocations, Map.get/Map.set, Set.add/Set.has, string case conversion, literal string search, regex search or replacement, and comparator-based sort invocations.',
+        'addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, accounting refresh counts, dynamic instruction dispatch count, static/computed property reads, object/array allocations, Map.get/Map.set, Set.add/Set.has, string case conversion, literal string search, regex search or replacement, and comparator-based sort invocations.',
       suspendStateDefinitions:
         'addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.',
       ptcDefinitions:

@@ -72,6 +72,7 @@ fn runtime_debug_metrics_track_ptc_relevant_operations() {
 
     assert!(metrics.static_property_reads > 0);
     assert!(metrics.computed_property_reads > 0);
+    assert!(metrics.dynamic_instructions > 0);
     assert!(metrics.object_allocations > 0);
     assert!(metrics.array_allocations > 0);
     assert!(metrics.map_get_calls > 0);

@@ -135,6 +135,7 @@ machine metadata and latency summaries for:
   accounting refresh count, queued/executed microtask breakdowns for
   async-heavy primary PTC lanes, plus operation counters for representative
   phase-2 headline lanes:
+  - dynamic instruction dispatch count
   - static/computed property reads
   - object/array allocations
   - `Map.get` / `Map.set`

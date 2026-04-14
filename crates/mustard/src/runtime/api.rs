@@ -78,6 +78,7 @@ pub struct RuntimeDebugMetrics {
     pub gc_reclaimed_bytes: u64,
     pub gc_reclaimed_allocations: u64,
     pub accounting_refreshes: u64,
+    pub dynamic_instructions: u64,
     pub static_property_reads: u64,
     pub computed_property_reads: u64,
     pub object_allocations: u64,

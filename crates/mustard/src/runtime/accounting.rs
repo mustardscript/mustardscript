@@ -2,7 +2,9 @@ use super::*;
 
 impl Runtime {
     pub(super) fn debug_metrics(&self) -> RuntimeDebugMetrics {
-        self.debug_metrics
+        let mut metrics = self.debug_metrics;
+        metrics.dynamic_instructions = self.instruction_counter as u64;
+        metrics
     }
 
     pub(super) fn enable_operation_counters(&mut self) {
