@@ -10,6 +10,19 @@ fn number(value: f64) -> StructuredValue {
     StructuredValue::from(value)
 }
 
+fn shaped_rows_input() -> StructuredValue {
+    StructuredValue::Array(vec![
+        StructuredValue::Object(IndexMap::from([
+            ("foo".to_string(), number(1.0)),
+            ("bar".to_string(), number(10.0)),
+        ])),
+        StructuredValue::Object(IndexMap::from([
+            ("foo".to_string(), number(2.0)),
+            ("bar".to_string(), number(20.0)),
+        ])),
+    ])
+}
+
 #[test]
 fn executes_async_functions_and_microtasks() {
     let program = compile(
@@ -132,6 +145,58 @@ fn async_host_snapshots_round_trip_through_dump_and_load() {
     .expect("resume should succeed");
     match resumed {
         ExecutionStep::Completed(value) => assert_eq!(value, number(7.0)),
+        ExecutionStep::Suspended(_) => panic!("expected completion after resume"),
+    }
+}
+
+#[test]
+fn async_host_snapshots_preserve_shape_backed_host_rows() {
+    let program = compile(
+        r#"
+        async function load() {
+          const first = rows[0].foo;
+          const resolved = await fetch_data(first);
+          return rows[1].bar + resolved;
+        }
+        load();
+        "#,
+    )
+    .expect("source should compile");
+
+    let suspended = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::from([("rows".to_string(), shaped_rows_input())]),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+
+    assert_eq!(suspended.capability, "fetch_data");
+    assert_eq!(suspended.args, vec![number(1.0)]);
+
+    let snapshot_bytes = dump_snapshot(&suspended.snapshot).expect("snapshot dump should succeed");
+    let loaded_snapshot = load_snapshot(&snapshot_bytes).expect("snapshot load should succeed");
+    let resumed = resume_with_options(
+        loaded_snapshot,
+        ResumePayload::Value(number(4.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(SnapshotPolicy {
+                capabilities: vec!["fetch_data".to_string()],
+                limits: RuntimeLimits::default(),
+            }),
+        },
+    )
+    .expect("resume should succeed");
+    match resumed {
+        ExecutionStep::Completed(value) => assert_eq!(value, number(24.0)),
         ExecutionStep::Suspended(_) => panic!("expected completion after resume"),
     }
 }

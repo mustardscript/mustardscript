@@ -78,13 +78,10 @@ impl Runtime {
                             let mut keys = (0..value.chars().count())
                                 .map(|index| index.to_string())
                                 .collect::<Vec<_>>();
-                            keys.extend(ordered_own_property_keys(&object.properties));
+                            keys.extend(object.properties.ordered_keys());
                             (keys.len(), keys)
                         }
-                        _ => (
-                            object.properties.len(),
-                            ordered_own_property_keys(&object.properties),
-                        ),
+                        _ => (object.properties.len(), object.properties.ordered_keys()),
                     }
                 };
                 self.charge_native_helper_work(count)?;

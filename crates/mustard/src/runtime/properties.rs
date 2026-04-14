@@ -1,5 +1,7 @@
 use super::*;
 
+const GET_PROP_STATIC_INLINE_CACHE_POLYMORPHIC_LIMIT: usize = 4;
+
 impl Runtime {
     fn function_helper_method(key: &str) -> Option<Value> {
         match key {
@@ -151,26 +153,24 @@ impl Runtime {
         let Some(object) = self.builtin_function_objects.get(&function).copied() else {
             return Ok(Vec::new());
         };
-        Ok(ordered_own_property_keys(
-            &self
-                .objects
-                .get(object)
-                .ok_or_else(|| MustardError::runtime("object missing"))?
-                .properties,
-        ))
+        Ok(self
+            .objects
+            .get(object)
+            .ok_or_else(|| MustardError::runtime("object missing"))?
+            .properties
+            .ordered_keys())
     }
 
     pub(super) fn host_function_custom_keys(&self, capability: &str) -> MustardResult<Vec<String>> {
         let Some(object) = self.host_function_objects.get(capability).copied() else {
             return Ok(Vec::new());
         };
-        Ok(ordered_own_property_keys(
-            &self
-                .objects
-                .get(object)
-                .ok_or_else(|| MustardError::runtime("object missing"))?
-                .properties,
-        ))
+        Ok(self
+            .objects
+            .get(object)
+            .ok_or_else(|| MustardError::runtime("object missing"))?
+            .properties
+            .ordered_keys())
     }
 
     fn set_builtin_function_property(
@@ -1123,22 +1123,171 @@ impl Runtime {
         })
     }
 
+    fn materialize_object_properties_if_needed(&mut self, object: ObjectKey) -> MustardResult<()> {
+        let was_shaped = self
+            .objects
+            .get(object)
+            .ok_or_else(|| MustardError::runtime("object missing"))?
+            .properties
+            .is_shaped();
+        if !was_shaped {
+            return Ok(());
+        }
+
+        self.objects
+            .get_mut(object)
+            .ok_or_else(|| MustardError::runtime("object missing"))?
+            .properties
+            .materialize();
+        self.refresh_object_accounting(object)?;
+        self.record_property_ic_deopt();
+        Ok(())
+    }
+
+    fn cached_shape_slot(cache: &GetPropStaticInlineCache, shape_id: u64) -> Option<Option<usize>> {
+        match cache {
+            GetPropStaticInlineCache::Uninitialized => None,
+            GetPropStaticInlineCache::Monomorphic {
+                shape_id: cached_shape_id,
+                slot,
+            } if *cached_shape_id == shape_id => Some(*slot),
+            GetPropStaticInlineCache::Polymorphic(entries) => entries
+                .iter()
+                .find(|entry| entry.shape_id == shape_id)
+                .map(|entry| entry.slot),
+            GetPropStaticInlineCache::Megamorphic
+            | GetPropStaticInlineCache::Monomorphic { .. } => None,
+        }
+    }
+
+    fn update_get_prop_static_inline_cache(
+        &mut self,
+        site: (usize, usize),
+        shape_id: u64,
+        slot: Option<usize>,
+    ) {
+        let cache = self.static_property_inline_caches.entry(site).or_default();
+        match cache {
+            GetPropStaticInlineCache::Uninitialized => {
+                *cache = GetPropStaticInlineCache::Monomorphic { shape_id, slot };
+            }
+            GetPropStaticInlineCache::Monomorphic {
+                shape_id: cached_shape_id,
+                slot: cached_slot,
+            } => {
+                if *cached_shape_id == shape_id {
+                    *cached_slot = slot;
+                } else {
+                    *cache = GetPropStaticInlineCache::Polymorphic(vec![
+                        GetPropStaticInlineCacheEntry {
+                            shape_id: *cached_shape_id,
+                            slot: *cached_slot,
+                        },
+                        GetPropStaticInlineCacheEntry { shape_id, slot },
+                    ]);
+                }
+            }
+            GetPropStaticInlineCache::Polymorphic(entries) => {
+                if let Some(entry) = entries.iter_mut().find(|entry| entry.shape_id == shape_id) {
+                    entry.slot = slot;
+                } else if entries.len() < GET_PROP_STATIC_INLINE_CACHE_POLYMORPHIC_LIMIT {
+                    entries.push(GetPropStaticInlineCacheEntry { shape_id, slot });
+                } else {
+                    *cache = GetPropStaticInlineCache::Megamorphic;
+                    self.record_property_ic_deopt();
+                }
+            }
+            GetPropStaticInlineCache::Megamorphic => {}
+        }
+    }
+
+    fn get_shape_backed_property_static(
+        &mut self,
+        object: ObjectKey,
+        key: &str,
+        site: Option<(usize, usize)>,
+    ) -> MustardResult<Option<Value>> {
+        if key == "constructor" {
+            return Ok(None);
+        }
+
+        let cached = site.and_then(|site| self.static_property_inline_caches.get(&site).cloned());
+        let shaped_lookup = {
+            let object_ref = self
+                .objects
+                .get(object)
+                .ok_or_else(|| MustardError::runtime("object missing"))?;
+            if !matches!(object_ref.kind, ObjectKind::Plain) {
+                return Ok(None);
+            }
+            let ObjectProperties::Shaped(properties) = &object_ref.properties else {
+                return Ok(None);
+            };
+            let shape_id = properties.shape.id;
+            let cached_slot = cached
+                .as_ref()
+                .and_then(|cache| Self::cached_shape_slot(cache, shape_id));
+            let (slot, hit) = match cached_slot {
+                Some(slot) => (slot, true),
+                None => (properties.shape.property_slots.get(key).copied(), false),
+            };
+            let value = match slot {
+                Some(slot) => properties
+                    .slots
+                    .get(slot)
+                    .cloned()
+                    .ok_or_else(|| MustardError::runtime("object shape slot missing"))?,
+                None => Value::Undefined,
+            };
+            (shape_id, slot, value, hit)
+        };
+
+        let (shape_id, slot, value, hit) = shaped_lookup;
+        if let Some(site) = site {
+            if hit {
+                self.record_property_ic_hit();
+            } else {
+                self.record_property_ic_miss();
+                self.update_get_prop_static_inline_cache(site, shape_id, slot);
+            }
+        }
+        Ok(Some(value))
+    }
+
     pub(super) fn get_property(
-        &self,
+        &mut self,
         object: Value,
         property: Value,
         optional: bool,
     ) -> MustardResult<Value> {
+        if let Value::Object(object) = object.clone() {
+            self.materialize_object_properties_if_needed(object)?;
+        }
         let key = self.to_property_key(property)?;
         self.get_property_by_key(object, &key, optional)
     }
 
     pub(super) fn get_property_static(
-        &self,
+        &mut self,
         object: Value,
         key: &str,
         optional: bool,
     ) -> MustardResult<Value> {
+        self.get_property_static_at_site(object, key, optional, None)
+    }
+
+    pub(super) fn get_property_static_at_site(
+        &mut self,
+        object: Value,
+        key: &str,
+        optional: bool,
+        site: Option<(usize, usize)>,
+    ) -> MustardResult<Value> {
+        if let Value::Object(object) = object.clone()
+            && let Some(value) = self.get_shape_backed_property_static(object, key, site)?
+        {
+            return Ok(value);
+        }
         self.get_property_by_key(object, key, optional)
     }
 
@@ -1759,6 +1908,7 @@ impl Runtime {
         self.infer_closure_name(&value, key)?;
         match object {
             Value::Object(object) => {
+                self.materialize_object_properties_if_needed(object)?;
                 if self.is_regexp_object(object) && key == "lastIndex" {
                     let index = self.to_integer(value.clone())?.max(0) as usize;
                     self.regexp_object_mut(object)?.last_index = index;

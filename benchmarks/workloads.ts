@@ -3167,6 +3167,7 @@ function printSummary(results) {
       const operationSummary = [
         `dynamic instructions ${metric.dynamic_instructions}`,
         `static/computed props ${metric.static_property_reads}/${metric.computed_property_reads}`,
+        `property IC hit/miss/deopt ${metric.property_ic_hits}/${metric.property_ic_misses}/${metric.property_ic_deopts}`,
         `object/array allocs ${metric.object_allocations}/${metric.array_allocations}`,
         `Map get/set ${metric.map_get_calls}/${metric.map_set_calls}`,
         `Set add/has ${metric.set_add_calls}/${metric.set_has_calls}`,

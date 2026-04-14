@@ -130,10 +130,7 @@ impl Runtime {
             .properties
             .keys()
         {
-            if !allowed
-                .iter()
-                .any(|allowed_key| allowed_key == &key.as_str())
-            {
+            if !allowed.contains(&key.as_str()) {
                 return Err(MustardError::runtime(format!(
                     "TypeError: Intl.{ctor} does not support the `{key}` option",
                 )));

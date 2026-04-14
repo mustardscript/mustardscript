@@ -743,12 +743,10 @@ impl Runtime {
                 .get(object)
                 .ok_or_else(|| MustardError::runtime("object missing"))?;
             match &object_ref.kind {
-                ObjectKind::Error(_) => {
-                    ordered_own_property_keys_filtered(&object_ref.properties, |key, _| {
-                        key != "name" && key != "message"
-                    })
-                }
-                _ => ordered_own_property_keys(&object_ref.properties),
+                ObjectKind::Error(_) => object_ref
+                    .properties
+                    .ordered_keys_filtered(|key, _| key != "name" && key != "message"),
+                _ => object_ref.properties.ordered_keys(),
             }
         };
         let result = (|| {

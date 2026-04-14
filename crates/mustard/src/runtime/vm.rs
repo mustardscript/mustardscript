@@ -75,7 +75,12 @@ impl Runtime {
                 let env = self.frames[frame_index].env;
                 let object = self.lookup_slot(env, *depth, *slot)?;
                 self.record_static_property_read();
-                let value = self.get_property_static(object, name, *optional)?;
+                let value = self.get_property_static_at_site(
+                    object,
+                    name,
+                    *optional,
+                    Some((function_id, ip)),
+                )?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::LoadSlotDupGetPropStatic {
@@ -87,7 +92,12 @@ impl Runtime {
                 let env = self.frames[frame_index].env;
                 let object = self.lookup_slot(env, *depth, *slot)?;
                 self.record_static_property_read();
-                let value = self.get_property_static(object.clone(), name, *optional)?;
+                let value = self.get_property_static_at_site(
+                    object.clone(),
+                    name,
+                    *optional,
+                    Some((function_id, ip)),
+                )?;
                 self.frames[frame_index].stack.push(object);
                 self.frames[frame_index].stack.push(value);
             }
@@ -278,7 +288,12 @@ impl Runtime {
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 self.record_static_property_read();
-                let value = self.get_property_static(object, name, *optional)?;
+                let value = self.get_property_static_at_site(
+                    object,
+                    name,
+                    *optional,
+                    Some((function_id, ip)),
+                )?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::GetPropComputed { optional } => {
@@ -418,7 +433,12 @@ impl Runtime {
                     .cloned()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 self.record_static_property_read();
-                let value = self.get_property_static(object, name, *optional)?;
+                let value = self.get_property_static_at_site(
+                    object,
+                    name,
+                    *optional,
+                    Some((function_id, ip)),
+                )?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::Dup2 => {

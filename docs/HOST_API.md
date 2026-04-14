@@ -4,7 +4,7 @@ description: "Host boundary, structured values, capability calls, and error hand
 category: "API Reference"
 order: 1
 slug: "host-api"
-lastUpdated: "2026-04-13"
+lastUpdated: "2026-04-14"
 ---
 
 # Host API
@@ -51,6 +51,9 @@ typed error instead of recursing until the JS or Rust stack overflows.
 Structured values are trees, not identity graphs. Guest results and suspended
 capability arguments therefore fail closed on shared guest arrays or plain
 objects instead of alias-expanding them during export.
+Boundary-decoded plain objects may use shared internal shape-backed storage for
+faster repeated static property reads, but mutation and unsupported accesses
+still fall back to the same plain-object semantics documented here.
 
 ## Capability Calls
 

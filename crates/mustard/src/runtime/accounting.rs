@@ -36,6 +36,24 @@ impl Runtime {
         }
     }
 
+    pub(super) fn record_property_ic_hit(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.property_ic_hits);
+        }
+    }
+
+    pub(super) fn record_property_ic_miss(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.property_ic_misses);
+        }
+    }
+
+    pub(super) fn record_property_ic_deopt(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.property_ic_deopts);
+        }
+    }
+
     pub(super) fn record_object_allocation(&mut self) {
         if self.operation_counters_enabled {
             Self::bump_metric(&mut self.debug_metrics.object_allocations);
@@ -678,13 +696,47 @@ impl Runtime {
     ) -> MustardResult<ObjectKey> {
         self.record_object_allocation();
         let mut object = PlainObject {
-            properties,
+            properties: ObjectProperties::Plain(properties),
             kind,
             accounted_bytes: 0,
         };
         object.accounted_bytes = measure_object_bytes(&object);
         self.account_new_allocation(object.accounted_bytes)?;
         Ok(self.objects.insert(object))
+    }
+
+    pub(super) fn insert_shape_backed_object(
+        &mut self,
+        properties: IndexMap<String, Value>,
+    ) -> MustardResult<ObjectKey> {
+        self.record_object_allocation();
+        let keys = properties.keys().cloned().collect::<Vec<_>>();
+        let shape = self.intern_object_shape(keys)?;
+        let mut object = PlainObject {
+            properties: ObjectProperties::Shaped(ShapedObjectProperties {
+                shape,
+                slots: properties.into_values().collect(),
+            }),
+            kind: ObjectKind::Plain,
+            accounted_bytes: 0,
+        };
+        object.accounted_bytes = measure_object_bytes(&object);
+        self.account_new_allocation(object.accounted_bytes)?;
+        Ok(self.objects.insert(object))
+    }
+
+    fn intern_object_shape(&mut self, keys: Vec<String>) -> MustardResult<Arc<SharedObjectShape>> {
+        if let Some(shape) = self.object_shapes.get(&keys) {
+            return Ok(shape.clone());
+        }
+
+        let mut shape = SharedObjectShape::from_keys(self.next_object_shape_id, keys.clone());
+        shape.accounted_bytes = measure_shared_object_shape_bytes(&shape);
+        self.account_new_allocation(shape.accounted_bytes)?;
+        self.next_object_shape_id = self.next_object_shape_id.saturating_add(1);
+        let shape = Arc::new(shape);
+        self.object_shapes.insert(keys, shape.clone());
+        Ok(shape)
     }
 
     pub(super) fn insert_array(
@@ -859,7 +911,6 @@ impl Runtime {
         Ok(())
     }
 
-    #[cfg(test)]
     pub(super) fn refresh_object_accounting(&mut self, key: ObjectKey) -> MustardResult<()> {
         self.record_accounting_refresh();
         let (old_bytes, new_bytes) = {
@@ -890,6 +941,7 @@ impl Runtime {
 
     pub(super) fn recompute_accounting_after_load(&mut self) -> MustardResult<()> {
         self.record_accounting_refresh();
+        self.rebuild_object_shape_state();
         let (heap_bytes_used, allocation_count) =
             self.recompute_accounting_totals().map_err(|message| {
                 serialization_error(format!("snapshot validation failed: {message}"))
@@ -906,6 +958,12 @@ impl Runtime {
         let mut heap_bytes_used = 0usize;
         let mut allocation_count = 0usize;
 
+        for shape in self.object_shapes.values() {
+            heap_bytes_used = heap_bytes_used
+                .checked_add(measure_shared_object_shape_bytes(shape.as_ref()))
+                .ok_or_else(|| "heap accounting overflow".to_string())?;
+            allocation_count += 1;
+        }
         for env in self.envs.values_mut() {
             env.accounted_bytes = measure_env_bytes(env);
             heap_bytes_used = heap_bytes_used
@@ -974,6 +1032,31 @@ impl Runtime {
 
         Ok((heap_bytes_used, allocation_count))
     }
+
+    pub(super) fn rebuild_object_shape_state(&mut self) {
+        let mut object_shapes: HashMap<Vec<String>, Arc<SharedObjectShape>> = HashMap::new();
+        let mut next_object_shape_id = 1u64;
+        for object in self.objects.values_mut() {
+            let ObjectProperties::Shaped(properties) = &mut object.properties else {
+                continue;
+            };
+            let keys = properties
+                .shape
+                .property_slots
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>();
+            next_object_shape_id = next_object_shape_id.max(properties.shape.id.saturating_add(1));
+            if let Some(shape) = object_shapes.get(&keys) {
+                properties.shape = shape.clone();
+            } else {
+                object_shapes.insert(keys, properties.shape.clone());
+            }
+        }
+        self.object_shapes = object_shapes;
+        self.next_object_shape_id = next_object_shape_id;
+        self.static_property_inline_caches.clear();
+    }
 }
 
 fn extra_value_bytes(value: &Value) -> usize {
@@ -1010,6 +1093,29 @@ fn measure_properties_bytes(properties: &IndexMap<String, Value>) -> usize {
         .sum::<usize>()
 }
 
+fn measure_object_properties_bytes(properties: &ObjectProperties) -> usize {
+    match properties {
+        ObjectProperties::Plain(properties) => measure_properties_bytes(properties),
+        ObjectProperties::Shaped(properties) => {
+            std::mem::size_of::<ShapedObjectProperties>()
+                + properties
+                    .slots
+                    .iter()
+                    .map(|value| std::mem::size_of::<Value>() + extra_value_bytes(value))
+                    .sum::<usize>()
+        }
+    }
+}
+
+fn measure_shared_object_shape_bytes(shape: &SharedObjectShape) -> usize {
+    std::mem::size_of::<SharedObjectShape>()
+        + shape
+            .property_slots
+            .keys()
+            .map(|key| std::mem::size_of::<(String, usize)>() + key.len())
+            .sum::<usize>()
+}
+
 fn measure_env_bytes(env: &Env) -> usize {
     std::mem::size_of::<Env>() + measure_bindings_bytes(&env.bindings)
 }
@@ -1020,7 +1126,7 @@ fn measure_cell_bytes(cell: &Cell) -> usize {
 
 fn measure_object_bytes(object: &PlainObject) -> usize {
     std::mem::size_of::<PlainObject>()
-        + measure_properties_bytes(&object.properties)
+        + measure_object_properties_bytes(&object.properties)
         + match &object.kind {
             ObjectKind::FunctionPrototype(constructor) => extra_value_bytes(constructor),
             ObjectKind::BoundFunction(bound) => {

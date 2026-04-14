@@ -17,7 +17,9 @@ use crate::{
     structured::StructuredValue,
 };
 
-use super::{api::ExecutionStep, bytecode::BytecodeProgram};
+use super::{
+    api::ExecutionStep, bytecode::BytecodeProgram, properties::array_index_from_property_key,
+};
 
 new_key_type! { pub(super) struct EnvKey; }
 new_key_type! { pub(super) struct CellKey; }
@@ -486,8 +488,227 @@ pub(super) struct Cell {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct SharedObjectShape {
+    pub(super) id: u64,
+    pub(super) property_slots: IndexMap<String, usize>,
+    #[serde(skip, default)]
+    pub(super) accounted_bytes: usize,
+}
+
+impl SharedObjectShape {
+    pub(super) fn from_keys(id: u64, keys: Vec<String>) -> Self {
+        Self {
+            id,
+            property_slots: keys
+                .into_iter()
+                .enumerate()
+                .map(|(slot, key)| (key, slot))
+                .collect(),
+            accounted_bytes: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct ShapedObjectProperties {
+    pub(super) shape: Arc<SharedObjectShape>,
+    pub(super) slots: Vec<Value>,
+}
+
+impl ShapedObjectProperties {
+    fn get(&self, key: &str) -> Option<&Value> {
+        self.shape
+            .property_slots
+            .get(key)
+            .and_then(|slot| self.slots.get(*slot))
+    }
+
+    fn into_plain(self) -> IndexMap<String, Value> {
+        self.shape
+            .property_slots
+            .iter()
+            .map(|(key, slot)| {
+                (
+                    key.clone(),
+                    self.slots.get(*slot).cloned().unwrap_or(Value::Undefined),
+                )
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) enum ObjectProperties {
+    Plain(IndexMap<String, Value>),
+    Shaped(ShapedObjectProperties),
+}
+
+pub(super) enum ObjectPropertyValues<'a> {
+    Plain(indexmap::map::Values<'a, String, Value>),
+    Shaped(std::slice::Iter<'a, Value>),
+}
+
+impl<'a> Iterator for ObjectPropertyValues<'a> {
+    type Item = &'a Value;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Plain(iter) => iter.next(),
+            Self::Shaped(iter) => iter.next(),
+        }
+    }
+}
+
+pub(super) enum ObjectPropertyKeys<'a> {
+    Plain(indexmap::map::Keys<'a, String, Value>),
+    Shaped(indexmap::map::Keys<'a, String, usize>),
+}
+
+impl<'a> Iterator for ObjectPropertyKeys<'a> {
+    type Item = &'a String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Plain(iter) => iter.next(),
+            Self::Shaped(iter) => iter.next(),
+        }
+    }
+}
+
+pub(super) enum ObjectPropertyIter<'a> {
+    Plain(indexmap::map::Iter<'a, String, Value>),
+    Shaped {
+        shape_iter: indexmap::map::Iter<'a, String, usize>,
+        slots: &'a [Value],
+    },
+}
+
+impl<'a> Iterator for ObjectPropertyIter<'a> {
+    type Item = (&'a String, &'a Value);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Plain(iter) => iter.next(),
+            Self::Shaped { shape_iter, slots } => {
+                let (key, slot) = shape_iter.next()?;
+                slots.get(*slot).map(|value| (key, value))
+            }
+        }
+    }
+}
+
+impl ObjectProperties {
+    pub(super) fn get(&self, key: &str) -> Option<&Value> {
+        match self {
+            Self::Plain(properties) => properties.get(key),
+            Self::Shaped(properties) => properties.get(key),
+        }
+    }
+
+    pub(super) fn contains_key(&self, key: &str) -> bool {
+        match self {
+            Self::Plain(properties) => properties.contains_key(key),
+            Self::Shaped(properties) => properties.shape.property_slots.contains_key(key),
+        }
+    }
+
+    pub(super) fn len(&self) -> usize {
+        match self {
+            Self::Plain(properties) => properties.len(),
+            Self::Shaped(properties) => properties.slots.len(),
+        }
+    }
+
+    pub(super) fn is_shaped(&self) -> bool {
+        matches!(self, Self::Shaped(_))
+    }
+
+    pub(super) fn values(&self) -> ObjectPropertyValues<'_> {
+        match self {
+            Self::Plain(properties) => ObjectPropertyValues::Plain(properties.values()),
+            Self::Shaped(properties) => ObjectPropertyValues::Shaped(properties.slots.iter()),
+        }
+    }
+
+    pub(super) fn keys(&self) -> ObjectPropertyKeys<'_> {
+        match self {
+            Self::Plain(properties) => ObjectPropertyKeys::Plain(properties.keys()),
+            Self::Shaped(properties) => {
+                ObjectPropertyKeys::Shaped(properties.shape.property_slots.keys())
+            }
+        }
+    }
+
+    pub(super) fn iter(&self) -> ObjectPropertyIter<'_> {
+        match self {
+            Self::Plain(properties) => ObjectPropertyIter::Plain(properties.iter()),
+            Self::Shaped(properties) => ObjectPropertyIter::Shaped {
+                shape_iter: properties.shape.property_slots.iter(),
+                slots: &properties.slots,
+            },
+        }
+    }
+
+    pub(super) fn ordered_keys(&self) -> Vec<String> {
+        self.ordered_keys_filtered(|_, _| true)
+    }
+
+    pub(super) fn ordered_keys_filtered<F>(&self, mut include: F) -> Vec<String>
+    where
+        F: FnMut(&str, &Value) -> bool,
+    {
+        let mut keys = Vec::with_capacity(self.len());
+        let mut index_keys = self
+            .iter()
+            .filter(|(key, value)| include(key, value))
+            .filter_map(|(key, _)| {
+                array_index_from_property_key(key).map(|index| (index, key.clone()))
+            })
+            .collect::<Vec<_>>();
+        index_keys.sort_unstable_by_key(|(index, _)| *index);
+        keys.extend(index_keys.into_iter().map(|(_, key)| key));
+        keys.extend(
+            self.iter()
+                .filter(|(key, value)| {
+                    include(key, value) && array_index_from_property_key(key).is_none()
+                })
+                .map(|(key, _)| key.clone()),
+        );
+        keys
+    }
+
+    pub(super) fn materialize(&mut self) -> &mut IndexMap<String, Value> {
+        if matches!(self, Self::Shaped(_)) {
+            let previous = std::mem::replace(self, Self::Plain(IndexMap::new()));
+            *self = match previous {
+                Self::Plain(properties) => Self::Plain(properties),
+                Self::Shaped(properties) => Self::Plain(properties.into_plain()),
+            };
+        }
+
+        match self {
+            Self::Plain(properties) => properties,
+            Self::Shaped(_) => unreachable!("materialized object properties should be plain"),
+        }
+    }
+
+    pub(super) fn insert(&mut self, key: String, value: Value) -> Option<Value> {
+        self.materialize().insert(key, value)
+    }
+}
+
+impl<'a> IntoIterator for &'a ObjectProperties {
+    type Item = (&'a String, &'a Value);
+    type IntoIter = ObjectPropertyIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct PlainObject {
-    pub(super) properties: IndexMap<String, Value>,
+    pub(super) properties: ObjectProperties,
     pub(super) kind: ObjectKind,
     #[serde(skip, default)]
     pub(super) accounted_bytes: usize,
@@ -925,8 +1146,30 @@ pub(super) struct ActiveFinallyState {
     pub(super) exit: usize,
 }
 
+#[derive(Debug, Clone, Default)]
+pub(super) enum GetPropStaticInlineCache {
+    #[default]
+    Uninitialized,
+    Monomorphic {
+        shape_id: u64,
+        slot: Option<usize>,
+    },
+    Polymorphic(Vec<GetPropStaticInlineCacheEntry>),
+    Megamorphic,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct GetPropStaticInlineCacheEntry {
+    pub(super) shape_id: u64,
+    pub(super) slot: Option<usize>,
+}
+
 fn accounting_recount_required_after_deserialize() -> bool {
     true
+}
+
+fn default_next_object_shape_id() -> u64 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -954,6 +1197,12 @@ pub(super) struct Runtime {
     pub(super) builtin_function_objects: IndexMap<BuiltinFunction, ObjectKey>,
     #[serde(default)]
     pub(super) host_function_objects: IndexMap<String, ObjectKey>,
+    #[serde(skip, default)]
+    pub(super) object_shapes: HashMap<Vec<String>, Arc<SharedObjectShape>>,
+    #[serde(skip, default = "default_next_object_shape_id")]
+    pub(super) next_object_shape_id: u64,
+    #[serde(skip, default)]
+    pub(super) static_property_inline_caches: HashMap<(usize, usize), GetPropStaticInlineCache>,
     pub(super) snapshot_nonce: u64,
     pub(super) instruction_counter: usize,
     #[serde(skip, default)]

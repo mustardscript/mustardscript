@@ -11,6 +11,66 @@ struct StructuredTraversalState {
 }
 
 impl Runtime {
+    fn repeated_structured_object_shapes(items: &[StructuredValue]) -> HashMap<Vec<String>, usize> {
+        let mut counts = HashMap::new();
+        for item in items {
+            let StructuredValue::Object(object) = item else {
+                continue;
+            };
+            let keys = object.keys().cloned().collect::<Vec<_>>();
+            *counts.entry(keys).or_insert(0) += 1;
+        }
+        counts
+    }
+
+    fn repeated_json_object_shapes(items: &[serde_json::Value]) -> HashMap<Vec<String>, usize> {
+        let mut counts = HashMap::new();
+        for item in items {
+            let serde_json::Value::Object(object) = item else {
+                continue;
+            };
+            let keys = object.keys().cloned().collect::<Vec<_>>();
+            *counts.entry(keys).or_insert(0) += 1;
+        }
+        counts
+    }
+
+    fn value_from_structured_object_inner(
+        &mut self,
+        object: IndexMap<String, StructuredValue>,
+        depth: usize,
+        shape_backed: bool,
+    ) -> MustardResult<Value> {
+        let mut properties = IndexMap::new();
+        for (key, value) in object {
+            properties.insert(key, self.value_from_structured_inner(value, depth + 1)?);
+        }
+        let object = if shape_backed {
+            self.insert_shape_backed_object(properties)?
+        } else {
+            self.insert_object(properties, ObjectKind::Plain)?
+        };
+        Ok(Value::Object(object))
+    }
+
+    fn value_from_json_object_inner(
+        &mut self,
+        object: serde_json::Map<String, serde_json::Value>,
+        depth: usize,
+        shape_backed: bool,
+    ) -> MustardResult<Value> {
+        let mut properties = IndexMap::new();
+        for (key, value) in object {
+            properties.insert(key, self.value_from_json_inner(value, depth + 1)?);
+        }
+        let object = if shape_backed {
+            self.insert_shape_backed_object(properties)?
+        } else {
+            self.insert_object(properties, ObjectKind::Plain)?
+        };
+        Ok(Value::Object(object))
+    }
+
     pub(in crate::runtime) fn value_from_structured(
         &mut self,
         value: StructuredValue,
@@ -40,10 +100,19 @@ impl Runtime {
             }
             StructuredValue::Number(number) => Value::Number(number.to_f64()),
             StructuredValue::Array(items) => {
+                let repeated_shapes = Self::repeated_structured_object_shapes(&items);
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {
                     values.push(match item {
                         StructuredValue::Hole => None,
+                        StructuredValue::Object(object) => {
+                            let keys = object.keys().cloned().collect::<Vec<_>>();
+                            Some(self.value_from_structured_object_inner(
+                                object,
+                                depth + 1,
+                                repeated_shapes.get(&keys).copied().unwrap_or(0) > 1,
+                            )?)
+                        }
                         other => Some(self.value_from_structured_inner(other, depth + 1)?),
                     });
                 }
@@ -51,12 +120,7 @@ impl Runtime {
                 Value::Array(array)
             }
             StructuredValue::Object(object) => {
-                let mut properties = IndexMap::new();
-                for (key, value) in object {
-                    properties.insert(key, self.value_from_structured_inner(value, depth + 1)?);
-                }
-                let object = self.insert_object(properties, ObjectKind::Plain)?;
-                Value::Object(object)
+                self.value_from_structured_object_inner(object, depth, false)?
             }
         })
     }
@@ -209,20 +273,26 @@ impl Runtime {
                 Ok(Value::String(value))
             }
             serde_json::Value::Array(items) => {
+                let repeated_shapes = Self::repeated_json_object_shapes(&items);
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {
-                    values.push(self.value_from_json_inner(item, depth + 1)?);
+                    values.push(match item {
+                        serde_json::Value::Object(object) => {
+                            let keys = object.keys().cloned().collect::<Vec<_>>();
+                            self.value_from_json_object_inner(
+                                object,
+                                depth + 1,
+                                repeated_shapes.get(&keys).copied().unwrap_or(0) > 1,
+                            )?
+                        }
+                        other => self.value_from_json_inner(other, depth + 1)?,
+                    });
                 }
                 let array = self.insert_array(values, IndexMap::new())?;
                 Ok(Value::Array(array))
             }
             serde_json::Value::Object(object) => {
-                let mut properties = IndexMap::new();
-                for (key, value) in object {
-                    properties.insert(key, self.value_from_json_inner(value, depth + 1)?);
-                }
-                let object = self.insert_object(properties, ObjectKind::Plain)?;
-                Ok(Value::Object(object))
+                self.value_from_json_object_inner(object, depth, false)
             }
         }
     }

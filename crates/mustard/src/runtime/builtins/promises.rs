@@ -35,7 +35,10 @@ impl Runtime {
         })
     }
 
-    pub(crate) fn promise_thenable_handler(&self, value: &Value) -> MustardResult<Option<Value>> {
+    pub(crate) fn promise_thenable_handler(
+        &mut self,
+        value: &Value,
+    ) -> MustardResult<Option<Value>> {
         match value {
             Value::Object(_) | Value::Array(_) => {
                 let then = self.get_property_static(value.clone(), "then", false)?;

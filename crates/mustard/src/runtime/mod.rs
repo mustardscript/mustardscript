@@ -40,7 +40,7 @@ use std::sync::{Arc, OnceLock};
 
 use self::properties::{
     array_index_from_property_key, format_number_key, ordered_own_property_keys,
-    ordered_own_property_keys_filtered, property_name_to_key,
+    property_name_to_key,
 };
 use self::shared::{
     CallbackCallOptions, is_callable, is_truthy, limit_error, next_snapshot_nonce, pop_many,
@@ -124,6 +124,9 @@ impl Runtime {
             builtin_prototypes: IndexMap::new(),
             builtin_function_objects: IndexMap::new(),
             host_function_objects: IndexMap::new(),
+            object_shapes: HashMap::new(),
+            next_object_shape_id: 1,
+            static_property_inline_caches: HashMap::new(),
             snapshot_nonce: next_snapshot_nonce(),
             instruction_counter: 0,
             heap_bytes_used: 0,
@@ -169,6 +172,9 @@ impl Runtime {
             builtin_prototypes: image.builtin_prototypes.clone(),
             builtin_function_objects: image.builtin_function_objects.clone(),
             host_function_objects: image.host_function_objects.clone(),
+            object_shapes: HashMap::new(),
+            next_object_shape_id: 1,
+            static_property_inline_caches: HashMap::new(),
             snapshot_nonce: next_snapshot_nonce(),
             instruction_counter: 0,
             heap_bytes_used: image.heap_bytes_used,
