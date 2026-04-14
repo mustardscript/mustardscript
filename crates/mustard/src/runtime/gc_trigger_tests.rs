@@ -567,6 +567,132 @@ fn map_and_set_deltas_preserve_cached_totals_without_full_refreshes() {
 }
 
 #[test]
+fn string_heavy_small_collections_promote_lookup_before_generic_threshold() {
+    let _lookup_override = override_string_heavy_collection_lookup_for_tests(true);
+    let mut runtime = test_runtime();
+    let map = runtime.insert_map(Vec::new()).expect("map should allocate");
+    let numeric_map = runtime.insert_map(Vec::new()).expect("map should allocate");
+    let set = runtime.insert_set(Vec::new()).expect("set should allocate");
+    let numeric_set = runtime.insert_set(Vec::new()).expect("set should allocate");
+
+    for index in 0..COLLECTION_STRING_LOOKUP_PROMOTION_LEN {
+        runtime
+            .call_map_set(
+                Value::Map(map),
+                &[
+                    Value::String(format!("key-{index}")),
+                    Value::Number(index as f64),
+                ],
+            )
+            .expect("string-key map insert should succeed");
+        runtime
+            .call_set_add(Value::Set(set), &[Value::String(format!("key-{index}"))])
+            .expect("string-key set insert should succeed");
+        runtime
+            .call_map_set(
+                Value::Map(numeric_map),
+                &[Value::Number(index as f64), Value::Number(index as f64)],
+            )
+            .expect("numeric-key map insert should succeed");
+        runtime
+            .call_set_add(Value::Set(numeric_set), &[Value::Number(index as f64)])
+            .expect("numeric-key set insert should succeed");
+    }
+
+    {
+        let map_ref = runtime.maps.get(map).expect("map should exist");
+        assert_eq!(map_ref.live_len, COLLECTION_STRING_LOOKUP_PROMOTION_LEN);
+        assert_eq!(
+            map_ref.string_key_live_len,
+            COLLECTION_STRING_LOOKUP_PROMOTION_LEN
+        );
+        assert_eq!(map_ref.lookup.len(), COLLECTION_STRING_LOOKUP_PROMOTION_LEN);
+        assert!(
+            map_ref
+                .lookup
+                .contains_key(&CollectionLookupKey::String("key-0"))
+        );
+    }
+
+    {
+        let numeric_map_ref = runtime.maps.get(numeric_map).expect("map should exist");
+        assert_eq!(
+            numeric_map_ref.live_len,
+            COLLECTION_STRING_LOOKUP_PROMOTION_LEN
+        );
+        assert_eq!(numeric_map_ref.string_key_live_len, 0);
+        assert!(
+            numeric_map_ref.lookup.is_empty(),
+            "non-string keys should stay on the generic threshold",
+        );
+    }
+
+    {
+        let set_ref = runtime.sets.get(set).expect("set should exist");
+        assert_eq!(set_ref.live_len, COLLECTION_STRING_LOOKUP_PROMOTION_LEN);
+        assert_eq!(
+            set_ref.string_key_live_len,
+            COLLECTION_STRING_LOOKUP_PROMOTION_LEN
+        );
+        assert_eq!(set_ref.lookup.len(), COLLECTION_STRING_LOOKUP_PROMOTION_LEN);
+        assert!(
+            set_ref
+                .lookup
+                .contains_key(&CollectionLookupKey::String("key-0"))
+        );
+    }
+
+    {
+        let numeric_set_ref = runtime.sets.get(numeric_set).expect("set should exist");
+        assert_eq!(
+            numeric_set_ref.live_len,
+            COLLECTION_STRING_LOOKUP_PROMOTION_LEN
+        );
+        assert_eq!(numeric_set_ref.string_key_live_len, 0);
+        assert!(
+            numeric_set_ref.lookup.is_empty(),
+            "non-string set values should stay on the generic threshold",
+        );
+    }
+
+    let object = runtime
+        .insert_object(IndexMap::new(), ObjectKind::Plain)
+        .expect("object should allocate");
+    runtime
+        .call_map_set(Value::Map(map), &[Value::Object(object), Value::Bool(true)])
+        .expect("mixed-key insert should succeed");
+    runtime
+        .call_set_add(Value::Set(set), &[Value::Object(object)])
+        .expect("mixed-value insert should succeed");
+    assert!(matches!(
+        runtime
+            .call_map_get(Value::Map(map), &[Value::String("key-0".to_string())])
+            .expect("string lookup should succeed"),
+        Value::Number(value) if value == 0.0
+    ));
+    assert!(matches!(
+        runtime
+            .call_map_get(Value::Map(map), &[Value::Object(object)])
+            .expect("object lookup should succeed"),
+        Value::Bool(true)
+    ));
+    assert!(matches!(
+        runtime
+            .call_set_has(Value::Set(set), &[Value::String("key-0".to_string())])
+            .expect("string membership should succeed"),
+        Value::Bool(true)
+    ));
+    assert!(matches!(
+        runtime
+            .call_set_has(Value::Set(set), &[Value::Object(object)])
+            .expect("object membership should succeed"),
+        Value::Bool(true)
+    ));
+
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}
+
+#[test]
 fn promise_accounting_deltas_preserve_cached_totals_without_full_refreshes() {
     let mut runtime = test_runtime();
     let source = runtime

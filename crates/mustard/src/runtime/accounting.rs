@@ -777,6 +777,7 @@ impl Runtime {
         let mut map = MapObject {
             entries,
             live_len: 0,
+            string_key_live_len: 0,
             clear_epoch: 0,
             lookup: IndexMap::new(),
             accounted_bytes: 0,
@@ -801,6 +802,7 @@ impl Runtime {
         let mut set = SetObject {
             entries,
             live_len: 0,
+            string_key_live_len: 0,
             clear_epoch: 0,
             lookup: IndexMap::new(),
             accounted_bytes: 0,

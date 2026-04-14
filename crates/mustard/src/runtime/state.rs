@@ -1,7 +1,10 @@
 use std::{
     collections::{HashMap, VecDeque},
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicU8, Ordering},
+    },
 };
 
 use crate::RuntimeDebugMetrics;
@@ -32,6 +35,13 @@ new_key_type! { pub(super) struct ClosureKey; }
 new_key_type! { pub(super) struct PromiseKey; }
 
 pub(super) const COLLECTION_LOOKUP_PROMOTION_LEN: usize = 32;
+pub(super) const COLLECTION_STRING_LOOKUP_PROMOTION_LEN: usize = 8;
+
+const STRING_LOOKUP_OVERRIDE_UNSET: u8 = 0;
+const STRING_LOOKUP_OVERRIDE_DISABLED: u8 = 1;
+const STRING_LOOKUP_OVERRIDE_ENABLED: u8 = 2;
+
+static STRING_LOOKUP_OVERRIDE: AtomicU8 = AtomicU8::new(STRING_LOOKUP_OVERRIDE_UNSET);
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(super) enum Value {
@@ -110,6 +120,52 @@ impl CollectionIndexKey {
             Value::BigInt(value) => Self::BigInt(value.clone()),
         }
     }
+}
+
+pub(super) fn uses_string_heavy_collection_lookup(value: &Value) -> bool {
+    matches!(value, Value::String(_) | Value::HostFunction(_))
+}
+
+fn env_flag_enabled(name: &str) -> bool {
+    std::env::var(name).is_ok_and(|value| {
+        !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
+    })
+}
+
+pub(super) fn string_heavy_collection_lookup_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+
+    match STRING_LOOKUP_OVERRIDE.load(Ordering::Relaxed) {
+        STRING_LOOKUP_OVERRIDE_DISABLED => false,
+        STRING_LOOKUP_OVERRIDE_ENABLED => true,
+        _ => *ENABLED
+            .get_or_init(|| env_flag_enabled("MUSTARD_ENABLE_STRING_HEAVY_COLLECTION_LOOKUP")),
+    }
+}
+
+#[cfg(test)]
+pub(super) struct StringHeavyCollectionLookupOverrideGuard {
+    previous: u8,
+}
+
+#[cfg(test)]
+impl Drop for StringHeavyCollectionLookupOverrideGuard {
+    fn drop(&mut self) {
+        STRING_LOOKUP_OVERRIDE.store(self.previous, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+pub(super) fn override_string_heavy_collection_lookup_for_tests(
+    enabled: bool,
+) -> StringHeavyCollectionLookupOverrideGuard {
+    let next = if enabled {
+        STRING_LOOKUP_OVERRIDE_ENABLED
+    } else {
+        STRING_LOOKUP_OVERRIDE_DISABLED
+    };
+    let previous = STRING_LOOKUP_OVERRIDE.swap(next, Ordering::Relaxed);
+    StringHeavyCollectionLookupOverrideGuard { previous }
 }
 
 impl Hash for CollectionIndexKey {
@@ -801,6 +857,8 @@ pub(super) struct MapObject {
     pub(super) entries: Vec<Option<MapEntry>>,
     #[serde(default)]
     pub(super) live_len: usize,
+    #[serde(skip, default)]
+    pub(super) string_key_live_len: usize,
     #[serde(default)]
     pub(super) clear_epoch: u64,
     #[serde(skip, default)]
@@ -820,6 +878,8 @@ pub(super) struct SetObject {
     pub(super) entries: Vec<Option<Value>>,
     #[serde(default)]
     pub(super) live_len: usize,
+    #[serde(skip, default)]
+    pub(super) string_key_live_len: usize,
     #[serde(default)]
     pub(super) clear_epoch: u64,
     #[serde(skip, default)]
@@ -877,10 +937,22 @@ pub(super) struct SetIteratorState {
 }
 
 impl MapObject {
+    pub(super) fn lookup_promotion_len(&self) -> usize {
+        if string_heavy_collection_lookup_enabled()
+            && self.live_len > 0
+            && self.string_key_live_len == self.live_len
+        {
+            COLLECTION_STRING_LOOKUP_PROMOTION_LEN
+        } else {
+            COLLECTION_LOOKUP_PROMOTION_LEN
+        }
+    }
+
     pub(super) fn from_entries(entries: Vec<MapEntry>) -> Self {
         let mut map = Self {
             entries: entries.into_iter().map(Some).collect(),
             live_len: 0,
+            string_key_live_len: 0,
             clear_epoch: 0,
             lookup: IndexMap::new(),
             accounted_bytes: 0,
@@ -892,17 +964,21 @@ impl MapObject {
     pub(super) fn rebuild_lookup(&mut self) {
         self.lookup.clear();
         self.live_len = 0;
+        self.string_key_live_len = 0;
         for (index, entry) in self.entries.iter().enumerate() {
             let Some(entry) = entry else {
                 continue;
             };
             self.live_len += 1;
-            if self.live_len >= COLLECTION_LOOKUP_PROMOTION_LEN {
+            if uses_string_heavy_collection_lookup(&entry.key) {
+                self.string_key_live_len += 1;
+            }
+            if self.live_len >= self.lookup_promotion_len() {
                 self.lookup
                     .insert(CollectionIndexKey::from_value(&entry.key), index);
             }
         }
-        if self.live_len < COLLECTION_LOOKUP_PROMOTION_LEN {
+        if self.live_len < self.lookup_promotion_len() {
             self.lookup.clear();
         } else if self.lookup.len() < self.live_len {
             self.lookup.clear();
@@ -918,10 +994,22 @@ impl MapObject {
 }
 
 impl SetObject {
+    pub(super) fn lookup_promotion_len(&self) -> usize {
+        if string_heavy_collection_lookup_enabled()
+            && self.live_len > 0
+            && self.string_key_live_len == self.live_len
+        {
+            COLLECTION_STRING_LOOKUP_PROMOTION_LEN
+        } else {
+            COLLECTION_LOOKUP_PROMOTION_LEN
+        }
+    }
+
     pub(super) fn from_entries(entries: Vec<Value>) -> Self {
         let mut set = Self {
             entries: entries.into_iter().map(Some).collect(),
             live_len: 0,
+            string_key_live_len: 0,
             clear_epoch: 0,
             lookup: IndexMap::new(),
             accounted_bytes: 0,
@@ -933,17 +1021,21 @@ impl SetObject {
     pub(super) fn rebuild_lookup(&mut self) {
         self.lookup.clear();
         self.live_len = 0;
+        self.string_key_live_len = 0;
         for (index, value) in self.entries.iter().enumerate() {
             let Some(value) = value else {
                 continue;
             };
             self.live_len += 1;
-            if self.live_len >= COLLECTION_LOOKUP_PROMOTION_LEN {
+            if uses_string_heavy_collection_lookup(value) {
+                self.string_key_live_len += 1;
+            }
+            if self.live_len >= self.lookup_promotion_len() {
                 self.lookup
                     .insert(CollectionIndexKey::from_value(value), index);
             }
         }
-        if self.live_len < COLLECTION_LOOKUP_PROMOTION_LEN {
+        if self.live_len < self.lookup_promotion_len() {
             self.lookup.clear();
         } else if self.lookup.len() < self.live_len {
             self.lookup.clear();

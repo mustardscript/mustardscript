@@ -34,6 +34,8 @@ struct BenchFixtures {
     promise_all_map_set_reduction_shared: Arc<BytecodeProgram>,
     ptc_map_join_update_shared: Arc<BytecodeProgram>,
     ptc_set_dedupe_shared: Arc<BytecodeProgram>,
+    ptc_string_key_map_counter_medium_shared: Arc<BytecodeProgram>,
+    ptc_string_key_set_dedupe_medium_shared: Arc<BytecodeProgram>,
     ptc_token_normalize_shared: Arc<BytecodeProgram>,
     ptc_top_k_sort_shared: Arc<BytecodeProgram>,
     ptc_array_from_entries_shared: Arc<BytecodeProgram>,
@@ -86,6 +88,12 @@ impl BenchFixtures {
         let ptc_map_join_update_shared =
             Arc::new(compile_to_bytecode(ptc_map_join_update_source()));
         let ptc_set_dedupe_shared = Arc::new(compile_to_bytecode(ptc_set_dedupe_source()));
+        let ptc_string_key_map_counter_medium_shared = Arc::new(compile_to_bytecode(
+            ptc_string_key_map_counter_medium_source(),
+        ));
+        let ptc_string_key_set_dedupe_medium_shared = Arc::new(compile_to_bytecode(
+            ptc_string_key_set_dedupe_medium_source(),
+        ));
         let ptc_token_normalize_shared =
             Arc::new(compile_to_bytecode(ptc_token_normalize_source()));
         let ptc_top_k_sort_shared = Arc::new(compile_to_bytecode(ptc_top_k_sort_source()));
@@ -138,6 +146,8 @@ impl BenchFixtures {
             promise_all_map_set_reduction_shared,
             ptc_map_join_update_shared,
             ptc_set_dedupe_shared,
+            ptc_string_key_map_counter_medium_shared,
+            ptc_string_key_set_dedupe_medium_shared,
             ptc_token_normalize_shared,
             ptc_top_k_sort_shared,
             ptc_array_from_entries_shared,
@@ -718,6 +728,34 @@ fn ptc_local_reduction_benches(c: &mut Criterion) {
             BatchSize::SmallInput,
         );
     });
+    group.bench_function("string_key_map_counter_medium", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.ptc_string_key_map_counter_medium_shared),
+                    options,
+                )
+                .expect("PTC string-key map counter bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("string_key_set_dedupe_medium", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.ptc_string_key_set_dedupe_medium_shared),
+                    options,
+                )
+                .expect("PTC string-key set dedupe bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
     group.bench_function("token_normalize", |b| {
         b.iter_batched(
             hot_runtime_options,
@@ -1202,6 +1240,45 @@ fn ptc_set_dedupe_source() -> &'static str {
       for (const signal of deduped) {
         total += signal.length + (round % 5);
       }
+    }
+    total;
+    "#
+}
+
+fn ptc_string_key_map_counter_medium_source() -> &'static str {
+    r#"
+    const size = 16;
+    const events = [];
+    for (let i = 0; i < 512; i += 1) {
+      events.push("entity_" + (i % size));
+    }
+    let total = 0;
+    for (let round = 0; round < 96; round += 1) {
+      const counts = new Map();
+      for (let index = 0; index < events.length; index += 1) {
+        const key = events[(index + round) % events.length];
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      total += counts.get("entity_" + (round % size));
+    }
+    total;
+    "#
+}
+
+fn ptc_string_key_set_dedupe_medium_source() -> &'static str {
+    r#"
+    const size = 16;
+    const signals = [];
+    for (let i = 0; i < 384; i += 1) {
+      signals.push("signal_" + (i % size));
+    }
+    let total = 0;
+    for (let round = 0; round < 96; round += 1) {
+      const deduped = new Set();
+      for (let index = 0; index < signals.length; index += 1) {
+        deduped.add(signals[(index + round) % signals.length]);
+      }
+      total += deduped.has("signal_" + (round % size)) ? deduped.size : 0;
     }
     total;
     "#

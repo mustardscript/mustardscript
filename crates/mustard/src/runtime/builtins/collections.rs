@@ -242,6 +242,7 @@ impl Runtime {
 
     fn map_set(&mut self, map: MapKey, key: Value, value: Value) -> MustardResult<()> {
         let key = canonicalize_collection_key(key);
+        let string_key = uses_string_heavy_collection_lookup(&key);
         let index_key = CollectionIndexKey::from_value(&key);
         let existing_slot = {
             let map_ref = self
@@ -255,7 +256,6 @@ impl Runtime {
                 .maps
                 .get_mut(map)
                 .ok_or_else(|| MustardError::runtime("map missing"))?;
-            let old_lookup_bytes = Self::map_lookup_bytes(map_ref);
             if let Some(slot) = existing_slot {
                 let entry = map_ref
                     .entries
@@ -286,25 +286,39 @@ impl Runtime {
                         .ok_or_else(|| MustardError::runtime("map entry missing"))?;
                     (slot, 0)
                 };
+                let old_lookup_bytes = Self::map_lookup_bytes(map_ref);
                 map_ref.live_len = map_ref
                     .live_len
                     .checked_add(1)
                     .ok_or_else(|| MustardError::runtime("map size overflow"))?;
-                if map_ref.lookup.is_empty() && map_ref.live_len >= COLLECTION_LOOKUP_PROMOTION_LEN
+                if string_key {
+                    map_ref.string_key_live_len = map_ref
+                        .string_key_live_len
+                        .checked_add(1)
+                        .ok_or_else(|| MustardError::runtime("map string-key overflow"))?;
+                }
+                let lookup_bytes = if map_ref.lookup.is_empty()
+                    && map_ref.live_len >= map_ref.lookup_promotion_len()
                 {
                     map_ref.rebuild_lookup();
+                    Self::map_lookup_bytes(map_ref)
                 } else if !map_ref.lookup.is_empty() {
                     map_ref.lookup.insert(index_key, slot);
-                }
-                let new_lookup_bytes = Self::map_lookup_bytes(map_ref);
+                    if map_ref.live_len < map_ref.lookup_promotion_len() {
+                        map_ref.lookup.clear();
+                    }
+                    Self::map_lookup_bytes(map_ref)
+                } else {
+                    0
+                };
                 let entry = map_ref
                     .entries
                     .get(slot)
                     .and_then(|entry| entry.as_ref())
                     .ok_or_else(|| MustardError::runtime("map entry missing"))?;
-                let new_bytes = Self::map_slot_bytes(Some(entry))
-                    + new_lookup_bytes.saturating_sub(old_lookup_bytes);
-                (old_slot_bytes, new_bytes)
+                let old_bytes = old_slot_bytes + old_lookup_bytes;
+                let new_bytes = Self::map_slot_bytes(Some(entry)) + lookup_bytes;
+                (old_bytes, new_bytes)
             }
         };
         self.apply_map_component_delta(map, old_bytes, new_bytes)
@@ -331,19 +345,31 @@ impl Runtime {
                 .entries
                 .get_mut(slot)
                 .ok_or_else(|| MustardError::runtime("map entry missing"))?;
+            let old_slot_bytes = Self::map_slot_bytes(entry.as_ref());
             let removed_key = entry
                 .as_ref()
                 .map(|entry| CollectionIndexKey::from_value(&entry.key))
                 .ok_or_else(|| MustardError::runtime("map entry missing"))?;
-            let old_bytes = Self::map_slot_bytes(entry.as_ref()) + old_lookup_bytes;
+            let removed_string_key = entry
+                .as_ref()
+                .is_some_and(|entry| uses_string_heavy_collection_lookup(&entry.key));
             *entry = None;
             map_ref.lookup.swap_remove(&removed_key);
             map_ref.live_len = map_ref
                 .live_len
                 .checked_sub(1)
                 .ok_or_else(|| MustardError::runtime("map size underflow"))?;
+            if removed_string_key {
+                map_ref.string_key_live_len = map_ref
+                    .string_key_live_len
+                    .checked_sub(1)
+                    .ok_or_else(|| MustardError::runtime("map string-key underflow"))?;
+            }
+            if !map_ref.lookup.is_empty() && map_ref.live_len < map_ref.lookup_promotion_len() {
+                map_ref.lookup.clear();
+            }
             let new_bytes = Self::map_slot_bytes(None) + Self::map_lookup_bytes(map_ref);
-            (old_bytes, new_bytes)
+            (old_slot_bytes + old_lookup_bytes, new_bytes)
         };
         self.apply_map_component_delta(map, old_bytes, new_bytes)?;
         Ok(true)
@@ -369,12 +395,14 @@ impl Runtime {
         map_ref.entries.clear();
         map_ref.lookup.clear();
         map_ref.live_len = 0;
+        map_ref.string_key_live_len = 0;
         map_ref.clear_epoch = map_ref.clear_epoch.wrapping_add(1);
         self.apply_map_component_delta(map, removed_bytes, 0)
     }
 
     fn set_add(&mut self, set: SetKey, value: Value) -> MustardResult<()> {
         let value = canonicalize_collection_key(value);
+        let string_key = uses_string_heavy_collection_lookup(&value);
         let index_key = CollectionIndexKey::from_value(&value);
         let existing_slot = {
             let set_ref = self
@@ -388,7 +416,6 @@ impl Runtime {
                 .sets
                 .get_mut(set)
                 .ok_or_else(|| MustardError::runtime("set missing"))?;
-            let old_lookup_bytes = Self::set_lookup_bytes(set_ref);
             if existing_slot.is_some() {
                 (0, 0)
             } else {
@@ -408,25 +435,39 @@ impl Runtime {
                         .ok_or_else(|| MustardError::runtime("set entry missing"))?;
                     (slot, 0)
                 };
+                let old_lookup_bytes = Self::set_lookup_bytes(set_ref);
                 set_ref.live_len = set_ref
                     .live_len
                     .checked_add(1)
                     .ok_or_else(|| MustardError::runtime("set size overflow"))?;
-                if set_ref.lookup.is_empty() && set_ref.live_len >= COLLECTION_LOOKUP_PROMOTION_LEN
+                if string_key {
+                    set_ref.string_key_live_len = set_ref
+                        .string_key_live_len
+                        .checked_add(1)
+                        .ok_or_else(|| MustardError::runtime("set string-key overflow"))?;
+                }
+                let lookup_bytes = if set_ref.lookup.is_empty()
+                    && set_ref.live_len >= set_ref.lookup_promotion_len()
                 {
                     set_ref.rebuild_lookup();
+                    Self::set_lookup_bytes(set_ref)
                 } else if !set_ref.lookup.is_empty() {
                     set_ref.lookup.insert(index_key, slot);
-                }
-                let new_lookup_bytes = Self::set_lookup_bytes(set_ref);
+                    if set_ref.live_len < set_ref.lookup_promotion_len() {
+                        set_ref.lookup.clear();
+                    }
+                    Self::set_lookup_bytes(set_ref)
+                } else {
+                    0
+                };
                 let value = set_ref
                     .entries
                     .get(slot)
                     .and_then(|value| value.as_ref())
                     .ok_or_else(|| MustardError::runtime("set entry missing"))?;
-                let new_bytes = Self::set_slot_bytes(Some(value))
-                    + new_lookup_bytes.saturating_sub(old_lookup_bytes);
-                (old_slot_bytes, new_bytes)
+                let old_bytes = old_slot_bytes + old_lookup_bytes;
+                let new_bytes = Self::set_slot_bytes(Some(value)) + lookup_bytes;
+                (old_bytes, new_bytes)
             }
         };
         if old_bytes == 0 && new_bytes == 0 {
@@ -532,19 +573,31 @@ impl Runtime {
                 .entries
                 .get_mut(slot)
                 .ok_or_else(|| MustardError::runtime("set entry missing"))?;
+            let old_slot_bytes = Self::set_slot_bytes(entry.as_ref());
             let removed_key = entry
                 .as_ref()
                 .map(CollectionIndexKey::from_value)
                 .ok_or_else(|| MustardError::runtime("set entry missing"))?;
-            let old_bytes = Self::set_slot_bytes(entry.as_ref()) + old_lookup_bytes;
+            let removed_string_key = entry
+                .as_ref()
+                .is_some_and(uses_string_heavy_collection_lookup);
             *entry = None;
             set_ref.lookup.swap_remove(&removed_key);
             set_ref.live_len = set_ref
                 .live_len
                 .checked_sub(1)
                 .ok_or_else(|| MustardError::runtime("set size underflow"))?;
+            if removed_string_key {
+                set_ref.string_key_live_len = set_ref
+                    .string_key_live_len
+                    .checked_sub(1)
+                    .ok_or_else(|| MustardError::runtime("set string-key underflow"))?;
+            }
+            if !set_ref.lookup.is_empty() && set_ref.live_len < set_ref.lookup_promotion_len() {
+                set_ref.lookup.clear();
+            }
             let new_bytes = Self::set_slot_bytes(None) + Self::set_lookup_bytes(set_ref);
-            (old_bytes, new_bytes)
+            (old_slot_bytes + old_lookup_bytes, new_bytes)
         };
         self.apply_set_component_delta(set, old_bytes, new_bytes)?;
         Ok(true)
@@ -570,6 +623,7 @@ impl Runtime {
         set_ref.entries.clear();
         set_ref.lookup.clear();
         set_ref.live_len = 0;
+        set_ref.string_key_live_len = 0;
         set_ref.clear_epoch = set_ref.clear_epoch.wrapping_add(1);
         self.apply_set_component_delta(set, removed_bytes, 0)
     }
