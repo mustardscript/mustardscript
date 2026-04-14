@@ -1,73 +1,44 @@
-# React + TypeScript + Vite
+# MustardScript Website
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This directory contains the Vite/React marketing site plus the experimental
+browser playground.
 
-Currently, two official plugins are available:
+## Scripts
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- `npm run dev`
+  Builds the browser `.wasm` artifact in debug mode, copies it into
+  `public/mustard-playground.wasm`, and starts Vite.
+- `npm run build`
+  Builds the browser `.wasm` artifact in release mode and then produces the
+  static site bundle.
+- `npm run lint`
+  Runs ESLint for the website sources.
+- `npm run test:playwright`
+  Launches the site locally and runs the browser smoke test for the playground.
 
-## React Compiler
+## Playground Architecture
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The playground compares two execution paths for the same scenario:
 
-## Expanding the ESLint configuration
+1. `MustardScript`
+   Runs through `crates/mustard-wasm`, a raw `wasm32-unknown-unknown` wrapper
+   around the Rust runtime core.
+2. Vanilla JavaScript
+   Runs inside `public/playground-iframe.html`, which exposes only the
+   scenario-defined helper surface over `postMessage`.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Scenario definitions live in
+[`src/lib/playground/scenarios.ts`](src/lib/playground/scenarios.ts). The same
+helper source strings are reused by both the Mustard WASM wrapper and the
+iframe runner so the comparison stays aligned.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Limitations
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+- The iframe path is isolated from the main app UI with `sandbox="allow-scripts"`
+  and message passing, but it is not a hardened security boundary.
+- The timeout/reset logic for vanilla JavaScript is cooperative. A synchronous
+  infinite loop can still monopolize the browser event loop before the timeout
+  fires.
+- The current release `.wasm` artifact is large, roughly 71 MB before HTTP
+  compression, so the playground remains an experimental demo target rather
+  than a production browser embedding story.

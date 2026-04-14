@@ -29,12 +29,11 @@ function formatMetric(value: number) {
 }
 
 function AnimatedNumber({ target, inView }: { target: number; inView: boolean }) {
-  const [value, setValue] = useState(target)
+  const [value, setValue] = useState(0)
   const hasAnimated = useRef(false)
   useEffect(() => {
     if (!inView || hasAnimated.current) return
     hasAnimated.current = true
-    setValue(0)
     const start = performance.now()
     const duration = 1200
     const animate = (now: number) => {

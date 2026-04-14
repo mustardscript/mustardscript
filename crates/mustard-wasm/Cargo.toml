@@ -1,0 +1,17 @@
+[package]
+name = "mustard-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Browser WASM wrapper for MustardScript"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+indexmap.workspace = true
+mustard = { path = "../mustard" }
+serde.workspace = true
+serde_json.workspace = true

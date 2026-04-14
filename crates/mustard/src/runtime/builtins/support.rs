@@ -1,5 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use super::*;
 
 const MAX_TIME_MS: f64 = 8_640_000_000_000_000.0;
@@ -48,11 +46,24 @@ pub(super) struct DateTimeFields {
     pub(super) millisecond: u16,
 }
 
+#[cfg(target_arch = "wasm32")]
+unsafe extern "C" {
+    fn mustard_now_millis() -> f64;
+}
+
 pub(super) fn current_time_millis() -> f64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as f64)
-        .unwrap_or(0.0)
+    #[cfg(target_arch = "wasm32")]
+    {
+        unsafe { mustard_now_millis() }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as f64)
+            .unwrap_or(0.0)
+    }
 }
 
 pub(super) fn parse_date_timestamp_ms(value: &str) -> f64 {

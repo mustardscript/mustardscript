@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { CodeStorytelling } from './components/CodeStorytelling'
+import { PlaygroundSection } from './components/PlaygroundSection'
 import { SpeedSection } from './components/SpeedSection'
 import { CTASection } from './components/CTASection'
 import { ApiDocs } from './components/ApiDocs'
@@ -15,6 +16,7 @@ function LandingPage() {
       <LandingNavbar />
       <main className="relative z-10">
         <CodeStorytelling />
+        <PlaygroundSection />
         <SpeedSection />
         <CTASection />
         <ApiDocs />
