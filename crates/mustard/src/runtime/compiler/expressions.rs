@@ -246,10 +246,10 @@ impl Compiler {
                 }
             }
             Expr::Call {
+                span,
                 callee,
                 arguments,
                 optional,
-                ..
             } => {
                 let with_this = matches!(callee.as_ref(), Expr::Member { .. });
                 if let Expr::Member {
@@ -301,6 +301,7 @@ impl Compiler {
                         argc: arguments.len(),
                         with_this,
                         optional: *optional,
+                        span: *span,
                     });
                 } else {
                     context.code.push(Instruction::MakeArray { count: 0 });
@@ -319,6 +320,7 @@ impl Compiler {
                     context.code.push(Instruction::CallWithArray {
                         with_this,
                         optional: *optional,
+                        span: *span,
                     });
                 }
             }

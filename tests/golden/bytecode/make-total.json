@@ -210,7 +210,11 @@
           "Call": {
             "argc": 1,
             "with_this": false,
-            "optional": false
+            "optional": false,
+            "span": {
+              "start": 114,
+              "end": 126
+            }
           }
         },
         {

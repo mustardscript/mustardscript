@@ -572,6 +572,7 @@ impl Runtime {
                 argc,
                 with_this,
                 optional,
+                ..
             } => {
                 let args = pop_many(&mut self.frames[frame_index].stack, *argc)?;
                 let callee = self.frames[frame_index]
@@ -632,6 +633,7 @@ impl Runtime {
             Instruction::CallWithArray {
                 with_this,
                 optional,
+                ..
             } => {
                 let args = self.pop_argument_array(frame_index)?;
                 let callee = self.frames[frame_index]

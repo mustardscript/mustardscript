@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    RuntimeDebugMetrics,
+    CollectionCallSiteMetrics, RuntimeDebugMetrics,
     diagnostic::{DiagnosticKind, MustardError, MustardResult},
     limits::RuntimeLimits,
 };
@@ -18,9 +18,10 @@ use super::{
     api::ExecutionSnapshot,
     bytecode::BytecodeProgram,
     state::{
-        ArrayKey, ArrayObject, Cell, CellKey, Closure, ClosureKey, Env, EnvKey, Frame, IteratorKey,
-        IteratorObject, MapKey, MapObject, MicrotaskJob, ObjectKey, PendingHostCall, PlainObject,
-        PromiseKey, PromiseObject, ResumeBehavior, SetKey, SetObject, Value,
+        ArrayKey, ArrayObject, Cell, CellKey, Closure, ClosureKey, CollectionCallSiteKey, Env,
+        EnvKey, Frame, IteratorKey, IteratorObject, MapKey, MapObject, MicrotaskJob, ObjectKey,
+        PendingHostCall, PlainObject, PromiseKey, PromiseObject, ResumeBehavior, SetKey, SetObject,
+        Value,
     },
     validation::validate_bytecode_program,
 };
@@ -239,6 +240,7 @@ struct DetachedRuntimeRef<'a> {
     builtin_prototypes: &'a IndexMap<super::state::BuiltinFunction, ObjectKey>,
     builtin_function_objects: &'a IndexMap<super::state::BuiltinFunction, ObjectKey>,
     host_function_objects: &'a IndexMap<String, ObjectKey>,
+    collection_call_sites: &'a HashMap<CollectionCallSiteKey, CollectionCallSiteMetrics>,
     snapshot_nonce: u64,
     instruction_counter: usize,
     pending_resume_behavior: ResumeBehavior,
@@ -266,6 +268,7 @@ impl<'a> DetachedRuntimeRef<'a> {
             builtin_prototypes: &runtime.builtin_prototypes,
             builtin_function_objects: &runtime.builtin_function_objects,
             host_function_objects: &runtime.host_function_objects,
+            collection_call_sites: &runtime.collection_call_sites,
             snapshot_nonce: runtime.snapshot_nonce,
             instruction_counter: runtime.instruction_counter,
             pending_resume_behavior: runtime.pending_resume_behavior,
@@ -294,6 +297,8 @@ struct DetachedRuntime {
     builtin_prototypes: IndexMap<super::state::BuiltinFunction, ObjectKey>,
     builtin_function_objects: IndexMap<super::state::BuiltinFunction, ObjectKey>,
     host_function_objects: IndexMap<String, ObjectKey>,
+    #[serde(default)]
+    collection_call_sites: HashMap<CollectionCallSiteKey, CollectionCallSiteMetrics>,
     snapshot_nonce: u64,
     instruction_counter: usize,
     pending_resume_behavior: ResumeBehavior,
@@ -325,6 +330,7 @@ impl DetachedRuntime {
             object_shapes: HashMap::new(),
             next_object_shape_id: 1,
             static_property_inline_caches: HashMap::new(),
+            collection_call_sites: self.collection_call_sites,
             snapshot_nonce: self.snapshot_nonce,
             instruction_counter: self.instruction_counter,
             heap_bytes_used: 0,

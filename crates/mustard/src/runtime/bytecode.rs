@@ -148,10 +148,12 @@ pub enum Instruction {
         argc: usize,
         with_this: bool,
         optional: bool,
+        span: SourceSpan,
     },
     CallWithArray {
         with_this: bool,
         optional: bool,
+        span: SourceSpan,
     },
     Await,
     Construct {

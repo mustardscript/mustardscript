@@ -60,6 +60,7 @@ const {
   createSentinelScenarios,
   summarizeSentinelFamilyScores,
 } = require('./ptc-sentinels.ts');
+const { annotateCollectionCallSites } = require('./ptc-attribution.ts');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const FIXTURE_VERSION = 10;
@@ -2123,16 +2124,19 @@ async function benchmarkAddon(fixtures, mode = 'full') {
   if (phase2AttributionMetricNames.length > 0) {
     for (const metricName of phase2AttributionMetricNames) {
       const scenario = galleryScenarios[metricName];
-      counters[metricName] = await collectAddonStepCounters(
-        new Mustard(scenario.source),
-        {
-          inputs: scenario.inputs,
-          context: new ExecutionContext({
-            capabilities: scenario.createCapabilities(),
-            limits: {},
-          }),
-        },
-        createPtcCounterResumeResolver(scenario),
+      counters[metricName] = annotateCollectionCallSites(
+        await collectAddonStepCounters(
+          new Mustard(scenario.source),
+          {
+            inputs: scenario.inputs,
+            context: new ExecutionContext({
+              capabilities: scenario.createCapabilities(),
+              limits: {},
+            }),
+          },
+          createPtcCounterResumeResolver(scenario),
+        ),
+        scenario,
       );
     }
   }
@@ -3179,6 +3183,13 @@ function printSummary(results) {
       console.log(
         `${name}: gc collections ${metric.gc_collections}, gc time ${(metric.gc_total_time_ns / 1e6).toFixed(3)}ms, reclaimed ${metric.gc_reclaimed_bytes}B/${metric.gc_reclaimed_allocations} allocs, accounting refreshes ${metric.accounting_refreshes}, ${microtaskSummary}, ${operationSummary}`,
       );
+      if (Array.isArray(metric.collection_hotspots) && metric.collection_hotspots.length > 0) {
+        for (const hotspot of metric.collection_hotspots.slice(0, 3)) {
+          console.log(
+            `  hotspot ${hotspot.source_file}:${hotspot.start_line}:${hotspot.start_column} total ${hotspot.total_calls}, Map get/set ${hotspot.map_get_calls}/${hotspot.map_set_calls}, Set add/has ${hotspot.set_add_calls}/${hotspot.set_has_calls} :: ${hotspot.snippet}`,
+          );
+        }
+      }
     }
   }
 
@@ -3463,7 +3474,7 @@ async function main() {
       boundaryDefinitions:
         'addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.',
       counterDefinitions:
-        'addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, accounting refresh counts, dynamic instruction dispatch count, static/computed property reads, object/array allocations, Map.get/Map.set, Set.add/Set.has, string case conversion, literal string search, regex search or replacement, and comparator-based sort invocations.',
+        'addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, accounting refresh counts, dynamic instruction dispatch count, static/computed property reads, object/array allocations, Map.get/Map.set, Set.add/Set.has, string case conversion, literal string search, regex search or replacement, comparator-based sort invocations, and line/column-resolved collection call-site hotspots for representative phase-2 gallery lanes.',
       suspendStateDefinitions:
         'addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.',
       ptcDefinitions:

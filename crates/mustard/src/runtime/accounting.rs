@@ -2,8 +2,22 @@ use super::*;
 
 impl Runtime {
     pub(super) fn debug_metrics(&self) -> RuntimeDebugMetrics {
-        let mut metrics = self.debug_metrics;
+        let mut metrics = self.debug_metrics.clone();
         metrics.dynamic_instructions = self.instruction_counter as u64;
+        let mut collection_call_sites = self
+            .collection_call_sites
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        collection_call_sites.sort_by(|left, right| {
+            right
+                .total_calls()
+                .cmp(&left.total_calls())
+                .then_with(|| left.span.start.cmp(&right.span.start))
+                .then_with(|| left.instruction_offset.cmp(&right.instruction_offset))
+                .then_with(|| left.function_name.cmp(&right.function_name))
+        });
+        metrics.collection_call_sites = collection_call_sites;
         metrics
     }
 
@@ -17,6 +31,47 @@ impl Runtime {
 
     fn bump_metric(counter: &mut u64) {
         *counter = counter.saturating_add(1);
+    }
+
+    fn current_collection_call_site(
+        &self,
+    ) -> Option<(CollectionCallSiteKey, CollectionCallSiteMetrics)> {
+        let frame = self.frames.last()?;
+        let instruction_offset = frame.ip.checked_sub(1)?;
+        let function = self.program.functions.get(frame.function_id)?;
+        let span = match function.code.get(instruction_offset)? {
+            Instruction::Call { span, .. } | Instruction::CallWithArray { span, .. } => *span,
+            _ => return None,
+        };
+        Some((
+            CollectionCallSiteKey {
+                function_id: frame.function_id,
+                instruction_offset,
+            },
+            CollectionCallSiteMetrics {
+                function_name: function.name.clone(),
+                instruction_offset: instruction_offset as u32,
+                span,
+                map_get_calls: 0,
+                map_set_calls: 0,
+                set_add_calls: 0,
+                set_has_calls: 0,
+            },
+        ))
+    }
+
+    fn record_collection_call_site<F>(&mut self, bump: F)
+    where
+        F: FnOnce(&mut CollectionCallSiteMetrics),
+    {
+        let Some((key, default_metrics)) = self.current_collection_call_site() else {
+            return;
+        };
+        let metrics = self
+            .collection_call_sites
+            .entry(key)
+            .or_insert(default_metrics);
+        bump(metrics);
     }
 
     pub(super) fn record_accounting_refresh(&mut self) {
@@ -69,24 +124,36 @@ impl Runtime {
     pub(super) fn record_map_get_call(&mut self) {
         if self.operation_counters_enabled {
             Self::bump_metric(&mut self.debug_metrics.map_get_calls);
+            self.record_collection_call_site(|metrics| {
+                Self::bump_metric(&mut metrics.map_get_calls);
+            });
         }
     }
 
     pub(super) fn record_map_set_call(&mut self) {
         if self.operation_counters_enabled {
             Self::bump_metric(&mut self.debug_metrics.map_set_calls);
+            self.record_collection_call_site(|metrics| {
+                Self::bump_metric(&mut metrics.map_set_calls);
+            });
         }
     }
 
     pub(super) fn record_set_add_call(&mut self) {
         if self.operation_counters_enabled {
             Self::bump_metric(&mut self.debug_metrics.set_add_calls);
+            self.record_collection_call_site(|metrics| {
+                Self::bump_metric(&mut metrics.set_add_calls);
+            });
         }
     }
 
     pub(super) fn record_set_has_call(&mut self) {
         if self.operation_counters_enabled {
             Self::bump_metric(&mut self.debug_metrics.set_has_calls);
+            self.record_collection_call_site(|metrics| {
+                Self::bump_metric(&mut metrics.set_has_calls);
+            });
         }
     }
 

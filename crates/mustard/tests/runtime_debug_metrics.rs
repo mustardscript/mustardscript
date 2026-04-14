@@ -173,3 +173,92 @@ fn shape_backed_rows_fall_back_for_computed_access_and_mutation() {
     assert!(metrics.computed_property_reads > 0);
     assert!(metrics.property_ic_deopts > 0);
 }
+
+#[test]
+fn collection_debug_metrics_capture_hottest_call_sites() {
+    let program = compile(
+        r#"
+        const map = new Map([
+          ["a", 1],
+          ["b", 2],
+        ]);
+        const set = new Set(["seed"]);
+        let total = 0;
+        for (const key of ["a", "b"]) {
+          total += map.get(key);
+        }
+        for (const value of ["seed", "fresh"]) {
+          set.add(value);
+        }
+        map.set("c", total);
+        [total, set.has("fresh"), map.get("c")];
+        "#,
+    )
+    .expect("source should compile");
+    let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+    let (step, metrics) = start_shared_bytecode_with_metrics(
+        Arc::new(bytecode),
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: Vec::new(),
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("program should execute");
+
+    match step {
+        ExecutionStep::Completed(value) => {
+            assert_eq!(
+                value,
+                StructuredValue::Array(
+                    vec![number(3.0), StructuredValue::Bool(true), number(3.0),]
+                )
+            );
+        }
+        ExecutionStep::Suspended(_) => panic!("program should not suspend"),
+    }
+
+    assert_eq!(
+        metrics
+            .collection_call_sites
+            .iter()
+            .map(|site| site.map_get_calls)
+            .sum::<u64>(),
+        3
+    );
+    assert_eq!(
+        metrics
+            .collection_call_sites
+            .iter()
+            .map(|site| site.map_set_calls)
+            .sum::<u64>(),
+        1
+    );
+    assert_eq!(
+        metrics
+            .collection_call_sites
+            .iter()
+            .map(|site| site.set_add_calls)
+            .sum::<u64>(),
+        2
+    );
+    assert_eq!(
+        metrics
+            .collection_call_sites
+            .iter()
+            .map(|site| site.set_has_calls)
+            .sum::<u64>(),
+        1
+    );
+    assert!(
+        metrics
+            .collection_call_sites
+            .iter()
+            .all(|site| { site.span.end > site.span.start && site.total_calls() > 0 })
+    );
+    assert_eq!(
+        metrics.collection_call_sites[0].map_get_calls, 2,
+        "the hottest site should be the looped map.get call"
+    );
+}

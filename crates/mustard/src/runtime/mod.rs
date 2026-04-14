@@ -20,11 +20,11 @@ mod validation;
 mod vm;
 
 pub use api::{
-    ExecutionOptions, ExecutionSnapshot, ExecutionStep, HostError, ResumeOptions, ResumePayload,
-    RuntimeDebugMetrics, SnapshotInspection, SnapshotPolicy, Suspension, apply_snapshot_policy,
-    execute, inspect_snapshot, resume, resume_with_options, resume_with_options_and_metrics,
-    snapshot_inspection, start, start_bytecode, start_shared_bytecode,
-    start_shared_bytecode_with_metrics, start_validated_bytecode,
+    CollectionCallSiteMetrics, ExecutionOptions, ExecutionSnapshot, ExecutionStep, HostError,
+    ResumeOptions, ResumePayload, RuntimeDebugMetrics, SnapshotInspection, SnapshotPolicy,
+    Suspension, apply_snapshot_policy, execute, inspect_snapshot, resume, resume_with_options,
+    resume_with_options_and_metrics, snapshot_inspection, start, start_bytecode,
+    start_shared_bytecode, start_shared_bytecode_with_metrics, start_validated_bytecode,
 };
 pub use bytecode::{BytecodeProgram, FunctionPrototype, Instruction};
 pub use compiler::lower_to_bytecode;
@@ -127,6 +127,7 @@ impl Runtime {
             object_shapes: HashMap::new(),
             next_object_shape_id: 1,
             static_property_inline_caches: HashMap::new(),
+            collection_call_sites: HashMap::new(),
             snapshot_nonce: next_snapshot_nonce(),
             instruction_counter: 0,
             heap_bytes_used: 0,
@@ -175,6 +176,7 @@ impl Runtime {
             object_shapes: HashMap::new(),
             next_object_shape_id: 1,
             static_property_inline_caches: HashMap::new(),
+            collection_call_sites: HashMap::new(),
             snapshot_nonce: next_snapshot_nonce(),
             instruction_counter: 0,
             heap_bytes_used: image.heap_bytes_used,

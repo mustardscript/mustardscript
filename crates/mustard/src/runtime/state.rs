@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use crate::RuntimeDebugMetrics;
+use crate::{CollectionCallSiteMetrics, RuntimeDebugMetrics};
 use indexmap::{Equivalent, IndexMap};
 use num_bigint::BigInt;
 use regex::Regex;
@@ -1256,6 +1256,12 @@ pub(super) struct GetPropStaticInlineCacheEntry {
     pub(super) slot: Option<usize>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub(super) struct CollectionCallSiteKey {
+    pub(super) function_id: usize,
+    pub(super) instruction_offset: usize,
+}
+
 fn accounting_recount_required_after_deserialize() -> bool {
     true
 }
@@ -1295,6 +1301,8 @@ pub(super) struct Runtime {
     pub(super) next_object_shape_id: u64,
     #[serde(skip, default)]
     pub(super) static_property_inline_caches: HashMap<(usize, usize), GetPropStaticInlineCache>,
+    #[serde(default)]
+    pub(super) collection_call_sites: HashMap<CollectionCallSiteKey, CollectionCallSiteMetrics>,
     pub(super) snapshot_nonce: u64,
     pub(super) instruction_counter: usize,
     #[serde(skip, default)]

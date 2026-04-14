@@ -144,6 +144,9 @@ machine metadata and latency summaries for:
   - literal string search
   - regex search / replacement
   - comparator-based sort invocations
+  - source-span-resolved collection call-site hotspots for the hottest
+    `Map.get` / `Map.set` / `Set.add` / `Set.has` sites on representative
+    phase-2 gallery runs
 - addon suspend/resume state-size summaries for serialized program bytes,
   dumped snapshot bytes, and retained live `Progress` heap deltas
 - addon phase-split measurements for:

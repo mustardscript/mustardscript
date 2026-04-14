@@ -7,6 +7,7 @@ use crate::{
     diagnostic::{DiagnosticKind, MustardError, MustardResult},
     ir::CompiledProgram,
     limits::RuntimeLimits,
+    span::SourceSpan,
     structured::StructuredValue,
 };
 
@@ -71,7 +72,27 @@ pub struct ResumeOptions {
     pub snapshot_policy: Option<SnapshotPolicy>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CollectionCallSiteMetrics {
+    pub function_name: Option<String>,
+    pub instruction_offset: u32,
+    pub span: SourceSpan,
+    pub map_get_calls: u64,
+    pub map_set_calls: u64,
+    pub set_add_calls: u64,
+    pub set_has_calls: u64,
+}
+
+impl CollectionCallSiteMetrics {
+    pub fn total_calls(&self) -> u64 {
+        self.map_get_calls
+            .saturating_add(self.map_set_calls)
+            .saturating_add(self.set_add_calls)
+            .saturating_add(self.set_has_calls)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeDebugMetrics {
     pub gc_collections: u64,
     pub gc_total_time_ns: u64,
@@ -103,6 +124,8 @@ pub struct RuntimeDebugMetrics {
     pub executed_promise_reactions: u64,
     pub queued_promise_combinators: u64,
     pub executed_promise_combinators: u64,
+    #[serde(default)]
+    pub collection_call_sites: Vec<CollectionCallSiteMetrics>,
 }
 
 #[derive(Debug, Clone)]
