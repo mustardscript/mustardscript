@@ -39,7 +39,7 @@ new_key_type! { pub(super) struct PromiseKey; }
 pub(super) const COLLECTION_LOOKUP_PROMOTION_LEN: usize = 32;
 pub(super) const COLLECTION_STRING_LOOKUP_PROMOTION_LEN: usize = 8;
 pub(super) const PROPERTY_FEEDBACK_HOT_SITE_THRESHOLD: u32 = 8;
-pub(super) const PROPERTY_FEEDBACK_PATCH_WARM_THRESHOLD: u32 = 16;
+pub(super) const PROPERTY_FEEDBACK_PATCH_WARM_THRESHOLD: u32 = 8;
 pub(super) const PROPERTY_FEEDBACK_PATCH_MAX_INVALIDATIONS: u32 = 2;
 pub(super) const BUILTIN_FEEDBACK_HOT_SITE_THRESHOLD: u32 = 8;
 
