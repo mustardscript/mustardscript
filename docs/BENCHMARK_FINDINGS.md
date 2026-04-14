@@ -133,6 +133,15 @@ The broader repo verification still passed:
 4. The large durable lane is still useful evidence: explicit-state isolate
    re-entry becomes competitive there, which means future durable work can
    still target snapshot size and resume-path overhead.
-5. The next highest-value work remains the unfinished addon-side transport path
-   and any runtime changes that can move the primary representative weighted
-   score materially, especially on the response-heavy and boundary-heavy lanes.
+5. The new representative PTC evidence says string/key interning is not the
+   next local-execution priority yet. In the kept artifact,
+   `ptc_fraud_investigation_medium` still spends about `1.00 ms` in guest
+   execution versus `0.18 ms` in addon boundary codec time, and the new
+   Rust-core local-reduction benches show `top_k_sort 207.23 ms` and
+   `token_normalize 68.62 ms` dominating `map_join_update 18.74 ms`,
+   `set_dedupe 19.60 ms`, and `array_from_object_from_entries 17.17 ms`.
+   That makes sort and temporary-allocation work the next higher-value local
+   optimization path before wider string/key interning.
+6. The next highest-value work remains the unfinished addon-side transport path
+   and runtime changes that can move the primary representative weighted score
+   materially on the local-reduction-heavy lanes.
