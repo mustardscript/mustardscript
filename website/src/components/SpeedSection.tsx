@@ -64,7 +64,11 @@ export function SpeedSection() {
           <motion.div initial={{ opacity: 1 }} animate={inView ? { opacity: 1 } : {}} transition={{ duration: 0.5 }}>
             <div className="mb-2">
               <span className="font-heading text-6xl sm:text-7xl md:text-8xl font-bold text-black tabular-nums tracking-tight">
-                <AnimatedNumber target={mustardMedianMs} inView={inView} />
+                {mustardMedianMs < 1 ? (
+                  <>&lt;1 </>
+                ) : (
+                  <AnimatedNumber target={mustardMedianMs} inView={inView} />
+                )}
                 <span className="text-4xl sm:text-5xl md:text-6xl">ms</span>
               </span>
             </div>

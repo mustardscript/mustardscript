@@ -35,7 +35,7 @@ export function DocsTableOfContents({ headings }: { headings: Heading[] }) {
 
   return (
     <nav className="py-6 pr-4">
-      <h4 className="font-heading font-semibold text-xs uppercase tracking-wider text-black/40 mb-3">
+      <h4 className="font-heading font-semibold text-xs uppercase tracking-wider text-black/40 dark:text-white/40 mb-3">
         On this page
       </h4>
       <ul className="space-y-1 text-sm">
@@ -47,8 +47,8 @@ export function DocsTableOfContents({ headings }: { headings: Heading[] }) {
                 h.level === 3 ? 'pl-4' : ''
               } ${
                 activeId === h.id
-                  ? 'text-[#A67C17] font-medium'
-                  : 'text-black/45 hover:text-black/70'
+                  ? 'text-[#A67C17] dark:text-[#F5D563] font-medium'
+                  : 'text-black/45 dark:text-white/45 hover:text-black/70 dark:hover:text-white/70'
               }`}
             >
               {h.text}

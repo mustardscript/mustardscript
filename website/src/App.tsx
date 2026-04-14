@@ -4,6 +4,7 @@ import { SpeedSection } from './components/SpeedSection'
 import { CTASection } from './components/CTASection'
 import { ApiDocs } from './components/ApiDocs'
 import { Footer } from './components/Footer'
+import { LandingNavbar } from './components/LandingNavbar'
 import { DocsLayout } from './components/docs/DocsLayout'
 import { DocsIndex } from './components/docs/DocsIndex'
 import { DocPage } from './components/docs/DocPage'
@@ -11,6 +12,7 @@ import { DocPage } from './components/docs/DocPage'
 function LandingPage() {
   return (
     <div className="relative min-h-screen bg-mustard">
+      <LandingNavbar />
       <main className="relative z-10">
         <CodeStorytelling />
         <SpeedSection />

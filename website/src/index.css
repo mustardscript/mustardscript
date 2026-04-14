@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-mustard: #E8B931;
   --color-mustard-light: #F5D563;
@@ -74,6 +76,10 @@
     -moz-osx-font-smoothing: grayscale;
     margin: 0;
     transition: background-color 0.35s ease, color 0.35s ease;
+  }
+  .dark body {
+    background: #0A0A0B;
+    color: #F5F5F5;
   }
 }
 
@@ -337,6 +343,62 @@
   max-width: 100%;
   border-radius: 8px;
   margin: 1rem 0;
+}
+
+/* ── Documentation prose — dark mode ───────────────────── */
+.dark .docs-prose {
+  color: #C4C4C8;
+}
+.dark .docs-prose h1,
+.dark .docs-prose h2,
+.dark .docs-prose h3,
+.dark .docs-prose h4,
+.dark .docs-prose strong {
+  color: #F5F5F5;
+}
+.dark .docs-prose h2 {
+  border-bottom-color: rgba(255,255,255,0.08);
+}
+.dark .docs-prose a {
+  color: #F5D563;
+}
+.dark .docs-prose a:hover {
+  color: #FBBF24;
+}
+.dark .docs-prose blockquote {
+  color: #A1A1AA;
+  background: rgba(232, 185, 49, 0.06);
+  border-left-color: #C99A1D;
+}
+.dark .docs-prose hr {
+  border-top-color: rgba(255,255,255,0.08);
+}
+.dark .docs-prose code {
+  background: rgba(232, 185, 49, 0.15);
+  color: #F5D563;
+}
+.dark .docs-prose pre {
+  background: #0F0C04;
+  border-color: rgba(201, 154, 29, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.dark .docs-prose pre code {
+  background: none;
+  color: #D4C8A8;
+}
+.dark .docs-prose thead th {
+  background: rgba(232, 185, 49, 0.1);
+  color: #F5F5F5;
+  border-bottom-color: rgba(255,255,255,0.12);
+}
+.dark .docs-prose tbody td {
+  border-bottom-color: rgba(255,255,255,0.06);
+}
+.dark .docs-prose tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+.dark .docs-prose tbody tr:hover {
+  background: rgba(232, 185, 49, 0.06);
 }
 
 /* ── Scrollbar ──────────────────────────────────────────── */
