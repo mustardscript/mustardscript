@@ -597,6 +597,22 @@ test('run supports RegExp helpers, regex string patterns, and callback replaceme
   });
 });
 
+test('run supports matchAll over audited word-boundary token captures', async () => {
+  const result = await runtime(`
+    const matches = Array.from(
+      "repricing pricing demand marginish margin"
+        .matchAll(/\\b(pricing|demand|margin)\\b/g)
+    );
+    matches.map((entry) => [entry[0], entry[1], entry.index]);
+  `).run();
+
+  assert.deepEqual(result, [
+    ['pricing', 'pricing', 10],
+    ['demand', 'demand', 18],
+    ['margin', 'margin', 35],
+  ]);
+});
+
 test('regexp helpers preserve lastIndex and match state across snapshot round-trips', () => {
   const first = runtime(`
     const regex = /(?<letters>[a-z]+)(\\d+)/g;

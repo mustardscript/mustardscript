@@ -475,13 +475,70 @@ fn is_ascii_literal_regex_byte(byte: u8) -> bool {
     )
 }
 
-pub(super) fn is_ascii_literal_alternation_regex(pattern: &str, flags: &str) -> bool {
+fn is_ascii_word_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+struct AsciiLiteralAlternationPattern<'a> {
+    alternatives: Vec<&'a str>,
+    requires_word_boundaries: bool,
+    capture_full_match: bool,
+}
+
+fn parse_ascii_literal_alternation_pattern<'a>(
+    pattern: &'a str,
+    flags: &str,
+) -> Option<AsciiLiteralAlternationPattern<'a>> {
     if flags != "g" || !pattern.is_ascii() || !pattern.contains('|') {
-        return false;
+        return None;
     }
-    pattern.split('|').all(|alternative| {
-        !alternative.is_empty() && alternative.bytes().all(is_ascii_literal_regex_byte)
+
+    let (requires_word_boundaries, bounded) = if let Some(stripped) = pattern
+        .strip_prefix(r"\b")
+        .and_then(|value| value.strip_suffix(r"\b"))
+    {
+        (true, stripped)
+    } else {
+        (false, pattern)
+    };
+
+    let (capture_full_match, alternation_source) = if let Some(stripped) = bounded
+        .strip_prefix('(')
+        .and_then(|value| value.strip_suffix(')'))
+    {
+        (true, stripped)
+    } else {
+        (false, bounded)
+    };
+
+    let alternatives = alternation_source.split('|').collect::<Vec<_>>();
+    if alternatives.is_empty() {
+        return None;
+    }
+
+    let valid_alternatives = alternatives.iter().all(|alternative| {
+        if alternative.is_empty() {
+            return false;
+        }
+        if requires_word_boundaries {
+            alternative.bytes().all(is_ascii_word_byte)
+        } else {
+            alternative.bytes().all(is_ascii_literal_regex_byte)
+        }
+    });
+    if !valid_alternatives {
+        return None;
+    }
+
+    Some(AsciiLiteralAlternationPattern {
+        alternatives,
+        requires_word_boundaries,
+        capture_full_match,
     })
+}
+
+pub(super) fn is_ascii_literal_alternation_regex(pattern: &str, flags: &str) -> bool {
+    parse_ascii_literal_alternation_pattern(pattern, flags).is_some()
 }
 
 pub(super) fn collect_ascii_literal_alternation_matches(
@@ -490,28 +547,40 @@ pub(super) fn collect_ascii_literal_alternation_matches(
     flags: &str,
     all: bool,
 ) -> Option<Vec<RegExpMatchData>> {
-    if !value.is_ascii() || !is_ascii_literal_alternation_regex(pattern, flags) {
+    let parsed = parse_ascii_literal_alternation_pattern(pattern, flags)?;
+    if !value.is_ascii() {
         return None;
     }
 
-    let alternatives = pattern.split('|').collect::<Vec<_>>();
     let bytes = value.as_bytes();
     let mut matches = Vec::new();
     let mut index = 0usize;
 
     while index < bytes.len() {
-        let matched = alternatives
+        let matched = parsed
+            .alternatives
             .iter()
             .find(|alternative| bytes[index..].starts_with(alternative.as_bytes()))
             .copied();
         if let Some(matched) = matched {
             let end = index + matched.len();
+            if parsed.requires_word_boundaries
+                && (index > 0 && is_ascii_word_byte(bytes[index - 1])
+                    || end < bytes.len() && is_ascii_word_byte(bytes[end]))
+            {
+                index += 1;
+                continue;
+            }
             matches.push(RegExpMatchData {
                 start_byte: index,
                 end_byte: end,
                 start_index: index,
                 end_index: end,
-                captures: Vec::new(),
+                captures: if parsed.capture_full_match {
+                    vec![Some(matched.to_string())]
+                } else {
+                    Vec::new()
+                },
                 named_groups: IndexMap::new(),
             });
             if !all {

@@ -1074,6 +1074,42 @@ mod tests {
     }
 
     #[test]
+    fn ascii_token_regex_fast_path_supports_word_boundaries_and_single_capture_groups() {
+        let (value, metrics) = run_with_metrics(
+            r#"
+            const matches = Array.from(
+              "repricing pricing demand marginish margin"
+                .matchAll(/\b(pricing|demand|margin)\b/g)
+            );
+            [
+              matches.length,
+              matches[0][0],
+              matches[0][1],
+              matches[1][0],
+              matches[1][1],
+              matches[2][0],
+              matches[2][1],
+            ];
+            "#,
+        );
+
+        assert_eq!(
+            value,
+            StructuredValue::Array(vec![
+                StructuredValue::from(3.0),
+                StructuredValue::from("pricing"),
+                StructuredValue::from("pricing"),
+                StructuredValue::from("demand"),
+                StructuredValue::from("demand"),
+                StructuredValue::from("margin"),
+                StructuredValue::from("margin"),
+            ])
+        );
+        assert!(metrics.ascii_token_regex_fast_path_hits > 0);
+        assert_eq!(metrics.ascii_token_regex_fast_path_fallbacks, 0);
+    }
+
+    #[test]
     fn ascii_token_regex_fast_path_records_fallbacks_for_non_ascii_input() {
         let (value, metrics) = run_with_metrics(
             r#"
