@@ -6,6 +6,7 @@ mod expressions;
 mod statements;
 
 use std::collections::HashSet;
+use std::env;
 
 use bindings::collect_block_bindings;
 use context::CompileContext;
@@ -39,6 +40,12 @@ pub fn lower_to_bytecode(program: &CompiledProgram) -> MustardResult<BytecodePro
 #[derive(Debug, Default)]
 struct Compiler {
     functions: Vec<FunctionPrototype>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct BytecodeOptimizerConfig {
+    disable_discard_peephole: bool,
+    disable_stack_noop_peephole: bool,
 }
 
 impl Compiler {
@@ -258,6 +265,37 @@ impl Compiler {
     }
 
     fn optimize_code(code: Vec<Instruction>) -> Vec<Instruction> {
+        let config = Self::optimizer_config();
+        let code = if config.disable_discard_peephole {
+            code
+        } else {
+            Self::apply_discard_peephole(code)
+        };
+        if config.disable_stack_noop_peephole {
+            code
+        } else {
+            Self::apply_stack_noop_peephole(code)
+        }
+    }
+
+    fn optimizer_config() -> BytecodeOptimizerConfig {
+        BytecodeOptimizerConfig {
+            disable_discard_peephole: Self::env_flag_enabled(
+                "MUSTARD_DISABLE_BYTECODE_DISCARD_PEEPHOLE",
+            ),
+            disable_stack_noop_peephole: Self::env_flag_enabled(
+                "MUSTARD_DISABLE_BYTECODE_STACK_NOOP_PEEPHOLE",
+            ),
+        }
+    }
+
+    fn env_flag_enabled(name: &str) -> bool {
+        env::var(name).is_ok_and(|value| {
+            !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
+        })
+    }
+
+    fn apply_discard_peephole(code: Vec<Instruction>) -> Vec<Instruction> {
         if !code.windows(2).any(|window| {
             matches!(window[1], Instruction::Pop) && Self::supports_discard_peephole(&window[0])
         }) {
@@ -294,6 +332,72 @@ impl Compiler {
             Self::remap_targets(instruction, &old_to_new);
         }
         optimized
+    }
+
+    fn apply_stack_noop_peephole(code: Vec<Instruction>) -> Vec<Instruction> {
+        if !code
+            .windows(2)
+            .any(|window| matches!(window, [Instruction::Dup, Instruction::Pop]))
+            && !code.windows(3).any(|window| {
+                matches!(
+                    window,
+                    [Instruction::Dup2, Instruction::Pop, Instruction::Pop]
+                )
+            })
+        {
+            return code;
+        }
+
+        let protected_targets = Self::protected_jump_targets(&code);
+        let mut old_to_new = vec![0; code.len() + 1];
+        let mut optimized = Vec::with_capacity(code.len());
+        let mut index = 0;
+        while index < code.len() {
+            old_to_new[index] = optimized.len();
+            if Self::can_remove_dup_pop(&code, index, &protected_targets) {
+                old_to_new[index + 1] = optimized.len();
+                index += 2;
+                continue;
+            }
+            if Self::can_remove_dup2_pop_pop(&code, index, &protected_targets) {
+                old_to_new[index + 1] = optimized.len();
+                old_to_new[index + 2] = optimized.len();
+                index += 3;
+                continue;
+            }
+            optimized.push(code[index].clone());
+            index += 1;
+        }
+        old_to_new[code.len()] = optimized.len();
+        for instruction in &mut optimized {
+            Self::remap_targets(instruction, &old_to_new);
+        }
+        optimized
+    }
+
+    fn can_remove_dup_pop(code: &[Instruction], index: usize, protected_targets: &[bool]) -> bool {
+        let next = index + 1;
+        next < code.len()
+            && !protected_targets[index]
+            && !protected_targets[next]
+            && matches!(code[index], Instruction::Dup)
+            && matches!(code[next], Instruction::Pop)
+    }
+
+    fn can_remove_dup2_pop_pop(
+        code: &[Instruction],
+        index: usize,
+        protected_targets: &[bool],
+    ) -> bool {
+        let next = index + 1;
+        let tail = index + 2;
+        tail < code.len()
+            && !protected_targets[index]
+            && !protected_targets[next]
+            && !protected_targets[tail]
+            && matches!(code[index], Instruction::Dup2)
+            && matches!(code[next], Instruction::Pop)
+            && matches!(code[tail], Instruction::Pop)
     }
 
     fn protected_jump_targets(code: &[Instruction]) -> Vec<bool> {
@@ -378,5 +482,66 @@ impl Compiler {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stack_noop_peephole_removes_dup_pop_pairs() {
+        let optimized = Compiler::apply_stack_noop_peephole(vec![
+            Instruction::PushNumber(1.0),
+            Instruction::Dup,
+            Instruction::Pop,
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [Instruction::PushNumber(1.0), Instruction::Return]
+        ));
+    }
+
+    #[test]
+    fn stack_noop_peephole_removes_dup2_pop_pop_triplets() {
+        let optimized = Compiler::apply_stack_noop_peephole(vec![
+            Instruction::PushNumber(1.0),
+            Instruction::PushNumber(2.0),
+            Instruction::Dup2,
+            Instruction::Pop,
+            Instruction::Pop,
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [
+                Instruction::PushNumber(1.0),
+                Instruction::PushNumber(2.0),
+                Instruction::Return,
+            ]
+        ));
+    }
+
+    #[test]
+    fn stack_noop_peephole_preserves_targeted_sequences() {
+        let optimized = Compiler::apply_stack_noop_peephole(vec![
+            Instruction::Jump(1),
+            Instruction::Dup,
+            Instruction::Pop,
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [
+                Instruction::Jump(1),
+                Instruction::Dup,
+                Instruction::Pop,
+                Instruction::Return,
+            ]
+        ));
     }
 }
