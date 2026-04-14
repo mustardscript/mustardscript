@@ -1,83 +1,138 @@
-import type { PlaygroundRunResult } from '../lib/playground/iframe-protocol'
+import { useState } from 'react'
+
+import type { JsonValue, PlaygroundRunResult } from '../lib/playground/iframe-protocol'
 
 interface PlaygroundOutputProps {
-  title: string
-  testId?: string
-  tone: 'mustard' | 'vanilla'
+  label: string
+  accent: 'mustard' | 'vanilla'
   result: PlaygroundRunResult | null
+  expected: JsonValue
   isRunning: boolean
+  testId?: string
+  leftDivider?: boolean
 }
 
 function formatValue(value: unknown) {
   return JSON.stringify(value, null, 2)
 }
 
+function jsonEqual(a: unknown, b: unknown) {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 export function PlaygroundOutput({
-  title,
-  testId,
-  tone,
+  label,
+  accent,
   result,
+  expected,
   isRunning,
+  testId,
+  leftDivider,
 }: PlaygroundOutputProps) {
-  const accentClass =
-    tone === 'mustard'
-      ? 'border-[#C49102]/35 bg-[#2A1E07] text-[#F8E8B1]'
-      : 'border-[#2563EB]/20 bg-[#111827] text-[#D7E7FF]'
+  const [traceOpen, setTraceOpen] = useState(false)
+  const [expectedOpen, setExpectedOpen] = useState(false)
+
+  const railColor = accent === 'mustard' ? 'bg-[#F5D563]' : 'bg-[#8EB5FF]'
+  const labelColor = accent === 'mustard' ? 'text-[#F5D563]' : 'text-[#8EB5FF]'
+
+  const matches = result?.ok ? jsonEqual(result.result, expected) : false
+
+  let statusChip: React.ReactNode
+  if (isRunning) {
+    statusChip = <span className="text-white/60">running…</span>
+  } else if (!result) {
+    statusChip = <span className="text-white/40">idle</span>
+  } else if (!result.ok) {
+    statusChip = (
+      <span className="rounded-full bg-[#FCA5A5]/15 px-2 py-0.5 text-[#FCA5A5]">
+        {result.error?.name ?? 'error'}
+      </span>
+    )
+  } else if (matches) {
+    statusChip = (
+      <span className="rounded-full bg-[#86EFAC]/15 px-2 py-0.5 text-[#86EFAC]">
+        ✓ matches expected
+      </span>
+    )
+  } else {
+    statusChip = (
+      <span className="rounded-full bg-[#FCA5A5]/15 px-2 py-0.5 text-[#FCA5A5]">
+        ✗ diverges
+      </span>
+    )
+  }
 
   return (
-    <section data-testid={testId} className={`rounded-[24px] border ${accentClass} shadow-xl`}>
-      <div className="flex items-center justify-between gap-4 border-b border-white/10 px-5 py-4">
-        <h3 className="font-heading text-lg font-bold">{title}</h3>
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-xs">
-          {isRunning ? 'running' : result ? `${result.elapsedMs.toFixed(2)} ms` : 'idle'}
-        </span>
+    <section
+      data-testid={testId}
+      className={`relative flex min-h-[14rem] flex-col bg-[#111110] ${
+        leftDivider ? 'md:border-l md:border-white/5' : ''
+      }`}
+    >
+      <div className={`absolute inset-y-0 left-0 w-[3px] ${railColor}`} aria-hidden />
+      <div className="flex items-center justify-between gap-3 px-5 py-3">
+        <div className="flex items-center gap-3">
+          <span className={`font-mono text-[11px] uppercase tracking-[0.22em] ${labelColor}`}>
+            {label}
+          </span>
+          <span className="font-mono text-[11px] text-white/45">
+            {result && !isRunning ? `${result.elapsedMs.toFixed(2)} ms` : ''}
+          </span>
+        </div>
+        <div className="text-[11px]">{statusChip}</div>
       </div>
 
-      <div className="space-y-4 p-5 text-sm">
+      <div className="flex-1 space-y-3 px-5 pb-4 text-sm">
         {!result && !isRunning && (
-          <p className="text-white/60">
-            Run the scenario to compare output, errors, and capability trace.
-          </p>
+          <p className="text-white/40">Run the scenario to see output.</p>
         )}
 
-        {isRunning && <p className="text-white/70">Executing current scenario…</p>}
+        {result?.ok && (
+          <pre className="overflow-x-auto rounded-lg bg-black/40 p-3 font-mono text-[12px] leading-6 text-white/90">
+            {formatValue(result.result)}
+          </pre>
+        )}
+
+        {result && !result.ok && (
+          <pre className="overflow-x-auto rounded-lg bg-black/40 p-3 font-mono text-[12px] leading-6 text-[#FED7D7]">
+            {formatValue(result.error)}
+          </pre>
+        )}
 
         {result && (
-          <>
-            <div>
-              <p className="mb-2 font-semibold text-white/75">Status</p>
-              <p className={result.ok ? 'text-[#86EFAC]' : 'text-[#FCA5A5]'}>
-                {result.ok ? 'Completed' : result.error?.name ?? 'Error'}
-              </p>
-            </div>
-
-            {result.ok && (
-              <div>
-                <p className="mb-2 font-semibold text-white/75">Result</p>
-                <pre className="overflow-x-auto rounded-2xl bg-black/25 p-4 font-mono text-xs leading-6 text-white/90">
-                  {formatValue(result.result)}
-                </pre>
-              </div>
+          <div className="flex flex-col gap-2 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setExpectedOpen((o) => !o)}
+              className="self-start rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-white/60 transition hover:bg-white/10"
+            >
+              {expectedOpen ? '▾ hide expected' : '▸ show expected'}
+            </button>
+            {expectedOpen && (
+              <pre className="overflow-x-auto rounded-lg bg-black/30 p-3 font-mono text-[12px] leading-6 text-white/70">
+                {formatValue(expected)}
+              </pre>
             )}
+          </div>
+        )}
 
-            {!result.ok && (
-              <div>
-                <p className="mb-2 font-semibold text-white/75">Error</p>
-                <pre className="overflow-x-auto rounded-2xl bg-black/25 p-4 font-mono text-xs leading-6 text-[#FED7D7]">
-                  {formatValue(result.error)}
-                </pre>
-              </div>
+        {result && result.trace.length > 0 && (
+          <div className="flex flex-col gap-2 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setTraceOpen((o) => !o)}
+              className="self-start rounded-full border border-white/10 bg-white/5 px-2 py-0.5 font-mono text-white/60 transition hover:bg-white/10"
+            >
+              {traceOpen
+                ? `▾ Capability Trace (${result.trace.length})`
+                : `▸ Capability Trace (${result.trace.length})`}
+            </button>
+            {traceOpen && (
+              <pre className="overflow-x-auto rounded-lg bg-black/30 p-3 font-mono text-[12px] leading-6 text-white/70">
+                {formatValue(result.trace)}
+              </pre>
             )}
-
-            {result.trace.length > 0 && (
-              <div>
-                <p className="mb-2 font-semibold text-white/75">Capability Trace</p>
-                <pre className="overflow-x-auto rounded-2xl bg-black/25 p-4 font-mono text-xs leading-6 text-white/90">
-                  {formatValue(result.trace)}
-                </pre>
-              </div>
-            )}
-          </>
+          </div>
         )}
       </div>
     </section>

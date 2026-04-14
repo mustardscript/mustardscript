@@ -132,7 +132,7 @@ export function ApiDocs() {
   const activeContent = tabs.find((t) => t.id === activeTab)!
 
   return (
-    <section className="py-24 px-6" id="docs">
+    <section className="py-24 px-6 scroll-mt-20" id="examples">
       <div className="max-w-3xl mx-auto">
         <div className="text-center mb-14">
           <h2 className="font-heading text-3xl sm:text-4xl md:text-5xl font-bold mb-4 tracking-tight text-black">

@@ -203,7 +203,7 @@ export function CodeStorytelling() {
   const step = useScrollStep([heroRef, ref1, ref2])
 
   return (
-    <section className="relative px-6 bg-mustard">
+    <section id="what" className="relative px-6 bg-mustard scroll-mt-20">
       {/* Subtle texture */}
       <div
         className="absolute inset-0 opacity-[0.04] pointer-events-none"

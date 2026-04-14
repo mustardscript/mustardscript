@@ -63,24 +63,24 @@ test(
     const vanillaOutput = outputSection(page, 'Vanilla Output')
 
     await assert.doesNotReject(async () => {
-      await page.getByRole('heading', { name: 'MustardScript vs vanilla JavaScript' }).waitFor()
+      await page.getByRole('heading', { name: 'Taste the MustardScript' }).waitFor()
     })
 
     await page.getByRole('button', { name: 'Policy Check' }).click()
     await page.getByText('Compare deterministic policy checks').waitFor()
 
     await page.getByRole('button', { name: 'Run Comparison' }).click()
-    await mustardOutput.getByText('Completed').waitFor()
+    await mustardOutput.getByText('matches expected').waitFor()
     await mustardOutput.getByText('"approved": false').waitFor()
     await mustardOutput.getByText('Capability Trace').waitFor()
-    await vanillaOutput.getByText('Completed').waitFor()
+    await vanillaOutput.getByText('matches expected').waitFor()
     await vanillaOutput.getByText('"approved": false').waitFor()
 
     const vanillaEditor = page.getByLabel('Vanilla JavaScript')
     await vanillaEditor.fill('throw new Error("browser failure")')
     await page.getByRole('button', { name: 'Run Comparison' }).click()
     await vanillaOutput.getByText('browser failure').waitFor()
-    await mustardOutput.getByText('Completed').waitFor()
+    await mustardOutput.getByText('matches expected').waitFor()
   } finally {
     await browser.close()
     server.kill('SIGTERM')
@@ -114,7 +114,7 @@ test('playground still runs when crypto.randomUUID is unavailable', { concurrenc
 
     const vanillaOutput = outputSection(page, 'Vanilla Output')
     await page.getByRole('button', { name: 'Run Comparison' }).click()
-    await vanillaOutput.getByText('Completed').waitFor()
+    await vanillaOutput.getByText('matches expected').waitFor()
     await vanillaOutput.getByText('"quoteId": "quote-acct_91-25"').waitFor()
   } finally {
     await browser.close()

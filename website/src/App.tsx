@@ -16,8 +16,8 @@ function LandingPage() {
       <LandingNavbar />
       <main className="relative z-10">
         <CodeStorytelling />
-        <PlaygroundSection />
         <SpeedSection />
+        <PlaygroundSection />
         <CTASection />
         <ApiDocs />
         <Footer />
