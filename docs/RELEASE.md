@@ -199,9 +199,9 @@ Current state:
   first publish for this package name.
 - `npm publish --dry-run` is the command shape the automated release
   verification now checks.
-- An actual public publish still requires an authenticated npm publisher with
-  rights to publish `mustardscript`. That permission check cannot be proven
-  from repository-local verification alone.
+- An actual public publish still requires npm Trusted Publishing to be configured
+  for this repository and workflow on the npm side. That trust relationship
+  cannot be proven from repository-local verification alone.
 
 ## Publishing The npm Package
 
@@ -210,6 +210,11 @@ Once the checklist passes:
 ```sh
 npm publish
 ```
+
+The manual GitHub Actions release workflow now uses npm Trusted Publishing via
+GitHub OIDC instead of an `NPM_TOKEN` secret. The publish job therefore depends
+on the existing `id-token: write` permission and the npm package trust
+relationship staying configured for this repository/workflow pair.
 
 Recommended follow-up:
 
@@ -251,6 +256,8 @@ Current mechanics:
   workflow. It builds the configured targets, stages them with
   `napi create-npm-dirs` plus `napi artifacts`, runs `npm run verify:prebuilt`,
   and only publishes when `workflow_dispatch` is invoked with `publish=true`.
+- The publish job uses npm Trusted Publishing through GitHub Actions OIDC
+  rather than an `NPM_TOKEN` secret.
 
 Local verification hook:
 
@@ -264,8 +271,8 @@ corresponding runner environments.
 
 External blocker for a real prebuilt publish:
 
-- The workflow still requires a real `NPM_TOKEN` with publish rights for
+- The workflow requires npm Trusted Publishing to stay configured for
   `mustardscript` and its optional prebuilt packages before
-  `npx napi pre-publish` and the final root `npm publish` can succeed.
-  Repository-local verification cannot prove those credentials or registry
-  permissions.
+  `npx napi pre-publish` and the final root `npm publish` can succeed through
+  GitHub OIDC. Repository-local verification cannot prove that registry-side
+  trust configuration.

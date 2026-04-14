@@ -150,21 +150,8 @@ jobs:
       - name: Stage downloaded artifacts into npm packages
         run: npm run prebuilt:artifacts
 
-      - name: Verify npm token is configured
-        run: |
-          if [ -z "${NPM_TOKEN}" ]; then
-            echo "NPM_TOKEN is required to publish mustardscript prebuilt packages." >&2
-            exit 1
-          fi
-        shell: bash
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
       - name: Publish optional prebuilt packages and root package
         run: |
-          printf "//registry.npmjs.org/:_authToken=%s\n" "${NPM_TOKEN}" > "${HOME}/.npmrc"
           npx napi pre-publish --tag-style npm --gh-release=false
           npm publish --tag "${npm_config_tag}" --access public
         shell: bash
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
