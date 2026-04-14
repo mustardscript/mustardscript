@@ -32,6 +32,11 @@ struct BenchFixtures {
     promise_all_settled_immediate_shared: Arc<BytecodeProgram>,
     promise_all_derived_ids_shared: Arc<BytecodeProgram>,
     promise_all_map_set_reduction_shared: Arc<BytecodeProgram>,
+    ptc_map_join_update_shared: Arc<BytecodeProgram>,
+    ptc_set_dedupe_shared: Arc<BytecodeProgram>,
+    ptc_token_normalize_shared: Arc<BytecodeProgram>,
+    ptc_top_k_sort_shared: Arc<BytecodeProgram>,
+    ptc_array_from_entries_shared: Arc<BytecodeProgram>,
     map_set_shared: Arc<BytecodeProgram>,
     map_ctor_large_shared: Arc<BytecodeProgram>,
     set_ctor_large_shared: Arc<BytecodeProgram>,
@@ -78,6 +83,14 @@ impl BenchFixtures {
             Arc::new(compile_to_bytecode(promise_all_derived_ids_source()));
         let promise_all_map_set_reduction_shared =
             Arc::new(compile_to_bytecode(promise_all_map_set_reduction_source()));
+        let ptc_map_join_update_shared =
+            Arc::new(compile_to_bytecode(ptc_map_join_update_source()));
+        let ptc_set_dedupe_shared = Arc::new(compile_to_bytecode(ptc_set_dedupe_source()));
+        let ptc_token_normalize_shared =
+            Arc::new(compile_to_bytecode(ptc_token_normalize_source()));
+        let ptc_top_k_sort_shared = Arc::new(compile_to_bytecode(ptc_top_k_sort_source()));
+        let ptc_array_from_entries_shared =
+            Arc::new(compile_to_bytecode(ptc_array_from_entries_source()));
         let map_set_shared = Arc::new(compile_to_bytecode(map_set_source()));
         let map_ctor_large_shared = Arc::new(compile_to_bytecode(map_ctor_large_source()));
         let set_ctor_large_shared = Arc::new(compile_to_bytecode(set_ctor_large_source()));
@@ -123,6 +136,11 @@ impl BenchFixtures {
             promise_all_settled_immediate_shared,
             promise_all_derived_ids_shared,
             promise_all_map_set_reduction_shared,
+            ptc_map_join_update_shared,
+            ptc_set_dedupe_shared,
+            ptc_token_normalize_shared,
+            ptc_top_k_sort_shared,
+            ptc_array_from_entries_shared,
             map_set_shared,
             map_ctor_large_shared,
             set_ctor_large_shared,
@@ -670,6 +688,79 @@ fn keyed_collection_large_benches(c: &mut Criterion) {
     group.finish();
 }
 
+fn ptc_local_reduction_benches(c: &mut Criterion) {
+    let mut group = c.benchmark_group("ptc_local_reduction");
+    let fixtures = fixtures();
+
+    group.bench_function("map_join_update", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.ptc_map_join_update_shared),
+                    options,
+                )
+                .expect("PTC map join/update bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("set_dedupe", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.ptc_set_dedupe_shared), options)
+                        .expect("PTC set dedupe bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("token_normalize", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.ptc_token_normalize_shared),
+                    options,
+                )
+                .expect("PTC token normalization bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("top_k_sort", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step =
+                    start_shared_bytecode(Arc::clone(&fixtures.ptc_top_k_sort_shared), options)
+                        .expect("PTC top-k ranking bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.bench_function("array_from_object_from_entries", |b| {
+        b.iter_batched(
+            hot_runtime_options,
+            |options| {
+                let step = start_shared_bytecode(
+                    Arc::clone(&fixtures.ptc_array_from_entries_shared),
+                    options,
+                )
+                .expect("PTC Array.from/Object.fromEntries bench should execute");
+                consume_completed(step);
+            },
+            BatchSize::SmallInput,
+        );
+    });
+    group.finish();
+}
+
 fn structured_boundary_benches(c: &mut Criterion) {
     let mut group = c.benchmark_group("structured_boundary");
     let fixtures = fixtures();
@@ -1054,6 +1145,192 @@ fn promise_all_map_set_reduction_source() -> &'static str {
     "#
 }
 
+fn ptc_map_join_update_source() -> &'static str {
+    r#"
+    const findings = [];
+    for (let i = 0; i < 192; i += 1) {
+      findings.push({
+        entityId: "entity_" + (i % 48),
+        region: "region_" + (i % 6),
+        severity: (i % 5) + 1,
+        status: i % 7 === 0 ? "stale" : "current",
+      });
+    }
+    let total = 0;
+    for (let round = 0; round < 48; round += 1) {
+      const buckets = new Map();
+      for (let index = 0; index < findings.length; index += 1) {
+        const finding = findings[index];
+        const bucketKey = finding.entityId + ":" + finding.region;
+        let bucket = buckets.get(bucketKey);
+        if (bucket === undefined) {
+          bucket = { score: 0, stale: 0, hits: 0 };
+          buckets.set(bucketKey, bucket);
+        }
+        bucket.score += finding.severity + (round % 3);
+        bucket.hits += 1;
+        if (finding.status === "stale") {
+          bucket.stale += 1;
+        }
+      }
+      for (const [bucketKey, bucket] of buckets) {
+        total += bucket.score + bucket.stale + bucket.hits + bucketKey.length;
+      }
+    }
+    total;
+    "#
+}
+
+fn ptc_set_dedupe_source() -> &'static str {
+    r#"
+    const signals = [];
+    for (let i = 0; i < 512; i += 1) {
+      signals.push(
+        "acct_" + (i % 96) +
+        ":device_" + (i % 48) +
+        ":region_" + (i % 6) +
+        ":fingerprint_" + (i % 24)
+      );
+    }
+    let total = 0;
+    for (let round = 0; round < 64; round += 1) {
+      const deduped = new Set();
+      for (let index = 0; index < signals.length; index += 1) {
+        deduped.add(signals[index]);
+      }
+      total += deduped.size;
+      for (const signal of deduped) {
+        total += signal.length + (round % 5);
+      }
+    }
+    total;
+    "#
+}
+
+fn ptc_token_normalize_source() -> &'static str {
+    r#"
+    const messages = [];
+    for (let i = 0; i < 160; i += 1) {
+      messages.push(
+        " ALERT-" + (i % 16) +
+        " token refresh failed in REGION-" + (i % 4) +
+        " after retry owner-" + (i % 6) + " "
+      );
+    }
+    let total = 0;
+    for (let round = 0; round < 40; round += 1) {
+      const counts = new Map();
+      for (let index = 0; index < messages.length; index += 1) {
+        const normalized = messages[index].trim().toLowerCase();
+        const tokens = normalized.split(" ");
+        for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
+          const token = tokens[tokenIndex];
+          if (token.length <= 3) {
+            continue;
+          }
+          const current = counts.get(token);
+          if (current === undefined) {
+            counts.set(token, 1);
+          } else {
+            counts.set(token, current + 1);
+          }
+        }
+      }
+      for (const [token, count] of counts) {
+        total += token.length + count + round;
+      }
+    }
+    total;
+    "#
+}
+
+fn ptc_top_k_sort_source() -> &'static str {
+    r#"
+    const candidates = [];
+    for (let i = 0; i < 144; i += 1) {
+      candidates.push({
+        id: "incident_" + i,
+        severity: (i % 11) + 1,
+        confidence: (i % 7) + 3,
+        blastRadius: i % 9,
+      });
+    }
+    let total = 0;
+    for (let round = 0; round < 40; round += 1) {
+      const ranked = [];
+      for (let index = 0; index < candidates.length; index += 1) {
+        const candidate = candidates[index];
+        ranked.push({
+          id: candidate.id,
+          score: (candidate.severity * 7) + candidate.confidence + (round % 5),
+          blastRadius: candidate.blastRadius,
+        });
+      }
+      ranked.sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        if (left.blastRadius !== right.blastRadius) {
+          return left.blastRadius - right.blastRadius;
+        }
+        if (left.id < right.id) {
+          return -1;
+        }
+        if (left.id > right.id) {
+          return 1;
+        }
+        return 0;
+      });
+      for (let index = 0; index < 8; index += 1) {
+        total += ranked[index].score + ranked[index].id.length;
+      }
+    }
+    total;
+    "#
+}
+
+fn ptc_array_from_entries_source() -> &'static str {
+    r#"
+    const observations = [];
+    for (let i = 0; i < 160; i += 1) {
+      observations.push({
+        entityId: "entity_" + (i % 40),
+        region: "region_" + (i % 5),
+        score: (i % 13) + 1,
+      });
+    }
+    let total = 0;
+    for (let round = 0; round < 48; round += 1) {
+      const grouped = new Map();
+      for (let index = 0; index < observations.length; index += 1) {
+        const observation = observations[index];
+        const key = observation.entityId + ":" + observation.region;
+        let bucket = grouped.get(key);
+        if (bucket === undefined) {
+          bucket = { score: 0, hits: 0 };
+          grouped.set(key, bucket);
+        }
+        bucket.score += observation.score + (round % 4);
+        bucket.hits += 1;
+      }
+      const summaries = Array.from(grouped, ([groupKey, bucket], index) => ({
+        groupKey,
+        score: bucket.score,
+        hits: bucket.hits,
+        rank: index + round,
+      }));
+      const summaryByGroup = Object.fromEntries(
+        summaries.map((summary) => [
+          summary.groupKey,
+          summary.score + summary.hits + summary.rank,
+        ])
+      );
+      total += summaryByGroup[summaries[round % summaries.length].groupKey];
+    }
+    total;
+    "#
+}
+
 fn map_set_source() -> &'static str {
     r#"
     const keys = [
@@ -1371,6 +1648,7 @@ criterion_group!(
         parse_and_lower_benches,
         startup_benches,
         runtime_execution_benches,
+        ptc_local_reduction_benches,
         keyed_collection_large_benches,
         structured_boundary_benches,
         snapshot_benches

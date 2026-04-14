@@ -170,6 +170,9 @@ The suite covers:
 - representative async fanout hot paths for immediate `Promise.all`,
   staged derived-ID `Promise.all`, mixed fulfilled/rejected fanout, and
   fanout followed by `Map`/`Set`-backed local reduction
+- PTC-shaped local reduction hot paths for `Map` join/update, `Set` dedupe,
+  token extraction and normalization, comparator sort/top-k ranking, and
+  `Array.from` / `Object.fromEntries` projection on representative record data
 - structured boundary decode and suspend-time encode
 - snapshot dump and load
 
