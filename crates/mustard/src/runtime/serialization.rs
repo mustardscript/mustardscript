@@ -329,6 +329,7 @@ impl DetachedRuntime {
             gc_allocation_debt_bytes: 0,
             gc_allocation_debt_count: 0,
             debug_metrics: RuntimeDebugMetrics::default(),
+            operation_counters_enabled: false,
             accounting_recount_required: true,
             cancellation_token: None,
             regex_cache: HashMap::new(),

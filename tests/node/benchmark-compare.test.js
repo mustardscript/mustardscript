@@ -12,6 +12,11 @@ const {
   listArtifacts,
   resolveLatestArtifacts,
 } = require('../../benchmarks/compare.ts');
+const {
+  filterComparisons,
+  parseArgs,
+  validateRequiredPaths,
+} = require('../../scripts/benchmark-compare.ts');
 
 test('flattenMetricTree collects nested median/p95 metrics and skips derived sections', () => {
   const metrics = flattenMetricTree({
@@ -124,6 +129,93 @@ test('flattenMetricTree captures ratio leaves for phase-2 scorecards', () => {
       p95Ratio: 1.7,
     },
   });
+});
+
+test('parseArgs collects repeated include-prefix and require-path options', () => {
+  const options = parseArgs([
+    '--kind',
+    'ptc_broad_release',
+    '--include-prefix',
+    'addon.ptc.phase2.scorecards.broadScore.medium',
+    '--include-prefix',
+    'addon.ptc.phase2.scorecards.p90LaneRatio.medium',
+    '--require-path',
+    'addon.ptc.phase2.scorecards.broadScore.medium',
+    '--require-path',
+    'addon.ptc.phase2.scorecards.p90LaneRatio.medium',
+    '--tracked-baseline',
+  ]);
+
+  assert.deepEqual(options.includePrefixes, [
+    'addon.ptc.phase2.scorecards.broadScore.medium',
+    'addon.ptc.phase2.scorecards.p90LaneRatio.medium',
+  ]);
+  assert.deepEqual(options.requiredPaths, [
+    'addon.ptc.phase2.scorecards.broadScore.medium',
+    'addon.ptc.phase2.scorecards.p90LaneRatio.medium',
+  ]);
+  assert.equal(options.kind, 'ptc_broad_release');
+  assert.equal(options.trackedBaseline, true);
+});
+
+test('filterComparisons and validateRequiredPaths enforce phase-2 scorecard guards', () => {
+  const comparisons = [
+    {
+      path: 'addon.ptc.phase2.scorecards.headlineScore.medium',
+      kind: 'ms',
+      baselineMedian: 1,
+      candidateMedian: 1,
+      medianPct: 0,
+      baselineP95: 1,
+      candidateP95: 1,
+      p95Pct: 0,
+    },
+    {
+      path: 'addon.ptc.phase2.scorecards.broadScore.medium',
+      kind: 'ms',
+      baselineMedian: 1,
+      candidateMedian: 1,
+      medianPct: 0,
+      baselineP95: 1,
+      candidateP95: 1,
+      p95Pct: 0,
+    },
+    {
+      path: 'addon.ptc.phase2.scorecards.p90LaneRatio.medium',
+      kind: 'ratio',
+      baselineMedian: 1,
+      candidateMedian: 1,
+      medianPct: 0,
+      baselineP95: 1,
+      candidateP95: 1,
+      p95Pct: 0,
+    },
+  ];
+
+  const filtered = filterComparisons(comparisons, [
+    'addon.ptc.phase2.scorecards.headlineScore.medium',
+    'addon.ptc.phase2.scorecards.broadScore.medium',
+  ]);
+  assert.deepEqual(
+    filtered.map((entry) => entry.path),
+    [
+      'addon.ptc.phase2.scorecards.headlineScore.medium',
+      'addon.ptc.phase2.scorecards.broadScore.medium',
+    ],
+  );
+  validateRequiredPaths(filtered, [
+    'addon.ptc.phase2.scorecards.headlineScore.medium',
+    'addon.ptc.phase2.scorecards.broadScore.medium',
+  ]);
+
+  assert.throws(
+    () =>
+      validateRequiredPaths(filtered, [
+        'addon.ptc.phase2.scorecards.headlineScore.medium',
+        'addon.ptc.phase2.scorecards.worstLaneRatio.medium',
+      ]),
+    /Missing required comparison metrics: addon\.ptc\.phase2\.scorecards\.worstLaneRatio\.medium/,
+  );
 });
 
 test('resolveLatestArtifacts selects the previous matching artifact as the baseline', () => {

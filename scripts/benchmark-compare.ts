@@ -19,6 +19,7 @@ function parseArgs(argv) {
     profile: null,
     maxRegressionPct: null,
     includePrefixes: [],
+    requiredPaths: [],
     trackedBaseline: false,
   };
 
@@ -57,6 +58,11 @@ function parseArgs(argv) {
     }
     if (value === '--include-prefix') {
       options.includePrefixes.push(next);
+      index += 1;
+      continue;
+    }
+    if (value === '--require-path') {
+      options.requiredPaths.push(next);
       index += 1;
       continue;
     }
@@ -101,6 +107,18 @@ function filterComparisons(comparisons, includePrefixes) {
   );
 }
 
+function validateRequiredPaths(comparisons, requiredPaths) {
+  if (!requiredPaths || requiredPaths.length === 0) {
+    return;
+  }
+
+  const availablePaths = new Set(comparisons.map((entry) => entry.path));
+  const missingPaths = requiredPaths.filter((pathKey) => !availablePaths.has(pathKey));
+  if (missingPaths.length > 0) {
+    throw new Error(`Missing required comparison metrics: ${missingPaths.join(', ')}`);
+  }
+}
+
 function main() {
   const options = parseArgs(process.argv.slice(2));
   const resultsDir = options.resultsDir ? path.resolve(options.resultsDir) : undefined;
@@ -131,6 +149,7 @@ function main() {
     loadArtifact(baselinePath),
     loadArtifact(candidatePath),
   ), options.includePrefixes);
+  validateRequiredPaths(comparisons, options.requiredPaths);
   if (comparisons.length === 0) {
     throw new Error('No comparable median/p95 metrics found between the selected artifacts');
   }
@@ -145,4 +164,15 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  filterComparisons,
+  hasRegression,
+  main,
+  parseArgs,
+  printComparison,
+  validateRequiredPaths,
+};

@@ -85,6 +85,7 @@ impl Runtime {
     ) -> MustardResult<Value> {
         let regex = self.regexp_receiver(this_value, "exec")?;
         let input = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        self.record_regex_search_or_replacement();
         let Some(matched) = self.first_regexp_match(regex, &input)? else {
             return Ok(Value::Null);
         };
@@ -98,6 +99,7 @@ impl Runtime {
     ) -> MustardResult<Value> {
         let regex = self.regexp_receiver(this_value, "test")?;
         let input = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        self.record_regex_search_or_replacement();
         Ok(Value::Bool(
             self.first_regexp_match(regex, &input)?.is_some(),
         ))

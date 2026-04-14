@@ -161,12 +161,13 @@ impl Runtime {
     }
 
     pub(crate) fn call_string_includes(
-        &self,
+        &mut self,
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "includes")?;
         let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        self.record_literal_string_search();
         let position = clamp_index(
             self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
             Self::string_char_len(&value),
@@ -176,12 +177,13 @@ impl Runtime {
     }
 
     pub(crate) fn call_string_starts_with(
-        &self,
+        &mut self,
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "startsWith")?;
         let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        self.record_literal_string_search();
         let position = clamp_index(
             self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
             Self::string_char_len(&value),
@@ -191,12 +193,13 @@ impl Runtime {
     }
 
     pub(crate) fn call_string_ends_with(
-        &self,
+        &mut self,
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "endsWith")?;
         let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        self.record_literal_string_search();
         let length = Self::string_char_len(&value);
         let end = match args.get(1) {
             Some(position) => clamp_index(self.to_integer(position.clone())?, length),
@@ -207,12 +210,13 @@ impl Runtime {
     }
 
     pub(crate) fn call_string_index_of(
-        &self,
+        &mut self,
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "indexOf")?;
         let needle = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        self.record_literal_string_search();
         let position = clamp_index(
             self.to_integer(args.get(1).cloned().unwrap_or(Value::Number(0.0)))?,
             Self::string_char_len(&value),
@@ -228,7 +232,7 @@ impl Runtime {
     }
 
     pub(crate) fn call_string_last_index_of(
-        &self,
+        &mut self,
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
@@ -238,6 +242,7 @@ impl Runtime {
             .to_string(args.first().cloned().unwrap_or(Value::Undefined))?
             .chars()
             .collect::<Vec<_>>();
+        self.record_literal_string_search();
         let position = match args.get(1) {
             Some(value) => clamp_index(self.to_integer(value.clone())?, chars.len()),
             None => chars.len(),
@@ -344,13 +349,15 @@ impl Runtime {
         )))
     }
 
-    pub(crate) fn call_string_to_lower_case(&self, this_value: Value) -> MustardResult<Value> {
+    pub(crate) fn call_string_to_lower_case(&mut self, this_value: Value) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "toLowerCase")?;
+        self.record_string_case_conversion();
         Ok(Value::String(value.to_lowercase()))
     }
 
-    pub(crate) fn call_string_to_upper_case(&self, this_value: Value) -> MustardResult<Value> {
+    pub(crate) fn call_string_to_upper_case(&mut self, this_value: Value) -> MustardResult<Value> {
         let value = self.string_receiver(this_value, "toUpperCase")?;
+        self.record_string_case_conversion();
         Ok(Value::String(value.to_uppercase()))
     }
 
@@ -458,12 +465,14 @@ impl Runtime {
         let elements = match pattern {
             None => vec![Value::String(value)],
             Some(StringSearchPattern::Literal(separator)) => {
+                self.record_literal_string_search();
                 split_string_by_pattern(&value, Some(separator.as_str()), limit)
                     .into_iter()
                     .map(Value::String)
                     .collect()
             }
             Some(StringSearchPattern::RegExp { regex, .. }) => {
+                self.record_regex_search_or_replacement();
                 let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
                 let mut elements = Vec::new();
                 let mut last_end = 0usize;
@@ -508,6 +517,7 @@ impl Runtime {
         let replacement = args.get(1).cloned().unwrap_or(Value::Undefined);
         match (search, replacement.clone()) {
             (StringSearchPattern::Literal(search), replacement) if is_callable(&replacement) => {
+                self.record_literal_string_search();
                 let matched = if search.is_empty() {
                     Some(RegExpMatchData {
                         start_byte: 0,
@@ -532,12 +542,18 @@ impl Runtime {
                     Ok(Value::String(value))
                 }
             }
-            (StringSearchPattern::Literal(search), replacement) => Ok(Value::String(
-                replace_first_string_match(&value, &search, &self.to_string(replacement)?),
-            )),
+            (StringSearchPattern::Literal(search), replacement) => {
+                self.record_literal_string_search();
+                Ok(Value::String(replace_first_string_match(
+                    &value,
+                    &search,
+                    &self.to_string(replacement)?,
+                )))
+            }
             (StringSearchPattern::RegExp { regex, .. }, replacement)
                 if is_callable(&replacement) =>
             {
+                self.record_regex_search_or_replacement();
                 let all = regex.flags.contains('g');
                 let matches = self.collect_regexp_matches_from_state(&regex, &value, all)?;
                 if matches.is_empty() {
@@ -559,6 +575,7 @@ impl Runtime {
                 Ok(Value::String(result))
             }
             (StringSearchPattern::RegExp { regex, .. }, replacement) => {
+                self.record_regex_search_or_replacement();
                 let all = regex.flags.contains('g');
                 let matches = self.collect_regexp_matches_from_state(&regex, &value, all)?;
                 if matches.is_empty() {
@@ -595,6 +612,7 @@ impl Runtime {
         let replacement = args.get(1).cloned().unwrap_or(Value::Undefined);
         match search {
             StringSearchPattern::Literal(search) if is_callable(&replacement) => {
+                self.record_literal_string_search();
                 let mut matches = Vec::new();
                 if search.is_empty() {
                     let total = value.chars().count();
@@ -632,12 +650,16 @@ impl Runtime {
                 result.push_str(&value[last_end..]);
                 Ok(Value::String(result))
             }
-            StringSearchPattern::Literal(search) => Ok(Value::String(replace_all_string_matches(
-                &value,
-                &search,
-                &self.to_string(replacement)?,
-            ))),
+            StringSearchPattern::Literal(search) => {
+                self.record_literal_string_search();
+                Ok(Value::String(replace_all_string_matches(
+                    &value,
+                    &search,
+                    &self.to_string(replacement)?,
+                )))
+            }
             StringSearchPattern::RegExp { regex, .. } => {
+                self.record_regex_search_or_replacement();
                 if !regex.flags.contains('g') {
                     return Err(MustardError::runtime(
                         "TypeError: String.prototype.replaceAll requires a global RegExp",
@@ -687,13 +709,18 @@ impl Runtime {
         let needle = self
             .string_search_pattern(args.first().cloned().unwrap_or(Value::Undefined), "search")?;
         Ok(Value::Number(match needle {
-            StringSearchPattern::Literal(needle) => find_string_pattern(&value, &needle, 0)
-                .map(|index| index as f64)
-                .unwrap_or(-1.0),
-            StringSearchPattern::RegExp { regex, .. } => self
-                .first_regexp_match_from_state(&regex, &value, 0)?
-                .map(|matched| matched.start_index as f64)
-                .unwrap_or(-1.0),
+            StringSearchPattern::Literal(needle) => {
+                self.record_literal_string_search();
+                find_string_pattern(&value, &needle, 0)
+                    .map(|index| index as f64)
+                    .unwrap_or(-1.0)
+            }
+            StringSearchPattern::RegExp { regex, .. } => {
+                self.record_regex_search_or_replacement();
+                self.first_regexp_match_from_state(&regex, &value, 0)?
+                    .map(|matched| matched.start_index as f64)
+                    .unwrap_or(-1.0)
+            }
         }))
     }
 
@@ -707,6 +734,7 @@ impl Runtime {
             self.string_search_pattern(args.first().cloned().unwrap_or(Value::Undefined), "match")?;
         match needle {
             StringSearchPattern::Literal(needle) => {
+                self.record_literal_string_search();
                 let Some(index) = find_string_pattern(&value, &needle, 0) else {
                     return Ok(Value::Null);
                 };
@@ -720,6 +748,7 @@ impl Runtime {
                 Ok(Value::Array(match_array))
             }
             StringSearchPattern::RegExp { object, regex } => {
+                self.record_regex_search_or_replacement();
                 if regex.flags.contains('g') {
                     self.regexp_object_mut(object)?.last_index = 0;
                     let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
@@ -760,8 +789,12 @@ impl Runtime {
             "matchAll",
         )?;
         let matches = match needle {
-            StringSearchPattern::Literal(needle) => collect_literal_matches(&value, &needle),
+            StringSearchPattern::Literal(needle) => {
+                self.record_literal_string_search();
+                collect_literal_matches(&value, &needle)
+            }
             StringSearchPattern::RegExp { object, regex } => {
+                self.record_regex_search_or_replacement();
                 if !regex.flags.contains('g') {
                     return Err(MustardError::runtime(
                         "TypeError: String.prototype.matchAll requires a global RegExp",

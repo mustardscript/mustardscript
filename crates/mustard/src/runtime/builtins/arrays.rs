@@ -680,6 +680,9 @@ impl Runtime {
                 ));
             }
         };
+        if comparator.is_some() {
+            self.record_comparator_sort_invocation();
+        }
         let mut roots = vec![Value::Array(array)];
         if let Some(comparator) = &comparator {
             roots.push(comparator.clone());

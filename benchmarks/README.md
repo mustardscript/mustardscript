@@ -114,11 +114,13 @@ machine metadata and latency summaries for:
 - per-lane PTC transfer summaries for actual tool call counts plus
   JSON-encoded tool-bytes-in / result-bytes-out reduction ratios
 - addon representative PTC boundary breakdowns for the website-sized public
-  demo plus the medium primary lanes, separating host callback time, native
-  boundary parse/decode, guest execution, and native boundary encode
-- sidecar representative PTC breakdowns for the website-sized public demo plus
-  the medium primary lanes, separating process startup, request transport,
-  sidecar execution, and response materialization
+  demo, the legacy medium primary lanes, and the phase-2 headline gallery
+  lanes, separating host callback time, native boundary parse/decode, guest
+  execution, and native boundary encode
+- sidecar representative PTC breakdowns for the website-sized public demo, the
+  legacy medium primary lanes, and the phase-2 headline gallery lanes,
+  separating process startup, request transport, sidecar execution, and
+  response materialization
 - per-runtime weighted PTC medium-lane score under `runtime.ptc.weightedScore.medium`
 - per-runtime durable PTC restore metrics under `runtime.durablePtc.resumeOnly`
   plus persisted-state byte accounting under `runtime.durablePtc.state`, where
@@ -130,8 +132,17 @@ machine metadata and latency summaries for:
   values, and resume errors across small/medium/large nested payloads
 - addon runtime counter snapshots for representative paths, including GC
   collection count, cumulative GC time, reclaimed bytes/allocations, full
-  accounting refresh count, and queued/executed microtask breakdowns for
-  async-heavy primary PTC lanes
+  accounting refresh count, queued/executed microtask breakdowns for
+  async-heavy primary PTC lanes, plus operation counters for representative
+  phase-2 headline lanes:
+  - static/computed property reads
+  - object/array allocations
+  - `Map.get` / `Map.set`
+  - `Set.add` / `Set.has`
+  - string case conversion
+  - literal string search
+  - regex search / replacement
+  - comparator-based sort invocations
 - addon suspend/resume state-size summaries for serialized program bytes,
   dumped snapshot bytes, and retained live `Progress` heap deltas
 - addon phase-split measurements for:
@@ -251,14 +262,18 @@ use:
 
 ```sh
 npm run bench:regress:workloads
+npm run bench:regress:ptc
 npm run bench:regress:smoke
 ```
 
 Those commands resolve the candidate artifact from the newest local result, but
 they only choose the baseline from git-tracked artifacts. The workload check is
 scoped to `addon.*` metrics and currently fails above a `10%` regression; the
-release smoke check currently fails above a `50%` regression to absorb the
-known noise on tiny startup/compute samples while still catching large shifts.
+phase-2 PTC regression check requires the broad artifact to keep headline,
+broad, `p90`, and worst-lane scorecards flat while separately requiring the
+holdout artifact to keep `holdoutScore.medium` flat; the release smoke check
+currently fails above a `50%` regression to absorb the known noise on tiny
+startup/compute samples while still catching large shifts.
 
 For the isolate baseline, `suspend_resume_*` is a best-effort comparison that
 re-enters a fresh isolate with explicit host-carried state because this harness
@@ -288,9 +303,9 @@ The new addon-only phase metrics are intentionally narrow:
   and retained live `Progress` memory deltas after GC while a batch of
   suspended executions remains live
 - `addon.ptc.breakdown` records representative profiled addon runs for the
-  website-small lane plus the medium primary lanes, splitting time into
-  `hostCallbacks`, `guestExecution`, `boundaryParse`, `boundaryEncode`, and
-  combined `boundaryCodec`
+  website-small lane, the medium primary lanes, and the phase-2 headline
+  gallery lanes, splitting time into `hostCallbacks`, `guestExecution`,
+  `boundaryParse`, `boundaryEncode`, and combined `boundaryCodec`
 
 The sidecar phase metrics are intentionally simpler and map to protocol stages:
 
@@ -302,10 +317,12 @@ The sidecar phase metrics are intentionally simpler and map to protocol stages:
   `resume`, so detached snapshot bytes, auth metadata, and stdio request /
   response cost dominate the timed region while resumed guest work stays tiny
 - `sidecar.ptc.breakdown` records representative profiled sidecar runs for the
-  website-small lane plus the medium primary lanes. `processStartup` reuses
-  `sidecar.phases.startup_only`, and each lane entry splits observed time into
-  `requestTransport`, `execution`, and `responseMaterialization` (sidecar
-  response preparation plus client-side frame decode/copy)
+- `sidecar.ptc.breakdown` records representative profiled sidecar runs for the
+  website-small lane, the medium primary lanes, and the phase-2 headline
+  gallery lanes. `processStartup` reuses `sidecar.phases.startup_only`, and
+  each lane entry splits observed time into `requestTransport`, `execution`,
+  and `responseMaterialization` (sidecar response preparation plus client-side
+  frame decode/copy)
 
 These definitions are not replacements for future Rust microbenches, but they
 do make it possible to tell whether time is going into startup, resume

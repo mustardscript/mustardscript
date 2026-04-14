@@ -13,7 +13,7 @@ This document summarizes the latest kept benchmark evidence from:
 
 - workload suite: `benchmarks/results/2026-04-14T03-41-06-633Z-workloads.json`
 - phase-2 broad PTC suite:
-  `benchmarks/results/2026-04-14T07-34-09-931Z-ptc_broad_release-release.json`
+  `benchmarks/results/2026-04-14T07-56-52-011Z-ptc_broad_release-release.json`
 - phase-2 holdout PTC suite:
   `benchmarks/results/2026-04-14T07-38-31-068Z-ptc_holdout_release-release.json`
 - release smoke suite: `benchmarks/results/2026-04-13T23-00-15-361Z-smoke-release.json`
@@ -24,8 +24,8 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA in broad artifact: `d50826f`
-- Workload fixture version: `8`
+- Git SHA in broad artifact: `afd8cf6`
+- Workload fixture version: `9`
 - Smoke fixture version: `2`
 
 ## Phase-2 Broad Baseline
@@ -34,7 +34,7 @@ The current kept broad-panel phase-2 artifact comes from:
 
 - `npm run bench:ptc:broad`
 - artifact:
-  `benchmarks/results/2026-04-14T07-34-09-931Z-ptc_broad_release-release.json`
+  `benchmarks/results/2026-04-14T07-56-52-011Z-ptc_broad_release-release.json`
 
 That artifact keeps the phase-1 representative weighted score in the full
 `workloads` run, but it adds the new balanced real-gallery scorecard for the
@@ -45,11 +45,11 @@ Current broad-panel position versus isolate on the kept phase-2 artifact:
 
 | Metric | Addon | Sidecar | Isolate |
 | --- | ---: | ---: | ---: |
-| `ptc.phase2.scorecards.headlineScore.medium` | `0.74 ms` | `2.83 ms` | `0.79 ms` |
-| `ptc.phase2.scorecards.broadScore.medium` | `0.61 ms` | `2.27 ms` | `0.70 ms` |
-| `ptc.phase2.scorecards.durableScore.medium` | `0.72 ms` | `0.96 ms` | `0.18 ms` |
-| `ptc.phase2.scorecards.p90LaneRatio.medium` | `1.20x` | `4.39x` | `1.00x` |
-| `ptc.phase2.scorecards.worstLaneRatio.medium` | `1.58x` | `6.63x` | `1.00x` |
+| `ptc.phase2.scorecards.headlineScore.medium` | `0.70 ms` | `2.53 ms` | `0.72 ms` |
+| `ptc.phase2.scorecards.broadScore.medium` | `0.63 ms` | `2.16 ms` | `0.68 ms` |
+| `ptc.phase2.scorecards.durableScore.medium` | `0.77 ms` | `0.99 ms` | `0.17 ms` |
+| `ptc.phase2.scorecards.p90LaneRatio.medium` | `1.40x` | `4.37x` | `1.00x` |
+| `ptc.phase2.scorecards.worstLaneRatio.medium` | `1.67x` | `6.77x` | `1.00x` |
 
 Matching holdout evidence now comes from:
 
@@ -77,6 +77,24 @@ The current kept broad artifact also verifies the new phase-2 variation layer:
   - `ptc_vendor_review_durable_medium`
   - `ptc_plan-database-failover_durable_medium`
   - `ptc_privacy-erasure-orchestration_durable_medium`
+
+The current kept broad artifact also adds the first deeper phase-2 attribution
+slice:
+
+- untimed representative addon counters for the six headline lanes now record:
+  - static/computed property reads
+  - object/array allocations
+  - `Map.get` / `Map.set`
+  - `Set.add` / `Set.has`
+  - string case conversion
+  - literal string search
+  - regex search / replacement
+  - comparator-based sort invocations
+- representative addon and sidecar breakdowns now cover the same six headline
+  gallery lanes instead of stopping at the older three-lane phase-1 subset
+- the new attribution fields are collected on dedicated representative runs, so
+  the broad scorecard remains the real release timing baseline rather than an
+  instrumentation-only profile
 
 ## Headline Results
 

@@ -62,7 +62,7 @@ const {
 } = require('./ptc-sentinels.ts');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const FIXTURE_VERSION = 8;
+const FIXTURE_VERSION = 9;
 const SNAPSHOT_KEY = 'benchmark-workloads-snapshot-key';
 const SNAPSHOT_KEY_BASE64 = Buffer.from(SNAPSHOT_KEY, 'utf8').toString('base64');
 const WEBSITE_PTC_EXPORT_PATH = path.join(
@@ -82,11 +82,13 @@ const DEFAULT_OPTIONS = DEFAULT_MEASURE_OPTIONS;
 const COLD_OPTIONS = Object.freeze({ warmup: 0, iterations: 2 });
 const MEMORY_RUNS = 20;
 const SIDECAR_PROTOCOL_VERSION = 2;
+const PHASE2_REPRESENTATIVE_PTC_METRICS = HEADLINE_USE_CASE_IDS.map((id) => metricNameForUseCase(id));
 const ADDON_PTC_BREAKDOWN_METRICS = new Set([
   'ptc_website_demo_small',
   'ptc_incident_triage_medium',
   'ptc_fraud_investigation_medium',
   'ptc_vendor_review_medium',
+  ...PHASE2_REPRESENTATIVE_PTC_METRICS,
 ]);
 const WORKLOAD_MODES = new Set([
   'full',
@@ -1175,6 +1177,13 @@ function headlineSeedMeasureOptionsForMode(mode) {
   return mode === 'ptc_gallery_canary' ? GALLERY_CANARY_OPTIONS : DEFAULT_OPTIONS;
 }
 
+function representativePhase2AttributionMetricNamesForMode(mode) {
+  if (mode === 'ptc_headline_release' || mode === 'ptc_broad_release') {
+    return PHASE2_REPRESENTATIVE_PTC_METRICS;
+  }
+  return [];
+}
+
 function createWorkflowCapabilities(data) {
   const expensesByMember = new Map();
   for (const entry of data.expenses) {
@@ -1219,7 +1228,7 @@ async function capturePtcTransfer(runScenario, scenario) {
 
 function createPtcCounterResumeResolver(scenario) {
   const capabilities = scenario.createCapabilities();
-  return (step) => {
+  return async (step) => {
     const handler = capabilities[step.capability];
     assert.equal(
       typeof handler,
@@ -1227,11 +1236,7 @@ function createPtcCounterResumeResolver(scenario) {
       `PTC counter collection is missing capability \`${step.capability}\` for ${scenario.metricName}`,
     );
     const value = handler(...step.args);
-    assert.ok(
-      !(value && typeof value.then === 'function'),
-      `PTC counter collection only supports synchronous fixture capabilities for ${scenario.metricName}`,
-    );
-    return value;
+    return value && typeof value.then === 'function' ? await value : value;
   };
 }
 
@@ -1434,7 +1439,7 @@ async function collectAddonStepCounters(runtime, options, resumeValueForStep = u
     assert.ok(snapshotHandle, 'counter collection step should retain a snapshot handle');
     try {
       const nextValue =
-        resumeValueForStep === undefined ? step.args[0] : resumeValueForStep(step);
+        resumeValueForStep === undefined ? step.args[0] : await resumeValueForStep(step);
       step = parseNativeStepWithMetrics(
         callNative(
           native.resumeSnapshotHandleBuffer,
@@ -2094,6 +2099,12 @@ async function benchmarkAddon(fixtures, mode = 'full') {
         }),
         scenario,
       );
+      if (ADDON_PTC_BREAKDOWN_METRICS.has(scenario.metricName)) {
+        ptc.breakdown[scenario.metricName] = await captureAddonPtcBoundaryBreakdown(
+          runtime,
+          scenario,
+        );
+      }
     }
 
     ptc.phase2.canary = {
@@ -2106,6 +2117,24 @@ async function benchmarkAddon(fixtures, mode = 'full') {
         ]),
       ),
     };
+  }
+
+  const phase2AttributionMetricNames = representativePhase2AttributionMetricNamesForMode(mode);
+  if (phase2AttributionMetricNames.length > 0) {
+    for (const metricName of phase2AttributionMetricNames) {
+      const scenario = galleryScenarios[metricName];
+      counters[metricName] = await collectAddonStepCounters(
+        new Mustard(scenario.source),
+        {
+          inputs: scenario.inputs,
+          context: new ExecutionContext({
+            capabilities: scenario.createCapabilities(),
+            limits: {},
+          }),
+        },
+        createPtcCounterResumeResolver(scenario),
+      );
+    }
   }
 
   const headlineSeedMetricNames = headlineSeedMetricNamesForMode(mode);
@@ -2536,6 +2565,13 @@ async function benchmarkSidecar(fixtures, profile, mode = 'full') {
           }),
           scenario,
         );
+        if (ADDON_PTC_BREAKDOWN_METRICS.has(scenario.metricName)) {
+          ptc.breakdown[scenario.metricName] = await captureSidecarPtcBreakdown(
+            request,
+            program,
+            scenario,
+          );
+        }
       }
     });
 
@@ -3128,8 +3164,18 @@ function printSummary(results) {
         `reactions ${metric.executed_promise_reactions}/${metric.queued_promise_reactions}`,
         `combinators ${metric.executed_promise_combinators}/${metric.queued_promise_combinators}`,
       ].join(', ');
+      const operationSummary = [
+        `static/computed props ${metric.static_property_reads}/${metric.computed_property_reads}`,
+        `object/array allocs ${metric.object_allocations}/${metric.array_allocations}`,
+        `Map get/set ${metric.map_get_calls}/${metric.map_set_calls}`,
+        `Set add/has ${metric.set_add_calls}/${metric.set_has_calls}`,
+        `string case ${metric.string_case_conversions}`,
+        `literal search ${metric.literal_string_searches}`,
+        `regex search/replace ${metric.regex_search_or_replacements}`,
+        `comparator sorts ${metric.comparator_sort_invocations}`,
+      ].join(', ');
       console.log(
-        `${name}: gc collections ${metric.gc_collections}, gc time ${(metric.gc_total_time_ns / 1e6).toFixed(3)}ms, reclaimed ${metric.gc_reclaimed_bytes}B/${metric.gc_reclaimed_allocations} allocs, accounting refreshes ${metric.accounting_refreshes}, ${microtaskSummary}`,
+        `${name}: gc collections ${metric.gc_collections}, gc time ${(metric.gc_total_time_ns / 1e6).toFixed(3)}ms, reclaimed ${metric.gc_reclaimed_bytes}B/${metric.gc_reclaimed_allocations} allocs, accounting refreshes ${metric.accounting_refreshes}, ${microtaskSummary}, ${operationSummary}`,
       );
     }
   }
@@ -3415,7 +3461,7 @@ async function main() {
       boundaryDefinitions:
         'addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.',
       counterDefinitions:
-        'addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, and full accounting refresh counts.',
+        'addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, accounting refresh counts, static/computed property reads, object/array allocations, Map.get/Map.set, Set.add/Set.has, string case conversion, literal string search, regex search or replacement, and comparator-based sort invocations.',
       suspendStateDefinitions:
         'addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.',
       ptcDefinitions:
@@ -3423,9 +3469,9 @@ async function main() {
       ptcWeightedScoreDefinitions:
         'runtime.ptc.weightedScore.medium is a weighted median/p95 rollup of ptc_incident_triage_medium (40%), ptc_fraud_investigation_medium (35%), and ptc_vendor_review_medium (25%). runtime.ptc.transfer records actual tool call counts plus JSON-encoded tool/result payload sizes for one untimed representative run of each PTC lane.',
       ptcBreakdownDefinitions:
-        'addon.ptc.breakdown records representative profiled addon runs for the website-small lane plus the medium primary lanes. hostCallbacks measures JS time spent inside host tool handlers, guestExecution measures Rust runtime execution between boundaries, boundaryParse measures native addon decode/parse of live start/resume payloads, boundaryEncode measures native addon encoding of step results, and boundaryCodec is parse+encode combined.',
+        'addon.ptc.breakdown records representative profiled addon runs for the website-small lane, the original medium primary lanes, and the phase-2 headline gallery lanes. hostCallbacks measures JS time spent inside host tool handlers, guestExecution measures Rust runtime execution between boundaries, boundaryParse measures native addon decode/parse of live start/resume payloads, boundaryEncode measures native addon encoding of step results, and boundaryCodec is parse+encode combined.',
       sidecarPtcBreakdownDefinitions:
-        'sidecar.ptc.breakdown separates sidecar startup from representative lane-level request flow. processStartup reuses sidecar.phases.startup_only, while the lane entries split client-observed requestTransport from sidecar execution and combined response materialization (sidecar response preparation plus client response decode/copy).',
+        'sidecar.ptc.breakdown separates sidecar startup from representative lane-level request flow for the same website and headline gallery lanes. processStartup reuses sidecar.phases.startup_only, while the lane entries split client-observed requestTransport from sidecar execution and combined response materialization (sidecar response preparation plus client response decode/copy).',
       durablePtcDefinitions:
         'runtime.durablePtc.resumeOnly measures restore/resume from persisted checkpoints on the synthetic vendor-review durable lane plus the real audited plan-database-failover and privacy-erasure-orchestration workflows. addon.durablePtc.state records dumped snapshot bytes, detached suspended-manifest bytes, and the checkpoint payload size; sidecar.durablePtc.state records raw snapshot bytes, full raw-resume policy bytes, and the same checkpoint payload size; isolate.durablePtc.state records the explicit carried-state bytes required to emulate the same pause without continuation snapshots.',
       phase2PtcDefinitions:

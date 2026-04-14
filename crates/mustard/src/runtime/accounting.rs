@@ -5,9 +5,93 @@ impl Runtime {
         self.debug_metrics
     }
 
+    pub(super) fn enable_operation_counters(&mut self) {
+        self.operation_counters_enabled = true;
+    }
+
+    pub(super) fn disable_operation_counters(&mut self) {
+        self.operation_counters_enabled = false;
+    }
+
+    fn bump_metric(counter: &mut u64) {
+        *counter = counter.saturating_add(1);
+    }
+
     pub(super) fn record_accounting_refresh(&mut self) {
         self.debug_metrics.accounting_refreshes =
             self.debug_metrics.accounting_refreshes.saturating_add(1);
+    }
+
+    pub(super) fn record_static_property_read(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.static_property_reads);
+        }
+    }
+
+    pub(super) fn record_computed_property_read(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.computed_property_reads);
+        }
+    }
+
+    pub(super) fn record_object_allocation(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.object_allocations);
+        }
+    }
+
+    pub(super) fn record_array_allocation(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.array_allocations);
+        }
+    }
+
+    pub(super) fn record_map_get_call(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.map_get_calls);
+        }
+    }
+
+    pub(super) fn record_map_set_call(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.map_set_calls);
+        }
+    }
+
+    pub(super) fn record_set_add_call(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.set_add_calls);
+        }
+    }
+
+    pub(super) fn record_set_has_call(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.set_has_calls);
+        }
+    }
+
+    pub(super) fn record_string_case_conversion(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.string_case_conversions);
+        }
+    }
+
+    pub(super) fn record_literal_string_search(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.literal_string_searches);
+        }
+    }
+
+    pub(super) fn record_regex_search_or_replacement(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.regex_search_or_replacements);
+        }
+    }
+
+    pub(super) fn record_comparator_sort_invocation(&mut self) {
+        if self.operation_counters_enabled {
+            Self::bump_metric(&mut self.debug_metrics.comparator_sort_invocations);
+        }
     }
 
     pub(super) fn queue_microtask(&mut self, job: MicrotaskJob) {
@@ -590,6 +674,7 @@ impl Runtime {
         properties: IndexMap<String, Value>,
         kind: ObjectKind,
     ) -> MustardResult<ObjectKey> {
+        self.record_object_allocation();
         let mut object = PlainObject {
             properties,
             kind,
@@ -613,6 +698,7 @@ impl Runtime {
         elements: Vec<Option<Value>>,
         properties: IndexMap<String, Value>,
     ) -> MustardResult<ArrayKey> {
+        self.record_array_allocation();
         let mut array = ArrayObject {
             elements,
             properties,

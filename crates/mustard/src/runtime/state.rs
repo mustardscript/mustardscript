@@ -966,6 +966,8 @@ pub(super) struct Runtime {
     pub(super) gc_allocation_debt_count: usize,
     #[serde(skip, default)]
     pub(super) debug_metrics: RuntimeDebugMetrics,
+    #[serde(skip, default)]
+    pub(super) operation_counters_enabled: bool,
     #[serde(skip, default = "accounting_recount_required_after_deserialize")]
     pub(super) accounting_recount_required: bool,
     #[serde(skip, default)]

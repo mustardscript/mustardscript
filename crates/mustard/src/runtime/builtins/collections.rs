@@ -574,9 +574,14 @@ impl Runtime {
         self.apply_set_component_delta(set, removed_bytes, 0)
     }
 
-    pub(crate) fn call_map_get(&self, this_value: Value, args: &[Value]) -> MustardResult<Value> {
+    pub(crate) fn call_map_get(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
         let key = args.first().cloned().unwrap_or(Value::Undefined);
         let map = self.map_receiver(this_value, "get")?;
+        self.record_map_get_call();
         Ok(self
             .map_get(map, &key)?
             .map(|entry| entry.value)
@@ -591,6 +596,7 @@ impl Runtime {
         let map = self.map_receiver(this_value, "set")?;
         let key = args.first().cloned().unwrap_or(Value::Undefined);
         let value = args.get(1).cloned().unwrap_or(Value::Undefined);
+        self.record_map_set_call();
         self.map_set(map, key, value)?;
         Ok(Value::Map(map))
     }
@@ -705,13 +711,19 @@ impl Runtime {
     ) -> MustardResult<Value> {
         let set = self.set_receiver(this_value, "add")?;
         let value = args.first().cloned().unwrap_or(Value::Undefined);
+        self.record_set_add_call();
         self.set_add(set, value)?;
         Ok(Value::Set(set))
     }
 
-    pub(crate) fn call_set_has(&self, this_value: Value, args: &[Value]) -> MustardResult<Value> {
+    pub(crate) fn call_set_has(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
         let value = args.first().cloned().unwrap_or(Value::Undefined);
         let set = self.set_receiver(this_value, "has")?;
+        self.record_set_has_call();
         Ok(Value::Bool(self.set_contains(set, &value)?))
     }
 

@@ -78,6 +78,18 @@ pub struct RuntimeDebugMetrics {
     pub gc_reclaimed_bytes: u64,
     pub gc_reclaimed_allocations: u64,
     pub accounting_refreshes: u64,
+    pub static_property_reads: u64,
+    pub computed_property_reads: u64,
+    pub object_allocations: u64,
+    pub array_allocations: u64,
+    pub map_get_calls: u64,
+    pub map_set_calls: u64,
+    pub set_add_calls: u64,
+    pub set_has_calls: u64,
+    pub string_case_conversions: u64,
+    pub literal_string_searches: u64,
+    pub regex_search_or_replacements: u64,
+    pub comparator_sort_invocations: u64,
     pub queued_microtasks: u64,
     pub executed_microtasks: u64,
     pub peak_microtask_queue_len: u64,
@@ -202,6 +214,7 @@ pub fn start_shared_bytecode_with_metrics(
     options: ExecutionOptions,
 ) -> MustardResult<(ExecutionStep, RuntimeDebugMetrics)> {
     let mut runtime = Runtime::new(program, options)?;
+    runtime.enable_operation_counters();
     let step = runtime.run_root()?;
     let metrics = metrics_after_step(&runtime, &step);
     Ok((step, metrics))
@@ -218,6 +231,7 @@ pub fn resume_with_options(
 ) -> MustardResult<ExecutionStep> {
     let mut runtime = snapshot.runtime;
     runtime.apply_resume_options(options)?;
+    runtime.disable_operation_counters();
     runtime.resume(payload)
 }
 
@@ -228,6 +242,7 @@ pub fn resume_with_options_and_metrics(
 ) -> MustardResult<(ExecutionStep, RuntimeDebugMetrics)> {
     let mut runtime = snapshot.runtime;
     runtime.apply_resume_options(options)?;
+    runtime.enable_operation_counters();
     let step = runtime.resume(payload)?;
     let metrics = metrics_after_step(&runtime, &step);
     Ok((step, metrics))

@@ -252,6 +252,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                self.record_static_property_read();
                 let value = self.get_property_static(object, name, *optional)?;
                 self.frames[frame_index].stack.push(value);
             }
@@ -264,6 +265,7 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                self.record_computed_property_read();
                 let value = self.get_property(object, property, *optional)?;
                 self.frames[frame_index].stack.push(value);
             }
