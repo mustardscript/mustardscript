@@ -5,7 +5,7 @@ mod control;
 mod expressions;
 mod statements;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 
 use bindings::collect_block_bindings;
@@ -45,11 +45,109 @@ struct Compiler {
 #[derive(Debug, Clone, Copy, Default)]
 struct BytecodeOptimizerConfig {
     disable_discard_peephole: bool,
+    disable_top_of_stack_peephole: bool,
     disable_stack_noop_peephole: bool,
     disable_superinstruction_peephole: bool,
 }
 
 type BlockLocalRewrite = fn(&[Instruction]) -> (Vec<Instruction>, Vec<usize>);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum AbstractBinding {
+    Slot { depth: usize, slot: usize },
+    Name(String),
+    Global(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum AbstractValue {
+    Undefined,
+    Null,
+    Bool(bool),
+    Number(u64),
+    String(String),
+    BigInt(String),
+    GlobalObject,
+    Binding(AbstractBinding),
+    Temporary(u64),
+}
+
+#[derive(Debug, Default)]
+struct TopOfStackState {
+    stack: Vec<AbstractValue>,
+    slots: HashMap<(usize, usize), AbstractValue>,
+    names: HashMap<String, AbstractValue>,
+    globals: HashMap<String, AbstractValue>,
+    next_temporary: u64,
+}
+
+impl TopOfStackState {
+    fn fresh_temporary(&mut self) -> AbstractValue {
+        let id = self.next_temporary;
+        self.next_temporary += 1;
+        AbstractValue::Temporary(id)
+    }
+
+    fn pop_value(&mut self) -> AbstractValue {
+        self.stack.pop().unwrap_or_else(|| self.fresh_temporary())
+    }
+
+    fn peek_value(&self) -> Option<&AbstractValue> {
+        self.stack.last()
+    }
+
+    fn push_value(&mut self, value: AbstractValue) {
+        self.stack.push(value);
+    }
+
+    fn push_temporary(&mut self) {
+        let value = self.fresh_temporary();
+        self.push_value(value);
+    }
+
+    fn truncate_stack(&mut self, len: usize) {
+        self.stack.truncate(len);
+    }
+
+    fn binding_value(&self, binding: &AbstractBinding) -> AbstractValue {
+        match binding {
+            AbstractBinding::Slot { depth, slot } => self
+                .slots
+                .get(&(*depth, *slot))
+                .cloned()
+                .unwrap_or_else(|| AbstractValue::Binding(binding.clone())),
+            AbstractBinding::Name(name) => self
+                .names
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| AbstractValue::Binding(binding.clone())),
+            AbstractBinding::Global(name) => self
+                .globals
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| AbstractValue::Binding(binding.clone())),
+        }
+    }
+
+    fn record_binding(&mut self, binding: AbstractBinding, value: AbstractValue) {
+        match binding {
+            AbstractBinding::Slot { depth, slot } => {
+                self.slots.insert((depth, slot), value);
+            }
+            AbstractBinding::Name(name) => {
+                self.names.insert(name, value);
+            }
+            AbstractBinding::Global(name) => {
+                self.globals.insert(name, value);
+            }
+        }
+    }
+
+    fn invalidate_locals(&mut self) {
+        self.slots.clear();
+        self.names.clear();
+    }
+}
 
 impl Compiler {
     fn compile_root(&mut self, statements: &[Stmt], span: SourceSpan) -> MustardResult<usize> {
@@ -274,6 +372,11 @@ impl Compiler {
         } else {
             Self::apply_discard_peephole(code)
         };
+        let code = if config.disable_top_of_stack_peephole {
+            code
+        } else {
+            Self::apply_top_of_stack_peephole(code)
+        };
         let code = if config.disable_stack_noop_peephole {
             code
         } else {
@@ -290,6 +393,9 @@ impl Compiler {
         BytecodeOptimizerConfig {
             disable_discard_peephole: Self::env_flag_enabled(
                 "MUSTARD_DISABLE_BYTECODE_DISCARD_PEEPHOLE",
+            ),
+            disable_top_of_stack_peephole: Self::env_flag_enabled(
+                "MUSTARD_DISABLE_BYTECODE_TOP_OF_STACK_PEEPHOLE",
             ),
             disable_stack_noop_peephole: Self::env_flag_enabled(
                 "MUSTARD_DISABLE_BYTECODE_STACK_NOOP_PEEPHOLE",
@@ -386,6 +492,14 @@ impl Compiler {
         optimized
     }
 
+    fn apply_top_of_stack_peephole(code: Vec<Instruction>) -> Vec<Instruction> {
+        if !code.iter().any(Self::supports_top_of_stack_rewrite) {
+            return code;
+        }
+
+        Self::apply_block_local_peephole(code, Self::rewrite_top_of_stack_block)
+    }
+
     fn apply_superinstruction_peephole(code: Vec<Instruction>) -> Vec<Instruction> {
         if !code.windows(2).any(Self::supports_superinstruction_pair)
             && !code.windows(3).any(Self::supports_superinstruction_triplet)
@@ -394,6 +508,22 @@ impl Compiler {
         }
 
         Self::apply_block_local_peephole(code, Self::rewrite_superinstruction_block)
+    }
+
+    fn supports_top_of_stack_rewrite(instruction: &Instruction) -> bool {
+        matches!(
+            instruction,
+            Instruction::PushUndefined
+                | Instruction::PushNull
+                | Instruction::PushBool(_)
+                | Instruction::PushNumber(_)
+                | Instruction::PushString(_)
+                | Instruction::PushBigInt(_)
+                | Instruction::LoadSlot { .. }
+                | Instruction::LoadName(_)
+                | Instruction::LoadGlobal(_)
+                | Instruction::LoadGlobalObject
+        )
     }
 
     fn can_remove_dup_pop(code: &[Instruction], index: usize, protected_targets: &[bool]) -> bool {
@@ -517,6 +647,294 @@ impl Compiler {
             Self::remap_targets(instruction, &old_to_new);
         }
         optimized
+    }
+
+    fn rewrite_top_of_stack_block(block: &[Instruction]) -> (Vec<Instruction>, Vec<usize>) {
+        let mut state = TopOfStackState::default();
+        let mut old_to_new = vec![0; block.len() + 1];
+        let mut optimized = Vec::with_capacity(block.len());
+        for (index, instruction) in block.iter().enumerate() {
+            old_to_new[index] = optimized.len();
+            if let Some(value) = Self::top_of_stack_candidate_value(&state, instruction)
+                && state.peek_value().is_some_and(|top| *top == value)
+            {
+                optimized.push(Instruction::Dup);
+                state.push_value(value);
+                continue;
+            }
+            optimized.push(instruction.clone());
+            Self::apply_top_of_stack_effect(&mut state, instruction);
+        }
+        old_to_new[block.len()] = optimized.len();
+        (optimized, old_to_new)
+    }
+
+    fn top_of_stack_candidate_value(
+        state: &TopOfStackState,
+        instruction: &Instruction,
+    ) -> Option<AbstractValue> {
+        match instruction {
+            Instruction::PushUndefined => Some(AbstractValue::Undefined),
+            Instruction::PushNull => Some(AbstractValue::Null),
+            Instruction::PushBool(value) => Some(AbstractValue::Bool(*value)),
+            Instruction::PushNumber(value) => Some(AbstractValue::Number(value.to_bits())),
+            Instruction::PushString(value) => Some(AbstractValue::String(value.clone())),
+            Instruction::PushBigInt(value) => Some(AbstractValue::BigInt(value.clone())),
+            Instruction::LoadSlot { depth, slot } => {
+                Some(state.binding_value(&AbstractBinding::Slot {
+                    depth: *depth,
+                    slot: *slot,
+                }))
+            }
+            Instruction::LoadName(name) => {
+                Some(state.binding_value(&AbstractBinding::Name(name.clone())))
+            }
+            Instruction::LoadGlobal(name) => {
+                Some(state.binding_value(&AbstractBinding::Global(name.clone())))
+            }
+            Instruction::LoadGlobalObject => Some(AbstractValue::GlobalObject),
+            _ => None,
+        }
+    }
+
+    fn apply_top_of_stack_effect(state: &mut TopOfStackState, instruction: &Instruction) {
+        match instruction {
+            Instruction::PushUndefined => state.push_value(AbstractValue::Undefined),
+            Instruction::PushNull => state.push_value(AbstractValue::Null),
+            Instruction::PushBool(value) => state.push_value(AbstractValue::Bool(*value)),
+            Instruction::PushNumber(value) => {
+                state.push_value(AbstractValue::Number(value.to_bits()))
+            }
+            Instruction::PushString(value) => {
+                state.push_value(AbstractValue::String(value.clone()))
+            }
+            Instruction::PushBigInt(value) => {
+                state.push_value(AbstractValue::BigInt(value.clone()))
+            }
+            Instruction::LoadSlot { depth, slot } => {
+                let value = state.binding_value(&AbstractBinding::Slot {
+                    depth: *depth,
+                    slot: *slot,
+                });
+                state.push_value(value);
+            }
+            Instruction::LoadName(name) => {
+                let value = state.binding_value(&AbstractBinding::Name(name.clone()));
+                state.push_value(value);
+            }
+            Instruction::LoadGlobal(name) => {
+                let value = state.binding_value(&AbstractBinding::Global(name.clone()));
+                state.push_value(value);
+            }
+            Instruction::LoadGlobalObject => state.push_value(AbstractValue::GlobalObject),
+            Instruction::StoreSlot { depth, slot } => {
+                let value = state.pop_value();
+                state.record_binding(
+                    AbstractBinding::Slot {
+                        depth: *depth,
+                        slot: *slot,
+                    },
+                    value.clone(),
+                );
+                state.push_value(value);
+            }
+            Instruction::StoreName(name) => {
+                let value = state.pop_value();
+                state.record_binding(AbstractBinding::Name(name.clone()), value.clone());
+                state.push_value(value);
+            }
+            Instruction::StoreGlobal(name) => {
+                let value = state.pop_value();
+                state.record_binding(AbstractBinding::Global(name.clone()), value.clone());
+                state.push_value(value);
+            }
+            Instruction::StoreSlotDiscard { depth, slot } => {
+                let value = state.pop_value();
+                state.record_binding(
+                    AbstractBinding::Slot {
+                        depth: *depth,
+                        slot: *slot,
+                    },
+                    value,
+                );
+            }
+            Instruction::StoreNameDiscard(name) => {
+                let value = state.pop_value();
+                state.record_binding(AbstractBinding::Name(name.clone()), value);
+            }
+            Instruction::StoreGlobalDiscard(name) => {
+                let value = state.pop_value();
+                state.record_binding(AbstractBinding::Global(name.clone()), value);
+            }
+            Instruction::InitializePattern(_) => {
+                state.pop_value();
+                state.invalidate_locals();
+            }
+            Instruction::PushEnv | Instruction::PopEnv => {
+                state.invalidate_locals();
+            }
+            Instruction::DeclareName { name, .. } => {
+                state.names.remove(name);
+            }
+            Instruction::MakeClosure { .. } | Instruction::PushRegExp { .. } => {
+                state.push_temporary()
+            }
+            Instruction::MakeArray { count } => {
+                let len = state.stack.len().saturating_sub(*count);
+                state.truncate_stack(len);
+                state.push_temporary();
+            }
+            Instruction::ArrayPush => {
+                state.pop_value();
+                let target = state.pop_value();
+                state.push_value(target);
+            }
+            Instruction::ArrayPushHole => {
+                let target = state.pop_value();
+                state.push_value(target);
+            }
+            Instruction::ArrayExtend => {
+                state.pop_value();
+            }
+            Instruction::MakeObject { keys } => {
+                let len = state.stack.len().saturating_sub(keys.len());
+                state.truncate_stack(len);
+                state.push_temporary();
+            }
+            Instruction::CopyDataProperties => {
+                state.pop_value();
+            }
+            Instruction::CreateIterator => {
+                state.pop_value();
+                state.push_temporary();
+            }
+            Instruction::IteratorNext => {
+                state.pop_value();
+                state.push_temporary();
+                state.push_temporary();
+            }
+            Instruction::GetPropStatic { .. }
+            | Instruction::PatternArrayIndex(_)
+            | Instruction::PatternArrayRest(_)
+            | Instruction::PatternObjectRest(_)
+            | Instruction::Unary(_)
+            | Instruction::Update(_) => {
+                state.pop_value();
+                state.push_temporary();
+            }
+            Instruction::GetPropComputed { .. } => {
+                state.pop_value();
+                state.pop_value();
+                state.push_temporary();
+            }
+            Instruction::SetPropStatic { .. } => {
+                let value = state.pop_value();
+                state.pop_value();
+                state.push_value(value);
+            }
+            Instruction::SetPropComputed => {
+                let value = state.pop_value();
+                state.pop_value();
+                state.pop_value();
+                state.push_value(value);
+            }
+            Instruction::SetPropStaticDiscard { .. } => {
+                state.pop_value();
+                state.pop_value();
+            }
+            Instruction::SetPropComputedDiscard => {
+                state.pop_value();
+                state.pop_value();
+                state.pop_value();
+            }
+            Instruction::Binary(_) => {
+                state.pop_value();
+                state.pop_value();
+                state.push_temporary();
+            }
+            Instruction::Pop => {
+                state.pop_value();
+            }
+            Instruction::Dup => {
+                let value = match state.peek_value().cloned() {
+                    Some(value) => value,
+                    None => state.fresh_temporary(),
+                };
+                state.push_value(value);
+            }
+            Instruction::Dup2 => {
+                let len = state.stack.len();
+                let first = match state.stack.get(len.saturating_sub(2)).cloned() {
+                    Some(value) => value,
+                    None => state.fresh_temporary(),
+                };
+                let second = match state.stack.get(len.saturating_sub(1)).cloned() {
+                    Some(value) => value,
+                    None => state.fresh_temporary(),
+                };
+                state.push_value(first);
+                state.push_value(second);
+            }
+            Instruction::PushHandler { .. }
+            | Instruction::PopHandler
+            | Instruction::EnterFinally { .. }
+            | Instruction::Jump(_)
+            | Instruction::JumpIfFalse(_)
+            | Instruction::JumpIfTrue(_)
+            | Instruction::JumpIfNullish(_)
+            | Instruction::ContinuePending
+            | Instruction::Return => {}
+            Instruction::BeginCatch => {
+                state.push_temporary();
+            }
+            Instruction::Throw { .. }
+            | Instruction::PushPendingReturn
+            | Instruction::PushPendingThrow => {
+                state.pop_value();
+            }
+            Instruction::PushPendingJump { .. } => {}
+            Instruction::Call {
+                argc, with_this, ..
+            } => {
+                let arg_len = state.stack.len().saturating_sub(*argc);
+                state.truncate_stack(arg_len);
+                state.pop_value();
+                if *with_this {
+                    state.pop_value();
+                }
+                state.push_temporary();
+            }
+            Instruction::CallWithArray { with_this, .. } => {
+                state.pop_value();
+                state.pop_value();
+                if *with_this {
+                    state.pop_value();
+                }
+                state.push_temporary();
+            }
+            Instruction::Await => {
+                state.pop_value();
+                state.push_temporary();
+            }
+            Instruction::Construct { argc } => {
+                let arg_len = state.stack.len().saturating_sub(*argc);
+                state.truncate_stack(arg_len);
+                state.pop_value();
+                state.push_temporary();
+            }
+            Instruction::ConstructWithArray => {
+                state.pop_value();
+                state.pop_value();
+                state.push_temporary();
+            }
+            Instruction::LoadSlotGetPropStatic { .. } | Instruction::DupGetPropStatic { .. } => {
+                state.push_temporary();
+            }
+            Instruction::LoadSlotDupGetPropStatic { .. } => {
+                state.push_temporary();
+                state.push_temporary();
+            }
+        }
     }
 
     fn supports_superinstruction_pair(window: &[Instruction]) -> bool {
@@ -748,6 +1166,90 @@ mod tests {
                 },
                 Instruction::Return,
             ] if name == "value"
+        ));
+    }
+
+    #[test]
+    fn top_of_stack_peephole_rewrites_redundant_slot_loads_to_dup() {
+        let optimized = Compiler::apply_top_of_stack_peephole(vec![
+            Instruction::LoadSlot { depth: 0, slot: 1 },
+            Instruction::LoadSlot { depth: 0, slot: 1 },
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [
+                Instruction::LoadSlot { depth: 0, slot: 1 },
+                Instruction::Dup,
+                Instruction::Return,
+            ]
+        ));
+    }
+
+    #[test]
+    fn top_of_stack_peephole_rewrites_reload_after_store_to_dup() {
+        let optimized = Compiler::apply_top_of_stack_peephole(vec![
+            Instruction::PushNumber(1.0),
+            Instruction::StoreSlot { depth: 0, slot: 1 },
+            Instruction::LoadSlot { depth: 0, slot: 1 },
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [
+                Instruction::PushNumber(1.0),
+                Instruction::StoreSlot { depth: 0, slot: 1 },
+                Instruction::Dup,
+                Instruction::Return,
+            ]
+        ));
+    }
+
+    #[test]
+    fn top_of_stack_peephole_rewrites_redundant_literal_pushes_to_dup() {
+        let optimized = Compiler::apply_top_of_stack_peephole(vec![
+            Instruction::PushString("value".to_string()),
+            Instruction::PushString("value".to_string()),
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [
+                Instruction::PushString(value),
+                Instruction::Dup,
+                Instruction::Return,
+            ] if value == "value"
+        ));
+    }
+
+    #[test]
+    fn top_of_stack_peephole_flushes_across_call_boundaries() {
+        let optimized = Compiler::apply_top_of_stack_peephole(vec![
+            Instruction::LoadSlot { depth: 0, slot: 1 },
+            Instruction::Call {
+                argc: 0,
+                with_this: false,
+                optional: false,
+            },
+            Instruction::LoadSlot { depth: 0, slot: 1 },
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [
+                Instruction::LoadSlot { depth: 0, slot: 1 },
+                Instruction::Call {
+                    argc: 0,
+                    with_this: false,
+                    optional: false,
+                },
+                Instruction::LoadSlot { depth: 0, slot: 1 },
+                Instruction::Return,
+            ]
         ));
     }
 
