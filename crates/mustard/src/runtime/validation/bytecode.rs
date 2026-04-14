@@ -506,6 +506,13 @@ fn apply_validation_effect(
                 ..state
             }
         }
+        Instruction::MapSetCounter { .. } => {
+            require_stack(2)?;
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                ..state
+            }
+        }
         Instruction::CallWithArray { with_this, .. } => {
             let required = 2 + usize::from(*with_this);
             require_stack(required)?;

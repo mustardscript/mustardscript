@@ -87,6 +87,7 @@ impl Compiler {
             context.code.push(Instruction::BeginCatch);
             if let Some(parameter) = &catch_clause.parameter {
                 self.compile_pattern_binding(context, parameter)?;
+                self.record_pattern_collection_kind(context, parameter, None);
             } else {
                 context.code.push(Instruction::Pop);
             }

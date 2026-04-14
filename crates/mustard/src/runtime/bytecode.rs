@@ -150,6 +150,9 @@ pub enum Instruction {
         optional: bool,
         span: SourceSpan,
     },
+    MapSetCounter {
+        span: SourceSpan,
+    },
     CallWithArray {
         with_this: bool,
         optional: bool,

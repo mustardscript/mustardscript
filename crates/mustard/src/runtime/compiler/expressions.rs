@@ -1,15 +1,181 @@
 use super::super::{bytecode::Instruction, format_number_key};
-use super::{Compiler, context::CompileContext};
+use super::{
+    Compiler,
+    context::{CompileContext, KnownCollectionKind},
+};
 use crate::{
     diagnostic::MustardResult,
     ir::{
-        ArrayElement, BinaryOp, CallArgument, Expr, MemberProperty, ObjectProperty,
+        ArrayElement, BinaryOp, CallArgument, Expr, LogicalOp, MemberProperty, ObjectProperty,
         ObjectPropertyKey, PropertyName,
     },
     span::SourceSpan,
 };
 
 impl Compiler {
+    fn supports_collection_counter_fast_path(&self) -> bool {
+        Self::map_counter_update_fast_path_enabled()
+    }
+
+    fn collection_counter_exprs_match(&self, left: &Expr, right: &Expr) -> bool {
+        match (left, right) {
+            (Expr::Identifier { name: left, .. }, Expr::Identifier { name: right, .. }) => {
+                left == right
+            }
+            (Expr::This { .. }, Expr::This { .. }) => true,
+            (
+                Expr::Member {
+                    object: left_object,
+                    property: left_property,
+                    optional: false,
+                    ..
+                },
+                Expr::Member {
+                    object: right_object,
+                    property: right_property,
+                    optional: false,
+                    ..
+                },
+            ) => {
+                let (
+                    MemberProperty::Static(PropertyName::Identifier(left_name))
+                    | MemberProperty::Static(PropertyName::String(left_name)),
+                    MemberProperty::Static(PropertyName::Identifier(right_name))
+                    | MemberProperty::Static(PropertyName::String(right_name)),
+                ) = (left_property, right_property)
+                else {
+                    return false;
+                };
+                left_name == right_name
+                    && self.collection_counter_exprs_match(left_object, right_object)
+            }
+            (Expr::String { value: left, .. }, Expr::String { value: right, .. }) => left == right,
+            (Expr::Number { value: left, .. }, Expr::Number { value: right, .. }) => {
+                left.to_bits() == right.to_bits()
+            }
+            (Expr::BigInt { value: left, .. }, Expr::BigInt { value: right, .. }) => left == right,
+            (Expr::Bool { value: left, .. }, Expr::Bool { value: right, .. }) => left == right,
+            (Expr::Null { .. }, Expr::Null { .. })
+            | (Expr::Undefined { .. }, Expr::Undefined { .. }) => true,
+            _ => false,
+        }
+    }
+
+    fn try_compile_map_counter_update(
+        &mut self,
+        context: &mut CompileContext,
+        span: SourceSpan,
+        callee: &Expr,
+        arguments: &[CallArgument],
+        optional: bool,
+    ) -> MustardResult<bool> {
+        if optional || !self.supports_collection_counter_fast_path() {
+            return Ok(false);
+        }
+        let Expr::Member {
+            object,
+            property,
+            optional: false,
+            ..
+        } = callee
+        else {
+            return Ok(false);
+        };
+        let (MemberProperty::Static(PropertyName::Identifier(method))
+        | MemberProperty::Static(PropertyName::String(method))) = property
+        else {
+            return Ok(false);
+        };
+        if method != "set" {
+            return Ok(false);
+        }
+        if !matches!(
+            self.expr_known_collection_kind(context, object),
+            Some(KnownCollectionKind::Map)
+        ) {
+            return Ok(false);
+        }
+        let [CallArgument::Value(key), CallArgument::Value(value)] = arguments else {
+            return Ok(false);
+        };
+        let Expr::Binary {
+            operator: BinaryOp::Add,
+            left,
+            right,
+            ..
+        } = value
+        else {
+            return Ok(false);
+        };
+        let Expr::Number {
+            value: increment, ..
+        } = right.as_ref()
+        else {
+            return Ok(false);
+        };
+        if increment.to_bits() != 1.0f64.to_bits() {
+            return Ok(false);
+        }
+        let Expr::Logical {
+            operator: LogicalOp::NullishCoalesce,
+            left: get_call,
+            right: default_value,
+            ..
+        } = left.as_ref()
+        else {
+            return Ok(false);
+        };
+        let Expr::Number {
+            value: default_value,
+            ..
+        } = default_value.as_ref()
+        else {
+            return Ok(false);
+        };
+        if default_value.to_bits() != 0.0f64.to_bits() {
+            return Ok(false);
+        }
+        let Expr::Call {
+            callee: get_callee,
+            arguments: get_arguments,
+            optional: false,
+            ..
+        } = get_call.as_ref()
+        else {
+            return Ok(false);
+        };
+        let Expr::Member {
+            object: get_object,
+            property: get_property,
+            optional: false,
+            ..
+        } = get_callee.as_ref()
+        else {
+            return Ok(false);
+        };
+        let (MemberProperty::Static(PropertyName::Identifier(get_method))
+        | MemberProperty::Static(PropertyName::String(get_method))) = get_property
+        else {
+            return Ok(false);
+        };
+        if get_method != "get" {
+            return Ok(false);
+        }
+        let [CallArgument::Value(get_key)] = &get_arguments[..] else {
+            return Ok(false);
+        };
+        if !self.collection_counter_exprs_match(object, get_object)
+            || !self.collection_counter_exprs_match(key, get_key)
+        {
+            return Ok(false);
+        }
+
+        self.compile_expr(context, object)?;
+        self.compile_expr(context, key)?;
+        context.code.push(Instruction::MapSetCounter { span });
+        Ok(true)
+    }
+
     pub(super) fn compile_expr(
         &mut self,
         context: &mut CompileContext,
@@ -251,6 +417,15 @@ impl Compiler {
                 arguments,
                 optional,
             } => {
+                if self.try_compile_map_counter_update(
+                    context,
+                    *span,
+                    callee.as_ref(),
+                    arguments,
+                    *optional,
+                )? {
+                    return Ok(());
+                }
                 let with_this = matches!(callee.as_ref(), Expr::Member { .. });
                 if let Expr::Member {
                     object,

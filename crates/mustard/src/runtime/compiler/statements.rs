@@ -26,12 +26,21 @@ impl Compiler {
             }
             Stmt::VariableDecl { declarators, .. } => {
                 for declarator in declarators {
+                    let initializer_kind =
+                        declarator.initializer.as_ref().and_then(|initializer| {
+                            self.expr_known_collection_kind(context, initializer)
+                        });
                     if let Some(initializer) = &declarator.initializer {
                         self.compile_expr(context, initializer)?;
                     } else {
                         context.code.push(Instruction::PushUndefined);
                     }
                     self.compile_pattern_binding(context, &declarator.pattern)?;
+                    self.record_pattern_collection_kind(
+                        context,
+                        &declarator.pattern,
+                        initializer_kind,
+                    );
                 }
             }
             Stmt::FunctionDecl { .. } => {}
@@ -127,6 +136,10 @@ impl Compiler {
                             declarators,
                         } => {
                             for declarator in declarators {
+                                let initializer_kind =
+                                    declarator.initializer.as_ref().and_then(|initializer| {
+                                        self.expr_known_collection_kind(context, initializer)
+                                    });
                                 for (name, mutable) in pattern_bindings(&declarator.pattern) {
                                     self.emit_declare_name(context, name, mutable);
                                 }
@@ -136,6 +149,11 @@ impl Compiler {
                                     context.code.push(Instruction::PushUndefined);
                                 }
                                 self.compile_pattern_binding(context, &declarator.pattern)?;
+                                self.record_pattern_collection_kind(
+                                    context,
+                                    &declarator.pattern,
+                                    initializer_kind,
+                                );
                             }
                         }
                         ForInit::Expression(expression) => {
@@ -221,6 +239,7 @@ impl Compiler {
                             self.emit_declare_name(context, name, *kind == BindingKind::Let);
                         }
                         self.compile_pattern_binding(context, pattern)?;
+                        self.record_pattern_collection_kind(context, pattern, None);
                     }
                     ForOfHead::Assignment { target } => {
                         self.compile_assign_target_pattern(context, target)?;

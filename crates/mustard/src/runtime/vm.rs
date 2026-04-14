@@ -623,6 +623,34 @@ impl Runtime {
                     }
                 }
             }
+            Instruction::MapSetCounter { .. } => {
+                let key = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let receiver = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let Value::Map(map) = receiver else {
+                    return Err(MustardError::runtime(
+                        "optimized map counter update expected a Map receiver",
+                    ));
+                };
+                let current = self
+                    .map_get(map, &key)?
+                    .map(|entry| entry.value)
+                    .unwrap_or(Value::Undefined);
+                let base = if matches!(current, Value::Null | Value::Undefined) {
+                    Value::Number(0.0)
+                } else {
+                    current
+                };
+                let next = self.apply_binary(BinaryOp::Add, base, Value::Number(1.0))?;
+                self.record_map_set_call();
+                self.map_set(map, key, next)?;
+                self.frames[frame_index].stack.push(Value::Map(map));
+            }
             Instruction::Await => {
                 let value = self.frames[frame_index]
                     .stack

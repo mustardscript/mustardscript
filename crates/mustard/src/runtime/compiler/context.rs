@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use super::super::bytecode::Instruction;
 
 #[derive(Debug, Default)]
@@ -12,9 +14,17 @@ pub(super) struct CompileContext {
     pub(super) binding_scopes: Vec<BindingScope>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum KnownCollectionKind {
+    Map,
+    Set,
+}
+
 #[derive(Debug, Default, Clone)]
 pub(super) struct BindingScope {
     pub(super) bindings: Vec<String>,
+    pub(super) immutable_bindings: HashSet<String>,
+    pub(super) known_collections: HashMap<String, KnownCollectionKind>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,12 +51,15 @@ impl CompileContext {
             .expect("binding scope should exist before scope exit");
     }
 
-    pub(super) fn declare_binding(&mut self, name: String) {
-        self.binding_scopes
+    pub(super) fn declare_binding(&mut self, name: String, mutable: bool) {
+        let scope = self
+            .binding_scopes
             .last_mut()
-            .expect("binding scope should exist before declarations")
-            .bindings
-            .push(name);
+            .expect("binding scope should exist before declarations");
+        if !mutable {
+            scope.immutable_bindings.insert(name.clone());
+        }
+        scope.bindings.push(name);
     }
 
     pub(super) fn resolve_binding(&self, name: &str) -> Option<ResolvedBinding> {
@@ -61,6 +74,38 @@ impl CompileContext {
                     .position(|binding| binding == name)
                     .map(|slot| ResolvedBinding { depth, slot })
             })
+    }
+
+    pub(super) fn known_collection_kind(&self, name: &str) -> Option<KnownCollectionKind> {
+        self.binding_scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.known_collections.get(name).copied())
+    }
+
+    pub(super) fn record_known_collection(&mut self, name: &str, kind: KnownCollectionKind) {
+        let Some(scope) = self
+            .binding_scopes
+            .iter_mut()
+            .rev()
+            .find(|scope| scope.bindings.iter().any(|binding| binding == name))
+        else {
+            return;
+        };
+        if scope.immutable_bindings.contains(name) {
+            scope.known_collections.insert(name.to_string(), kind);
+        }
+    }
+
+    pub(super) fn clear_known_collection(&mut self, name: &str) {
+        if let Some(scope) = self
+            .binding_scopes
+            .iter_mut()
+            .rev()
+            .find(|scope| scope.bindings.iter().any(|binding| binding == name))
+        {
+            scope.known_collections.remove(name);
+        }
     }
 }
 

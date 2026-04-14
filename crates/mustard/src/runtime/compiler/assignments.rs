@@ -138,6 +138,7 @@ impl Compiler {
         match target {
             AssignTarget::Identifier { name, .. } => {
                 self.emit_store_name_discard(context, name);
+                context.clear_known_collection(name);
             }
             AssignTarget::Member { .. } => {
                 let source = self.declare_internal_binding(context, "assign_value");
@@ -263,6 +264,7 @@ impl Compiler {
         self.emit_store_name(context, name);
         let end_ip = context.code.len();
         self.patch_jump(context, end_jump, end_ip);
+        context.clear_known_collection(name);
         Ok(())
     }
 
@@ -383,8 +385,14 @@ impl Compiler {
         match target {
             AssignTarget::Identifier { name, .. } => {
                 if operator == AssignOp::Assign {
+                    let value_kind = self.expr_known_collection_kind(context, value);
                     self.compile_expr(context, value)?;
                     self.emit_store_name(context, name);
+                    if let Some(kind) = value_kind {
+                        context.record_known_collection(name, kind);
+                    } else {
+                        context.clear_known_collection(name);
+                    }
                 } else if operator == AssignOp::OrAssign {
                     self.compile_short_circuit_assignment_identifier(
                         context,
@@ -413,6 +421,7 @@ impl Compiler {
                         .code
                         .push(Instruction::Binary(assign_op_to_binary(operator)?));
                     self.emit_store_name(context, name);
+                    context.clear_known_collection(name);
                 }
             }
             AssignTarget::Member {

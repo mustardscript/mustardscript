@@ -224,7 +224,11 @@ impl Runtime {
         }
     }
 
-    fn map_get(&self, map: MapKey, key: &Value) -> MustardResult<Option<MapEntry>> {
+    pub(in crate::runtime) fn map_get(
+        &self,
+        map: MapKey,
+        key: &Value,
+    ) -> MustardResult<Option<MapEntry>> {
         let map_ref = self
             .maps
             .get(map)
@@ -240,7 +244,12 @@ impl Runtime {
         Ok(Some(entry))
     }
 
-    fn map_set(&mut self, map: MapKey, key: Value, value: Value) -> MustardResult<()> {
+    pub(in crate::runtime) fn map_set(
+        &mut self,
+        map: MapKey,
+        key: Value,
+        value: Value,
+    ) -> MustardResult<()> {
         let key = canonicalize_collection_key(key);
         let string_key = uses_string_heavy_collection_lookup(&key);
         let index_key = CollectionIndexKey::from_value(&key);

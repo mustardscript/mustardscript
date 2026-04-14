@@ -7,13 +7,14 @@ mod statements;
 
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use bindings::collect_block_bindings;
-use context::CompileContext;
+use context::{CompileContext, KnownCollectionKind};
 
 use crate::{
     diagnostic::MustardResult,
-    ir::{CompiledProgram, FunctionExpr, Pattern, Stmt},
+    ir::{CompiledProgram, Expr, FunctionExpr, Pattern, Stmt},
     span::SourceSpan,
 };
 
@@ -51,6 +52,12 @@ struct BytecodeOptimizerConfig {
 }
 
 type BlockLocalRewrite = fn(&[Instruction]) -> (Vec<Instruction>, Vec<usize>);
+
+const MAP_COUNTER_UPDATE_OVERRIDE_UNSET: u8 = 0;
+const MAP_COUNTER_UPDATE_OVERRIDE_DISABLED: u8 = 1;
+const MAP_COUNTER_UPDATE_OVERRIDE_ENABLED: u8 = 2;
+
+static MAP_COUNTER_UPDATE_OVERRIDE: AtomicU8 = AtomicU8::new(MAP_COUNTER_UPDATE_OVERRIDE_UNSET);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum AbstractBinding {
@@ -150,10 +157,18 @@ impl TopOfStackState {
 }
 
 impl Compiler {
+    fn map_counter_update_fast_path_enabled() -> bool {
+        match MAP_COUNTER_UPDATE_OVERRIDE.load(Ordering::Relaxed) {
+            MAP_COUNTER_UPDATE_OVERRIDE_DISABLED => false,
+            MAP_COUNTER_UPDATE_OVERRIDE_ENABLED => true,
+            _ => Self::env_flag_enabled("MUSTARD_ENABLE_MAP_COUNTER_UPDATE_FAST_PATH"),
+        }
+    }
+
     fn compile_root(&mut self, statements: &[Stmt], span: SourceSpan) -> MustardResult<usize> {
         let mut context = CompileContext::default();
         context.push_binding_scope();
-        context.declare_binding("this".to_string());
+        context.declare_binding("this".to_string(), false);
         self.emit_block_prologue(&mut context, statements, true)?;
         let mut produced_result = false;
         for (index, statement) in statements.iter().enumerate() {
@@ -202,19 +217,23 @@ impl Compiler {
     ) -> MustardResult<usize> {
         let mut context = CompileContext::with_inherited_bindings(&parent_context.binding_scopes);
         context.push_binding_scope();
-        context.declare_binding("this".to_string());
+        context.declare_binding("this".to_string(), false);
         for pattern in &function.params {
             let Pattern::Identifier { name, .. } = pattern else {
                 unreachable!("lowered function params should be identifier temporaries");
             };
-            context.declare_binding(name.clone());
+            context.declare_binding(name.clone(), true);
         }
         if let Some(Pattern::Identifier { name, .. }) = &function.rest {
-            context.declare_binding(name.clone());
+            context.declare_binding(name.clone(), true);
         }
         for statement in &function.param_init {
             if let Stmt::VariableDecl { declarators, .. } = statement {
                 for declarator in declarators {
+                    let initializer_kind =
+                        declarator.initializer.as_ref().and_then(|initializer| {
+                            self.expr_known_collection_kind(&context, initializer)
+                        });
                     for (name, _) in pattern_bindings(&declarator.pattern) {
                         self.emit_declare_name(&mut context, name, true);
                     }
@@ -224,6 +243,11 @@ impl Compiler {
                         context.code.push(Instruction::PushUndefined);
                     }
                     self.compile_pattern_binding(&mut context, &declarator.pattern)?;
+                    self.record_pattern_collection_kind(
+                        &mut context,
+                        &declarator.pattern,
+                        initializer_kind,
+                    );
                 }
             }
         }
@@ -291,6 +315,7 @@ impl Compiler {
                     span: function.expr.span,
                     name: function_name.clone(),
                 }));
+            context.clear_known_collection(&function_name);
             if root_scope {
                 context.code.push(Instruction::LoadGlobalObject);
                 self.emit_load_name(context, &function_name);
@@ -322,10 +347,62 @@ impl Compiler {
     }
 
     fn emit_declare_name(&self, context: &mut CompileContext, name: String, mutable: bool) {
-        context.declare_binding(name.clone());
+        context.declare_binding(name.clone(), mutable);
         context
             .code
             .push(Instruction::DeclareName { name, mutable });
+    }
+
+    fn is_builtin_collection_constructor(
+        &self,
+        context: &CompileContext,
+        expr: &Expr,
+    ) -> Option<KnownCollectionKind> {
+        let Expr::Identifier { name, .. } = expr else {
+            return None;
+        };
+        if context.resolve_binding(name).is_some() {
+            return None;
+        }
+        match name.as_str() {
+            "Map" => Some(KnownCollectionKind::Map),
+            "Set" => Some(KnownCollectionKind::Set),
+            _ => None,
+        }
+    }
+
+    fn expr_known_collection_kind(
+        &self,
+        context: &CompileContext,
+        expr: &Expr,
+    ) -> Option<KnownCollectionKind> {
+        match expr {
+            Expr::Identifier { name, .. } => context.known_collection_kind(name),
+            Expr::New { callee, .. } => self.is_builtin_collection_constructor(context, callee),
+            _ => None,
+        }
+    }
+
+    fn record_pattern_collection_kind(
+        &self,
+        context: &mut CompileContext,
+        pattern: &Pattern,
+        kind: Option<KnownCollectionKind>,
+    ) {
+        match pattern {
+            Pattern::Identifier { name, .. } => {
+                if let Some(kind) = kind {
+                    context.record_known_collection(name, kind);
+                } else {
+                    context.clear_known_collection(name);
+                }
+            }
+            _ => {
+                for (name, _) in pattern_bindings(pattern) {
+                    context.clear_known_collection(&name);
+                }
+            }
+        }
     }
 
     fn emit_load_name(&self, context: &mut CompileContext, name: &str) {
@@ -611,6 +688,7 @@ impl Compiler {
                 | Instruction::JumpIfTrue(_)
                 | Instruction::JumpIfNullish(_)
                 | Instruction::Call { .. }
+                | Instruction::MapSetCounter { .. }
                 | Instruction::CallWithArray { .. }
                 | Instruction::Await
                 | Instruction::Construct { .. }
@@ -904,6 +982,11 @@ impl Compiler {
                 }
                 state.push_temporary();
             }
+            Instruction::MapSetCounter { .. } => {
+                state.pop_value();
+                state.pop_value();
+                state.push_temporary();
+            }
             Instruction::CallWithArray { with_this, .. } => {
                 state.pop_value();
                 state.pop_value();
@@ -1085,8 +1168,39 @@ impl Compiler {
 }
 
 #[cfg(test)]
+struct MapCounterUpdateFastPathOverrideGuard {
+    previous: u8,
+}
+
+#[cfg(test)]
+impl Drop for MapCounterUpdateFastPathOverrideGuard {
+    fn drop(&mut self) {
+        MAP_COUNTER_UPDATE_OVERRIDE.store(self.previous, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+fn override_map_counter_update_fast_path_for_tests(
+    enabled: bool,
+) -> MapCounterUpdateFastPathOverrideGuard {
+    let next = if enabled {
+        MAP_COUNTER_UPDATE_OVERRIDE_ENABLED
+    } else {
+        MAP_COUNTER_UPDATE_OVERRIDE_DISABLED
+    };
+    let previous = MAP_COUNTER_UPDATE_OVERRIDE.swap(next, Ordering::Relaxed);
+    MapCounterUpdateFastPathOverrideGuard { previous }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{
+        ExecutionOptions, ExecutionStep, RuntimeLimits, StructuredValue, compile,
+        start_shared_bytecode_with_metrics,
+    };
+    use indexmap::IndexMap;
+    use std::sync::Arc;
 
     #[test]
     fn stack_noop_peephole_removes_dup_pop_pairs() {
@@ -1302,5 +1416,127 @@ mod tests {
                 Instruction::Return,
             ] if name == "value"
         ));
+    }
+
+    #[test]
+    fn lowering_emits_map_counter_update_for_const_maps() {
+        let _guard = override_map_counter_update_fast_path_for_tests(true);
+        let program = compile(
+            r#"
+            function summarize(tokens) {
+              const counts = new Map();
+              for (const token of tokens) {
+                counts.set(token, (counts.get(token) ?? 0) + 1);
+              }
+              return counts;
+            }
+            summarize(["a", "b", "a"]);
+            "#,
+        )
+        .expect("source should compile");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+        let body = &bytecode.functions[0].code;
+        assert!(
+            body.iter()
+                .any(|instruction| matches!(instruction, Instruction::MapSetCounter { .. }))
+        );
+    }
+
+    #[test]
+    fn lowering_keeps_mutable_map_counter_loops_generic() {
+        let _guard = override_map_counter_update_fast_path_for_tests(true);
+        let program = compile(
+            r#"
+            function summarize(tokens) {
+              let counts = new Map();
+              counts = new Map();
+              for (const token of tokens) {
+                counts.set(token, (counts.get(token) ?? 0) + 1);
+              }
+              return counts;
+            }
+            summarize(["a", "b", "a"]);
+            "#,
+        )
+        .expect("source should compile");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+        let body = &bytecode.functions[0].code;
+        assert!(
+            !body
+                .iter()
+                .any(|instruction| matches!(instruction, Instruction::MapSetCounter { .. }))
+        );
+    }
+
+    #[test]
+    fn lowering_emits_map_counter_update_for_repeated_static_member_keys() {
+        let _guard = override_map_counter_update_fast_path_for_tests(true);
+        let program = compile(
+            r#"
+            function summarize(rows) {
+              const counts = new Map();
+              for (const row of rows) {
+                counts.set(row.id, (counts.get(row.id) ?? 0) + 1);
+              }
+              return counts;
+            }
+            summarize([{ id: "a" }, { id: "b" }, { id: "a" }]);
+            "#,
+        )
+        .expect("source should compile");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+        let body = &bytecode.functions[0].code;
+        assert!(
+            body.iter()
+                .any(|instruction| matches!(instruction, Instruction::MapSetCounter { .. }))
+        );
+    }
+
+    #[test]
+    fn map_counter_updates_record_specialized_map_set_metrics() {
+        let _guard = override_map_counter_update_fast_path_for_tests(true);
+        let program = compile(
+            r#"
+            const counts = new Map();
+            for (const token of ["a", "b", "a"]) {
+              counts.set(token, (counts.get(token) ?? 0) + 1);
+            }
+            [counts.get("a"), counts.get("b")];
+            "#,
+        )
+        .expect("source should compile");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+        let (step, metrics) = start_shared_bytecode_with_metrics(
+            Arc::new(bytecode),
+            ExecutionOptions {
+                inputs: IndexMap::new(),
+                capabilities: Vec::new(),
+                limits: RuntimeLimits::default(),
+                cancellation_token: None,
+            },
+        )
+        .expect("program should execute");
+
+        match step {
+            ExecutionStep::Completed(value) => {
+                assert_eq!(
+                    value,
+                    StructuredValue::Array(vec![
+                        StructuredValue::from(2.0),
+                        StructuredValue::from(1.0),
+                    ])
+                );
+            }
+            ExecutionStep::Suspended(_) => panic!("program should not suspend"),
+        }
+
+        assert_eq!(metrics.map_set_calls, 3);
+        assert_eq!(metrics.map_get_calls, 2);
+        assert!(metrics.collection_call_sites.iter().any(|site| {
+            site.map_set_calls == 3
+                && site.map_get_calls == 0
+                && site.total_calls() == 3
+                && site.span.end > site.span.start
+        }));
     }
 }
