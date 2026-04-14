@@ -18,7 +18,7 @@ Security issues include:
 
 Report vulnerabilities through GitHub Security Advisories:
 
-- https://github.com/keppoai/mustardscript/security/advisories/new
+- https://github.com/mustardscript/mustardscript/security/advisories/new
 
 Do not open public GitHub issues for unpatched security reports.
 

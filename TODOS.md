@@ -417,9 +417,9 @@ Exit criteria:
 - [ ] Project is publishable and maintainable
   Current blocker: a real public release now targets `mustardscript` plus the
   optional scoped prebuilt packages, but the final publish still requires an
-  authenticated npm publisher with permission for those `@keppoai` packages and
-  a GitHub Actions run with the needed publish secrets, which repository-local
-  dry runs cannot verify.
+  authenticated npm publisher with permission for those `@mustardscript`
+  packages and npm Trusted Publishing configured for the GitHub Actions
+  workflow, which repository-local dry runs cannot verify.
 
 ## First Real Milestone
 
