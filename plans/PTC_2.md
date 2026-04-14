@@ -583,14 +583,14 @@ Target by end of milestone:
 
 Action items:
 
-- [ ] Add workload-shape metadata for all `24` cataloged use cases.
-- [ ] Record category, async shape, collection shape, string shape, durable
+- [x] Add workload-shape metadata for all `24` cataloged use cases.
+- [x] Record category, async shape, collection shape, string shape, durable
   shape, writeback shape, and compaction expectations for each example.
-- [ ] Check in a coverage matrix showing why the proposed panels are broad
+- [x] Check in a coverage matrix showing why the proposed panels are broad
   enough.
-- [ ] Record which missing workload shapes are intentionally delegated to
+- [x] Record which missing workload shapes are intentionally delegated to
   sentinel families rather than the primary PTC gallery.
-- [ ] Capture a pilot artifact for the current suite plus a broad-panel dry run.
+- [x] Capture a pilot artifact for the current suite plus a broad-panel dry run.
 
 ## Milestone 1: Land The Phase-2 Benchmark Portfolio
 
@@ -601,14 +601,14 @@ Target by end of milestone:
 
 Action items:
 
-- [ ] Add the new headline panel lanes to the benchmark harness.
-- [ ] Add the remaining broad-panel lanes to the benchmark harness.
-- [ ] Add the holdout panel and full-gallery canary modes.
-- [ ] Add a `ptc_sentinel_release` mode with the three initial sentinel
+- [x] Add the new headline panel lanes to the benchmark harness.
+- [x] Add the remaining broad-panel lanes to the benchmark harness.
+- [x] Add the holdout panel and full-gallery canary modes.
+- [x] Add a `ptc_sentinel_release` mode with the three initial sentinel
   families.
-- [ ] Keep `ptc_website_demo_small` as a separate public metric.
-- [ ] Add exact expected-result checks for all promoted lanes across runtimes.
-- [ ] Check in the first phase-2 broad baseline artifact.
+- [x] Keep `ptc_website_demo_small` as a separate public metric.
+- [x] Add exact expected-result checks for all promoted lanes across runtimes.
+- [x] Check in the first phase-2 broad baseline artifact.
 
 ## Milestone 2: Add Dataset Variation And Durable Breadth
 
@@ -619,12 +619,12 @@ Target by end of milestone:
 
 Action items:
 
-- [ ] Add nominal and skewed seeds for each headline lane.
-- [ ] Add at least two durable representative lanes beyond the current vendor
+- [x] Add nominal and skewed seeds for each headline lane.
+- [x] Add at least two durable representative lanes beyond the current vendor
   durable lane.
-- [ ] Record which skew patterns each headline lane covers.
-- [ ] Verify that broad-panel correctness remains stable across seed variants.
-- [ ] Add the planned result-shape and compaction variants for sentinel
+- [x] Record which skew patterns each headline lane covers.
+- [x] Verify that broad-panel correctness remains stable across seed variants.
+- [x] Add the planned result-shape and compaction variants for sentinel
   families.
 
 ## Milestone 3: Add Anti-Overfit Scorecards And Regression Policy
@@ -637,13 +637,13 @@ Target by end of milestone:
 
 Action items:
 
-- [ ] Add `ptc_headline_score`, `ptc_broad_score`, and `ptc_holdout_score`.
-- [ ] Add category scores plus `p90` and worst-lane ratios.
-- [ ] Add the sentinel-family score outputs and comparison reporting.
-- [ ] Update comparison tooling to report the new scorecards.
-- [ ] Update regression tooling so broad or holdout regressions block claimed
+- [x] Add `ptc_headline_score`, `ptc_broad_score`, and `ptc_holdout_score`.
+- [x] Add category scores plus `p90` and worst-lane ratios.
+- [x] Add the sentinel-family score outputs and comparison reporting.
+- [x] Update comparison tooling to report the new scorecards.
+- [x] Update regression tooling so broad or holdout regressions block claimed
   wins.
-- [ ] Update `docs/BENCHMARK_FINDINGS.md` to report the new scorecard shape.
+- [x] Update `docs/BENCHMARK_FINDINGS.md` to report the new scorecard shape.
 
 ## Milestone 4: Add Deeper PTC Attribution
 
@@ -654,11 +654,11 @@ Target by end of milestone:
 
 Action items:
 
-- [ ] Add the required new per-lane operation counters.
-- [ ] Extend representative addon breakdowns where needed.
-- [ ] Add any required sidecar or isolate attribution needed to keep addon
+- [x] Add the required new per-lane operation counters.
+- [x] Extend representative addon breakdowns where needed.
+- [x] Add any required sidecar or isolate attribution needed to keep addon
   comparisons honest.
-- [ ] Check in a fresh broad baseline with the deeper attribution fields.
+- [x] Check in a fresh broad baseline with the deeper attribution fields.
 
 ## Milestone 5: Try V8-Inspired Bytecode Stream Optimization
 
@@ -900,12 +900,18 @@ Reject if:
 
 ## Verification Gates
 
-- [ ] `npm run test:use-cases` stays green as the benchmark portfolio evolves.
-- [ ] `cargo test --workspace` stays green for benchmark-harness and runtime
+- [x] `npm run test:use-cases` stays green as the benchmark portfolio evolves.
+- [x] `cargo test --workspace` stays green for benchmark-harness and runtime
   changes.
-- [ ] `npm test` stays green for wrapper and harness changes.
-- [ ] `npm run lint` stays green for any Rust or Node changes.
-- [ ] No milestone is complete without a checked-in release artifact for the
+- [x] `npm test` stays green for wrapper and harness changes.
+- [x] `npm run lint` stays green for any Rust or Node changes.
+- [x] No milestone is complete without a checked-in release artifact for the
   relevant new benchmark layer.
-- [ ] No broad PTC claim is complete without evidence from both the broad panel
+- [x] No broad PTC claim is complete without evidence from both the broad panel
   and the holdout panel.
+
+## Iteration Log
+
+| UTC Timestamp | Summary | Evidence | Blockers |
+| --- | --- | --- | --- |
+| 2026-04-14T08:04:25Z | Closed milestones 0-4 by landing the audited phase-2 portfolio, skewed headline seeds, durable breadth, anti-overfit scorecards with regression guards, and deeper headline-lane attribution with a fresh broad baseline. | Commits `316ad5e`, `afd8cf6`, `3890be7`; verified `node --test tests/node/benchmark-compare.test.js`, `node scripts/audit-ptc-headline-seeds.ts --json`, `npm run bench:ptc:broad`, `npm run bench:ptc:holdout`, `npm run bench:regress:ptc`, `cargo test --workspace`, `npm test`, `npm run lint`, `npm run test:use-cases`; kept artifacts `benchmarks/results/2026-04-14T07-56-52-011Z-ptc_broad_release-release.json`, `benchmarks/results/2026-04-14T07-38-31-068Z-ptc_holdout_release-release.json`, `benchmarks/results/2026-04-14T07-34-21-584Z-ptc_sentinel_release-release.json` | None; the async headline counter collector and a `cargo fmt --check` diff both failed once and were fixed in-loop. |
