@@ -254,6 +254,18 @@ Current mechanics:
   `npm publish` directly before publishing the root package, rather than routing
   through `napi pre-publish`.
 
+Bootstrap helper for first-time scoped package setup:
+
+```sh
+scripts/bootstrap-binding-stubs.sh --output-dir /tmp/ms-binding-bootstrap
+```
+
+That helper writes minimal placeholder packages for the current
+`@mustardscript/binding-*` names so maintainers can do an initial manual
+`npm publish --access public` for each package before switching the package
+settings to npm Trusted Publishing. Use a placeholder version such as
+`0.0.0-bootstrap` that the root package will never reference.
+
 Local verification hook:
 
 ```sh
