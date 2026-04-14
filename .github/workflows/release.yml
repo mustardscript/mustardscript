@@ -152,6 +152,6 @@ jobs:
 
       - name: Publish optional prebuilt packages and root package
         run: |
-          npx napi pre-publish --tag-style npm --gh-release=false
+          npx napi pre-publish --tag-style npm
           npm publish --tag "${npm_config_tag}" --access public
         shell: bash
