@@ -15,6 +15,7 @@ const { callNative } = require('../lib/errors.ts');
 const { createBinarySidecarClient } = require('../lib/sidecar.ts');
 const {
   decodeStructured,
+  encodeResumePayloadError,
   encodeResumePayloadValue,
   encodeStartOptions,
   encodeStructuredInputs,
@@ -31,6 +32,7 @@ const {
   measure,
   measureSamples,
   machineMetadata,
+  summarize,
   writeBenchmarkArtifact,
 } = require('./support.ts');
 const {
@@ -61,6 +63,12 @@ const DEFAULT_OPTIONS = DEFAULT_MEASURE_OPTIONS;
 const COLD_OPTIONS = Object.freeze({ warmup: 0, iterations: 2 });
 const MEMORY_RUNS = 20;
 const SIDECAR_PROTOCOL_VERSION = 2;
+const ADDON_PTC_BREAKDOWN_METRICS = new Set([
+  'ptc_website_demo_small',
+  'ptc_incident_triage_medium',
+  'ptc_fraud_investigation_medium',
+  'ptc_vendor_review_medium',
+]);
 
 function parseArgs(argv) {
   let profile = 'release';
@@ -710,8 +718,7 @@ function createAuthenticatedPolicyJson(dumped, loadOptions) {
   });
 }
 
-function parseNativeStepWithMetrics(stepJson) {
-  const step = JSON.parse(stepJson);
+function parseNativeStepObjectWithMetrics(step) {
   const metrics = step.metrics ?? null;
   if (step.type === 'completed') {
     return {
@@ -732,12 +739,28 @@ function parseNativeStepWithMetrics(stepJson) {
   };
 }
 
+function parseNativeStepWithMetrics(stepJson) {
+  return parseNativeStepObjectWithMetrics(JSON.parse(stepJson));
+}
+
 function parseNativeInspectionWithMetrics(inspectionJson) {
   const inspection = JSON.parse(inspectionJson);
   return {
     capability: inspection.capability,
     args: inspection.args.map(decodeStructured),
     metrics: inspection.metrics ?? null,
+  };
+}
+
+function parseNativeProfiledStepWithMetrics(stepJson) {
+  const profiled = JSON.parse(stepJson);
+  return {
+    step: parseNativeStepObjectWithMetrics(profiled.step),
+    profile: {
+      parseMs: profiled.profile.parse_ns / 1e6,
+      executeMs: profiled.profile.execute_ns / 1e6,
+      encodeMs: profiled.profile.encode_ns / 1e6,
+    },
   };
 }
 
@@ -779,6 +802,124 @@ async function collectAddonStepCounters(runtime, options, resumeValueForStep = u
     }
   }
   return metrics;
+}
+
+async function invokeAddonCapability(hostHandlers, step, totals, scenario) {
+  const handler = hostHandlers[step.capability];
+  assert.equal(
+    typeof handler,
+    'function',
+    `PTC boundary breakdown is missing capability \`${step.capability}\` for ${scenario.metricName}`,
+  );
+  const started = performance.now();
+  try {
+    const value = handler(...step.args);
+    return value && typeof value.then === 'function' ? await value : value;
+  } finally {
+    totals.hostCallbacksMs += performance.now() - started;
+  }
+}
+
+async function runAddonPtcBoundaryBreakdownSample(runtime, scenario) {
+  const native = loadNative();
+  const context = new ExecutionContext({
+    capabilities: scenario.createCapabilities(),
+    limits: {},
+    snapshotKey: SNAPSHOT_KEY,
+  });
+  const { hostHandlers, policy, nativeContextHandle } = resolveExecutionContext(
+    {
+      context,
+      inputs: scenario.inputs,
+    },
+    `${scenario.metricName} boundary breakdown options`,
+  );
+  const programHandle = runtime._ensureProgramHandle();
+  const startProgram =
+    typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
+      ? native.profileStartProgramWithExecutionContextHandle
+      : native.profileStartProgramWithSnapshotHandle;
+  const startArgs =
+    typeof nativeContextHandle === 'string' && nativeContextHandle.length > 0
+      ? [programHandle, nativeContextHandle, encodeStructuredInputs(scenario.inputs)]
+      : [programHandle, encodeStartOptions(scenario.inputs, policy)];
+  const totals = {
+    hostCallbacksMs: 0,
+    guestExecutionMs: 0,
+    boundaryParseMs: 0,
+    boundaryEncodeMs: 0,
+  };
+  let { step, profile } = parseNativeProfiledStepWithMetrics(callNative(startProgram, ...startArgs));
+  totals.guestExecutionMs += profile.executeMs;
+  totals.boundaryParseMs += profile.parseMs;
+  totals.boundaryEncodeMs += profile.encodeMs;
+
+  while (step.type === 'suspended') {
+    const snapshotHandle = step.snapshotHandle;
+    assert.ok(snapshotHandle, `${scenario.metricName} profiled steps should retain a snapshot handle`);
+    try {
+      let payload;
+      try {
+        const value = await invokeAddonCapability(hostHandlers, step, totals, scenario);
+        payload = encodeResumePayloadValue(value);
+      } catch (error) {
+        payload = encodeResumePayloadError(error);
+      }
+      ({ step, profile } = parseNativeProfiledStepWithMetrics(
+        callNative(native.profileResumeSnapshotHandle, snapshotHandle, payload),
+      ));
+      totals.guestExecutionMs += profile.executeMs;
+      totals.boundaryParseMs += profile.parseMs;
+      totals.boundaryEncodeMs += profile.encodeMs;
+    } finally {
+      try {
+        callNative(native.releaseSnapshotHandle, snapshotHandle);
+      } catch {
+        // Best-effort cleanup only; the handle may already have been consumed.
+      }
+    }
+  }
+
+  scenario.assertResult(step.value);
+  return {
+    hostCallbacksMs: totals.hostCallbacksMs,
+    guestExecutionMs: totals.guestExecutionMs,
+    boundaryParseMs: totals.boundaryParseMs,
+    boundaryEncodeMs: totals.boundaryEncodeMs,
+    boundaryCodecMs: totals.boundaryParseMs + totals.boundaryEncodeMs,
+  };
+}
+
+async function captureAddonPtcBoundaryBreakdown(
+  runtime,
+  scenario,
+  options = DEFAULT_OPTIONS,
+) {
+  for (let iteration = 0; iteration < options.warmup; iteration += 1) {
+    await runAddonPtcBoundaryBreakdownSample(runtime, scenario);
+  }
+  const samples = {
+    hostCallbacks: [],
+    guestExecution: [],
+    boundaryParse: [],
+    boundaryEncode: [],
+    boundaryCodec: [],
+  };
+  for (let iteration = 0; iteration < options.iterations; iteration += 1) {
+    const sample = await runAddonPtcBoundaryBreakdownSample(runtime, scenario);
+    samples.hostCallbacks.push(sample.hostCallbacksMs);
+    samples.guestExecution.push(sample.guestExecutionMs);
+    samples.boundaryParse.push(sample.boundaryParseMs);
+    samples.boundaryEncode.push(sample.boundaryEncodeMs);
+    samples.boundaryCodec.push(sample.boundaryCodecMs);
+  }
+  return {
+    hostCallbacks: summarize(samples.hostCallbacks),
+    guestExecution: summarize(samples.guestExecution),
+    boundaryParse: summarize(samples.boundaryParse),
+    boundaryEncode: summarize(samples.boundaryEncode),
+    boundaryCodec: summarize(samples.boundaryCodec),
+  };
 }
 
 function queuedFactory(factory) {
@@ -972,6 +1113,7 @@ async function benchmarkAddon(fixtures) {
   const { smallSource, codeModeSource, workflowSource, workflowData, ptcScenarios } = fixtures;
   const ptc = {
     transfer: {},
+    breakdown: {},
   };
   const defaultContext = new ExecutionContext();
   const warmSmallRuntime = new Mustard(smallSource);
@@ -1031,6 +1173,12 @@ async function benchmarkAddon(fixtures) {
       }),
       scenario,
     );
+    if (ADDON_PTC_BREAKDOWN_METRICS.has(scenario.metricName)) {
+      ptc.breakdown[scenario.metricName] = await captureAddonPtcBoundaryBreakdown(
+        runtime,
+        scenario,
+      );
+    }
   }
   ptc.weightedScore = {
     medium: summarizePtcWeightedScore(latency),
@@ -1712,6 +1860,13 @@ function printSummary(results) {
     );
   }
   console.log('');
+  console.log('Addon representative PTC boundary breakdowns:');
+  for (const [name, metric] of Object.entries(results.addon.ptc.breakdown)) {
+    console.log(
+      `${name}: host callbacks ${metric.hostCallbacks.medianMs.toFixed(2)}ms, guest execution ${metric.guestExecution.medianMs.toFixed(2)}ms, boundary parse ${metric.boundaryParse.medianMs.toFixed(2)}ms, boundary encode ${metric.boundaryEncode.medianMs.toFixed(2)}ms, boundary codec ${metric.boundaryCodec.medianMs.toFixed(2)}ms`,
+    );
+  }
+  console.log('');
   console.log(`Memory retained after ${MEMORY_RUNS} workflow runs:`);
   console.log(`addon heap ${results.addon.memory.heapUsedDeltaBytes}B rss ${results.addon.memory.rssDeltaBytes}B`);
   console.log(`sidecar heap ${results.sidecar.memory.heapUsedDeltaBytes}B rss ${results.sidecar.memory.rssDeltaBytes}B`);
@@ -1779,6 +1934,8 @@ async function main() {
         'Representative PTC lanes are sourced from the real programmatic-tool-call gallery: ptc_website_demo_* uses operations/triage-production-incident.js, ptc_incident_triage_* uses operations/triage-multi-region-auth-outage.js, ptc_fraud_investigation_* uses analytics/investigate-fraud-ring.js, and ptc_vendor_review_* uses workflows/vendor-compliance-renewal.js. addon/sidecar/isolate all run the same guest source with deterministic synthetic tool fixtures.',
       ptcWeightedScoreDefinitions:
         'runtime.ptc.weightedScore.medium is a weighted median/p95 rollup of ptc_incident_triage_medium (40%), ptc_fraud_investigation_medium (35%), and ptc_vendor_review_medium (25%). runtime.ptc.transfer records actual tool call counts plus JSON-encoded tool/result payload sizes for one untimed representative run of each PTC lane.',
+      ptcBreakdownDefinitions:
+        'addon.ptc.breakdown records representative profiled addon runs for the website-small lane plus the medium primary lanes. hostCallbacks measures JS time spent inside host tool handlers, guestExecution measures Rust runtime execution between boundaries, boundaryParse measures native JSON decode/parse of start/resume payloads, boundaryEncode measures native JSON encoding of step results, and boundaryCodec is parse+encode combined.',
     },
     addon,
     sidecar,

@@ -87,6 +87,9 @@ machine metadata and latency summaries for:
     `examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js`
 - per-lane PTC transfer summaries for actual tool call counts plus
   JSON-encoded tool-bytes-in / result-bytes-out reduction ratios
+- addon representative PTC boundary breakdowns for the website-sized public
+  demo plus the medium primary lanes, separating host callback time, native
+  boundary parse/decode, guest execution, and native boundary encode
 - per-runtime weighted PTC medium-lane score under `runtime.ptc.weightedScore.medium`
 - addon suspend/resume chains with snapshot reloads
 - addon boundary-only measurements for start inputs, suspended args, resume
@@ -218,6 +221,10 @@ The new addon-only phase metrics are intentionally narrow:
   `suspend_resume_*` fixtures: serialized program bytes, dumped snapshot bytes,
   and retained live `Progress` memory deltas after GC while a batch of
   suspended executions remains live
+- `addon.ptc.breakdown` records representative profiled addon runs for the
+  website-small lane plus the medium primary lanes, splitting time into
+  `hostCallbacks`, `guestExecution`, `boundaryParse`, `boundaryEncode`, and
+  combined `boundaryCodec`
 
 The sidecar phase metrics are intentionally simpler and map to protocol stages:
 

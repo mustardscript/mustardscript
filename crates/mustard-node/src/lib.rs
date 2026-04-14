@@ -10,6 +10,7 @@ use std::sync::{
     Arc, Mutex, OnceLock,
     atomic::{AtomicBool, Ordering},
 };
+use std::time::Instant;
 
 use mustard::{
     BytecodeProgram, CancellationToken, ExecutionOptions, ExecutionSnapshot, ExecutionStep,
@@ -353,28 +354,69 @@ fn assert_authenticated_snapshot(snapshot: &[u8], auth: SnapshotAuth<'_>) -> Res
     Ok(())
 }
 
+fn elapsed_nanos(started: Instant) -> u64 {
+    started.elapsed().as_nanos().min(u64::MAX as u128) as u64
+}
+
+fn node_step_with_snapshot_handle(
+    step: ExecutionStep,
+    metrics: RuntimeDebugMetrics,
+    format: SnapshotHandleFormat,
+) -> Result<NodeStepDto> {
+    match step {
+        ExecutionStep::Completed(value) => Ok(NodeStepDto::Completed { value, metrics }),
+        ExecutionStep::Suspended(suspension) => {
+            let handle = insert_snapshot(suspension.snapshot, format)?;
+            Ok(NodeStepDto::Suspended {
+                capability: suspension.capability,
+                args: suspension.args,
+                snapshot_handle: handle,
+                metrics,
+            })
+        }
+    }
+}
+
+fn release_node_step_snapshot_handle(step: &NodeStepDto) {
+    if let NodeStepDto::Suspended {
+        snapshot_handle, ..
+    } = step
+    {
+        let _ = release_snapshot_handle_internal(snapshot_handle);
+    }
+}
+
 fn encode_step_with_snapshot_handle(
     step: ExecutionStep,
     metrics: RuntimeDebugMetrics,
     format: SnapshotHandleFormat,
 ) -> Result<String> {
-    match step {
-        ExecutionStep::Completed(value) => {
-            encode_json(&NodeStepDto::Completed { value, metrics }).map_err(to_napi_error)
-        }
-        ExecutionStep::Suspended(suspension) => {
-            let handle = insert_snapshot(suspension.snapshot, format)?;
-            let result = encode_json(&NodeStepDto::Suspended {
-                capability: suspension.capability,
-                args: suspension.args,
-                snapshot_handle: handle.clone(),
-                metrics,
-            })
-            .map_err(to_napi_error);
-            if result.is_err() {
-                let _ = release_snapshot_handle_internal(&handle);
-            }
-            result
+    let step = node_step_with_snapshot_handle(step, metrics, format)?;
+    let result = encode_json(&step).map_err(to_napi_error);
+    if result.is_err() {
+        release_node_step_snapshot_handle(&step);
+    }
+    result
+}
+
+fn encode_profiled_step_with_snapshot_handle(
+    step: ExecutionStep,
+    metrics: RuntimeDebugMetrics,
+    format: SnapshotHandleFormat,
+    parse_ns: u64,
+    execute_ns: u64,
+) -> Result<String> {
+    let step = node_step_with_snapshot_handle(step, metrics, format)?;
+    let encode_started = Instant::now();
+    let step_json = encode_json(&step).map_err(to_napi_error);
+    let encode_ns = elapsed_nanos(encode_started);
+    match step_json {
+        Ok(step_json) => Ok(format!(
+            "{{\"step\":{step_json},\"profile\":{{\"parse_ns\":{parse_ns},\"execute_ns\":{execute_ns},\"encode_ns\":{encode_ns}}}}}"
+        )),
+        Err(error) => {
+            release_node_step_snapshot_handle(&step);
+            Err(error)
         }
     }
 }
@@ -672,6 +714,60 @@ pub fn start_program_with_execution_context_handle(
 }
 
 #[napi]
+pub fn profile_start_program_with_snapshot_handle(
+    program_handle: String,
+    options_json: String,
+    cancellation_token_id: Option<String>,
+) -> Result<String> {
+    let program = lookup_program(&program_handle)?;
+    let parse_started = Instant::now();
+    let options: StartOptionsDto = parse_json(&options_json).map_err(to_napi_error)?;
+    let parse_ns = elapsed_nanos(parse_started);
+    let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
+    let execute_started = Instant::now();
+    let (step, metrics) =
+        start_shared_bytecode_with_metrics(program, execution_options(options, cancellation_token))
+            .map_err(to_napi_error)?;
+    let execute_ns = elapsed_nanos(execute_started);
+    encode_profiled_step_with_snapshot_handle(
+        step,
+        metrics,
+        SnapshotHandleFormat::Detached,
+        parse_ns,
+        execute_ns,
+    )
+}
+
+#[napi]
+pub fn profile_start_program_with_execution_context_handle(
+    program_handle: String,
+    context_handle: String,
+    inputs_json: String,
+    cancellation_token_id: Option<String>,
+) -> Result<String> {
+    let program = lookup_program(&program_handle)?;
+    let context = lookup_execution_context(&context_handle)?;
+    let parse_started = Instant::now();
+    let inputs = parse_json(&inputs_json).map_err(to_napi_error)?;
+    let parse_ns = elapsed_nanos(parse_started);
+    let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
+    let execute_started = Instant::now();
+    let (step, metrics) = start_shared_bytecode_with_metrics(
+        program,
+        execution_options_from_context(&context, inputs, cancellation_token),
+    )
+    .map_err(to_napi_error)?;
+    let execute_ns = elapsed_nanos(execute_started);
+    encode_profiled_step_with_snapshot_handle(
+        step,
+        metrics,
+        SnapshotHandleFormat::Detached,
+        parse_ns,
+        execute_ns,
+    )
+}
+
+#[napi]
 pub fn inspect_snapshot(snapshot: Buffer, policy_json: String) -> Result<String> {
     let policy = policy_from_json(policy_json)?;
     let snapshot_id = policy
@@ -925,4 +1021,29 @@ pub fn resume_snapshot_handle(
     )
     .map_err(to_napi_error)?;
     encode_step_with_snapshot_handle(step, metrics, entry.format)
+}
+
+#[napi]
+pub fn profile_resume_snapshot_handle(
+    snapshot_handle: String,
+    payload_json: String,
+    cancellation_token_id: Option<String>,
+) -> Result<String> {
+    let parse_started = Instant::now();
+    let payload: ResumeDto = parse_json(&payload_json).map_err(to_napi_error)?;
+    let parse_ns = elapsed_nanos(parse_started);
+    let cancellation_token = lookup_cancellation_token(cancellation_token_id)?;
+    let entry = take_snapshot(&snapshot_handle)?;
+    let execute_started = Instant::now();
+    let (step, metrics) = resume_with_options_and_metrics(
+        entry.snapshot,
+        payload.into_resume_payload(),
+        ResumeOptions {
+            cancellation_token,
+            snapshot_policy: None,
+        },
+    )
+    .map_err(to_napi_error)?;
+    let execute_ns = elapsed_nanos(execute_started);
+    encode_profiled_step_with_snapshot_handle(step, metrics, entry.format, parse_ns, execute_ns)
 }

@@ -28,6 +28,12 @@ export declare function loadSnapshotHandle(snapshot: Buffer, policyJson: string)
 
 export declare function loadSnapshotHandleWithExecutionContext(contextHandle: string, snapshot: Buffer, snapshotId: string, snapshotKeyBase64: string, snapshotKeyDigest: string, snapshotToken: string): string
 
+export declare function profileResumeSnapshotHandle(snapshotHandle: string, payloadJson: string, cancellationTokenId?: string | undefined | null): string
+
+export declare function profileStartProgramWithExecutionContextHandle(programHandle: string, contextHandle: string, inputsJson: string, cancellationTokenId?: string | undefined | null): string
+
+export declare function profileStartProgramWithSnapshotHandle(programHandle: string, optionsJson: string, cancellationTokenId?: string | undefined | null): string
+
 export declare function releaseCancellationToken(tokenId: string): void
 
 export declare function releaseExecutionContext(contextHandle: string): void
