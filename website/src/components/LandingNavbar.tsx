@@ -35,8 +35,9 @@ export function LandingNavbar() {
       <div className="mx-auto flex h-14 max-w-[1400px] items-center justify-between gap-4 px-6">
         <Link
           to="/"
-          className="flex shrink-0 items-center font-heading text-lg font-bold transition-opacity hover:opacity-80"
+          className="flex shrink-0 items-center gap-2 font-heading text-lg font-bold transition-opacity hover:opacity-80"
         >
+          <img src="/logo.png" alt="" aria-hidden="true" className="h-8 w-8 shrink-0" />
           <span className="text-black">Mustard</span>
           <span className="text-black/50">Script</span>
         </Link>
