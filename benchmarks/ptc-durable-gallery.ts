@@ -12,6 +12,7 @@ const {
   descriptorInputs,
   loadExpectedGalleryResults,
   loadGalleryDescriptors,
+  repoRelativeSourceRef,
 } = require('./ptc-gallery.ts');
 
 const REPO_ROOT = path.join(__dirname, '..');
@@ -41,7 +42,7 @@ function createDurableGalleryScenario(descriptor, durableConfig) {
     throw new Error(`Missing audited expected result for durable lane ${descriptor.id}`);
   }
 
-  const sourceRef = path.relative(REPO_ROOT, descriptor.absoluteFile);
+  const sourceRef = repoRelativeSourceRef(descriptor.absoluteFile);
   const capabilityNames = descriptor.options?.capabilities
     ? Object.keys(descriptor.options.capabilities)
     : Object.keys(descriptor.startPlan?.capabilities ?? {});

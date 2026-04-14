@@ -10,6 +10,9 @@ const {
   createPtcScenarios,
   summarizePtcWeightedScore,
 } = require('../../benchmarks/ptc-fixtures.ts');
+const {
+  normalizeRepoRelativePath,
+} = require('../../benchmarks/ptc-gallery.ts');
 
 test('PTC scenarios cover the website demo and the three representative benchmark lanes', () => {
   const scenarios = createPtcScenarios();
@@ -62,6 +65,13 @@ test('durable PTC scenarios cover the persisted vendor-review checkpoint lane ac
     assert.equal(scenario.shape.durableBoundary, true);
     assert.ok(scenario.shape.sourceRef.includes('examples/programmatic-tool-calls/'));
   }
+});
+
+test('repo-relative benchmark source refs normalize Windows separators', () => {
+  assert.equal(
+    normalizeRepoRelativePath(String.raw`examples\programmatic-tool-calls\workflows\vendor-compliance-renewal-durable.js`),
+    'examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js',
+  );
 });
 
 test('PTC medium-lane weights sum to 1 and match the intended scorecard', () => {

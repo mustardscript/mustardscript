@@ -59,6 +59,14 @@ function cloneValue(value) {
   return value === undefined ? undefined : structuredClone(value);
 }
 
+function normalizeRepoRelativePath(relativePath) {
+  return relativePath.replaceAll('\\', '/');
+}
+
+function repoRelativeSourceRef(absoluteFile) {
+  return normalizeRepoRelativePath(path.relative(REPO_ROOT, absoluteFile));
+}
+
 function descriptorInputs(descriptor) {
   return cloneValue(descriptor.inputs ?? descriptor.options?.inputs ?? {});
 }
@@ -119,7 +127,7 @@ function createGalleryScenario(descriptor) {
     throw new Error(`Missing phase-2 benchmark metadata for ${descriptor.id}`);
   }
 
-  const sourceRef = path.relative(REPO_ROOT, descriptor.absoluteFile);
+  const sourceRef = repoRelativeSourceRef(descriptor.absoluteFile);
   const expectedResults = loadExpectedGalleryResults();
   const expectedResult = expectedResults[descriptor.id];
   if (expectedResult === undefined) {
@@ -169,4 +177,6 @@ module.exports = {
   descriptorInputs,
   loadExpectedGalleryResults,
   loadGalleryDescriptors,
+  normalizeRepoRelativePath,
+  repoRelativeSourceRef,
 };
