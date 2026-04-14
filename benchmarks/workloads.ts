@@ -38,7 +38,9 @@ const {
 const {
   PTC_WEIGHTS,
   createCapabilityTransferProbe,
+  createDurablePtcScenarios,
   createPtcScenarios,
+  structuredByteLength,
   summarizePtcWeightedScore,
 } = require('./ptc-fixtures.ts');
 
@@ -69,6 +71,8 @@ const ADDON_PTC_BREAKDOWN_METRICS = new Set([
   'ptc_fraud_investigation_medium',
   'ptc_vendor_review_medium',
 ]);
+const DURABLE_CHECKPOINT_CAPABILITY = 'checkpoint_vendor_review';
+const DURABLE_FINAL_ACTION_CAPABILITY = 'file_vendor_review';
 
 function parseArgs(argv) {
   let profile = 'release';
@@ -343,6 +347,113 @@ function createWorkflowSource() {
       count: flagged.length,
       totalOver,
       top: flagged.slice(0, 5),
+    };
+  `);
+}
+
+function createDurableVendorResumeSource() {
+  return wrapIife(`
+    const vendor = reviewBundle.vendor;
+    const evidence = reviewBundle.evidence;
+    const dataFlows = reviewBundle.dataFlows;
+    const subprocessors = reviewBundle.subprocessors;
+    const requiredFrameworks = reviewBundle.requiredFrameworks;
+
+    const evidenceByFramework = Object.fromEntries(
+      requiredFrameworks.map((framework) => {
+        return [
+          framework,
+          evidence.filter((item) => item.framework === framework),
+        ];
+      }),
+    );
+
+    const missingFrameworks = [];
+    const staleEvidence = [];
+
+    for (const framework of requiredFrameworks) {
+      const frameworkEvidence = evidenceByFramework[framework];
+      if (!frameworkEvidence || frameworkEvidence.length === 0) {
+        missingFrameworks.push(framework);
+        continue;
+      }
+
+      let hasCurrentAttestation = false;
+      for (const item of frameworkEvidence) {
+        if (item.status === "current" && item.ageDays <= 365) {
+          hasCurrentAttestation = true;
+        }
+        if (item.status !== "current" || item.ageDays > 365) {
+          staleEvidence.push({
+            framework,
+            type: item.type,
+            status: item.status,
+            ageDays: item.ageDays,
+          });
+        }
+      }
+
+      if (!hasCurrentAttestation) {
+        missingFrameworks.push(framework);
+      }
+    }
+
+    const crossBorderFlows = [];
+    for (const flow of dataFlows) {
+      if (
+        flow.originCountry !== flow.destinationCountry &&
+        flow.dataClasses.some((dataClass) => {
+          return dataClass.includes("pii") || dataClass.includes("customer");
+        })
+      ) {
+        crossBorderFlows.push(flow);
+      }
+    }
+
+    const riskySubprocessors = subprocessors.filter((subprocessor) => {
+      return subprocessor.countryRisk !== "low" || !subprocessor.hasDpa;
+    });
+
+    const recommendedDecision =
+      missingFrameworks.length === 0 &&
+      riskySubprocessors.length === 0 &&
+      crossBorderFlows.length <= 1
+        ? "approve"
+        : "manual_review";
+
+    const reviewDraft = {
+      vendorId: reviewBundle.vendorId,
+      vendorName: vendor.name,
+      reviewCycleId: reviewBundle.reviewCycleId,
+      serviceTier: vendor.serviceTier,
+      hostsCustomerData: vendor.hostsCustomerData,
+      recommendedDecision,
+      missingFrameworks,
+      staleEvidence,
+      riskySubprocessors,
+      crossBorderFlows,
+    };
+
+    if (!approvalPayload.approved) {
+      return {
+        ...reviewDraft,
+        reviewRecordId: null,
+        state: "cancelled",
+        approvalReviewer: approvalPayload.reviewer,
+      };
+    }
+
+    const filed = file_vendor_review({
+      ...reviewDraft,
+      approvalReviewer: approvalPayload.reviewer,
+      approvalReason: approvalPayload.reason,
+    });
+
+    return {
+      ...reviewDraft,
+      reviewRecordId: filed.reviewRecordId,
+      state: filed.state,
+      approvalReviewer: approvalPayload.reviewer,
     };
   `);
 }
@@ -676,6 +787,297 @@ async function captureSidecarPtcBreakdown(
   };
 }
 
+function createDurableLoadOptions(capabilities) {
+  return {
+    capabilities,
+    limits: {},
+    snapshotKey: SNAPSHOT_KEY,
+  };
+}
+
+function createDurableCheckpointContext(capabilities) {
+  return new ExecutionContext({
+    capabilities,
+    limits: {},
+    snapshotKey: SNAPSHOT_KEY,
+  });
+}
+
+async function takeAddonDurableCheckpoint(runtime, scenario, capabilities = scenario.createCapabilities()) {
+  const context = createDurableCheckpointContext(capabilities);
+  let progress = runtime.start({
+    context,
+    inputs: scenario.inputs,
+  });
+  while (progress instanceof Progress && progress.capability !== DURABLE_CHECKPOINT_CAPABILITY) {
+    const handler = capabilities[progress.capability];
+    assert.equal(
+      typeof handler,
+      'function',
+      `${scenario.metricName} is missing capability \`${progress.capability}\` before the durable checkpoint`,
+    );
+    const value = handler(...progress.args);
+    const resolved = value && typeof value.then === 'function' ? await value : value;
+    progress = progress.resume(resolved);
+  }
+  assert.ok(progress instanceof Progress, `${scenario.metricName} should suspend at the durable checkpoint`);
+  assert.equal(
+    progress.capability,
+    DURABLE_CHECKPOINT_CAPABILITY,
+    `${scenario.metricName} should suspend on ${DURABLE_CHECKPOINT_CAPABILITY}`,
+  );
+  return { progress, capabilities };
+}
+
+async function createAddonDurableCheckpointState(runtime, scenario) {
+  const { progress, capabilities } = await takeAddonDurableCheckpoint(runtime, scenario);
+  const checkpointArgs = structuredClone(progress.args);
+  const dumped = progress.dump();
+  return {
+    capabilities,
+    checkpointArgs,
+    dumped,
+    snapshotBytes: dumped.snapshot.length,
+    detachedManifestBytes: Buffer.byteLength(dumped.suspended_manifest, 'utf8'),
+    checkpointArgsBytes: structuredByteLength(checkpointArgs[0]),
+  };
+}
+
+async function runAddonDurableResumeOnlySample(runtime, scenario) {
+  const checkpoint = await createAddonDurableCheckpointState(runtime, scenario);
+  const started = performance.now();
+  let restored = Progress.load(
+    checkpoint.dumped,
+    createDurableLoadOptions(checkpoint.capabilities),
+  );
+  assert.equal(
+    restored.capability,
+    DURABLE_CHECKPOINT_CAPABILITY,
+    `${scenario.metricName} restore should resume from the durable checkpoint`,
+  );
+  restored = restored.resume(
+    checkpoint.capabilities[DURABLE_CHECKPOINT_CAPABILITY](...checkpoint.checkpointArgs),
+  );
+  assert.ok(restored instanceof Progress, `${scenario.metricName} should suspend on the final action after restore`);
+  assert.equal(
+    restored.capability,
+    DURABLE_FINAL_ACTION_CAPABILITY,
+    `${scenario.metricName} should resume into ${DURABLE_FINAL_ACTION_CAPABILITY}`,
+  );
+  const result = restored.resume(
+    checkpoint.capabilities[DURABLE_FINAL_ACTION_CAPABILITY](...restored.args),
+  );
+  const duration = performance.now() - started;
+  scenario.assertResult(result);
+  return duration;
+}
+
+async function captureAddonDurableResumeOnly(runtime, scenario, options = DEFAULT_OPTIONS) {
+  for (let iteration = 0; iteration < options.warmup; iteration += 1) {
+    await runAddonDurableResumeOnlySample(runtime, scenario);
+  }
+  const samples = [];
+  for (let iteration = 0; iteration < options.iterations; iteration += 1) {
+    samples.push(await runAddonDurableResumeOnlySample(runtime, scenario));
+  }
+  return summarize(samples);
+}
+
+async function takeSidecarDurableCheckpoint(request, program, scenario) {
+  const capabilities = scenario.createCapabilities();
+  let { step } = await startSidecarProgram(request, program, {
+    capabilities,
+    inputs: scenario.inputs,
+  });
+  let requestId = 3;
+  while (step.type === 'suspended' && step.capability !== DURABLE_CHECKPOINT_CAPABILITY) {
+    const handler = capabilities[step.capability];
+    assert.equal(
+      typeof handler,
+      'function',
+      `${scenario.metricName} is missing capability \`${step.capability}\` before the durable checkpoint`,
+    );
+    const value = handler(...step.args);
+    const resolved = value && typeof value.then === 'function' ? await value : value;
+    step = await resumeSidecarSnapshot(request, step, resolved, requestId);
+    requestId += 1;
+  }
+  assert.equal(step.type, 'suspended');
+  assert.equal(
+    step.capability,
+    DURABLE_CHECKPOINT_CAPABILITY,
+    `${scenario.metricName} should suspend on ${DURABLE_CHECKPOINT_CAPABILITY}`,
+  );
+  return { step, capabilities };
+}
+
+async function captureSidecarDurableCheckpointState(profile, scenario) {
+  return withSidecar(profile, async ({ request }) => {
+    const program = await compileSidecarSource(request, scenario.source);
+    const { step, capabilities } = await takeSidecarDurableCheckpoint(request, program, scenario);
+    const capabilityNames = sidecarCapabilityNames(capabilities);
+    const policy = {
+      capabilities: capabilityNames,
+      limits: {},
+      snapshot_id: step.snapshotId,
+      snapshot_key_base64: SNAPSHOT_KEY_BASE64,
+      snapshot_key_digest: snapshotKeyDigest(Buffer.from(SNAPSHOT_KEY, 'utf8')),
+      snapshot_token: snapshotToken(step.snapshot, SNAPSHOT_KEY),
+    };
+    return {
+      capabilities,
+      checkpointArgs: structuredClone(step.args),
+      snapshot: Buffer.from(step.snapshot),
+      snapshotBytes: step.snapshot.length,
+      checkpointArgsBytes: structuredByteLength(step.args[0]),
+      policy,
+      policyBytes: structuredByteLength(policy),
+    };
+  });
+}
+
+async function runSidecarDurableResumeOnlySample(request, persisted, scenario, requestBaseId = 7000) {
+  const approval = persisted.capabilities[DURABLE_CHECKPOINT_CAPABILITY](...persisted.checkpointArgs);
+  const started = performance.now();
+  const restored = await request({
+    protocol_version: SIDECAR_PROTOCOL_VERSION,
+    method: 'resume',
+    id: requestBaseId,
+    policy: persisted.policy,
+    payload: JSON.parse(encodeResumePayloadValue(approval)),
+  }, persisted.snapshot);
+  assert.equal(restored.payload.ok, true, `${scenario.metricName} durable raw resume failed: ${restored.payload.error}`);
+  let step = sidecarStepValue(restored.payload.result.step, restored.payload.result, restored.blob);
+  assert.equal(step.type, 'suspended');
+  assert.equal(
+    step.capability,
+    DURABLE_FINAL_ACTION_CAPABILITY,
+    `${scenario.metricName} should suspend on ${DURABLE_FINAL_ACTION_CAPABILITY} after restore`,
+  );
+  const completion = await request({
+    protocol_version: SIDECAR_PROTOCOL_VERSION,
+    method: 'resume',
+    id: requestBaseId + 1,
+    snapshot_id: step.snapshotId,
+    policy_id: restored.payload.result.policy_id,
+    auth: sidecarResumeAuth(step.snapshot),
+    payload: JSON.parse(
+      encodeResumePayloadValue(
+        persisted.capabilities[DURABLE_FINAL_ACTION_CAPABILITY](...step.args),
+      ),
+    ),
+  });
+  const duration = performance.now() - started;
+  assert.equal(completion.payload.ok, true, `${scenario.metricName} durable completion failed: ${completion.payload.error}`);
+  step = sidecarStepValue(completion.payload.result.step, completion.payload.result, completion.blob);
+  assert.equal(step.type, 'completed');
+  scenario.assertResult(step.value);
+  return duration;
+}
+
+async function captureSidecarDurableResumeOnly(profile, scenario, options = DEFAULT_OPTIONS) {
+  const persisted = await captureSidecarDurableCheckpointState(profile, scenario);
+  const samples = [];
+  await withSidecar(profile, async ({ request }) => {
+    for (let iteration = 0; iteration < options.warmup; iteration += 1) {
+      await runSidecarDurableResumeOnlySample(request, persisted, scenario, 7000 + iteration * 10);
+    }
+    for (let iteration = 0; iteration < options.iterations; iteration += 1) {
+      samples.push(
+        await runSidecarDurableResumeOnlySample(
+          request,
+          persisted,
+          scenario,
+          8000 + iteration * 10,
+        ),
+      );
+    }
+  });
+  return {
+    resumeOnly: summarize(samples),
+    state: {
+      snapshotBytes: persisted.snapshotBytes,
+      fullPolicyBytes: persisted.policyBytes,
+      checkpointArgsBytes: persisted.checkpointArgsBytes,
+    },
+  };
+}
+
+async function captureIsolateDurableCheckpointState(scenario) {
+  const capabilities = scenario.createCapabilities();
+  let checkpointDraft = null;
+  const captureCapabilities = {
+    ...capabilities,
+    [DURABLE_CHECKPOINT_CAPABILITY](reviewDraft) {
+      checkpointDraft = structuredClone(reviewDraft);
+      return capabilities[DURABLE_CHECKPOINT_CAPABILITY](reviewDraft);
+    },
+  };
+  const isolate = new ivm.Isolate({ memoryLimit: 128 });
+  const context = isolate.createContextSync();
+  installIsolateCapabilities(context, captureCapabilities, scenario.inputs);
+  const script = isolate.compileScriptSync(scenario.source);
+  const result = await runIsolateScript(context, script);
+  scenario.assertResult(result);
+  assert.ok(checkpointDraft, `${scenario.metricName} should emit a durable checkpoint draft`);
+  return {
+    capabilities,
+    reviewBundle: checkpointDraft,
+    checkpointArgsBytes: structuredByteLength(checkpointDraft),
+  };
+}
+
+async function captureIsolateDurableResumeOnly(scenario, options = DEFAULT_OPTIONS) {
+  const persisted = await captureIsolateDurableCheckpointState(scenario);
+  const resumeSource = createDurableVendorResumeSource();
+  const samples = [];
+  for (let iteration = 0; iteration < options.warmup; iteration += 1) {
+    const started = performance.now();
+    const isolate = new ivm.Isolate({ memoryLimit: 128 });
+    const resumeScript = isolate.compileScriptSync(resumeSource);
+    const context = isolate.createContextSync();
+    installIsolateCapabilities(
+      context,
+      {
+        [DURABLE_FINAL_ACTION_CAPABILITY]: persisted.capabilities[DURABLE_FINAL_ACTION_CAPABILITY],
+      },
+      {
+        reviewBundle: persisted.reviewBundle,
+        approvalPayload: persisted.capabilities[DURABLE_CHECKPOINT_CAPABILITY](persisted.reviewBundle),
+      },
+    );
+    const result = await runIsolateScript(context, resumeScript);
+    void (performance.now() - started);
+    scenario.assertResult(result);
+  }
+  for (let iteration = 0; iteration < options.iterations; iteration += 1) {
+    const started = performance.now();
+    const isolate = new ivm.Isolate({ memoryLimit: 128 });
+    const resumeScript = isolate.compileScriptSync(resumeSource);
+    const context = isolate.createContextSync();
+    installIsolateCapabilities(
+      context,
+      {
+        [DURABLE_FINAL_ACTION_CAPABILITY]: persisted.capabilities[DURABLE_FINAL_ACTION_CAPABILITY],
+      },
+      {
+        reviewBundle: persisted.reviewBundle,
+        approvalPayload: persisted.capabilities[DURABLE_CHECKPOINT_CAPABILITY](persisted.reviewBundle),
+      },
+    );
+    const result = await runIsolateScript(context, resumeScript);
+    const duration = performance.now() - started;
+    scenario.assertResult(result);
+    samples.push(duration);
+  }
+  return {
+    resumeOnly: summarize(samples),
+    state: {
+      carriedStateBytes: persisted.checkpointArgsBytes,
+    },
+  };
+}
+
 function installIsolateCapabilities(context, capabilities = {}, inputs = {}) {
   const jail = context.global;
   jail.setSync('global', jail.derefInto());
@@ -726,6 +1128,7 @@ function benchmarkFixtureSet() {
     hostFailureSource: createHostFailureSource(),
     workflowData: createWorkflowDataset(),
     ptcScenarios: createPtcScenarios(),
+    durablePtcScenarios: createDurablePtcScenarios(),
   };
 }
 
@@ -1241,10 +1644,21 @@ async function benchmarkAddon(fixtures) {
   const latency = {};
   const suspendState = {};
   const native = loadNative();
-  const { smallSource, codeModeSource, workflowSource, workflowData, ptcScenarios } = fixtures;
+  const {
+    smallSource,
+    codeModeSource,
+    workflowSource,
+    workflowData,
+    ptcScenarios,
+    durablePtcScenarios,
+  } = fixtures;
   const ptc = {
     transfer: {},
     breakdown: {},
+  };
+  const durablePtc = {
+    resumeOnly: {},
+    state: {},
   };
   const defaultContext = new ExecutionContext();
   const warmSmallRuntime = new Mustard(smallSource);
@@ -1314,6 +1728,20 @@ async function benchmarkAddon(fixtures) {
   ptc.weightedScore = {
     medium: summarizePtcWeightedScore(latency),
   };
+
+  for (const scenario of Object.values(durablePtcScenarios)) {
+    const runtime = new Mustard(scenario.source);
+    const checkpoint = await createAddonDurableCheckpointState(runtime, scenario);
+    durablePtc.state[scenario.metricName] = {
+      snapshotBytes: checkpoint.snapshotBytes,
+      detachedManifestBytes: checkpoint.detachedManifestBytes,
+      checkpointArgsBytes: checkpoint.checkpointArgsBytes,
+    };
+    durablePtc.resumeOnly[scenario.metricName] = await captureAddonDurableResumeOnly(
+      runtime,
+      scenario,
+    );
+  }
 
   for (const callCount of [1, 10, 50, 100]) {
     const runtime = new Mustard(createFanoutSource(callCount));
@@ -1482,17 +1910,38 @@ async function benchmarkAddon(fixtures) {
     );
   }
 
-  return { latency, phases, boundary, counters, ptc, suspendState, memory, failureCleanup };
+  return {
+    latency,
+    phases,
+    boundary,
+    counters,
+    ptc,
+    durablePtc,
+    suspendState,
+    memory,
+    failureCleanup,
+  };
 }
 
 async function benchmarkSidecar(fixtures, profile) {
   console.log('Running sidecar benchmarks...');
   const latency = {};
   const phases = {};
-  const { smallSource, codeModeSource, workflowSource, workflowData, ptcScenarios } = fixtures;
+  const {
+    smallSource,
+    codeModeSource,
+    workflowSource,
+    workflowData,
+    ptcScenarios,
+    durablePtcScenarios,
+  } = fixtures;
   const ptc = {
     transfer: {},
     breakdown: {},
+  };
+  const durablePtc = {
+    resumeOnly: {},
+    state: {},
   };
 
   const startupOnly = await measure('startup_only', async () => {
@@ -1718,15 +2167,31 @@ async function benchmarkSidecar(fixtures, profile) {
   const failureCleanup = latency.__failureCleanup;
   delete latency.__memory;
   delete latency.__failureCleanup;
-  return { latency, phases, ptc, memory, failureCleanup };
+  for (const scenario of Object.values(durablePtcScenarios)) {
+    const metrics = await captureSidecarDurableResumeOnly(profile, scenario);
+    durablePtc.resumeOnly[scenario.metricName] = metrics.resumeOnly;
+    durablePtc.state[scenario.metricName] = metrics.state;
+  }
+  return { latency, phases, ptc, durablePtc, memory, failureCleanup };
 }
 
 async function benchmarkIsolate(fixtures) {
   console.log('Running V8 isolate benchmarks...');
   const latency = {};
-  const { smallSource, codeModeSource, workflowSource, workflowData, ptcScenarios } = fixtures;
+  const {
+    smallSource,
+    codeModeSource,
+    workflowSource,
+    workflowData,
+    ptcScenarios,
+    durablePtcScenarios,
+  } = fixtures;
   const ptc = {
     transfer: {},
+  };
+  const durablePtc = {
+    resumeOnly: {},
+    state: {},
   };
   const workflowCapabilities = createWorkflowCapabilities(workflowData);
 
@@ -1884,7 +2349,13 @@ async function benchmarkIsolate(fixtures) {
     }, DEFAULT_OPTIONS),
   };
 
-  return { latency, ptc, memory, failureCleanup };
+  for (const scenario of Object.values(durablePtcScenarios)) {
+    const metrics = await captureIsolateDurableResumeOnly(scenario);
+    durablePtc.resumeOnly[scenario.metricName] = metrics.resumeOnly;
+    durablePtc.state[scenario.metricName] = metrics.state;
+  }
+
+  return { latency, ptc, durablePtc, memory, failureCleanup };
 }
 
 function ratioTable(left, right) {
@@ -2021,6 +2492,18 @@ function printSummary(results) {
     );
   }
   console.log('');
+  console.log('Durable PTC resume-only checkpoints:');
+  for (const [name, metric] of Object.entries(results.addon.durablePtc.resumeOnly)) {
+    const addonState = results.addon.durablePtc.state[name];
+    const sidecarMetric = results.sidecar.durablePtc.resumeOnly[name];
+    const sidecarState = results.sidecar.durablePtc.state[name];
+    const isolateMetric = results.isolate.durablePtc.resumeOnly[name];
+    const isolateState = results.isolate.durablePtc.state[name];
+    console.log(
+      `${name}: addon ${metric.medianMs.toFixed(2)}ms (snapshot ${addonState.snapshotBytes}B, manifest ${addonState.detachedManifestBytes}B), sidecar ${sidecarMetric.medianMs.toFixed(2)}ms (snapshot ${sidecarState.snapshotBytes}B, policy ${sidecarState.fullPolicyBytes}B), isolate ${isolateMetric.medianMs.toFixed(2)}ms (carried state ${isolateState.carriedStateBytes}B)`,
+    );
+  }
+  console.log('');
   console.log(`Memory retained after ${MEMORY_RUNS} workflow runs:`);
   console.log(`addon heap ${results.addon.memory.heapUsedDeltaBytes}B rss ${results.addon.memory.rssDeltaBytes}B`);
   console.log(`sidecar heap ${results.sidecar.memory.heapUsedDeltaBytes}B rss ${results.sidecar.memory.rssDeltaBytes}B`);
@@ -2068,6 +2551,16 @@ async function main() {
           },
         ]),
       ),
+      durableScenarios: Object.fromEntries(
+        Object.entries(fixtures.durablePtcScenarios).map(([metricName, scenario]) => [
+          metricName,
+          {
+            laneId: scenario.laneId,
+            sizeName: scenario.sizeName,
+            ...scenario.shape,
+          },
+        ]),
+      ),
     },
     notes: {
       suspendResumeIsolate:
@@ -2092,6 +2585,8 @@ async function main() {
         'addon.ptc.breakdown records representative profiled addon runs for the website-small lane plus the medium primary lanes. hostCallbacks measures JS time spent inside host tool handlers, guestExecution measures Rust runtime execution between boundaries, boundaryParse measures native JSON decode/parse of start/resume payloads, boundaryEncode measures native JSON encoding of step results, and boundaryCodec is parse+encode combined.',
       sidecarPtcBreakdownDefinitions:
         'sidecar.ptc.breakdown separates sidecar startup from representative lane-level request flow. processStartup reuses sidecar.phases.startup_only, while the lane entries split client-observed requestTransport from sidecar execution and combined response materialization (sidecar response preparation plus client response decode/copy).',
+      durablePtcDefinitions:
+        'runtime.durablePtc.resumeOnly measures restore/resume from a persisted vendor-review checkpoint through the post-approval final action. addon.durablePtc.state records dumped snapshot bytes, detached suspended-manifest bytes, and the review-draft checkpoint payload size; sidecar.durablePtc.state records raw snapshot bytes, full raw-resume policy bytes, and the same checkpoint payload size; isolate.durablePtc.state records the explicit carried-state bytes required to emulate the same pause without continuation snapshots.',
     },
     addon,
     sidecar,

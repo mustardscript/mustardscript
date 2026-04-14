@@ -513,6 +513,119 @@ function createVendorScenario(sizeName) {
   };
 }
 
+function createVendorDurableScenario(sizeName) {
+  const config = VENDOR_SIZE_CONFIGS[sizeName];
+  const requiredFrameworks = [
+    'SOC2',
+    'ISO27001',
+    'DPA',
+    'PCI',
+    'GDPR',
+    'CCPA',
+    'HIPAA',
+  ].slice(0, config.frameworkCount);
+  const inputs = {
+    vendorId: `vendor_${sizeName}`,
+    reviewCycleId: `vendor_review_${sizeName}`,
+    requiredFrameworks,
+  };
+
+  return {
+    metricName: `ptc_vendor_review_durable_${sizeName}`,
+    laneId: 'vendor_review_durable',
+    sizeName,
+    sourceFile: 'workflows/vendor-compliance-renewal-durable.js',
+    source: loadExampleSource('workflows/vendor-compliance-renewal-durable.js'),
+    inputs,
+    shape: {
+      sourceRef: 'examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js',
+      toolFamilyCount: 6,
+      logicalPeakFanout: 4,
+      finalAction: true,
+      durableBoundary: true,
+      usesPromiseAll: true,
+      usesMap: false,
+      usesSet: false,
+      scale: config,
+    },
+    createCapabilities() {
+      return {
+        fetch_vendor_master(vendorId) {
+          return {
+            id: vendorId,
+            name: `Vendor ${sizeName}`,
+            serviceTier: 'high',
+            hostsCustomerData: true,
+            primaryCountry: 'US',
+          };
+        },
+        fetch_control_evidence() {
+          const evidence = [];
+          for (const [index, framework] of requiredFrameworks.entries()) {
+            evidence.push({
+              framework,
+              type: 'attestation',
+              status: index < Math.max(1, requiredFrameworks.length - 2) ? 'current' : 'expired',
+              ageDays: index < Math.max(1, requiredFrameworks.length - 2) ? 120 : 480,
+            });
+            if (index % 2 === 0) {
+              evidence.push({
+                framework,
+                type: 'penetration_test',
+                status: 'current',
+                ageDays: 90 + index * 10,
+              });
+            }
+          }
+          return evidence;
+        },
+        fetch_data_flow_inventory() {
+          return Array.from({ length: config.flowCount }, (_, index) => ({
+            system: `system_${index}`,
+            originCountry: 'US',
+            destinationCountry: index % 3 === 0 ? 'DE' : 'US',
+            dataClasses:
+              index % 2 === 0 ? ['customer_pii', 'security_logs'] : ['billing_records'],
+          }));
+        },
+        fetch_subprocessor_list() {
+          return Array.from({ length: config.subprocessorCount }, (_, index) => ({
+            name: `subprocessor_${index}`,
+            country: index % 3 === 0 ? 'DE' : 'US',
+            hasDpa: index % 4 !== 0,
+            countryRisk: index % 5 === 0 ? 'medium' : 'low',
+          }));
+        },
+        checkpoint_vendor_review(reviewBundle) {
+          return {
+            approved: true,
+            reviewer: 'compliance-oncall',
+            reason: `checkpointed ${reviewBundle.requiredFrameworks.length} required frameworks`,
+          };
+        },
+        file_vendor_review(payload) {
+          return {
+            reviewRecordId: `review_durable_${sizeName}_${payload.missingFrameworks.length}_${payload.riskySubprocessors.length}`,
+            state: 'filed',
+          };
+        },
+      };
+    },
+    assertResult(result) {
+      assert.equal(result.vendorId, inputs.vendorId);
+      assert.equal(result.reviewCycleId, inputs.reviewCycleId);
+      assert.equal(result.state, 'filed');
+      assert.ok(result.reviewRecordId.startsWith(`review_durable_${sizeName}_`));
+      assert.equal(result.recommendedDecision, 'manual_review');
+      assert.equal(result.approvalReviewer, 'compliance-oncall');
+      assert.ok(result.missingFrameworks.length > 0);
+      assert.ok(result.riskySubprocessors.length > 0);
+      assert.ok(result.crossBorderFlows.length > 0);
+      assert.ok(result.staleEvidence.length > 0);
+    },
+  };
+}
+
 function createPtcScenarios() {
   const scenarios = {};
   for (const sizeName of ['small', 'medium', 'large']) {
@@ -531,9 +644,19 @@ function createPtcScenarios() {
   return scenarios;
 }
 
+function createDurablePtcScenarios() {
+  const scenarios = {};
+  for (const sizeName of ['small', 'medium', 'large']) {
+    const scenario = createVendorDurableScenario(sizeName);
+    scenarios[scenario.metricName] = scenario;
+  }
+  return scenarios;
+}
+
 module.exports = {
   PTC_WEIGHTS,
   createCapabilityTransferProbe,
+  createDurablePtcScenarios,
   createPtcScenarios,
   structuredByteLength,
   summarizePtcWeightedScore,

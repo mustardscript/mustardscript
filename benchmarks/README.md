@@ -85,6 +85,9 @@ machine metadata and latency summaries for:
     `examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js`
   - `ptc_vendor_review_{small,medium,large}` from
     `examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js`
+- durable-boundary vendor-review resume lanes:
+  - `ptc_vendor_review_durable_{small,medium,large}` from
+    `examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js`
 - per-lane PTC transfer summaries for actual tool call counts plus
   JSON-encoded tool-bytes-in / result-bytes-out reduction ratios
 - addon representative PTC boundary breakdowns for the website-sized public
@@ -94,6 +97,11 @@ machine metadata and latency summaries for:
   the medium primary lanes, separating process startup, request transport,
   sidecar execution, and response materialization
 - per-runtime weighted PTC medium-lane score under `runtime.ptc.weightedScore.medium`
+- per-runtime durable PTC restore metrics under `runtime.durablePtc.resumeOnly`
+  plus persisted-state byte accounting under `runtime.durablePtc.state`, where
+  addon records dumped snapshot plus detached-manifest sizes, sidecar records
+  raw snapshot plus full raw-resume policy sizes, and isolate records the
+  explicit carried-state bytes needed to emulate the same pause
 - addon suspend/resume chains with snapshot reloads
 - addon boundary-only measurements for start inputs, suspended args, resume
   values, and resume errors across small/medium/large nested payloads
@@ -137,6 +145,10 @@ the website’s “4-tool orchestration workflow” speed story.
 The workload run also refreshes `website/src/generated/benchmarkData.ts` so the
 website speed section reads from the latest representative website-demo lane
 artifact instead of a hardcoded number.
+
+The durable isolate comparison is intentionally best-effort: the harness has to
+re-enter a fresh isolate with explicit carried state because it does not have
+equivalent continuation snapshots for `isolated-vm`.
 
 ## Rust Core Microbench Suite
 

@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const {
   PTC_WEIGHTS,
   createCapabilityTransferProbe,
+  createDurablePtcScenarios,
   createPtcScenarios,
   summarizePtcWeightedScore,
 } = require('../../benchmarks/ptc-fixtures.ts');
@@ -37,6 +38,26 @@ test('PTC scenarios cover the website demo and the three representative benchmar
     assert.equal(typeof scenario.shape.toolFamilyCount, 'number');
     assert.equal(typeof scenario.shape.logicalPeakFanout, 'number');
     assert.ok(scenario.shape.sourceRef.includes('examples/programmatic-tool-calls/'));
+  }
+});
+
+test('durable PTC scenarios cover the persisted vendor-review checkpoint lane across sizes', () => {
+  const scenarios = createDurablePtcScenarios();
+
+  assert.deepEqual(Object.keys(scenarios), [
+    'ptc_vendor_review_durable_small',
+    'ptc_vendor_review_durable_medium',
+    'ptc_vendor_review_durable_large',
+  ]);
+
+  for (const scenario of Object.values(scenarios)) {
+    assert.equal(typeof scenario.source, 'string');
+    assert.ok(scenario.source.length > 0);
+    assert.equal(typeof scenario.createCapabilities, 'function');
+    assert.equal(typeof scenario.assertResult, 'function');
+    assert.equal(scenario.shape.finalAction, true);
+    assert.equal(scenario.shape.durableBoundary, true);
+    assert.ok(scenario.shape.sourceRef.includes('vendor-compliance-renewal-durable.js'));
   }
 });
 
