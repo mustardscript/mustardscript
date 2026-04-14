@@ -8,7 +8,6 @@ const repoRoot = path.resolve(__dirname, '..');
 const distRoot = path.join(repoRoot, 'dist');
 const runtimeSources = [
   'index.ts',
-  'install.ts',
   'native-loader.ts',
   'lib/cancellation.ts',
   'lib/errors.ts',

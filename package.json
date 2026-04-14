@@ -5,25 +5,12 @@
   "main": "dist/index.js",
   "types": "mustard.d.ts",
   "files": [
-    "Cargo.lock",
-    "Cargo.toml",
     "LICENSE",
     "SECURITY.md",
+    "README.md",
     "dist",
     "index.d.ts",
-    "mustard.d.ts",
-    "crates/mustard/Cargo.toml",
-    "crates/mustard/benches/**",
-    "crates/mustard/src/**",
-    "crates/mustard-bridge/Cargo.toml",
-    "crates/mustard-bridge/src/**",
-    "crates/mustard-node/Cargo.toml",
-    "crates/mustard-node/build.rs",
-    "crates/mustard-node/src/**",
-    "crates/mustard-wasm/Cargo.toml",
-    "crates/mustard-wasm/src/**",
-    "crates/mustard-sidecar/Cargo.toml",
-    "crates/mustard-sidecar/src/**"
+    "mustard.d.ts"
   ],
   "directories": {
     "doc": "docs",
@@ -41,13 +28,12 @@
     ]
   },
   "optionalDependencies": {
-    "mustardscript-darwin-arm64": "0.1.1",
-    "mustardscript-darwin-x64": "0.1.1",
-    "mustardscript-linux-x64-gnu": "0.1.1",
-    "mustardscript-win32-x64-msvc": "0.1.1"
+    "@mustardscript/binding-darwin-arm64": "0.1.1",
+    "@mustardscript/binding-darwin-x64": "0.1.1",
+    "@mustardscript/binding-linux-x64-gnu": "0.1.1",
+    "@mustardscript/binding-win32-x64-msvc": "0.1.1"
   },
   "scripts": {
-    "install": "node -e \"const fs=require('node:fs'); const cp=require('node:child_process'); if (!fs.existsSync('dist/install.js')) { cp.execFileSync(process.execPath, ['scripts/build-ts-dist.ts'], { stdio: 'inherit' }); } cp.execFileSync(process.execPath, ['dist/install.js'], { stdio: 'inherit' });\"",
     "prepack": "node scripts/build-ts-dist.ts",
     "build": "node scripts/build-ts-dist.ts && napi build --platform --manifest-path crates/mustard-node/Cargo.toml --js-package-name mustardscript --output-dir . --no-js",
     "ralph-loop": "node scripts/ralph-loop.ts",
@@ -66,7 +52,7 @@
     "bench:smoke": "npm run bench:smoke:dev",
     "bench:smoke:dev": "npm run build && node --expose-gc benchmarks/smoke.ts --profile dev",
     "bench:smoke:release": "node scripts/build-ts-dist.ts && napi build --platform --release --manifest-path crates/mustard-node/Cargo.toml --js-package-name mustardscript --output-dir . --no-js && node --expose-gc benchmarks/smoke.ts --profile release",
-    "prebuilt:dirs": "napi create-npm-dirs",
+    "prebuilt:dirs": "node scripts/generate-prebuilt-packages.ts",
     "prebuilt:artifacts": "napi artifacts --output-dir artifacts",
     "bench:rust": "cargo bench -p mustard --bench runtime_core -- --noplot",
     "bench:regress:workloads": "node scripts/benchmark-compare.ts --kind workloads --profile release --tracked-baseline --include-prefix addon. --max-regression-pct 10",

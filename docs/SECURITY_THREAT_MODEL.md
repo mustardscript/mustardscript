@@ -388,20 +388,19 @@ The native loading path is part of the trust model.
 Loader precedence today is:
 
 1. `MUSTARD_NATIVE_LIBRARY_PATH` or `NAPI_RS_NATIVE_LIBRARY_PATH`
-2. any local `.node` file under the installed package tree
+2. the exact expected local dev `.node` artifact name for the current target
 3. the matching optional prebuilt package, when present
 
 Main threats:
 
 - attacker-controlled environment variables redirecting the process to arbitrary
   native code
-- unexpected `.node` artifacts in the installed package tree
+- unexpected `.node` artifacts at the exact local dev fallback paths
 - malicious or substituted optional prebuilt packages
-- compromised build environments during source-build installation
 
 Current controls:
 
-- the root package is intended to stay source-build-first
+- the root package is intentionally prebuilt-only
 - release verification checks the published package shape and the prebuilt
   matrix
 - package-smoke tests and release verification assert the expected install/load
@@ -411,10 +410,8 @@ Residual risk:
 
 - native-loader override variables are full native-code execution overrides, not
   just a soft preference
-- a stray `.node` file in the installed package tree is equivalent to shipping
-  arbitrary native code
-- source builds are not a provenance guarantee if the operator does not trust
-  the npm environment, build toolchain, and local Rust toolchain
+- a stray `.node` file at an accepted local dev fallback path is equivalent to
+  shipping arbitrary native code
 
 ### 7. Sidecar Protocol Boundary
 

@@ -71,7 +71,6 @@ test(
     withTempDir('mustard-loader-local-', (root) => {
       const target = getCurrentPrebuiltTarget();
       writeFile(path.join(root, 'evil.node'), 'not-a-real-addon');
-      writeFile(path.join(root, 'index.node'), 'generic-addon');
       writeFile(path.join(root, target.localFile), 'target-addon');
       writeFile(path.join(root, 'crates', 'mustard-node', 'evil.node'), 'nested-rogue-addon');
       writeFile(
@@ -81,9 +80,7 @@ test(
 
       assert.deepEqual(localBinaryCandidates(root), [
         path.join(root, target.localFile),
-        path.join(root, 'index.node'),
         path.join(root, 'crates', 'mustard-node', target.localFile),
-        path.join(root, 'crates', 'mustard-node', 'index.node'),
       ].filter((candidate) => fs.existsSync(candidate)));
     });
   },

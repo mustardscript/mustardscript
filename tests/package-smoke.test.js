@@ -13,13 +13,17 @@ const napiCliPath = path.join(
   'dist',
   'cli.js',
 );
+const generatePrebuiltPackagesScriptPath = path.join(
+  repoRoot,
+  'scripts',
+  'generate-prebuilt-packages.ts',
+);
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const packageInfo = require(path.join(repoRoot, 'package.json'));
 const {
   PREBUILT_TARGETS,
   getCurrentPrebuiltTarget,
 } = require(path.join(repoRoot, 'native-loader.ts'));
-const SIDECAR_PROTOCOL_VERSION = 2;
 
 function tarballFilenameForPackage(name, version) {
   return `${name.replace(/^@/, '').replace(/\//g, '-')}-${version}.tgz`;
@@ -77,87 +81,9 @@ function readInstalledPackageManifest(consumerRoot) {
 
 function assertInstalledReleaseFiles(consumerRoot) {
   const packageRoot = installedPackageRoot(consumerRoot);
-  for (const file of ['Cargo.lock', 'LICENSE', 'SECURITY.md']) {
+  for (const file of ['LICENSE', 'README.md', 'SECURITY.md']) {
     assert.ok(fs.existsSync(path.join(packageRoot, file)), `${file} should be shipped`);
   }
-}
-
-function runInstalledSidecarSmoke(consumerRoot, source) {
-  const packageRoot = installedPackageRoot(consumerRoot);
-  run('cargo', ['build', '-q', '-p', 'mustard-sidecar'], packageRoot);
-
-  const response = JSON.parse(
-    run(
-      process.execPath,
-      [
-        '-e',
-        `
-          const path = require('node:path');
-          const readline = require('node:readline');
-          const { spawn } = require('node:child_process');
-
-          const packageRoot = ${JSON.stringify(packageRoot)};
-          const executable = path.join(
-            packageRoot,
-            'target',
-            'debug',
-            process.platform === 'win32' ? 'mustard-sidecar.exe' : 'mustard-sidecar'
-          );
-          const child = spawn(executable, ['--jsonl'], {
-            cwd: packageRoot,
-            stdio: ['pipe', 'pipe', 'pipe'],
-          });
-          const reader = readline.createInterface({ input: child.stdout });
-          let stderr = '';
-          child.stderr.on('data', (chunk) => {
-            stderr += chunk.toString('utf8');
-          });
-
-          function readResponse() {
-            return new Promise((resolve, reject) => {
-              reader.once('line', resolve);
-              child.once('error', reject);
-            });
-          }
-
-          (async () => {
-            child.stdin.write(JSON.stringify({
-              protocol_version: ${SIDECAR_PROTOCOL_VERSION},
-              method: 'compile',
-              id: 1,
-              source: ${JSON.stringify(source)},
-            }) + '\\n');
-            const compile = JSON.parse(await readResponse());
-            if (!compile.ok) {
-              throw new Error('compile failed: ' + JSON.stringify(compile));
-            }
-
-            child.stdin.write(JSON.stringify({
-              protocol_version: ${SIDECAR_PROTOCOL_VERSION},
-              method: 'start',
-              id: 2,
-              program_id: compile.result.program_id,
-              options: { inputs: {}, capabilities: [], limits: {} },
-            }) + '\\n');
-            const start = JSON.parse(await readResponse());
-            process.stdout.write(JSON.stringify(start));
-            reader.close();
-            child.stdin.end();
-            await new Promise((resolve) => child.once('close', resolve));
-          })().catch((error) => {
-            console.error(error);
-            console.error(stderr);
-            process.exit(1);
-          });
-        `,
-      ],
-      packageRoot,
-    ),
-  );
-
-  assert.equal(response.protocol_version, SIDECAR_PROTOCOL_VERSION);
-  assert.equal(response.ok, true);
-  assert.equal(response.result.step.type, 'completed');
 }
 
 function packTarball(cwd) {
@@ -178,8 +104,7 @@ function createPrebuiltStagingRoot(tempRoot) {
   run(
     process.execPath,
     [
-      napiCliPath,
-      'create-npm-dirs',
+      generatePrebuiltPackagesScriptPath,
       '--cwd',
       stagingRoot,
       '--package-json-path',
@@ -272,7 +197,7 @@ function stageHostPrebuiltBinary(tempRoot, stagingRoot, hostTarget) {
 }
 
 test(
-  'published source package installs, reinstalls, and runs from a fresh consumer project',
+  'published root package fails closed without a matching prebuilt package',
   { concurrency: false },
   async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mustard-package-smoke-'));
@@ -290,19 +215,14 @@ test(
     assert.equal(packed.filename, tarballName);
 
     run(npmCommand, ['init', '-y'], consumerRoot);
-    run(npmCommand, ['install', tarballPath], consumerRoot);
+    run(npmCommand, ['install', '--omit=optional', tarballPath], consumerRoot);
     assertInstalledReleaseFiles(consumerRoot);
     assert.equal(readInstalledPackageManifest(consumerRoot).license, packageInfo.license);
-    assert.equal(
-      runGuestProgram(consumerRoot, 'const answer = 2; answer + 3;'),
-      '5',
-    );
-    runInstalledSidecarSmoke(consumerRoot, 'const answer = 40; answer + 2;');
+    assert.equal(readInstalledPackageManifest(consumerRoot).scripts?.install, undefined);
 
-    run(npmCommand, ['install', tarballPath], consumerRoot);
-    assert.equal(
-      runGuestProgram(consumerRoot, 'let total = 40; total = total + 2; total;'),
-      '42',
+    assert.throws(
+      () => runGuestProgram(consumerRoot, 'const answer = 2; answer + 3;'),
+      /Unable to locate a MustardScript native addon/,
     );
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -314,7 +234,7 @@ test(
 const hostPrebuiltTarget = getCurrentPrebuiltTarget();
 
 test(
-  'published prebuilt package loads without a source build when the matching optional package is installed',
+  'published root package loads when the matching optional binding package is installed',
   {
     concurrency: false,
     skip: !hostPrebuiltTarget,
@@ -364,7 +284,7 @@ test(
 
       const installOutput = run(
         npmCommand,
-        ['install', '--foreground-scripts'],
+        ['install'],
         consumerRoot,
         {
           env: {
@@ -373,8 +293,9 @@ test(
           },
         },
       );
-      assert.match(installOutput, /using optional prebuilt addon/);
+      assert.doesNotMatch(installOutput, /building from source|built local addon|using optional prebuilt addon/);
       assertInstalledReleaseFiles(consumerRoot);
+      assert.equal(readInstalledPackageManifest(consumerRoot).scripts?.install, undefined);
       assert.deepEqual(
         readInstalledPackageManifest(consumerRoot).optionalDependencies,
         packageInfo.optionalDependencies,

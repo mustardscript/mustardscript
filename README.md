@@ -85,25 +85,30 @@ The current implementation already supports:
 
 ## Installation
 
-The release package name is `mustardscript`. The default and fully verified
-path is still source-build installation from a clean checkout or packed source
-tarball, where `npm install` compiles the native addon locally. Optional
-prebuilt binaries now have a separate release flow for the documented target
-matrix, but the loader now only accepts validated `.node` artifacts from the
-expected optional package layout. Source-build fallback remains the baseline
-path, now ships `Cargo.lock`, and builds the addon in release mode. It still
-requires a Rust toolchain plus Node.js on the target machine.
+The release package name is `mustardscript`. The published npm package is now
+prebuilt-only: `npm install mustardscript` succeeds only when npm can install a
+matching optional native binding package for the current platform. The loader
+accepts only the documented binding package layout and fails closed when no
+matching prebuilt is present.
+
+Current prebuilt target matrix:
+
+- `@mustardscript/binding-darwin-arm64`
+- `@mustardscript/binding-darwin-x64`
+- `@mustardscript/binding-linux-x64-gnu`
+- `@mustardscript/binding-win32-x64-msvc`
 
 From a clean checkout:
 
 ```sh
 npm install
+npm run build
 npm test
 ```
 
-That flow builds the Rust addon locally and then runs the Node and packaging
-smoke tests. Prebuilt binaries are intentionally deferred until the package
-shape is stable.
+That maintainer flow installs dependencies, builds the local addon in the
+checkout, and then runs the Node and packaging smoke tests. End-user npm
+installs no longer compile the addon from Rust sources.
 
 Release verification and publish guidance live in
 [docs/RELEASE.md](docs/RELEASE.md).

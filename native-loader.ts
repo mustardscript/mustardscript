@@ -13,7 +13,7 @@ const PREBUILT_TARGETS = Object.freeze([
     platform: 'win32',
     arch: 'x64',
     platformArchABI: 'win32-x64-msvc',
-    packageName: 'mustardscript-win32-x64-msvc',
+    packageName: '@mustardscript/binding-win32-x64-msvc',
     localFile: 'index.win32-x64-msvc.node',
     os: ['win32'],
     cpu: ['x64'],
@@ -23,7 +23,7 @@ const PREBUILT_TARGETS = Object.freeze([
     platform: 'darwin',
     arch: 'x64',
     platformArchABI: 'darwin-x64',
-    packageName: 'mustardscript-darwin-x64',
+    packageName: '@mustardscript/binding-darwin-x64',
     localFile: 'index.darwin-x64.node',
     os: ['darwin'],
     cpu: ['x64'],
@@ -33,7 +33,7 @@ const PREBUILT_TARGETS = Object.freeze([
     platform: 'darwin',
     arch: 'arm64',
     platformArchABI: 'darwin-arm64',
-    packageName: 'mustardscript-darwin-arm64',
+    packageName: '@mustardscript/binding-darwin-arm64',
     localFile: 'index.darwin-arm64.node',
     os: ['darwin'],
     cpu: ['arm64'],
@@ -43,7 +43,7 @@ const PREBUILT_TARGETS = Object.freeze([
     platform: 'linux',
     arch: 'x64',
     platformArchABI: 'linux-x64-gnu',
-    packageName: 'mustardscript-linux-x64-gnu',
+    packageName: '@mustardscript/binding-linux-x64-gnu',
     localFile: 'index.linux-x64-gnu.node',
     os: ['linux'],
     cpu: ['x64'],
@@ -90,11 +90,7 @@ function getCurrentPrebuiltTarget() {
 }
 
 function getLocalBuildOutputFile() {
-  return getCurrentPrebuiltTarget()?.localFile ?? 'index.node';
-}
-
-function getLocalBinaryFilenames() {
-  return [...new Set([getLocalBuildOutputFile(), 'index.node'])];
+  return getCurrentPrebuiltTarget()?.localFile ?? null;
 }
 
 function validatePrebuiltPackageManifest(manifest, target, packageJsonPath) {
@@ -155,7 +151,11 @@ function localBinaryCandidates(searchRoot = packageRoot()) {
       continue;
     }
 
-    for (const filename of getLocalBinaryFilenames()) {
+    const localFile = getLocalBuildOutputFile();
+    if (!localFile) {
+      continue;
+    }
+    for (const filename of [localFile]) {
       const candidate = path.join(root, filename);
       const stats = fs.statSync(candidate, { throwIfNoEntry: false });
       if (stats?.isFile()) {
@@ -211,14 +211,13 @@ function loadNative(options = {}) {
     : `${process.platform}-${process.arch}`;
   throw new AggregateError(
     loadErrors,
-    `Unable to locate a MustardScript native addon for ${platformHint}. Install a matching optional prebuilt package or allow the source build to run.`,
+    `Unable to locate a MustardScript native addon for ${platformHint}. Install a matching prebuilt package for this platform.`,
   );
 }
 
 module.exports = {
   PREBUILT_TARGETS,
   getCurrentPrebuiltTarget,
-  getLocalBinaryFilenames,
   getLocalBuildOutputFile,
   localBinaryCandidates,
   resolveNativeAddonPath,
