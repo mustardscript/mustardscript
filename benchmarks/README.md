@@ -90,6 +90,9 @@ machine metadata and latency summaries for:
 - addon representative PTC boundary breakdowns for the website-sized public
   demo plus the medium primary lanes, separating host callback time, native
   boundary parse/decode, guest execution, and native boundary encode
+- sidecar representative PTC breakdowns for the website-sized public demo plus
+  the medium primary lanes, separating process startup, request transport,
+  sidecar execution, and response materialization
 - per-runtime weighted PTC medium-lane score under `runtime.ptc.weightedScore.medium`
 - addon suspend/resume chains with snapshot reloads
 - addon boundary-only measurements for start inputs, suspended args, resume
@@ -235,6 +238,11 @@ The sidecar phase metrics are intentionally simpler and map to protocol stages:
 - `transport_resume_only` replays an already-suspended minimal snapshot through
   `resume`, so detached snapshot bytes, auth metadata, and stdio request /
   response cost dominate the timed region while resumed guest work stays tiny
+- `sidecar.ptc.breakdown` records representative profiled sidecar runs for the
+  website-small lane plus the medium primary lanes. `processStartup` reuses
+  `sidecar.phases.startup_only`, and each lane entry splits observed time into
+  `requestTransport`, `execution`, and `responseMaterialization` (sidecar
+  response preparation plus client-side frame decode/copy)
 
 These definitions are not replacements for future Rust microbenches, but they
 do make it possible to tell whether time is going into startup, resume

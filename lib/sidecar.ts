@@ -1,5 +1,7 @@
 'use strict';
 
+const { performance } = require('node:perf_hooks');
+
 function encodeFrame(payload, blob = undefined) {
   const header = Buffer.from(JSON.stringify(payload), 'utf8');
   const body = blob === undefined || blob === null ? Buffer.alloc(0) : Buffer.from(blob);
@@ -30,9 +32,11 @@ function createFrameReader(stream) {
         const blob = buffered.subarray(8 + headerLength, frameLength);
         buffered = buffered.subarray(frameLength);
         const waiter = waiters.shift();
+        const decodeStarted = performance.now();
         waiter.resolve({
           payload: JSON.parse(header.toString('utf8')),
           blob: Buffer.from(blob),
+          responseDecodeMs: performance.now() - decodeStarted,
         });
         continue;
       }
@@ -74,8 +78,12 @@ function createBinarySidecarClient(child) {
   const readFrame = createFrameReader(child.stdout);
   return {
     async request(payload, blob = undefined) {
-      child.stdin.write(encodeFrame(payload, blob));
-      return readFrame();
+      const frame = encodeFrame(payload, blob);
+      const roundTripStarted = performance.now();
+      child.stdin.write(frame);
+      const response = await readFrame();
+      response.roundTripMs = performance.now() - roundTripStarted;
+      return response;
     },
   };
 }

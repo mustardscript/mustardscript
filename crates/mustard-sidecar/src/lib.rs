@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
+use std::time::Instant;
 
 use anyhow::{Context, Result, anyhow};
 use hmac::Mac;
@@ -31,6 +32,7 @@ enum Request {
         program_id: Option<String>,
         program_bytes: Option<Vec<u8>>,
         options: StartOptionsDto,
+        profile: bool,
     },
     Resume {
         protocol_version: u32,
@@ -41,6 +43,7 @@ enum Request {
         policy_id: Option<String>,
         auth: Option<Box<ResumeAuth>>,
         payload: Box<ResumeDto>,
+        profile: bool,
     },
 }
 
@@ -60,6 +63,8 @@ enum JsonRequest {
         #[serde(default)]
         program_id: Option<String>,
         options: StartOptionsDto,
+        #[serde(default)]
+        profile: bool,
     },
     Resume {
         protocol_version: u32,
@@ -75,6 +80,8 @@ enum JsonRequest {
         #[serde(default)]
         auth: Option<Box<ResumeAuth>>,
         payload: Box<ResumeDto>,
+        #[serde(default)]
+        profile: bool,
     },
 }
 
@@ -92,6 +99,8 @@ enum BinaryRequestHeader {
         #[serde(default)]
         program_id: Option<String>,
         options: StartOptionsDto,
+        #[serde(default)]
+        profile: bool,
     },
     Resume {
         protocol_version: u32,
@@ -105,6 +114,8 @@ enum BinaryRequestHeader {
         #[serde(default)]
         auth: Option<Box<ResumeAuth>>,
         payload: Box<ResumeDto>,
+        #[serde(default)]
+        profile: bool,
     },
 }
 
@@ -114,7 +125,14 @@ struct Response {
     id: u64,
     ok: bool,
     result: Option<ResponseBody>,
+    profile: Option<ResponseProfile>,
     error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct ResponseProfile {
+    execution_ns: u64,
+    response_prepare_ns: u64,
 }
 
 #[derive(Debug)]
@@ -150,6 +168,8 @@ struct JsonResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<JsonResponsePayload>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    profile: Option<ResponseProfile>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
@@ -176,6 +196,8 @@ struct BinaryResponseHeader {
     ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<BinaryResponsePayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    profile: Option<ResponseProfile>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
@@ -245,6 +267,10 @@ fn encode_snapshot_token(snapshot_id: &str, snapshot_key: &[u8]) -> Result<Strin
         let _ = write!(&mut token, "{byte:02x}");
     }
     Ok(token)
+}
+
+fn elapsed_nanos(started: Instant) -> u64 {
+    started.elapsed().as_nanos().min(u64::MAX as u128) as u64
 }
 
 fn assert_authenticated_snapshot_id(snapshot_id: &str, policy: &SnapshotPolicyDto) -> Result<()> {
@@ -329,12 +355,14 @@ fn request_from_json(request: JsonRequest) -> Result<Request> {
             program_base64,
             program_id,
             options,
+            profile,
         } => Request::Start {
             protocol_version,
             id,
             program_id,
             program_bytes: program_base64.as_deref().map(decode_base64).transpose()?,
             options,
+            profile,
         },
         JsonRequest::Resume {
             protocol_version,
@@ -345,6 +373,7 @@ fn request_from_json(request: JsonRequest) -> Result<Request> {
             policy_id,
             auth,
             payload,
+            profile,
         } => Request::Resume {
             protocol_version,
             id,
@@ -354,6 +383,7 @@ fn request_from_json(request: JsonRequest) -> Result<Request> {
             policy_id,
             auth,
             payload,
+            profile,
         },
     })
 }
@@ -381,12 +411,14 @@ fn request_from_binary_header(header: BinaryRequestHeader, blob: Vec<u8>) -> Res
             id,
             program_id,
             options,
+            profile,
         } => Ok(Request::Start {
             protocol_version,
             id,
             program_id,
             program_bytes: (!blob.is_empty()).then_some(blob),
             options,
+            profile,
         }),
         BinaryRequestHeader::Resume {
             protocol_version,
@@ -396,6 +428,7 @@ fn request_from_binary_header(header: BinaryRequestHeader, blob: Vec<u8>) -> Res
             policy_id,
             auth,
             payload,
+            profile,
         } => Ok(Request::Resume {
             protocol_version,
             id,
@@ -405,6 +438,7 @@ fn request_from_binary_header(header: BinaryRequestHeader, blob: Vec<u8>) -> Res
             policy_id,
             auth,
             payload,
+            profile,
         }),
     }
 }
@@ -442,6 +476,7 @@ fn response_to_json(response: Response) -> JsonResponse {
         id: response.id,
         ok: response.ok,
         result,
+        profile: response.profile,
         error: response.error,
     }
 }
@@ -488,6 +523,7 @@ fn response_to_binary_parts(response: Response) -> Result<(Vec<u8>, Vec<u8>)> {
         id: response.id,
         ok: response.ok,
         result,
+        profile: response.profile,
         error: response.error,
     };
     let encoded = serde_json::to_vec(&header).context("failed to encode response header")?;
@@ -768,32 +804,38 @@ impl SidecarSession {
                 id,
                 ok: false,
                 result: None,
+                profile: None,
                 error: Some(format!(
                     "unsupported sidecar protocol version {protocol_version}; expected {PROTOCOL_VERSION}"
                 )),
             };
         }
 
-        let result: Result<ResponseBody> = match request {
+        let result: Result<(ResponseBody, Option<ResponseProfile>)> = match request {
             Request::Compile { source, .. } => (|| {
                 let bytes = compile_program_bytes(&source)?;
                 let program_id = digest_hex(&bytes);
                 self.programs
                     .entry(program_id.clone())
                     .or_insert_with(|| ProgramEntry::new(bytes.clone()));
-                Ok(ResponseBody::Program {
-                    program_bytes: bytes,
-                    program_id,
-                })
+                Ok((
+                    ResponseBody::Program {
+                        program_bytes: bytes,
+                        program_id,
+                    },
+                    None,
+                ))
             })(),
             Request::Start {
                 program_bytes,
                 program_id,
                 options,
+                profile,
                 ..
             } => (|| {
                 let program = self.resolve_program(program_id, program_bytes)?;
                 let policy_id = self.register_policy(&options.capabilities, &options.limits)?;
+                let execution_started = Instant::now();
                 let step = start_shared_bytecode(
                     program,
                     ExecutionOptions {
@@ -803,12 +845,21 @@ impl SidecarSession {
                         cancellation_token: None,
                     },
                 )?;
+                let execution_ns = elapsed_nanos(execution_started);
+                let response_prepare_started = Instant::now();
                 let (step, snapshot_id, policy_id) = self.response_step(step, Some(policy_id))?;
-                Ok(ResponseBody::Step {
-                    step,
-                    snapshot_id,
-                    policy_id,
-                })
+                let response_prepare_ns = elapsed_nanos(response_prepare_started);
+                Ok((
+                    ResponseBody::Step {
+                        step,
+                        snapshot_id,
+                        policy_id,
+                    },
+                    profile.then_some(ResponseProfile {
+                        execution_ns,
+                        response_prepare_ns,
+                    }),
+                ))
             })(),
             Request::Resume {
                 snapshot_id,
@@ -817,6 +868,7 @@ impl SidecarSession {
                 policy_id,
                 auth,
                 payload,
+                profile,
                 ..
             } => (|| {
                 let (snapshot_id, inline_snapshot_bytes) =
@@ -829,6 +881,7 @@ impl SidecarSession {
                     assert_authenticated_snapshot_id(&snapshot_id, &policy)?;
                 }
                 let snapshot = self.resolve_live_snapshot(&snapshot_id, inline_snapshot_bytes)?;
+                let execution_started = Instant::now();
                 let step = resume_with_options(
                     snapshot,
                     payload.into_resume_payload(),
@@ -837,21 +890,31 @@ impl SidecarSession {
                         snapshot_policy: Some(policy.into_snapshot_policy()?),
                     },
                 )?;
+                let execution_ns = elapsed_nanos(execution_started);
+                let response_prepare_started = Instant::now();
                 let (step, next_snapshot_id, policy_id) = self.response_step(step, policy_id)?;
-                Ok(ResponseBody::Step {
-                    step,
-                    snapshot_id: next_snapshot_id,
-                    policy_id,
-                })
+                let response_prepare_ns = elapsed_nanos(response_prepare_started);
+                Ok((
+                    ResponseBody::Step {
+                        step,
+                        snapshot_id: next_snapshot_id,
+                        policy_id,
+                    },
+                    profile.then_some(ResponseProfile {
+                        execution_ns,
+                        response_prepare_ns,
+                    }),
+                ))
             })(),
         };
 
         match result {
-            Ok(result) => Response {
+            Ok((result, profile)) => Response {
                 protocol_version: PROTOCOL_VERSION,
                 id,
                 ok: true,
                 result: Some(result),
+                profile,
                 error: None,
             },
             Err(error) => Response {
@@ -859,6 +922,7 @@ impl SidecarSession {
                 id,
                 ok: false,
                 result: None,
+                profile: None,
                 error: Some(error.to_string()),
             },
         }

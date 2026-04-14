@@ -463,12 +463,13 @@ async function compileSidecarSource(request, source) {
   };
 }
 
-function sidecarStartRequestPayload(program, requestId, options) {
+function sidecarStartRequestPayload(program, requestId, options, profile = false) {
   const payload = {
     protocol_version: SIDECAR_PROTOCOL_VERSION,
     method: 'start',
     id: requestId,
     options,
+    profile,
   };
   if (typeof program.programId === 'string' && program.programId.length > 0) {
     payload.program_id = program.programId;
@@ -492,6 +493,24 @@ function sidecarResumeAuth(snapshot) {
   };
 }
 
+function parseSidecarExecutionProfile(payload, requestMetrics) {
+  const executionNs = payload.profile?.execution_ns;
+  const responsePrepareNs = payload.profile?.response_prepare_ns;
+  if (!Number.isFinite(executionNs) || !Number.isFinite(responsePrepareNs)) {
+    return null;
+  }
+  const executionMs = executionNs / 1e6;
+  const responseMaterializationMs = (responsePrepareNs / 1e6) + (requestMetrics.responseDecodeMs ?? 0);
+  return {
+    executionMs,
+    responseMaterializationMs,
+    requestTransportMs: Math.max(
+      0,
+      (requestMetrics.roundTripMs ?? 0) - executionMs - responseMaterializationMs,
+    ),
+  };
+}
+
 async function startSidecarProgram(request, program, options = {}) {
   const capabilities = options.capabilities;
   const capabilityNames = sidecarCapabilityNames(capabilities);
@@ -507,6 +526,25 @@ async function startSidecarProgram(request, program, options = {}) {
   return {
     capabilityNames,
     step: sidecarStepValue(payload.result.step, payload.result, blob),
+  };
+}
+
+async function startProfiledSidecarProgram(request, program, options = {}) {
+  const capabilities = options.capabilities;
+  const capabilityNames = sidecarCapabilityNames(capabilities);
+  const response = await request(
+    sidecarStartRequestPayload(program, 2, {
+      inputs: sidecarEncodedInputs(options.inputs ?? {}),
+      capabilities: capabilityNames,
+      limits: options.limits ?? {},
+    }, true),
+    typeof program.programId === 'string' && program.programId.length > 0 ? undefined : program.program,
+  );
+  assert.equal(response.payload.ok, true, `sidecar start failed: ${response.payload.error}`);
+  return {
+    capabilityNames,
+    step: sidecarStepValue(response.payload.result.step, response.payload.result, response.blob),
+    profile: parseSidecarExecutionProfile(response.payload, response),
   };
 }
 
@@ -531,6 +569,31 @@ async function resumeSidecarSnapshot(
   return sidecarStepValue(payload.result.step, payload.result, blob);
 }
 
+async function resumeProfiledSidecarSnapshot(
+  request,
+  step,
+  payloadValue,
+  requestId = 3,
+) {
+  assert.equal(typeof step.snapshotId, 'string', 'sidecar resume requires a cached snapshotId');
+  assert.equal(typeof step.policyId, 'string', 'sidecar resume requires a cached policyId');
+  const response = await request({
+    protocol_version: SIDECAR_PROTOCOL_VERSION,
+    method: 'resume',
+    id: requestId,
+    snapshot_id: step.snapshotId,
+    policy_id: step.policyId,
+    auth: sidecarResumeAuth(step.snapshot),
+    payload: JSON.parse(encodeResumePayloadValue(payloadValue)),
+    profile: true,
+  });
+  assert.equal(response.payload.ok, true, `sidecar resume failed: ${response.payload.error}`);
+  return {
+    step: sidecarStepValue(response.payload.result.step, response.payload.result, response.blob),
+    profile: parseSidecarExecutionProfile(response.payload, response),
+  };
+}
+
 async function runSidecarProgram(request, program, options = {}, resumeValue = undefined) {
   let { step } = await startSidecarProgram(request, program, options);
   let requestId = 3;
@@ -543,6 +606,74 @@ async function runSidecarProgram(request, program, options = {}, resumeValue = u
     requestId += 1;
   }
   return step.value;
+}
+
+async function runSidecarPtcBreakdownSample(request, program, scenario) {
+  const capabilities = scenario.createCapabilities();
+  const totals = {
+    executionMs: 0,
+    requestTransportMs: 0,
+    responseMaterializationMs: 0,
+  };
+  let { step, profile } = await startProfiledSidecarProgram(request, program, {
+    capabilities,
+    inputs: scenario.inputs,
+  });
+  assert.ok(profile, `sidecar start profile missing for ${scenario.metricName}`);
+  totals.executionMs += profile.executionMs;
+  totals.requestTransportMs += profile.requestTransportMs;
+  totals.responseMaterializationMs += profile.responseMaterializationMs;
+  let requestId = 3;
+  while (step.type === 'suspended') {
+    const handler = capabilities[step.capability];
+    assert.equal(
+      typeof handler,
+      'function',
+      `PTC sidecar breakdown is missing capability \`${step.capability}\` for ${scenario.metricName}`,
+    );
+    const value = handler(...step.args);
+    const resolved = value && typeof value.then === 'function' ? await value : value;
+    ({ step, profile } = await resumeProfiledSidecarSnapshot(
+      request,
+      step,
+      resolved,
+      requestId,
+    ));
+    requestId += 1;
+    assert.ok(profile, `sidecar resume profile missing for ${scenario.metricName}`);
+    totals.executionMs += profile.executionMs;
+    totals.requestTransportMs += profile.requestTransportMs;
+    totals.responseMaterializationMs += profile.responseMaterializationMs;
+  }
+  scenario.assertResult(step.value);
+  return totals;
+}
+
+async function captureSidecarPtcBreakdown(
+  request,
+  program,
+  scenario,
+  options = DEFAULT_OPTIONS,
+) {
+  for (let iteration = 0; iteration < options.warmup; iteration += 1) {
+    await runSidecarPtcBreakdownSample(request, program, scenario);
+  }
+  const samples = {
+    requestTransport: [],
+    execution: [],
+    responseMaterialization: [],
+  };
+  for (let iteration = 0; iteration < options.iterations; iteration += 1) {
+    const sample = await runSidecarPtcBreakdownSample(request, program, scenario);
+    samples.requestTransport.push(sample.requestTransportMs);
+    samples.execution.push(sample.executionMs);
+    samples.responseMaterialization.push(sample.responseMaterializationMs);
+  }
+  return {
+    requestTransport: summarize(samples.requestTransport),
+    execution: summarize(samples.execution),
+    responseMaterialization: summarize(samples.responseMaterialization),
+  };
 }
 
 function installIsolateCapabilities(context, capabilities = {}, inputs = {}) {
@@ -1361,12 +1492,14 @@ async function benchmarkSidecar(fixtures, profile) {
   const { smallSource, codeModeSource, workflowSource, workflowData, ptcScenarios } = fixtures;
   const ptc = {
     transfer: {},
+    breakdown: {},
   };
 
   const startupOnly = await measure('startup_only', async () => {
     await withSidecar(profile, async () => {});
   }, COLD_OPTIONS);
   phases[startupOnly[0]] = startupOnly[1];
+  ptc.breakdown.processStartup = startupOnly[1];
 
   Object.assign(latency, Object.fromEntries([
     await measure('cold_start_small', async () => {
@@ -1448,6 +1581,13 @@ async function benchmarkSidecar(fixtures, profile) {
         }),
         scenario,
       );
+      if (ADDON_PTC_BREAKDOWN_METRICS.has(scenario.metricName)) {
+        ptc.breakdown[scenario.metricName] = await captureSidecarPtcBreakdown(
+          request,
+          program,
+          scenario,
+        );
+      }
     }
     ptc.weightedScore = {
       medium: summarizePtcWeightedScore(latency),
@@ -1867,6 +2007,20 @@ function printSummary(results) {
     );
   }
   console.log('');
+  console.log('Sidecar representative PTC breakdowns:');
+  const startupMetric = results.sidecar.ptc.breakdown.processStartup;
+  if (startupMetric) {
+    console.log(`processStartup: ${startupMetric.medianMs.toFixed(2)}ms median, ${startupMetric.p95Ms.toFixed(2)}ms p95`);
+  }
+  for (const [name, metric] of Object.entries(results.sidecar.ptc.breakdown)) {
+    if (name === 'processStartup') {
+      continue;
+    }
+    console.log(
+      `${name}: request transport ${metric.requestTransport.medianMs.toFixed(2)}ms, execution ${metric.execution.medianMs.toFixed(2)}ms, response materialization ${metric.responseMaterialization.medianMs.toFixed(2)}ms`,
+    );
+  }
+  console.log('');
   console.log(`Memory retained after ${MEMORY_RUNS} workflow runs:`);
   console.log(`addon heap ${results.addon.memory.heapUsedDeltaBytes}B rss ${results.addon.memory.rssDeltaBytes}B`);
   console.log(`sidecar heap ${results.sidecar.memory.heapUsedDeltaBytes}B rss ${results.sidecar.memory.rssDeltaBytes}B`);
@@ -1936,6 +2090,8 @@ async function main() {
         'runtime.ptc.weightedScore.medium is a weighted median/p95 rollup of ptc_incident_triage_medium (40%), ptc_fraud_investigation_medium (35%), and ptc_vendor_review_medium (25%). runtime.ptc.transfer records actual tool call counts plus JSON-encoded tool/result payload sizes for one untimed representative run of each PTC lane.',
       ptcBreakdownDefinitions:
         'addon.ptc.breakdown records representative profiled addon runs for the website-small lane plus the medium primary lanes. hostCallbacks measures JS time spent inside host tool handlers, guestExecution measures Rust runtime execution between boundaries, boundaryParse measures native JSON decode/parse of start/resume payloads, boundaryEncode measures native JSON encoding of step results, and boundaryCodec is parse+encode combined.',
+      sidecarPtcBreakdownDefinitions:
+        'sidecar.ptc.breakdown separates sidecar startup from representative lane-level request flow. processStartup reuses sidecar.phases.startup_only, while the lane entries split client-observed requestTransport from sidecar execution and combined response materialization (sidecar response preparation plus client response decode/copy).',
     },
     addon,
     sidecar,

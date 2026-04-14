@@ -11,7 +11,7 @@ lastUpdated: "2026-04-14"
 
 This document summarizes the latest kept benchmark evidence from:
 
-- workload suite: `benchmarks/results/2026-04-14T01-36-43-009Z-workloads.json`
+- workload suite: `benchmarks/results/2026-04-14T01-49-28-550Z-workloads.json`
 - release smoke suite: `benchmarks/results/2026-04-13T23-00-15-361Z-smoke-release.json`
 
 Machine and environment:
@@ -20,24 +20,24 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA in workload artifact: `c1e3ebc`
+- Git SHA in workload artifact: `cef6000`
 - Workload fixture version: `6`
 - Smoke fixture version: `2`
 
 ## Headline Results
 
-### 1. Representative addon PTC latency stayed effectively flat while boundary attribution landed
+### 1. Representative sidecar PTC latency stayed effectively flat while lane-level attribution landed
 
-The latest kept representative workload artifact leaves the addon headline
-essentially unchanged while adding per-lane boundary attribution:
+The latest kept representative workload artifact leaves the sidecar headline
+effectively unchanged while adding the missing representative PTC attribution:
 
 | Metric | Median | p95 |
 | --- | ---: | ---: |
-| `ptc_website_demo_small` | `0.16 ms` | `0.16 ms` |
-| `ptc_incident_triage_medium` | `0.59 ms` | `0.60 ms` |
-| `ptc_fraud_investigation_medium` | `1.68 ms` | `1.74 ms` |
-| `ptc_vendor_review_medium` | `0.22 ms` | `0.23 ms` |
-| `addon.ptc.weightedScore.medium` | `0.88 ms` | `0.91 ms` |
+| `ptc_website_demo_small` | `0.55 ms` | `0.58 ms` |
+| `ptc_incident_triage_medium` | `3.25 ms` | `4.18 ms` |
+| `ptc_fraud_investigation_medium` | `3.32 ms` | `3.33 ms` |
+| `ptc_vendor_review_medium` | `0.75 ms` | `0.76 ms` |
+| `sidecar.ptc.weightedScore.medium` | `2.65 ms` | `3.03 ms` |
 
 The old synthetic control metric is still present:
 
@@ -46,37 +46,58 @@ The old synthetic control metric is still present:
 | `programmatic_tool_workflow` | `1.44 ms` | `1.47 ms` |
 
 Compared with the immediately previous kept representative artifact
-`benchmarks/results/2026-04-14T00-59-31-034Z-workloads.json`, the primary
-addon medians remained effectively flat:
+`benchmarks/results/2026-04-14T01-36-43-009Z-workloads.json`, the primary
+sidecar medians remained effectively flat:
 
-- `addon.ptc.weightedScore.medium`: `0.88 ms -> 0.88 ms` (`-0.4%`)
-- `addon.latency.ptc_incident_triage_medium`: `0.59 ms -> 0.59 ms` (`-0.1%`)
-- `addon.latency.ptc_fraud_investigation_medium`: `1.69 ms -> 1.68 ms` (`-0.9%`)
-- `addon.latency.ptc_vendor_review_medium`: `0.21 ms -> 0.22 ms` (`+4.2%`)
-- `addon.latency.ptc_website_demo_small`: `0.16 ms -> 0.16 ms` (`-3.4%`)
+- `sidecar.ptc.weightedScore.medium`: `2.67 ms -> 2.65 ms` (`-0.5%`)
+- `sidecar.latency.ptc_incident_triage_medium`: `3.25 ms -> 3.25 ms` (`+0.1%`)
+- `sidecar.latency.ptc_fraud_investigation_medium`: `3.37 ms -> 3.32 ms` (`-1.3%`)
+- `sidecar.latency.ptc_vendor_review_medium`: `0.75 ms -> 0.75 ms` (`+0.2%`)
+- `sidecar.latency.ptc_website_demo_small`: `0.67 ms -> 0.55 ms` (`-18.1%`)
 
-This slice was benchmark attribution work, not a latency win: it kept the
-headline stable while landing the missing addon boundary breakdowns needed to
-decide the next transport optimization path.
+This was still attribution work, not a sidecar speedup. The useful outcome is
+that the benchmark now shows where representative sidecar time lands instead of
+leaving startup, transport, execution, and response handling as one opaque
+bucket.
 
-### 2. Representative addon lanes now show boundary parse/encode cost separately from guest execution
+### 2. Representative sidecar lanes now show startup, transport, execution, and response materialization separately
+
+Representative sidecar PTC breakdowns from the kept workload artifact:
+
+- `processStartup`: `8.49 ms` median, `278.22 ms` p95
+
+| Lane | Request Transport | Execution | Response Materialization |
+| --- | ---: | ---: | ---: |
+| `ptc_website_demo_small` | `0.17 ms` | `0.11 ms` | `0.16 ms` |
+| `ptc_incident_triage_medium` | `0.47 ms` | `0.52 ms` | `1.15 ms` |
+| `ptc_fraud_investigation_medium` | `0.39 ms` | `1.06 ms` | `0.72 ms` |
+| `ptc_vendor_review_medium` | `0.14 ms` | `0.12 ms` | `0.23 ms` |
+
+The important signal here is that `ptc_incident_triage_medium` is not mainly a
+guest-execution problem on sidecar: the kept run spends about `1.15 ms` in
+response materialization and another `0.47 ms` in request transport versus
+about `0.52 ms` inside sidecar execution. `ptc_fraud_investigation_medium`
+still spends the largest absolute execution time, but it also pays a visible
+`0.72 ms` response-materialization cost. `ptc_vendor_review_medium` already
+shows relatively small transport overhead at about `0.14 ms`.
+
+### 3. Representative addon lanes still show boundary parse/encode cost separately from guest execution
 
 Representative addon PTC boundary breakdowns from the kept workload artifact:
 
 | Lane | Host Callbacks | Guest Execution | Boundary Parse | Boundary Encode | Boundary Codec |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `ptc_website_demo_small` | `0.01 ms` | `0.06 ms` | `0.01 ms` | `0.00 ms` | `0.01 ms` |
-| `ptc_incident_triage_medium` | `0.01 ms` | `0.43 ms` | `0.02 ms` | `0.01 ms` | `0.04 ms` |
-| `ptc_fraud_investigation_medium` | `0.01 ms` | `1.03 ms` | `0.16 ms` | `0.02 ms` | `0.18 ms` |
+| `ptc_website_demo_small` | `0.01 ms` | `0.07 ms` | `0.01 ms` | `0.00 ms` | `0.01 ms` |
+| `ptc_incident_triage_medium` | `0.01 ms` | `0.43 ms` | `0.03 ms` | `0.01 ms` | `0.04 ms` |
+| `ptc_fraud_investigation_medium` | `0.01 ms` | `1.06 ms` | `0.16 ms` | `0.03 ms` | `0.19 ms` |
 | `ptc_vendor_review_medium` | `0.00 ms` | `0.10 ms` | `0.02 ms` | `0.01 ms` | `0.03 ms` |
 
-The important signal here is not that host callbacks are expensive in these
-deterministic fixtures; they are not. The useful result is that the benchmark
-now shows boundary codec cost directly, and it is most visible on
-`ptc_fraud_investigation_medium`, where parse+encode is about `0.18 ms`
-relative to about `1.03 ms` of guest execution.
+The addon signal is still useful because it keeps the native boundary codec
+cost explicit. `ptc_fraud_investigation_medium` remains the clearest
+boundary-heavy addon lane, with about `0.19 ms` of native parse+encode on top
+of about `1.06 ms` of guest execution.
 
-### 3. Primary PTC lanes still expose queued/executed microtask pressure directly
+### 4. Primary PTC lanes still expose queued/executed microtask pressure directly
 
 The addon runtime counters still include queued/executed microtask totals plus
 resume/combinator breakdowns for the three primary medium lanes:
@@ -91,7 +112,7 @@ This still matters because the benchmark can distinguish lanes dominated by
 queued combinator work from lanes dominated by resumed async continuations
 instead of treating “Promise-heavy” as a single opaque bucket.
 
-### 4. The representative suite still exposes how much intermediate data stays inside the sandbox
+### 5. The representative suite still exposes how much intermediate data stays inside the sandbox
 
 Addon transfer summaries from the kept workload artifact:
 
@@ -106,30 +127,33 @@ This is still the key benchmark-shape improvement: it makes it visible when
 `mustard` is reducing tool payloads locally instead of just reporting one total
 latency number.
 
-### 5. Sidecar is still materially slower than addon on representative medium lanes
+### 6. The weighted sidecar/addon score is now just under the milestone target, but not because of a decisive sidecar speedup
 
 Current weighted medium-lane medians:
 
 | Runtime | Median | p95 |
 | --- | ---: | ---: |
-| addon | `0.88 ms` | `0.91 ms` |
-| sidecar | `2.67 ms` | `3.23 ms` |
-| isolate | `0.40 ms` | `0.40 ms` |
+| addon | `0.90 ms` | `0.92 ms` |
+| sidecar | `2.65 ms` | `3.03 ms` |
+| isolate | `0.39 ms` | `0.41 ms` |
 
 Current weighted-score ratios:
 
 | Ratio | Value |
 | --- | ---: |
-| `sidecar / addon` | `3.03x` |
-| `isolate / addon` | `0.45x` |
+| `sidecar / addon` | `2.94x` |
+| `isolate / addon` | `0.44x` |
 
-The key point from this slice is not a new sidecar win. It is that the kept
-artifact now shows where addon boundary time is going, while sidecar remains
-well above the target ratio on the weighted medium-lane score.
+The current kept artifact is technically inside the Milestone 4 weighted-score
+target, but this is not a decisive sidecar win. The ratio only moved from
+about `3.03x` to `2.94x`, and that came from small shifts on both addon and
+sidecar medians. The real value of this slice is that the score now comes with
+lane-level attribution, so follow-up work can target response handling and
+transport costs directly instead of treating sidecar overhead as one monolith.
 
-### 6. Smoke was not the focus of this slice
+### 7. Smoke was not the focus of this slice
 
-This change set focused on addon boundary attribution and refreshed
+This change set focused on sidecar lane-level attribution and refreshed
 representative workload evidence. The kept release smoke artifact remains:
 
 - `benchmarks/results/2026-04-13T23-00-15-361Z-smoke-release.json`
@@ -147,17 +171,17 @@ repo verification still passed:
 ## Conclusions
 
 1. `addon.ptc.weightedScore.medium` is still the right real-world signal for
-   addon optimization work, and this slice intentionally kept it effectively
-   flat while improving measurement quality.
-2. The new addon PTC breakdowns make boundary codec cost explicit instead of
-   forcing future transport work to infer it from synthetic boundary-only
-   probes.
-3. `ptc_fraud_investigation_medium` is still the clearest boundary-heavy addon
-   lane: its representative profiled run spends about `0.18 ms` in native
-   boundary parse+encode on top of about `1.03 ms` of guest execution.
-4. Sidecar remains materially above the target weighted-score ratio on the
-   representative medium lanes.
-5. The next highest-value work is still the unfinished addon boundary
-   transport path plus the missing sidecar lane-level attribution that would
-   split process/transport/materialization costs on the same representative
-   PTC shapes.
+   addon optimization work, and the new artifact keeps the addon score in the
+   same range while preserving the addon boundary breakdowns.
+2. Sidecar representative PTC attribution has now landed. `processStartup`,
+   `requestTransport`, `execution`, and `responseMaterialization` are all
+   visible in the kept workload artifact.
+3. `ptc_incident_triage_medium` is the clearest sidecar response-heavy lane in
+   the current artifact: about `1.15 ms` of response materialization and
+   `0.47 ms` of request transport versus about `0.52 ms` of execution.
+4. `ptc_fraud_investigation_medium` remains the clearest addon boundary-heavy
+   lane: about `0.19 ms` of native boundary codec on top of about `1.06 ms` of
+   guest execution.
+5. The next highest-value work is the unfinished addon transport path plus
+   targeted sidecar reductions in response materialization and request
+   transport on the primary representative lanes.
