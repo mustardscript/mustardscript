@@ -41,7 +41,9 @@ lastUpdated: "2026-04-14"
 - Post-lowering bytecode optimization stays inside block-local regions.
 - Within each region, the optimizer tracks abstract stack-top equivalence for
   recent literal and binding loads so redundant reloads can collapse into
-  `Dup` before later stack-noop and superinstruction cleanup.
+  `Dup` before later stack-noop and superinstruction cleanup. That pass
+  currently stays opt-in until broader portfolio data justifies enabling it by
+  default.
 - Jump targets always start a fresh optimization block.
 - The optimizer flushes at handler and pending-completion edges, control-flow
   transfers, `await`, calls, construction, `return`, and `throw`.

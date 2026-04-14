@@ -45,7 +45,7 @@ struct Compiler {
 #[derive(Debug, Clone, Copy, Default)]
 struct BytecodeOptimizerConfig {
     disable_discard_peephole: bool,
-    disable_top_of_stack_peephole: bool,
+    enable_top_of_stack_peephole: bool,
     disable_stack_noop_peephole: bool,
     disable_superinstruction_peephole: bool,
 }
@@ -372,10 +372,10 @@ impl Compiler {
         } else {
             Self::apply_discard_peephole(code)
         };
-        let code = if config.disable_top_of_stack_peephole {
-            code
-        } else {
+        let code = if config.enable_top_of_stack_peephole {
             Self::apply_top_of_stack_peephole(code)
+        } else {
+            code
         };
         let code = if config.disable_stack_noop_peephole {
             code
@@ -394,8 +394,8 @@ impl Compiler {
             disable_discard_peephole: Self::env_flag_enabled(
                 "MUSTARD_DISABLE_BYTECODE_DISCARD_PEEPHOLE",
             ),
-            disable_top_of_stack_peephole: Self::env_flag_enabled(
-                "MUSTARD_DISABLE_BYTECODE_TOP_OF_STACK_PEEPHOLE",
+            enable_top_of_stack_peephole: Self::env_flag_enabled(
+                "MUSTARD_ENABLE_BYTECODE_TOP_OF_STACK_PEEPHOLE",
             ),
             disable_stack_noop_peephole: Self::env_flag_enabled(
                 "MUSTARD_DISABLE_BYTECODE_STACK_NOOP_PEEPHOLE",
