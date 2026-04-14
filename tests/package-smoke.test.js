@@ -26,11 +26,21 @@ function tarballFilenameForPackage(name, version) {
 }
 
 function run(command, args, cwd, options = {}) {
-  return execFileSync(command, args, {
+  // On Windows, Node 20+ refuses to spawn .cmd/.bat files directly (EINVAL
+  // since CVE-2024-27980). Route them through the shell and quote args that
+  // contain whitespace or shell metacharacters.
+  const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(command);
+  const finalArgs = useShell
+    ? args.map((arg) =>
+        /[\s"&|<>^()]/.test(arg) ? `"${String(arg).replace(/"/g, '\\"')}"` : arg,
+      )
+    : args;
+  return execFileSync(command, finalArgs, {
     cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     env: options.env ?? process.env,
+    shell: useShell,
   });
 }
 
