@@ -81,6 +81,7 @@ const BOUNDARY_VALUE_SIZES = Object.freeze([
 
 const DEFAULT_OPTIONS = DEFAULT_MEASURE_OPTIONS;
 const COLD_OPTIONS = Object.freeze({ warmup: 0, iterations: 2 });
+const STABLE_PTC_RELEASE_OPTIONS = Object.freeze({ warmup: 1, iterations: 5, batch: 5 });
 const MEMORY_RUNS = 20;
 const SIDECAR_PROTOCOL_VERSION = 2;
 const PHASE2_REPRESENTATIVE_PTC_METRICS = HEADLINE_USE_CASE_IDS.map((id) => metricNameForUseCase(id));
@@ -1171,11 +1172,44 @@ function headlineSeedMetricNamesForMode(mode) {
 }
 
 function galleryMeasureOptionsForMode(mode) {
-  return mode === 'ptc_gallery_canary' ? GALLERY_CANARY_OPTIONS : DEFAULT_OPTIONS;
+  if (mode === 'ptc_gallery_canary') {
+    return GALLERY_CANARY_OPTIONS;
+  }
+  if (mode === 'ptc_headline_release' || mode === 'ptc_broad_release' || mode === 'ptc_holdout_release') {
+    return STABLE_PTC_RELEASE_OPTIONS;
+  }
+  return DEFAULT_OPTIONS;
 }
 
 function headlineSeedMeasureOptionsForMode(mode) {
-  return mode === 'ptc_gallery_canary' ? GALLERY_CANARY_OPTIONS : DEFAULT_OPTIONS;
+  if (mode === 'ptc_gallery_canary') {
+    return GALLERY_CANARY_OPTIONS;
+  }
+  if (mode === 'ptc_headline_release' || mode === 'ptc_broad_release') {
+    return STABLE_PTC_RELEASE_OPTIONS;
+  }
+  return DEFAULT_OPTIONS;
+}
+
+function ptcMeasureOptionsForMode(mode) {
+  if (mode === 'ptc_public') {
+    return STABLE_PTC_RELEASE_OPTIONS;
+  }
+  return DEFAULT_OPTIONS;
+}
+
+function durablePtcMeasureOptionsForMode(mode) {
+  if (mode === 'ptc_headline_release' || mode === 'ptc_broad_release' || mode === 'ptc_holdout_release') {
+    return STABLE_PTC_RELEASE_OPTIONS;
+  }
+  return DEFAULT_OPTIONS;
+}
+
+function sentinelMeasureOptionsForMode(mode) {
+  if (mode === 'ptc_sentinel_release') {
+    return STABLE_PTC_RELEASE_OPTIONS;
+  }
+  return DEFAULT_OPTIONS;
 }
 
 function representativePhase2AttributionMetricNamesForMode(mode) {
@@ -2046,6 +2080,7 @@ async function benchmarkAddon(fixtures, mode = 'full') {
 
   const syntheticMetricNames = syntheticPtcMetricNamesForMode(mode);
   if (Array.isArray(syntheticMetricNames)) {
+    const measureOptions = ptcMeasureOptionsForMode(mode);
     for (const metricName of syntheticMetricNames) {
       const scenario = ptcScenarios[metricName];
       const runtime = new Mustard(scenario.source);
@@ -2058,7 +2093,7 @@ async function benchmarkAddon(fixtures, mode = 'full') {
           inputs: scenario.inputs,
         });
         scenario.assertResult(result);
-      }, DEFAULT_OPTIONS);
+      }, measureOptions);
       latency[metric[0]] = metric[1];
       ptc.transfer[scenario.metricName] = await capturePtcTransfer(
         (capabilities) => runtime.run({
@@ -2188,6 +2223,7 @@ async function benchmarkAddon(fixtures, mode = 'full') {
   }
 
   if (shouldBenchmarkDurablePtc(mode)) {
+    const measureOptions = durablePtcMeasureOptionsForMode(mode);
     for (const scenario of Object.values(durablePtcScenarios)) {
       const runtime = new Mustard(scenario.source);
       const checkpoint = await createAddonDurableCheckpointState(runtime, scenario);
@@ -2199,11 +2235,13 @@ async function benchmarkAddon(fixtures, mode = 'full') {
       durablePtc.resumeOnly[scenario.metricName] = await captureAddonDurableResumeOnly(
         runtime,
         scenario,
+        measureOptions,
       );
     }
   }
 
   if (shouldBenchmarkSentinels(mode)) {
+    const measureOptions = sentinelMeasureOptionsForMode(mode);
     for (const familyScenarios of Object.values(sentinelScenarios)) {
       for (const scenario of Object.values(familyScenarios)) {
         const runtime = new Mustard(scenario.source);
@@ -2216,7 +2254,7 @@ async function benchmarkAddon(fixtures, mode = 'full') {
             inputs: scenario.inputs,
           });
           scenario.assertResult(result);
-        }, DEFAULT_OPTIONS);
+        }, measureOptions);
         latency[metric[0]] = metric[1];
         ptc.phase2.sentinel.transfer[scenario.metricName] = await capturePtcTransfer(
           (capabilities) => runtime.run({
@@ -2514,6 +2552,7 @@ async function benchmarkSidecar(fixtures, profile, mode = 'full') {
 
   const syntheticMetricNames = syntheticPtcMetricNamesForMode(mode);
   if (Array.isArray(syntheticMetricNames) && syntheticMetricNames.length > 0) {
+    const measureOptions = ptcMeasureOptionsForMode(mode);
     await withSidecar(profile, async ({ request }) => {
       const programs = new Map();
       for (const metricName of syntheticMetricNames) {
@@ -2529,7 +2568,7 @@ async function benchmarkSidecar(fixtures, profile, mode = 'full') {
             inputs: scenario.inputs,
           });
           scenario.assertResult(result);
-        }, DEFAULT_OPTIONS);
+        }, measureOptions);
         latency[metric[0]] = metric[1];
         ptc.transfer[scenario.metricName] = await capturePtcTransfer(
           (capabilities) => runSidecarProgram(request, program, {
@@ -2639,14 +2678,16 @@ async function benchmarkSidecar(fixtures, profile, mode = 'full') {
   }
 
   if (shouldBenchmarkDurablePtc(mode)) {
+    const measureOptions = durablePtcMeasureOptionsForMode(mode);
     for (const scenario of Object.values(durablePtcScenarios)) {
-      const metrics = await captureSidecarDurableResumeOnly(profile, scenario);
+      const metrics = await captureSidecarDurableResumeOnly(profile, scenario, measureOptions);
       durablePtc.resumeOnly[scenario.metricName] = metrics.resumeOnly;
       durablePtc.state[scenario.metricName] = metrics.state;
     }
   }
 
   if (shouldBenchmarkSentinels(mode)) {
+    const measureOptions = sentinelMeasureOptionsForMode(mode);
     await withSidecar(profile, async ({ request }) => {
       const programs = new Map();
       for (const familyScenarios of Object.values(sentinelScenarios)) {
@@ -2662,7 +2703,7 @@ async function benchmarkSidecar(fixtures, profile, mode = 'full') {
               inputs: scenario.inputs,
             });
             scenario.assertResult(result);
-          }, DEFAULT_OPTIONS);
+          }, measureOptions);
           latency[metric[0]] = metric[1];
           ptc.phase2.sentinel.transfer[scenario.metricName] = await capturePtcTransfer(
             (capabilities) => runSidecarProgram(request, program, {
@@ -2885,6 +2926,7 @@ async function benchmarkIsolate(fixtures, mode = 'full') {
 
   const syntheticMetricNames = syntheticPtcMetricNamesForMode(mode);
   if (Array.isArray(syntheticMetricNames) && syntheticMetricNames.length > 0) {
+    const measureOptions = ptcMeasureOptionsForMode(mode);
     const isolate = new ivm.Isolate({ memoryLimit: 128 });
     for (const metricName of syntheticMetricNames) {
       const scenario = ptcScenarios[metricName];
@@ -2894,7 +2936,7 @@ async function benchmarkIsolate(fixtures, mode = 'full') {
         installIsolateCapabilities(context, scenario.createCapabilities(), scenario.inputs);
         const result = await runIsolateScript(context, script);
         scenario.assertResult(result);
-      }, DEFAULT_OPTIONS);
+      }, measureOptions);
       latency[metric[0]] = metric[1];
       ptc.transfer[scenario.metricName] = await capturePtcTransfer((capabilities) => {
         const context = isolate.createContextSync();
@@ -2992,14 +3034,16 @@ async function benchmarkIsolate(fixtures, mode = 'full') {
   }
 
   if (shouldBenchmarkDurablePtc(mode)) {
+    const measureOptions = durablePtcMeasureOptionsForMode(mode);
     for (const scenario of Object.values(durablePtcScenarios)) {
-      const metrics = await captureIsolateDurableResumeOnly(scenario);
+      const metrics = await captureIsolateDurableResumeOnly(scenario, measureOptions);
       durablePtc.resumeOnly[scenario.metricName] = metrics.resumeOnly;
       durablePtc.state[scenario.metricName] = metrics.state;
     }
   }
 
   if (shouldBenchmarkSentinels(mode)) {
+    const measureOptions = sentinelMeasureOptionsForMode(mode);
     const isolate = new ivm.Isolate({ memoryLimit: 128 });
     for (const familyScenarios of Object.values(sentinelScenarios)) {
       for (const scenario of Object.values(familyScenarios)) {
@@ -3009,7 +3053,7 @@ async function benchmarkIsolate(fixtures, mode = 'full') {
           installIsolateCapabilities(context, scenario.createCapabilities(), scenario.inputs);
           const result = await runIsolateScript(context, script);
           scenario.assertResult(result);
-        }, DEFAULT_OPTIONS);
+        }, measureOptions);
         latency[metric[0]] = metric[1];
         ptc.phase2.sentinel.transfer[scenario.metricName] = await capturePtcTransfer((capabilities) => {
           const context = isolate.createContextSync();
@@ -3493,6 +3537,8 @@ async function main() {
         'runtime.durablePtc.resumeOnly measures restore/resume from persisted checkpoints on the synthetic vendor-review durable lane plus the real audited plan-database-failover and privacy-erasure-orchestration workflows. addon.durablePtc.state records dumped snapshot bytes, detached suspended-manifest bytes, and the checkpoint payload size; sidecar.durablePtc.state records raw snapshot bytes, full raw-resume policy bytes, and the same checkpoint payload size; isolate.durablePtc.state records the explicit carried-state bytes required to emulate the same pause without continuation snapshots.',
       phase2PtcDefinitions:
         'runtime.ptc.phase2 adds real audited gallery lanes, skewed headline seed companions, balanced headline/broad/holdout panels, a multi-lane durable panel, a full-gallery canary summary, and separate sentinel-family scores. The gallery lanes execute the checked-in audited examples from examples/programmatic-tool-calls/*/catalog.ts with exact addon-generated expected outputs reused across addon, sidecar, and isolate runs.',
+      phase2PtcMeasurementDefinitions:
+        'The targeted phase-2 release modes (`ptc_public`, `ptc_headline_release`, `ptc_broad_release`, `ptc_holdout_release`, and `ptc_sentinel_release`) batch 5 inner executions into each reported warm sample and keep 5 reported samples per lane so sub-millisecond scorecards are less sensitive to timer and scheduler noise.',
     },
     addon,
     sidecar,

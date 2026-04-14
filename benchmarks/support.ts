@@ -8,7 +8,7 @@ const { performance } = require('node:perf_hooks');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const RESULTS_DIR = path.join(REPO_ROOT, 'benchmarks', 'results');
-const DEFAULT_MEASURE_OPTIONS = Object.freeze({ warmup: 1, iterations: 3 });
+const DEFAULT_MEASURE_OPTIONS = Object.freeze({ warmup: 1, iterations: 3, batch: 1 });
 
 function percentile(sortedValues, ratio) {
   if (sortedValues.length === 0) {
@@ -38,29 +38,41 @@ function summarize(samples) {
 }
 
 async function measure(name, fn, options = DEFAULT_MEASURE_OPTIONS) {
+  const batch = Math.max(1, Math.trunc(options.batch ?? 1));
   for (let i = 0; i < options.warmup; i += 1) {
-    await fn();
+    for (let repeat = 0; repeat < batch; repeat += 1) {
+      await fn();
+    }
   }
   const samples = [];
   for (let i = 0; i < options.iterations; i += 1) {
     const start = performance.now();
-    await fn();
-    samples.push(performance.now() - start);
+    for (let repeat = 0; repeat < batch; repeat += 1) {
+      await fn();
+    }
+    samples.push((performance.now() - start) / batch);
   }
   return [name, summarize(samples)];
 }
 
 async function measureSamples(name, sampleFn, options = DEFAULT_MEASURE_OPTIONS) {
+  const batch = Math.max(1, Math.trunc(options.batch ?? 1));
   for (let i = 0; i < options.warmup; i += 1) {
-    await sampleFn();
+    for (let repeat = 0; repeat < batch; repeat += 1) {
+      await sampleFn();
+    }
   }
   const samples = [];
   for (let i = 0; i < options.iterations; i += 1) {
-    const durationMs = await sampleFn();
-    if (!Number.isFinite(durationMs) || durationMs < 0) {
-      throw new TypeError(`${name} sampleFn must return a finite non-negative duration`);
+    let totalDurationMs = 0;
+    for (let repeat = 0; repeat < batch; repeat += 1) {
+      const durationMs = await sampleFn();
+      if (!Number.isFinite(durationMs) || durationMs < 0) {
+        throw new TypeError(`${name} sampleFn must return a finite non-negative duration`);
+      }
+      totalDurationMs += durationMs;
     }
-    samples.push(durationMs);
+    samples.push(totalDurationMs / batch);
   }
   return [name, summarize(samples)];
 }

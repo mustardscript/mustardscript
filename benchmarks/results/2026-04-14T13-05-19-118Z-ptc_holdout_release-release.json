@@ -1,0 +1,2709 @@
+{
+  "machine": {
+    "timestamp": "2026-04-14T13:05:19.118Z",
+    "benchmarkKind": "ptc_holdout_release",
+    "buildProfile": "release",
+    "gitSha": "afb2983",
+    "fixtureVersion": 10,
+    "hostname": "mac.lan",
+    "platform": "darwin 25.2.0",
+    "arch": "arm64",
+    "nodeVersion": "v24.12.0",
+    "cpuModel": "Apple M4",
+    "cpuCount": 10,
+    "totalMemoryBytes": 17179869184
+  },
+  "ptc": {
+    "websiteMetric": "addon.latency.ptc_website_demo_small",
+    "weightedScoreMetric": "addon.ptc.weightedScore.medium",
+    "phase2Mode": "ptc_holdout_release",
+    "weights": {
+      "ptc_incident_triage_medium": 0.4,
+      "ptc_fraud_investigation_medium": 0.35,
+      "ptc_vendor_review_medium": 0.25
+    },
+    "scenarios": {
+      "ptc_website_demo_small": {
+        "laneId": "website_demo",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+        "toolFamilyCount": 4,
+        "logicalPeakFanout": 1,
+        "finalAction": false,
+        "usesPromiseAll": false,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "alertCount": 4,
+          "deployCount": 2,
+          "logCount": 9
+        }
+      },
+      "ptc_incident_triage_small": {
+        "laneId": "incident_triage",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 9,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "regionCount": 3,
+          "alertsPerRegion": 2,
+          "samplesPerRegion": 2
+        }
+      },
+      "ptc_fraud_investigation_small": {
+        "laneId": "fraud_investigation",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "transactionCount": 24,
+          "accountCount": 8,
+          "entityCount": 6,
+          "cardCount": 5
+        }
+      },
+      "ptc_vendor_review_small": {
+        "laneId": "vendor_review",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 3,
+          "flowCount": 4,
+          "subprocessorCount": 4
+        }
+      },
+      "ptc_website_demo_medium": {
+        "laneId": "website_demo",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+        "toolFamilyCount": 4,
+        "logicalPeakFanout": 1,
+        "finalAction": false,
+        "usesPromiseAll": false,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "alertCount": 10,
+          "deployCount": 4,
+          "logCount": 24
+        }
+      },
+      "ptc_incident_triage_medium": {
+        "laneId": "incident_triage",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 18,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "regionCount": 6,
+          "alertsPerRegion": 3,
+          "samplesPerRegion": 3
+        }
+      },
+      "ptc_fraud_investigation_medium": {
+        "laneId": "fraud_investigation",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "transactionCount": 96,
+          "accountCount": 24,
+          "entityCount": 16,
+          "cardCount": 12
+        }
+      },
+      "ptc_vendor_review_medium": {
+        "laneId": "vendor_review",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 5,
+          "flowCount": 10,
+          "subprocessorCount": 10
+        }
+      },
+      "ptc_website_demo_large": {
+        "laneId": "website_demo",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+        "toolFamilyCount": 4,
+        "logicalPeakFanout": 1,
+        "finalAction": false,
+        "usesPromiseAll": false,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "alertCount": 24,
+          "deployCount": 8,
+          "logCount": 60
+        }
+      },
+      "ptc_incident_triage_large": {
+        "laneId": "incident_triage",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 36,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "regionCount": 12,
+          "alertsPerRegion": 4,
+          "samplesPerRegion": 4
+        }
+      },
+      "ptc_fraud_investigation_large": {
+        "laneId": "fraud_investigation",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "transactionCount": 384,
+          "accountCount": 96,
+          "entityCount": 64,
+          "cardCount": 48
+        }
+      },
+      "ptc_vendor_review_large": {
+        "laneId": "vendor_review",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 7,
+          "flowCount": 24,
+          "subprocessorCount": 24
+        }
+      }
+    },
+    "durableScenarios": {
+      "ptc_vendor_review_durable_small": {
+        "laneId": "vendor_review_durable",
+        "sizeName": "small",
+        "checkpointCapability": "checkpoint_vendor_review",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "durableBoundary": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 3,
+          "flowCount": 4,
+          "subprocessorCount": 4
+        }
+      },
+      "ptc_vendor_review_durable_medium": {
+        "laneId": "vendor_review_durable",
+        "sizeName": "medium",
+        "checkpointCapability": "checkpoint_vendor_review",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "durableBoundary": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 5,
+          "flowCount": 10,
+          "subprocessorCount": 10
+        }
+      },
+      "ptc_vendor_review_durable_large": {
+        "laneId": "vendor_review_durable",
+        "sizeName": "large",
+        "checkpointCapability": "checkpoint_vendor_review",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "durableBoundary": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 7,
+          "flowCount": 24,
+          "subprocessorCount": 24
+        }
+      },
+      "ptc_plan-database-failover_durable_medium": {
+        "laneId": "plan-database-failover",
+        "sizeName": "medium",
+        "checkpointCapability": "request_operator_approval",
+        "sourceRef": "examples/programmatic-tool-calls/operations/plan-database-failover.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 1,
+        "compactionExpectation": "moderate_compaction",
+        "finalAction": true,
+        "firstStageAsyncFanout": false,
+        "derivedIdSecondStageFanout": false,
+        "mapHeavyJoinOrCounter": false,
+        "setHeavyDedupe": false,
+        "localRankingOrSort": false,
+        "stringNormalizationOrClassification": false,
+        "repeatedStaticPropertyReads": true,
+        "chronologyReasoning": true,
+        "finalActionWriteback": true,
+        "durableBoundary": true
+      },
+      "ptc_privacy-erasure-orchestration_durable_medium": {
+        "laneId": "privacy-erasure-orchestration",
+        "sizeName": "medium",
+        "checkpointCapability": "queue_erasure_job",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/privacy-erasure-orchestration.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 1,
+        "compactionExpectation": "moderate_compaction",
+        "finalAction": true,
+        "firstStageAsyncFanout": false,
+        "derivedIdSecondStageFanout": false,
+        "mapHeavyJoinOrCounter": false,
+        "setHeavyDedupe": false,
+        "localRankingOrSort": false,
+        "stringNormalizationOrClassification": false,
+        "repeatedStaticPropertyReads": true,
+        "chronologyReasoning": true,
+        "finalActionWriteback": true,
+        "durableBoundary": true
+      }
+    },
+    "phase2": {
+      "headlineUseCaseIds": [
+        "analytics_fraud_ring",
+        "analytics_revenue_quality",
+        "triage-multi-region-auth-outage",
+        "analyze-queue-backlog-regression",
+        "vendor-compliance-renewal",
+        "privacy-erasure-orchestration"
+      ],
+      "broadUseCaseIds": [
+        "analytics_revenue_quality",
+        "analytics_fraud_ring",
+        "analytics_supplier_disruption",
+        "analytics_model_regression",
+        "triage-multi-region-auth-outage",
+        "reconcile-marketplace-payouts",
+        "analyze-queue-backlog-regression",
+        "plan-database-failover",
+        "security-access-recertification",
+        "vendor-compliance-renewal",
+        "privacy-erasure-orchestration",
+        "chargeback-evidence-assembly"
+      ],
+      "holdoutUseCaseIds": [
+        "analytics_market_event_brief",
+        "analytics_enterprise_renewal",
+        "analytics_market_abuse_review",
+        "analytics_capital_allocation",
+        "guard-payments-rollout",
+        "stabilize-oncall-handoff",
+        "coordinate-warehouse-exception",
+        "assess-global-deployment-freeze",
+        "approval-exception-routing",
+        "vip-support-escalation",
+        "payout-batch-release-review",
+        "enterprise-renewal-save-plan"
+      ],
+      "galleryScenarios": {
+        "ptc_analytics_revenue_quality_medium": {
+          "laneId": "analytics_revenue_quality",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/analyze-revenue-quality.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 9,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_fraud_ring_medium": {
+          "laneId": "analytics_fraud_ring",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_supplier_disruption_medium": {
+          "laneId": "analytics_supplier_disruption",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/assess-supplier-disruption.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_market_event_brief_medium": {
+          "laneId": "analytics_market_event_brief",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/prepare-market-event-brief.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 5,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_model_regression_medium": {
+          "laneId": "analytics_model_regression",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/triage-model-regression.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 7,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_enterprise_renewal_medium": {
+          "laneId": "analytics_enterprise_renewal",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/underwrite-enterprise-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": true
+        },
+        "ptc_analytics_market_abuse_review_medium": {
+          "laneId": "analytics_market_abuse_review",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/escalate-market-abuse-review.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": true
+        },
+        "ptc_analytics_capital_allocation_medium": {
+          "laneId": "analytics_capital_allocation",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/build-capital-allocation-brief.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_triage-multi-region-auth-outage_medium": {
+          "laneId": "triage-multi-region-auth-outage",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 10,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_guard-payments-rollout_medium": {
+          "laneId": "guard-payments-rollout",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/guard-payments-rollout.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 7,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_reconcile-marketplace-payouts_medium": {
+          "laneId": "reconcile-marketplace-payouts",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/reconcile-marketplace-payouts.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 7,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_stabilize-oncall-handoff_medium": {
+          "laneId": "stabilize-oncall-handoff",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/stabilize-oncall-handoff.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analyze-queue-backlog-regression_medium": {
+          "laneId": "analyze-queue-backlog-regression",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/analyze-queue-backlog-regression.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 12,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_plan-database-failover_medium": {
+          "laneId": "plan-database-failover",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/plan-database-failover.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": true,
+          "durableBoundary": true
+        },
+        "ptc_coordinate-warehouse-exception_medium": {
+          "laneId": "coordinate-warehouse-exception",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/coordinate-warehouse-exception.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 5,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_assess-global-deployment-freeze_medium": {
+          "laneId": "assess-global-deployment-freeze",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/assess-global-deployment-freeze.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 8,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_approval-exception-routing_medium": {
+          "laneId": "approval-exception-routing",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/approval-exception-routing.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": true
+        },
+        "ptc_security-access-recertification_medium": {
+          "laneId": "security-access-recertification",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/security-access-recertification.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 5,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_vip-support-escalation_medium": {
+          "laneId": "vip-support-escalation",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vip-support-escalation.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 5,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_payout-batch-release-review_medium": {
+          "laneId": "payout-batch-release-review",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/payout-batch-release-review.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_enterprise-renewal-save-plan_medium": {
+          "laneId": "enterprise-renewal-save-plan",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/enterprise-renewal-save-plan.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_vendor-compliance-renewal_medium": {
+          "laneId": "vendor-compliance-renewal",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_privacy-erasure-orchestration_medium": {
+          "laneId": "privacy-erasure-orchestration",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/privacy-erasure-orchestration.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": true,
+          "durableBoundary": true
+        },
+        "ptc_chargeback-evidence-assembly_medium": {
+          "laneId": "chargeback-evidence-assembly",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/chargeback-evidence-assembly.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        }
+      },
+      "headlineSeedScenarios": {
+        "ptc_analytics_revenue_quality_medium_skewed": {
+          "laneId": "analytics_revenue_quality",
+          "nominalMetricName": "ptc_analytics_revenue_quality_medium",
+          "category": "analytics",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "hotspot_cardinality_skew",
+            "duplicate_heavy_collections",
+            "longer_deal_reason_strings"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/analytics/analyze-revenue-quality.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 9,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_fraud_ring_medium_skewed": {
+          "laneId": "analytics_fraud_ring",
+          "nominalMetricName": "ptc_analytics_fraud_ring_medium",
+          "category": "analytics",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "hotspot_cardinality_skew",
+            "duplicate_heavy_joins",
+            "noisier_identity_and_note_strings"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_triage-multi-region-auth-outage_medium_skewed": {
+          "laneId": "triage-multi-region-auth-outage",
+          "nominalMetricName": "ptc_triage-multi-region-auth-outage_medium",
+          "category": "operations",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "duplicate_heavy_alert_dedupe",
+            "regional_hotspot_skew",
+            "longer_error_sample_strings"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 10,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analyze-queue-backlog-regression_medium_skewed": {
+          "laneId": "analyze-queue-backlog-regression",
+          "nominalMetricName": "ptc_analyze-queue-backlog-regression_medium",
+          "category": "operations",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "hotspot_cardinality_skew",
+            "larger_intermediate_payloads",
+            "noisier_dead_letter_strings"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/operations/analyze-queue-backlog-regression.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 12,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_vendor-compliance-renewal_medium_skewed": {
+          "laneId": "vendor-compliance-renewal",
+          "nominalMetricName": "ptc_vendor-compliance-renewal_medium",
+          "category": "workflows",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "larger_intermediate_payloads",
+            "duplicate_heavy_evidence_sets",
+            "lower_signal_to_noise"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_privacy-erasure-orchestration_medium_skewed": {
+          "laneId": "privacy-erasure-orchestration",
+          "nominalMetricName": "ptc_privacy-erasure-orchestration_medium",
+          "category": "workflows",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "writeback_fanout_skew",
+            "retention_hold_hotspot",
+            "larger_intermediate_payloads"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/workflows/privacy-erasure-orchestration.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": true,
+          "durableBoundary": true
+        }
+      },
+      "sentinelFamilies": {
+        "code_mode_search": {
+          "medium_compact": {
+            "metricName": "sentinel_code_mode_search_medium_compact",
+            "toolFamilyCount": 0,
+            "logicalPeakFanout": 0,
+            "compactionExpectation": "moderate_compaction"
+          },
+          "large_compact": {
+            "metricName": "sentinel_code_mode_search_large_compact",
+            "toolFamilyCount": 0,
+            "logicalPeakFanout": 0,
+            "compactionExpectation": "moderate_compaction"
+          },
+          "large_structured": {
+            "metricName": "sentinel_code_mode_search_large_structured",
+            "toolFamilyCount": 0,
+            "logicalPeakFanout": 0,
+            "compactionExpectation": "lower_compaction"
+          }
+        },
+        "result_materialization": {
+          "medium_summary": {
+            "metricName": "sentinel_result_materialization_medium_summary",
+            "toolFamilyCount": 1,
+            "logicalPeakFanout": 1,
+            "compactionExpectation": "moderate_compaction"
+          },
+          "medium_structured": {
+            "metricName": "sentinel_result_materialization_medium_structured",
+            "toolFamilyCount": 1,
+            "logicalPeakFanout": 1,
+            "compactionExpectation": "lower_compaction"
+          },
+          "medium_expanded": {
+            "metricName": "sentinel_result_materialization_medium_expanded",
+            "toolFamilyCount": 1,
+            "logicalPeakFanout": 1,
+            "compactionExpectation": "lower_compaction"
+          }
+        },
+        "low_compaction_fanout": {
+          "medium_high_compaction": {
+            "metricName": "sentinel_low_compaction_fanout_medium_high_compaction",
+            "toolFamilyCount": 2,
+            "logicalPeakFanout": 2,
+            "compactionExpectation": "moderate_compaction"
+          },
+          "medium_moderate_compaction": {
+            "metricName": "sentinel_low_compaction_fanout_medium_moderate_compaction",
+            "toolFamilyCount": 2,
+            "logicalPeakFanout": 2,
+            "compactionExpectation": "lower_compaction"
+          },
+          "medium_low_compaction": {
+            "metricName": "sentinel_low_compaction_fanout_medium_low_compaction",
+            "toolFamilyCount": 2,
+            "logicalPeakFanout": 2,
+            "compactionExpectation": "lower_compaction"
+          }
+        }
+      }
+    }
+  },
+  "notes": {
+    "suspendResumeIsolate": "isolated-vm cannot snapshot continuations here; suspend_resume_* is measured as repeated isolate re-entry with explicit host-carried state rebuild.",
+    "sidecarMemory": "sidecar memory deltas include parent Node process RSS plus the live child sidecar RSS sampled via ps.",
+    "phaseSplitDefinitions": "addon.phases isolates compile-free runtime slices: runtime_init_only uses a precompiled trivial program, execution_only_small resumes pre-created suspended progress, snapshot_load_only uses raw native detached-snapshot inspection, and Progress.load_only measures the public JS wrapper before cleanup.",
+    "sidecarPhaseDefinitions": "sidecar.phases separates process startup from warm execution and transport-dominated resume work: startup_only measures spawn plus clean shutdown, execution_only_small reuses a precompiled program in a warm sidecar, and transport_resume_only replays an already-suspended minimal snapshot so snapshot bytes, auth metadata, and stdio round-trips dominate the timed region.",
+    "boundaryDefinitions": "addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.",
+    "counterDefinitions": "addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, accounting refresh counts, dynamic instruction dispatch count, static/computed property reads, object/array allocations, Map.get/Map.set, Set.add/Set.has, string case conversion, ASCII string case fast-path hit/fallback counts, literal string search, ASCII substring-search hit/fallback counts, regex search or replacement, ASCII cleanup replaceAll hit/fallback counts, comparator-based sort invocations, and line/column-resolved collection call-site hotspots for representative phase-2 gallery lanes.",
+    "suspendStateDefinitions": "addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.",
+    "ptcDefinitions": "Representative PTC lanes are sourced from the real programmatic-tool-call gallery: ptc_website_demo_* uses operations/triage-production-incident.js, ptc_incident_triage_* uses operations/triage-multi-region-auth-outage.js, ptc_fraud_investigation_* uses analytics/investigate-fraud-ring.js, and ptc_vendor_review_* uses workflows/vendor-compliance-renewal.js. addon/sidecar/isolate all run the same guest source with deterministic synthetic tool fixtures.",
+    "ptcWeightedScoreDefinitions": "runtime.ptc.weightedScore.medium is a weighted median/p95 rollup of ptc_incident_triage_medium (40%), ptc_fraud_investigation_medium (35%), and ptc_vendor_review_medium (25%). runtime.ptc.transfer records actual tool call counts plus JSON-encoded tool/result payload sizes for one untimed representative run of each PTC lane.",
+    "ptcBreakdownDefinitions": "addon.ptc.breakdown records representative profiled addon runs for the website-small lane, the original medium primary lanes, and the phase-2 headline gallery lanes. hostCallbacks measures JS time spent inside host tool handlers, guestExecution measures Rust runtime execution between boundaries, boundaryParse measures native addon decode/parse of live start/resume payloads, boundaryEncode measures native addon encoding of step results, and boundaryCodec is parse+encode combined.",
+    "sidecarPtcBreakdownDefinitions": "sidecar.ptc.breakdown separates sidecar startup from representative lane-level request flow for the same website and headline gallery lanes. processStartup reuses sidecar.phases.startup_only, while the lane entries split client-observed requestTransport from sidecar execution and combined response materialization (sidecar response preparation plus client response decode/copy).",
+    "durablePtcDefinitions": "runtime.durablePtc.resumeOnly measures restore/resume from persisted checkpoints on the synthetic vendor-review durable lane plus the real audited plan-database-failover and privacy-erasure-orchestration workflows. addon.durablePtc.state records dumped snapshot bytes, detached suspended-manifest bytes, and the checkpoint payload size; sidecar.durablePtc.state records raw snapshot bytes, full raw-resume policy bytes, and the same checkpoint payload size; isolate.durablePtc.state records the explicit carried-state bytes required to emulate the same pause without continuation snapshots.",
+    "phase2PtcDefinitions": "runtime.ptc.phase2 adds real audited gallery lanes, skewed headline seed companions, balanced headline/broad/holdout panels, a multi-lane durable panel, a full-gallery canary summary, and separate sentinel-family scores. The gallery lanes execute the checked-in audited examples from examples/programmatic-tool-calls/*/catalog.ts with exact addon-generated expected outputs reused across addon, sidecar, and isolate runs.",
+    "phase2PtcMeasurementDefinitions": "The targeted phase-2 release modes (`ptc_public`, `ptc_headline_release`, `ptc_broad_release`, `ptc_holdout_release`, and `ptc_sentinel_release`) batch 5 inner executions into each reported warm sample and keep 5 reported samples per lane so sub-millisecond scorecards are less sensitive to timer and scheduler noise."
+  },
+  "addon": {
+    "latency": {
+      "ptc_analytics_market_event_brief_medium": {
+        "iterations": 5,
+        "minMs": 0.8117665999999872,
+        "medianMs": 1.0435000000000172,
+        "p95Ms": 1.3190667999999959,
+        "maxMs": 1.3190667999999959,
+        "meanMs": 1.0767166400000043
+      },
+      "ptc_analytics_enterprise_renewal_medium": {
+        "iterations": 5,
+        "minMs": 0.287308199999984,
+        "medianMs": 0.3479667999999947,
+        "p95Ms": 0.41717499999999746,
+        "maxMs": 0.41717499999999746,
+        "meanMs": 0.3443216399999937
+      },
+      "ptc_analytics_market_abuse_review_medium": {
+        "iterations": 5,
+        "minMs": 0.3069250000000011,
+        "medianMs": 0.3857332000000042,
+        "p95Ms": 0.5296584000000166,
+        "maxMs": 0.5296584000000166,
+        "meanMs": 0.4080682800000067
+      },
+      "ptc_analytics_capital_allocation_medium": {
+        "iterations": 5,
+        "minMs": 0.3185081999999966,
+        "medianMs": 0.4532666000000063,
+        "p95Ms": 0.5842916000000059,
+        "maxMs": 0.5842916000000059,
+        "meanMs": 0.4301265999999987
+      },
+      "ptc_guard-payments-rollout_medium": {
+        "iterations": 5,
+        "minMs": 0.4573916000000054,
+        "medianMs": 0.6917416000000003,
+        "p95Ms": 0.8586500000000115,
+        "maxMs": 0.8586500000000115,
+        "meanMs": 0.6763216800000056
+      },
+      "ptc_stabilize-oncall-handoff_medium": {
+        "iterations": 5,
+        "minMs": 0.16346659999999247,
+        "medianMs": 0.35353319999999255,
+        "p95Ms": 0.41428340000002206,
+        "maxMs": 0.41428340000002206,
+        "meanMs": 0.3020915999999988
+      },
+      "ptc_coordinate-warehouse-exception_medium": {
+        "iterations": 5,
+        "minMs": 0.27471660000001064,
+        "medianMs": 0.4777749999999969,
+        "p95Ms": 0.5498916000000008,
+        "maxMs": 0.5498916000000008,
+        "meanMs": 0.4301983199999995
+      },
+      "ptc_assess-global-deployment-freeze_medium": {
+        "iterations": 5,
+        "minMs": 0.3795665999999983,
+        "medianMs": 0.4359250000000202,
+        "p95Ms": 0.6799250000000029,
+        "maxMs": 0.6799250000000029,
+        "meanMs": 0.4735249600000043
+      },
+      "ptc_approval-exception-routing_medium": {
+        "iterations": 5,
+        "minMs": 0.3301584000000048,
+        "medianMs": 0.3823916000000054,
+        "p95Ms": 0.5313249999999925,
+        "maxMs": 0.5313249999999925,
+        "meanMs": 0.404181639999997
+      },
+      "ptc_vip-support-escalation_medium": {
+        "iterations": 5,
+        "minMs": 0.24283319999999547,
+        "medianMs": 0.2623833999999988,
+        "p95Ms": 0.3379915999999866,
+        "maxMs": 0.3379915999999866,
+        "meanMs": 0.285483279999994
+      },
+      "ptc_payout-batch-release-review_medium": {
+        "iterations": 5,
+        "minMs": 0.545958399999995,
+        "medianMs": 0.5731915999999956,
+        "p95Ms": 0.6140249999999924,
+        "maxMs": 0.6140249999999924,
+        "meanMs": 0.5789833599999927
+      },
+      "ptc_enterprise-renewal-save-plan_medium": {
+        "iterations": 5,
+        "minMs": 0.2576334000000088,
+        "medianMs": 0.27725000000000366,
+        "p95Ms": 0.5504750000000058,
+        "maxMs": 0.5504750000000058,
+        "meanMs": 0.3400083600000016
+      }
+    },
+    "phases": {},
+    "boundary": {},
+    "counters": {},
+    "ptc": {
+      "transfer": {},
+      "breakdown": {},
+      "phase2": {
+        "gallery": {
+          "transfer": {
+            "ptc_analytics_market_event_brief_medium": {
+              "laneId": "analytics_market_event_brief",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/prepare-market-event-brief.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 5,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1132,
+              "resultBytesOut": 1148,
+              "reductionRatio": 0.9860627177700348
+            },
+            "ptc_analytics_enterprise_renewal_medium": {
+              "laneId": "analytics_enterprise_renewal",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/underwrite-enterprise-renewal.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": false,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": false,
+              "durableBoundary": true,
+              "toolCallCount": 5,
+              "toolBytesIn": 605,
+              "resultBytesOut": 838,
+              "reductionRatio": 0.7219570405727923
+            },
+            "ptc_analytics_market_abuse_review_medium": {
+              "laneId": "analytics_market_abuse_review",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/escalate-market-abuse-review.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": false,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": true,
+              "toolCallCount": 5,
+              "toolBytesIn": 891,
+              "resultBytesOut": 554,
+              "reductionRatio": 1.608303249097473
+            },
+            "ptc_analytics_capital_allocation_medium": {
+              "laneId": "analytics_capital_allocation",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/build-capital-allocation-brief.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1004,
+              "resultBytesOut": 1027,
+              "reductionRatio": 0.9776046738072055
+            },
+            "ptc_guard-payments-rollout_medium": {
+              "laneId": "guard-payments-rollout",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/guard-payments-rollout.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 7,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": true,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 13,
+              "toolBytesIn": 1205,
+              "resultBytesOut": 1694,
+              "reductionRatio": 0.7113341204250295
+            },
+            "ptc_stabilize-oncall-handoff_medium": {
+              "laneId": "stabilize-oncall-handoff",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/stabilize-oncall-handoff.js",
+              "toolFamilyCount": 6,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 6,
+              "toolBytesIn": 1133,
+              "resultBytesOut": 1032,
+              "reductionRatio": 1.0978682170542635
+            },
+            "ptc_coordinate-warehouse-exception_medium": {
+              "laneId": "coordinate-warehouse-exception",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/coordinate-warehouse-exception.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 5,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 986,
+              "resultBytesOut": 500,
+              "reductionRatio": 1.972
+            },
+            "ptc_assess-global-deployment-freeze_medium": {
+              "laneId": "assess-global-deployment-freeze",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/assess-global-deployment-freeze.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 8,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": true,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 11,
+              "toolBytesIn": 1017,
+              "resultBytesOut": 673,
+              "reductionRatio": 1.5111441307578009
+            },
+            "ptc_approval-exception-routing_medium": {
+              "laneId": "approval-exception-routing",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/approval-exception-routing.js",
+              "toolFamilyCount": 6,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": false,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": true,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": true,
+              "durableBoundary": true,
+              "toolCallCount": 6,
+              "toolBytesIn": 1172,
+              "resultBytesOut": 789,
+              "reductionRatio": 1.485424588086185
+            },
+            "ptc_vip-support-escalation_medium": {
+              "laneId": "vip-support-escalation",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/vip-support-escalation.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 5,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": true,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1179,
+              "resultBytesOut": 869,
+              "reductionRatio": 1.3567318757192175
+            },
+            "ptc_payout-batch-release-review_medium": {
+              "laneId": "payout-batch-release-review",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/payout-batch-release-review.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": true,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": true,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1007,
+              "resultBytesOut": 564,
+              "reductionRatio": 1.7854609929078014
+            },
+            "ptc_enterprise-renewal-save-plan_medium": {
+              "laneId": "enterprise-renewal-save-plan",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/enterprise-renewal-save-plan.js",
+              "toolFamilyCount": 6,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": true,
+              "durableBoundary": false,
+              "toolCallCount": 6,
+              "toolBytesIn": 746,
+              "resultBytesOut": 611,
+              "reductionRatio": 1.220949263502455
+            }
+          }
+        },
+        "headlineSeeds": {
+          "transfer": {}
+        },
+        "canary": {
+          "laneCount": 12,
+          "categories": {
+            "analytics": 4,
+            "operations": 4,
+            "workflows": 4
+          }
+        },
+        "sentinel": {
+          "transfer": {},
+          "familyScore": {}
+        },
+        "scorecards": {
+          "headlineScore": {
+            "medium": null
+          },
+          "broadScore": {
+            "medium": null
+          },
+          "holdoutScore": {
+            "medium": {
+              "medianMs": 0.47372150000000307,
+              "p95Ms": 0.6155632000000025
+            }
+          },
+          "categoryScore": {
+            "analytics": {
+              "medium": null
+            },
+            "operations": {
+              "medium": null
+            },
+            "workflows": {
+              "medium": null
+            }
+          },
+          "p90LaneRatio": {
+            "medium": null
+          },
+          "worstLaneRatio": {
+            "medium": null
+          },
+          "sentinelFamily": {},
+          "durableScore": {
+            "medium": {
+              "medianMs": 0.7990416666666533,
+              "p95Ms": 0.9489723333333208
+            }
+          }
+        }
+      }
+    },
+    "durablePtc": {
+      "resumeOnly": {
+        "ptc_vendor_review_durable_small": {
+          "iterations": 5,
+          "minMs": 1.0257080000000087,
+          "medianMs": 1.0304170000000568,
+          "p95Ms": 1.1528749999999945,
+          "maxMs": 1.1528749999999945,
+          "meanMs": 1.059025200000019
+        },
+        "ptc_vendor_review_durable_medium": {
+          "iterations": 5,
+          "minMs": 1.0717500000000655,
+          "medianMs": 1.1804580000000442,
+          "p95Ms": 1.3579999999999472,
+          "maxMs": 1.3579999999999472,
+          "meanMs": 1.2063832000000048
+        },
+        "ptc_vendor_review_durable_large": {
+          "iterations": 5,
+          "minMs": 0.8607910000000629,
+          "medianMs": 1.545500000000061,
+          "p95Ms": 2.508666999999946,
+          "maxMs": 2.508666999999946,
+          "meanMs": 1.5972332000000051
+        },
+        "ptc_plan-database-failover_durable_medium": {
+          "iterations": 5,
+          "minMs": 0.36983299999997143,
+          "medianMs": 0.45354199999997036,
+          "p95Ms": 0.5258330000000342,
+          "maxMs": 0.5258330000000342,
+          "meanMs": 0.4548999999999751
+        },
+        "ptc_privacy-erasure-orchestration_durable_medium": {
+          "iterations": 5,
+          "minMs": 0.6758750000000191,
+          "medianMs": 0.7631249999999454,
+          "p95Ms": 0.9630839999999807,
+          "maxMs": 0.9630839999999807,
+          "meanMs": 0.7726167999999916
+        }
+      },
+      "state": {
+        "ptc_vendor_review_durable_small": {
+          "snapshotBytes": 10509,
+          "detachedManifestBytes": 2451,
+          "checkpointArgsBytes": 1406
+        },
+        "ptc_vendor_review_durable_medium": {
+          "snapshotBytes": 16498,
+          "detachedManifestBytes": 4770,
+          "checkpointArgsBytes": 2764
+        },
+        "ptc_vendor_review_durable_large": {
+          "snapshotBytes": 28997,
+          "detachedManifestBytes": 9585,
+          "checkpointArgsBytes": 5630
+        },
+        "ptc_plan-database-failover_durable_medium": {
+          "snapshotBytes": 5006,
+          "detachedManifestBytes": 323,
+          "checkpointArgsBytes": 172
+        },
+        "ptc_privacy-erasure-orchestration_durable_medium": {
+          "snapshotBytes": 6908,
+          "detachedManifestBytes": 424,
+          "checkpointArgsBytes": 239
+        }
+      }
+    },
+    "suspendState": {},
+    "memory": {},
+    "failureCleanup": {}
+  },
+  "sidecar": {
+    "latency": {
+      "ptc_analytics_market_event_brief_medium": {
+        "iterations": 5,
+        "minMs": 1.6160832000000027,
+        "medianMs": 1.8421667999999953,
+        "p95Ms": 2.8352750000000015,
+        "maxMs": 2.8352750000000015,
+        "meanMs": 2.0647516399999946
+      },
+      "ptc_analytics_enterprise_renewal_medium": {
+        "iterations": 5,
+        "minMs": 0.9327834000000166,
+        "medianMs": 1.03737500000002,
+        "p95Ms": 1.5237500000000181,
+        "maxMs": 1.5237500000000181,
+        "meanMs": 1.1181033600000139
+      },
+      "ptc_analytics_market_abuse_review_medium": {
+        "iterations": 5,
+        "minMs": 0.9069834000000355,
+        "medianMs": 1.1053668000000016,
+        "p95Ms": 1.2641083999999865,
+        "maxMs": 1.2641083999999865,
+        "meanMs": 1.104006760000002
+      },
+      "ptc_analytics_capital_allocation_medium": {
+        "iterations": 5,
+        "minMs": 1.2162583999999697,
+        "medianMs": 1.2439750000000003,
+        "p95Ms": 1.7575584000000162,
+        "maxMs": 1.7575584000000162,
+        "meanMs": 1.3557000399999926
+      },
+      "ptc_guard-payments-rollout_medium": {
+        "iterations": 5,
+        "minMs": 2.815033399999993,
+        "medianMs": 3.1713084000000435,
+        "p95Ms": 3.420225000000028,
+        "maxMs": 3.420225000000028,
+        "meanMs": 3.1454183600000123
+      },
+      "ptc_stabilize-oncall-handoff_medium": {
+        "iterations": 5,
+        "minMs": 1.2908166000000165,
+        "medianMs": 1.2995499999999993,
+        "p95Ms": 1.3570334000000002,
+        "maxMs": 1.3570334000000002,
+        "meanMs": 1.3167366800000035
+      },
+      "ptc_coordinate-warehouse-exception_medium": {
+        "iterations": 5,
+        "minMs": 0.9997584000000188,
+        "medianMs": 1.1700834000000213,
+        "p95Ms": 1.7614666000000399,
+        "maxMs": 1.7614666000000399,
+        "meanMs": 1.2240667200000188
+      },
+      "ptc_assess-global-deployment-freeze_medium": {
+        "iterations": 5,
+        "minMs": 2.3883583999999702,
+        "medianMs": 2.5264749999999823,
+        "p95Ms": 2.5560750000000096,
+        "maxMs": 2.5560750000000096,
+        "meanMs": 2.5031916799999996
+      },
+      "ptc_approval-exception-routing_medium": {
+        "iterations": 5,
+        "minMs": 1.3608000000000176,
+        "medianMs": 1.4352581999999985,
+        "p95Ms": 1.466733400000021,
+        "maxMs": 1.466733400000021,
+        "meanMs": 1.413145000000013
+      },
+      "ptc_vip-support-escalation_medium": {
+        "iterations": 5,
+        "minMs": 1.0911917999999787,
+        "medianMs": 1.1233417999999802,
+        "p95Ms": 1.1597249999999804,
+        "maxMs": 1.1597249999999804,
+        "meanMs": 1.1307467599999927
+      },
+      "ptc_payout-batch-release-review_medium": {
+        "iterations": 5,
+        "minMs": 1.3570582000000286,
+        "medianMs": 1.367508399999997,
+        "p95Ms": 1.4384750000000168,
+        "maxMs": 1.4384750000000168,
+        "meanMs": 1.3872516800000085
+      },
+      "ptc_enterprise-renewal-save-plan_medium": {
+        "iterations": 5,
+        "minMs": 1.193808399999989,
+        "medianMs": 1.3413082000000032,
+        "p95Ms": 1.6335667999999715,
+        "maxMs": 1.6335667999999715,
+        "meanMs": 1.3861566799999945
+      }
+    },
+    "phases": {},
+    "ptc": {
+      "transfer": {},
+      "breakdown": {},
+      "phase2": {
+        "gallery": {
+          "transfer": {
+            "ptc_analytics_market_event_brief_medium": {
+              "laneId": "analytics_market_event_brief",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/prepare-market-event-brief.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 5,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1132,
+              "resultBytesOut": 1148,
+              "reductionRatio": 0.9860627177700348
+            },
+            "ptc_analytics_enterprise_renewal_medium": {
+              "laneId": "analytics_enterprise_renewal",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/underwrite-enterprise-renewal.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": false,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": false,
+              "durableBoundary": true,
+              "toolCallCount": 5,
+              "toolBytesIn": 605,
+              "resultBytesOut": 838,
+              "reductionRatio": 0.7219570405727923
+            },
+            "ptc_analytics_market_abuse_review_medium": {
+              "laneId": "analytics_market_abuse_review",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/escalate-market-abuse-review.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": false,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": true,
+              "toolCallCount": 5,
+              "toolBytesIn": 891,
+              "resultBytesOut": 554,
+              "reductionRatio": 1.608303249097473
+            },
+            "ptc_analytics_capital_allocation_medium": {
+              "laneId": "analytics_capital_allocation",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/build-capital-allocation-brief.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1004,
+              "resultBytesOut": 1027,
+              "reductionRatio": 0.9776046738072055
+            },
+            "ptc_guard-payments-rollout_medium": {
+              "laneId": "guard-payments-rollout",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/guard-payments-rollout.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 7,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": true,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 13,
+              "toolBytesIn": 1205,
+              "resultBytesOut": 1694,
+              "reductionRatio": 0.7113341204250295
+            },
+            "ptc_stabilize-oncall-handoff_medium": {
+              "laneId": "stabilize-oncall-handoff",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/stabilize-oncall-handoff.js",
+              "toolFamilyCount": 6,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 6,
+              "toolBytesIn": 1133,
+              "resultBytesOut": 1032,
+              "reductionRatio": 1.0978682170542635
+            },
+            "ptc_coordinate-warehouse-exception_medium": {
+              "laneId": "coordinate-warehouse-exception",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/coordinate-warehouse-exception.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 5,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 986,
+              "resultBytesOut": 500,
+              "reductionRatio": 1.972
+            },
+            "ptc_assess-global-deployment-freeze_medium": {
+              "laneId": "assess-global-deployment-freeze",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/assess-global-deployment-freeze.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 8,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": true,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 11,
+              "toolBytesIn": 1017,
+              "resultBytesOut": 673,
+              "reductionRatio": 1.5111441307578009
+            },
+            "ptc_approval-exception-routing_medium": {
+              "laneId": "approval-exception-routing",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/approval-exception-routing.js",
+              "toolFamilyCount": 6,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": false,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": true,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": true,
+              "durableBoundary": true,
+              "toolCallCount": 6,
+              "toolBytesIn": 1172,
+              "resultBytesOut": 789,
+              "reductionRatio": 1.485424588086185
+            },
+            "ptc_vip-support-escalation_medium": {
+              "laneId": "vip-support-escalation",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/vip-support-escalation.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 5,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": true,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1179,
+              "resultBytesOut": 869,
+              "reductionRatio": 1.3567318757192175
+            },
+            "ptc_payout-batch-release-review_medium": {
+              "laneId": "payout-batch-release-review",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/payout-batch-release-review.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": true,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": true,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1007,
+              "resultBytesOut": 564,
+              "reductionRatio": 1.7854609929078014
+            },
+            "ptc_enterprise-renewal-save-plan_medium": {
+              "laneId": "enterprise-renewal-save-plan",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/enterprise-renewal-save-plan.js",
+              "toolFamilyCount": 6,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": true,
+              "durableBoundary": false,
+              "toolCallCount": 6,
+              "toolBytesIn": 746,
+              "resultBytesOut": 611,
+              "reductionRatio": 1.220949263502455
+            }
+          }
+        },
+        "headlineSeeds": {
+          "transfer": {}
+        },
+        "canary": {
+          "laneCount": 12,
+          "categories": {
+            "analytics": 4,
+            "operations": 4,
+            "workflows": 4
+          }
+        },
+        "sentinel": {
+          "transfer": {},
+          "familyScore": {}
+        },
+        "scorecards": {
+          "headlineScore": {
+            "medium": null
+          },
+          "broadScore": {
+            "medium": null
+          },
+          "holdoutScore": {
+            "medium": {
+              "medianMs": 1.5553097500000037,
+              "p95Ms": 1.8478326666666742
+            }
+          },
+          "categoryScore": {
+            "analytics": {
+              "medium": null
+            },
+            "operations": {
+              "medium": null
+            },
+            "workflows": {
+              "medium": null
+            }
+          },
+          "p90LaneRatio": {
+            "medium": null
+          },
+          "worstLaneRatio": {
+            "medium": null
+          },
+          "sentinelFamily": {},
+          "durableScore": {
+            "medium": {
+              "medianMs": 0.9374170000000959,
+              "p95Ms": 1.1689580000000508
+            }
+          }
+        }
+      }
+    },
+    "durablePtc": {
+      "resumeOnly": {
+        "ptc_vendor_review_durable_small": {
+          "iterations": 5,
+          "minMs": 0.7597920000000613,
+          "medianMs": 0.8166249999999309,
+          "p95Ms": 0.9832920000001195,
+          "maxMs": 0.9832920000001195,
+          "meanMs": 0.8364251999999851
+        },
+        "ptc_vendor_review_durable_medium": {
+          "iterations": 5,
+          "minMs": 0.9403330000000096,
+          "medianMs": 1.0539590000000771,
+          "p95Ms": 1.423041000000012,
+          "maxMs": 1.423041000000012,
+          "meanMs": 1.1083999999999832
+        },
+        "ptc_vendor_review_durable_large": {
+          "iterations": 5,
+          "minMs": 1.3288339999999152,
+          "medianMs": 1.4149170000000595,
+          "p95Ms": 2.1467499999998836,
+          "maxMs": 2.1467499999998836,
+          "meanMs": 1.5375919999999497
+        },
+        "ptc_plan-database-failover_durable_medium": {
+          "iterations": 5,
+          "minMs": 0.3185829999999896,
+          "medianMs": 0.3700420000000122,
+          "p95Ms": 0.42495800000006057,
+          "maxMs": 0.42495800000006057,
+          "meanMs": 0.36779160000000954
+        },
+        "ptc_privacy-erasure-orchestration_durable_medium": {
+          "iterations": 5,
+          "minMs": 1.237500000000182,
+          "medianMs": 1.3882500000001983,
+          "p95Ms": 1.65887500000008,
+          "maxMs": 1.65887500000008,
+          "meanMs": 1.4090168000000631
+        }
+      },
+      "state": {
+        "ptc_vendor_review_durable_small": {
+          "snapshotBytes": 21336,
+          "fullPolicyBytes": 502,
+          "checkpointArgsBytes": 1406
+        },
+        "ptc_vendor_review_durable_medium": {
+          "snapshotBytes": 27325,
+          "fullPolicyBytes": 502,
+          "checkpointArgsBytes": 2764
+        },
+        "ptc_vendor_review_durable_large": {
+          "snapshotBytes": 39824,
+          "fullPolicyBytes": 502,
+          "checkpointArgsBytes": 5630
+        },
+        "ptc_plan-database-failover_durable_medium": {
+          "snapshotBytes": 8178,
+          "fullPolicyBytes": 482,
+          "checkpointArgsBytes": 172
+        },
+        "ptc_privacy-erasure-orchestration_durable_medium": {
+          "snapshotBytes": 11983,
+          "fullPolicyBytes": 490,
+          "checkpointArgsBytes": 239
+        }
+      }
+    },
+    "memory": {},
+    "failureCleanup": {}
+  },
+  "isolate": {
+    "latency": {
+      "ptc_analytics_market_event_brief_medium": {
+        "iterations": 5,
+        "minMs": 0.5653917999999976,
+        "medianMs": 0.6049333999999817,
+        "p95Ms": 0.666091600000027,
+        "maxMs": 0.666091600000027,
+        "meanMs": 0.6106250399999954
+      },
+      "ptc_analytics_enterprise_renewal_medium": {
+        "iterations": 5,
+        "minMs": 0.5130500000000211,
+        "medianMs": 0.5213915999999699,
+        "p95Ms": 0.5790250000000015,
+        "maxMs": 0.5790250000000015,
+        "meanMs": 0.5355299599999943
+      },
+      "ptc_analytics_market_abuse_review_medium": {
+        "iterations": 5,
+        "minMs": 0.32205840000001446,
+        "medianMs": 0.5304665999999998,
+        "p95Ms": 1.9334168000000318,
+        "maxMs": 1.9334168000000318,
+        "meanMs": 0.7902833600000213
+      },
+      "ptc_analytics_capital_allocation_medium": {
+        "iterations": 5,
+        "minMs": 0.5726333999999952,
+        "medianMs": 0.6246415999999954,
+        "p95Ms": 0.708591800000022,
+        "maxMs": 0.708591800000022,
+        "meanMs": 0.6235883600000035
+      },
+      "ptc_guard-payments-rollout_medium": {
+        "iterations": 5,
+        "minMs": 0.7685750000000553,
+        "medianMs": 0.7856834000000162,
+        "p95Ms": 2.7329334000000016,
+        "maxMs": 2.7329334000000016,
+        "meanMs": 1.1753366800000187
+      },
+      "ptc_stabilize-oncall-handoff_medium": {
+        "iterations": 5,
+        "minMs": 0.5570082000000184,
+        "medianMs": 0.6158416000000215,
+        "p95Ms": 0.8800583999999617,
+        "maxMs": 0.8800583999999617,
+        "meanMs": 0.6747450000000026
+      },
+      "ptc_coordinate-warehouse-exception_medium": {
+        "iterations": 5,
+        "minMs": 0.5010583999999654,
+        "medianMs": 0.5849500000000262,
+        "p95Ms": 0.5936415999999554,
+        "maxMs": 0.5936415999999554,
+        "meanMs": 0.5692049999999835
+      },
+      "ptc_assess-global-deployment-freeze_medium": {
+        "iterations": 5,
+        "minMs": 0.9697500000000219,
+        "medianMs": 1.1239332000000104,
+        "p95Ms": 4.180075000000033,
+        "maxMs": 4.180075000000033,
+        "meanMs": 1.7252150000000257
+      },
+      "ptc_approval-exception-routing_medium": {
+        "iterations": 5,
+        "minMs": 0.6333749999999781,
+        "medianMs": 0.7031581999999617,
+        "p95Ms": 0.8775582000000213,
+        "maxMs": 0.8775582000000213,
+        "meanMs": 0.7287849600000118
+      },
+      "ptc_vip-support-escalation_medium": {
+        "iterations": 5,
+        "minMs": 0.6237999999999374,
+        "medianMs": 0.6986081999999442,
+        "p95Ms": 4.04579160000003,
+        "maxMs": 4.04579160000003,
+        "meanMs": 1.4523382799999855
+      },
+      "ptc_payout-batch-release-review_medium": {
+        "iterations": 5,
+        "minMs": 0.571233200000006,
+        "medianMs": 0.6118749999999636,
+        "p95Ms": 0.7578500000000531,
+        "maxMs": 0.7578500000000531,
+        "meanMs": 0.6415666399999828
+      },
+      "ptc_enterprise-renewal-save-plan_medium": {
+        "iterations": 5,
+        "minMs": 0.6051418000000013,
+        "medianMs": 0.640558399999918,
+        "p95Ms": 0.703099999999995,
+        "maxMs": 0.703099999999995,
+        "meanMs": 0.6508833600000072
+      }
+    },
+    "ptc": {
+      "transfer": {},
+      "phase2": {
+        "gallery": {
+          "transfer": {
+            "ptc_analytics_market_event_brief_medium": {
+              "laneId": "analytics_market_event_brief",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/prepare-market-event-brief.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 5,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1132,
+              "resultBytesOut": 1148,
+              "reductionRatio": 0.9860627177700348
+            },
+            "ptc_analytics_enterprise_renewal_medium": {
+              "laneId": "analytics_enterprise_renewal",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/underwrite-enterprise-renewal.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": false,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": false,
+              "durableBoundary": true,
+              "toolCallCount": 5,
+              "toolBytesIn": 605,
+              "resultBytesOut": 838,
+              "reductionRatio": 0.7219570405727923
+            },
+            "ptc_analytics_market_abuse_review_medium": {
+              "laneId": "analytics_market_abuse_review",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/escalate-market-abuse-review.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": false,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": true,
+              "toolCallCount": 5,
+              "toolBytesIn": 891,
+              "resultBytesOut": 554,
+              "reductionRatio": 1.608303249097473
+            },
+            "ptc_analytics_capital_allocation_medium": {
+              "laneId": "analytics_capital_allocation",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/analytics/build-capital-allocation-brief.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1004,
+              "resultBytesOut": 1027,
+              "reductionRatio": 0.9776046738072055
+            },
+            "ptc_guard-payments-rollout_medium": {
+              "laneId": "guard-payments-rollout",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/guard-payments-rollout.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 7,
+              "compactionExpectation": "lower_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": true,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 13,
+              "toolBytesIn": 1205,
+              "resultBytesOut": 1694,
+              "reductionRatio": 0.7113341204250295
+            },
+            "ptc_stabilize-oncall-handoff_medium": {
+              "laneId": "stabilize-oncall-handoff",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/stabilize-oncall-handoff.js",
+              "toolFamilyCount": 6,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 6,
+              "toolBytesIn": 1133,
+              "resultBytesOut": 1032,
+              "reductionRatio": 1.0978682170542635
+            },
+            "ptc_coordinate-warehouse-exception_medium": {
+              "laneId": "coordinate-warehouse-exception",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/coordinate-warehouse-exception.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 5,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 986,
+              "resultBytesOut": 500,
+              "reductionRatio": 1.972
+            },
+            "ptc_assess-global-deployment-freeze_medium": {
+              "laneId": "assess-global-deployment-freeze",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/operations/assess-global-deployment-freeze.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 8,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": true,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": false,
+              "durableBoundary": false,
+              "toolCallCount": 11,
+              "toolBytesIn": 1017,
+              "resultBytesOut": 673,
+              "reductionRatio": 1.5111441307578009
+            },
+            "ptc_approval-exception-routing_medium": {
+              "laneId": "approval-exception-routing",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/approval-exception-routing.js",
+              "toolFamilyCount": 6,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": false,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": true,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": true,
+              "durableBoundary": true,
+              "toolCallCount": 6,
+              "toolBytesIn": 1172,
+              "resultBytesOut": 789,
+              "reductionRatio": 1.485424588086185
+            },
+            "ptc_vip-support-escalation_medium": {
+              "laneId": "vip-support-escalation",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/vip-support-escalation.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 5,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": false,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": true,
+              "stringNormalizationOrClassification": true,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": true,
+              "finalActionWriteback": true,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1179,
+              "resultBytesOut": 869,
+              "reductionRatio": 1.3567318757192175
+            },
+            "ptc_payout-batch-release-review_medium": {
+              "laneId": "payout-batch-release-review",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/payout-batch-release-review.js",
+              "toolFamilyCount": 5,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": true,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": true,
+              "durableBoundary": false,
+              "toolCallCount": 5,
+              "toolBytesIn": 1007,
+              "resultBytesOut": 564,
+              "reductionRatio": 1.7854609929078014
+            },
+            "ptc_enterprise-renewal-save-plan_medium": {
+              "laneId": "enterprise-renewal-save-plan",
+              "sizeName": "medium",
+              "sourceRef": "examples/programmatic-tool-calls/workflows/enterprise-renewal-save-plan.js",
+              "toolFamilyCount": 6,
+              "logicalPeakFanout": 4,
+              "compactionExpectation": "moderate_compaction",
+              "firstStageAsyncFanout": true,
+              "derivedIdSecondStageFanout": false,
+              "mapHeavyJoinOrCounter": true,
+              "setHeavyDedupe": false,
+              "localRankingOrSort": false,
+              "stringNormalizationOrClassification": false,
+              "repeatedStaticPropertyReads": true,
+              "chronologyReasoning": false,
+              "finalActionWriteback": true,
+              "durableBoundary": false,
+              "toolCallCount": 6,
+              "toolBytesIn": 746,
+              "resultBytesOut": 611,
+              "reductionRatio": 1.220949263502455
+            }
+          }
+        },
+        "headlineSeeds": {
+          "transfer": {}
+        },
+        "canary": {
+          "laneCount": 12,
+          "categories": {
+            "analytics": 4,
+            "operations": 4,
+            "workflows": 4
+          }
+        },
+        "sentinel": {
+          "transfer": {},
+          "familyScore": {}
+        },
+        "scorecards": {
+          "headlineScore": {
+            "medium": null
+          },
+          "broadScore": {
+            "medium": null
+          },
+          "holdoutScore": {
+            "medium": {
+              "medianMs": 0.6705034333333174,
+              "p95Ms": 1.5548444500000114
+            }
+          },
+          "categoryScore": {
+            "analytics": {
+              "medium": null
+            },
+            "operations": {
+              "medium": null
+            },
+            "workflows": {
+              "medium": null
+            }
+          },
+          "p90LaneRatio": {
+            "medium": null
+          },
+          "worstLaneRatio": {
+            "medium": null
+          },
+          "sentinelFamily": {},
+          "durableScore": {
+            "medium": {
+              "medianMs": 0.15722233333341742,
+              "p95Ms": 0.1861109999999826
+            }
+          }
+        }
+      }
+    },
+    "durablePtc": {
+      "resumeOnly": {
+        "ptc_vendor_review_durable_small": {
+          "iterations": 5,
+          "minMs": 0.1272079999998823,
+          "medianMs": 0.14133300000003146,
+          "p95Ms": 0.17195900000024267,
+          "maxMs": 0.17195900000024267,
+          "meanMs": 0.14842500000004294
+        },
+        "ptc_vendor_review_durable_medium": {
+          "iterations": 5,
+          "minMs": 0.13758400000006077,
+          "medianMs": 0.16658300000017334,
+          "p95Ms": 0.18304099999977552,
+          "maxMs": 0.18304099999977552,
+          "meanMs": 0.1627248000000691
+        },
+        "ptc_vendor_review_durable_large": {
+          "iterations": 5,
+          "minMs": 0.1117500000000291,
+          "medianMs": 0.14274999999997817,
+          "p95Ms": 0.21820900000011534,
+          "maxMs": 0.21820900000011534,
+          "meanMs": 0.1515334000000621
+        },
+        "ptc_plan-database-failover_durable_medium": {
+          "iterations": 5,
+          "minMs": 0.07366700000011406,
+          "medianMs": 0.09720900000002075,
+          "p95Ms": 0.12225000000034925,
+          "maxMs": 0.12225000000034925,
+          "meanMs": 0.09905860000008034
+        },
+        "ptc_privacy-erasure-orchestration_durable_medium": {
+          "iterations": 5,
+          "minMs": 0.19787499999983993,
+          "medianMs": 0.2078750000000582,
+          "p95Ms": 0.253041999999823,
+          "maxMs": 0.253041999999823,
+          "meanMs": 0.22063359999992826
+        }
+      },
+      "state": {
+        "ptc_vendor_review_durable_small": {
+          "carriedStateBytes": 1406
+        },
+        "ptc_vendor_review_durable_medium": {
+          "carriedStateBytes": 2764
+        },
+        "ptc_vendor_review_durable_large": {
+          "carriedStateBytes": 5630
+        },
+        "ptc_plan-database-failover_durable_medium": {
+          "carriedStateBytes": 172
+        },
+        "ptc_privacy-erasure-orchestration_durable_medium": {
+          "carriedStateBytes": 239
+        }
+      }
+    },
+    "memory": {},
+    "failureCleanup": {}
+  },
+  "ratios": {
+    "latency": {
+      "sidecarVsAddon": {
+        "ptc_analytics_market_event_brief_medium": {
+          "medianRatio": 1.7653730713943123,
+          "p95Ratio": 2.149455205756077
+        },
+        "ptc_analytics_enterprise_renewal_medium": {
+          "medianRatio": 2.981247061501372,
+          "p95Ratio": 3.652543896446401
+        },
+        "ptc_analytics_market_abuse_review_medium": {
+          "medianRatio": 2.865625256005938,
+          "p95Ratio": 2.386648451152567
+        },
+        "ptc_analytics_capital_allocation_medium": {
+          "medianRatio": 2.7444665016129206,
+          "p95Ratio": 3.0080158605737246
+        },
+        "ptc_guard-payments-rollout_medium": {
+          "medianRatio": 4.58452751721169,
+          "p95Ratio": 3.983258603621944
+        },
+        "ptc_stabilize-oncall-handoff_medium": {
+          "medianRatio": 3.675892391436014,
+          "p95Ratio": 3.2756161603383767
+        },
+        "ptc_coordinate-warehouse-exception_medium": {
+          "medianRatio": 2.4490260059652114,
+          "p95Ratio": 3.2032978863471224
+        },
+        "ptc_assess-global-deployment-freeze_medium": {
+          "medianRatio": 5.795664391810209,
+          "p95Ratio": 3.7593484575504634
+        },
+        "ptc_approval-exception-routing_medium": {
+          "medianRatio": 3.753372720530415,
+          "p95Ratio": 2.7605202089117613
+        },
+        "ptc_vip-support-escalation_medium": {
+          "medianRatio": 4.281299045595054,
+          "p95Ratio": 3.4312243262851094
+        },
+        "ptc_payout-batch-release-review_medium": {
+          "medianRatio": 2.3857788564940723,
+          "p95Ratio": 2.3426977728920395
+        },
+        "ptc_enterprise-renewal-save-plan_medium": {
+          "medianRatio": 4.837901532912482,
+          "p95Ratio": 2.967558563059093
+        }
+      },
+      "isolateVsAddon": {
+        "ptc_analytics_market_event_brief_medium": {
+          "medianRatio": 0.5797157642548844,
+          "p95Ratio": 0.5049718482794269
+        },
+        "ptc_analytics_enterprise_renewal_medium": {
+          "medianRatio": 1.498394674434394,
+          "p95Ratio": 1.3879666806496194
+        },
+        "ptc_analytics_market_abuse_review_medium": {
+          "medianRatio": 1.3752163412431027,
+          "p95Ratio": 3.6503089538464244
+        },
+        "ptc_analytics_capital_allocation_medium": {
+          "medianRatio": 1.3780887451225983,
+          "p95Ratio": 1.2127365856363754
+        },
+        "ptc_guard-payments-rollout_medium": {
+          "medianRatio": 1.1358047571521157,
+          "p95Ratio": 3.1828258312466837
+        },
+        "ptc_stabilize-oncall-handoff_medium": {
+          "medianRatio": 1.7419625653263526,
+          "p95Ratio": 2.1242907632792307
+        },
+        "ptc_coordinate-warehouse-exception_medium": {
+          "medianRatio": 1.2243210716342001,
+          "p95Ratio": 1.0795611353218606
+        },
+        "ptc_assess-global-deployment-freeze_medium": {
+          "medianRatio": 2.5782719504500964,
+          "p95Ratio": 6.147847189028225
+        },
+        "ptc_approval-exception-routing_medium": {
+          "medianRatio": 1.8388432172671987,
+          "p95Ratio": 1.6516410859643977
+        },
+        "ptc_vip-support-escalation_medium": {
+          "medianRatio": 2.662547249559032,
+          "p95Ratio": 11.970095114790396
+        },
+        "ptc_payout-batch-release-review_medium": {
+          "medianRatio": 1.0674877301062478,
+          "p95Ratio": 1.2342331338301575
+        },
+        "ptc_enterprise-renewal-save-plan_medium": {
+          "medianRatio": 2.310399999999674,
+          "p95Ratio": 1.2772605477087742
+        }
+      },
+      "sidecarVsIsolate": {
+        "ptc_analytics_market_event_brief_medium": {
+          "medianRatio": 3.045239029618882,
+          "p95Ratio": 4.256584229556245
+        },
+        "ptc_analytics_enterprise_renewal_medium": {
+          "medianRatio": 1.9896273741273927,
+          "p95Ratio": 2.6315789473684457
+        },
+        "ptc_analytics_market_abuse_review_medium": {
+          "medianRatio": 2.083763237873981,
+          "p95Ratio": 0.6538209453853746
+        },
+        "ptc_analytics_capital_allocation_medium": {
+          "medianRatio": 1.9915020069108582,
+          "p95Ratio": 2.480353851117049
+        },
+        "ptc_guard-payments-rollout_medium": {
+          "medianRatio": 4.036369356919057,
+          "p95Ratio": 1.2514849428822619
+        },
+        "ptc_stabilize-oncall-handoff_medium": {
+          "medianRatio": 2.110201714206955,
+          "p95Ratio": 1.5419810776194616
+        },
+        "ptc_coordinate-warehouse-exception_medium": {
+          "medianRatio": 2.0003135310709785,
+          "p95Ratio": 2.9672223105661266
+        },
+        "ptc_assess-global-deployment-freeze_medium": {
+          "medianRatio": 2.2478871520122006,
+          "p95Ratio": 0.6114902244576925
+        },
+        "ptc_approval-exception-routing_medium": {
+          "medianRatio": 2.041159727640347,
+          "p95Ratio": 1.671380200196392
+        },
+        "ptc_vip-support-escalation_medium": {
+          "medianRatio": 1.6079711059791024,
+          "p95Ratio": 0.28664971275336376
+        },
+        "ptc_payout-batch-release-review_medium": {
+          "medianRatio": 2.234947334014428,
+          "p95Ratio": 1.8980998878404909
+        },
+        "ptc_enterprise-renewal-save-plan_medium": {
+          "medianRatio": 2.093967076226266,
+          "p95Ratio": 2.3233776134262314
+        }
+      }
+    },
+    "ptcWeightedScore": {
+      "sidecarVsAddon": {},
+      "isolateVsAddon": {},
+      "sidecarVsIsolate": {}
+    },
+    "failureCleanup": {
+      "sidecarVsAddon": {},
+      "isolateVsAddon": {},
+      "sidecarVsIsolate": {}
+    }
+  }
+}

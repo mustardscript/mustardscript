@@ -48,6 +48,12 @@ The new `bench:ptc:*` scripts all build the addon and sidecar first, then run
   count
 - `bench:ptc:sentinel`: the three sentinel families only
 
+The targeted release-oriented PTC modes now batch `5` inner executions into
+each reported warm sample and keep `5` reported samples per lane. That makes
+the broad/headline/holdout scorecards materially less sensitive to timer noise
+on the sub-millisecond lanes that dominate the current addon-vs-isolate
+comparisons.
+
 `npm run bench:rust` runs the Rust-core microbenchmark suite in
 `crates/mustard/benches/runtime_core.rs`.
 
