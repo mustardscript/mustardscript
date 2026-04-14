@@ -39,7 +39,10 @@ async function waitForServer(url, timeoutMs = 20_000) {
   throw new Error(`server did not become ready: ${url}`)
 }
 
-test('playground loads, switches scenarios, runs successfully, and renders failure states', async () => {
+test(
+  'playground loads, switches scenarios, runs successfully, and renders failure states',
+  { concurrency: false },
+  async () => {
   const server = spawn(
     npmCommand(),
     ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '4173', '--strictPort'],
@@ -78,6 +81,41 @@ test('playground loads, switches scenarios, runs successfully, and renders failu
     await page.getByRole('button', { name: 'Run Comparison' }).click()
     await vanillaOutput.getByText('browser failure').waitFor()
     await mustardOutput.getByText('Completed').waitFor()
+  } finally {
+    await browser.close()
+    server.kill('SIGTERM')
+  }
+  },
+)
+
+test('playground still runs when crypto.randomUUID is unavailable', { concurrency: false }, async () => {
+  const server = spawn(
+    npmCommand(),
+    ['run', 'dev', '--', '--host', '127.0.0.1', '--port', '4173', '--strictPort'],
+    {
+      cwd: websiteRoot,
+      stdio: 'pipe',
+      env: process.env,
+    },
+  )
+
+  const browser = await chromium.launch()
+
+  try {
+    await waitForServer(baseUrl)
+    const page = await browser.newPage()
+    await page.addInitScript(() => {
+      Object.defineProperty(globalThis.crypto, 'randomUUID', {
+        value: undefined,
+        configurable: true,
+      })
+    })
+    await page.goto(baseUrl)
+
+    const vanillaOutput = outputSection(page, 'Vanilla Output')
+    await page.getByRole('button', { name: 'Run Comparison' }).click()
+    await vanillaOutput.getByText('Completed').waitFor()
+    await vanillaOutput.getByText('"quoteId": "quote-acct_91-25"').waitFor()
   } finally {
     await browser.close()
     server.kill('SIGTERM')

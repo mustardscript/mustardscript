@@ -16,7 +16,11 @@ function isAllowedIframeOrigin(origin: string) {
 }
 
 function createRequestId() {
-  return `playground-${crypto.randomUUID()}`
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return `playground-${globalThis.crypto.randomUUID()}`
+  }
+  const entropy = Math.random().toString(36).slice(2)
+  return `playground-${Date.now().toString(36)}-${entropy}`
 }
 
 function requestIframeReady(iframe: HTMLIFrameElement) {
