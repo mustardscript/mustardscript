@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
+import { benchmarkData } from '../generated/benchmarkData'
 
 function useInView(threshold = 0.3) {
   const ref = useRef<HTMLDivElement>(null)
@@ -15,6 +16,16 @@ function useInView(threshold = 0.3) {
     return () => observer.disconnect()
   }, [threshold])
   return { ref, inView }
+}
+
+function metricDecimals(value: number) {
+  if (value < 1) return 2
+  if (value < 10) return 1
+  return 0
+}
+
+function formatMetric(value: number) {
+  return value.toFixed(metricDecimals(value))
 }
 
 function AnimatedNumber({ target, inView }: { target: number; inView: boolean }) {
@@ -34,11 +45,14 @@ function AnimatedNumber({ target, inView }: { target: number; inView: boolean })
     }
     requestAnimationFrame(animate)
   }, [inView, target])
-  return <>{value}</>
+  return <>{formatMetric(value)}</>
 }
 
 export function SpeedSection() {
   const { ref, inView } = useInView()
+  const mustardMedianMs = benchmarkData.addon.medianMs
+  const mustardP95Ms = benchmarkData.addon.p95Ms
+  const remoteMedianMs = 1000
   const mustardWidth = 8
   const remoteWidth = 100
 
@@ -50,12 +64,12 @@ export function SpeedSection() {
           <motion.div initial={{ opacity: 1 }} animate={inView ? { opacity: 1 } : {}} transition={{ duration: 0.5 }}>
             <div className="mb-2">
               <span className="font-heading text-6xl sm:text-7xl md:text-8xl font-bold text-black tabular-nums tracking-tight">
-                <AnimatedNumber target={43} inView={inView} />
+                <AnimatedNumber target={mustardMedianMs} inView={inView} />
                 <span className="text-4xl sm:text-5xl md:text-6xl">ms</span>
               </span>
             </div>
             <p className="text-black/50 text-lg">
-              Full tool-calling workflow &middot; in-process &middot; no network
+              Representative 4-tool orchestration workflow &middot; in-process &middot; no network
             </p>
           </motion.div>
         </div>
@@ -65,7 +79,7 @@ export function SpeedSection() {
           <div>
             <div className="flex justify-between items-baseline mb-2">
               <span className="text-sm font-semibold text-black">MustardScript</span>
-              <span className="text-sm font-mono font-bold text-black">43ms</span>
+              <span className="text-sm font-mono font-bold text-black">{formatMetric(mustardMedianMs)}ms</span>
             </div>
             <div className="h-10 rounded-lg bg-black/8 overflow-hidden relative">
               <motion.div
@@ -85,7 +99,7 @@ export function SpeedSection() {
           <div>
             <div className="flex justify-between items-baseline mb-2">
               <span className="text-sm font-semibold text-black/50">Remote Sandbox</span>
-              <span className="text-sm font-mono font-bold text-black/50">~1,000ms</span>
+              <span className="text-sm font-mono font-bold text-black/50">~{formatMetric(remoteMedianMs)}ms</span>
             </div>
             <div className="h-10 rounded-lg bg-black/8 overflow-hidden">
               <motion.div
@@ -99,7 +113,7 @@ export function SpeedSection() {
         </div>
 
         <p className="text-center text-xs text-black/40 mt-8">
-          4-tool orchestration workflow &middot; Apple M4 &middot; Node v24 &middot; Median of 50 runs
+          {benchmarkData.note} &middot; {benchmarkData.machine.cpuModel} &middot; {benchmarkData.machine.nodeVersion} &middot; Median {formatMetric(mustardMedianMs)}ms &middot; p95 {formatMetric(mustardP95Ms)}ms
         </p>
       </div>
     </section>

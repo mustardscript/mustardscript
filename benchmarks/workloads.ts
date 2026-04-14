@@ -33,11 +33,24 @@ const {
   machineMetadata,
   writeBenchmarkArtifact,
 } = require('./support.ts');
+const {
+  PTC_WEIGHTS,
+  createCapabilityTransferProbe,
+  createPtcScenarios,
+  summarizePtcWeightedScore,
+} = require('./ptc-fixtures.ts');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const FIXTURE_VERSION = 5;
+const FIXTURE_VERSION = 6;
 const SNAPSHOT_KEY = 'benchmark-workloads-snapshot-key';
 const SNAPSHOT_KEY_BASE64 = Buffer.from(SNAPSHOT_KEY, 'utf8').toString('base64');
+const WEBSITE_PTC_EXPORT_PATH = path.join(
+  REPO_ROOT,
+  'website',
+  'src',
+  'generated',
+  'benchmarkData.ts',
+);
 const BOUNDARY_VALUE_SIZES = Object.freeze([
   { name: 'small', itemCount: 6, weightCount: 6, tagCount: 3 },
   { name: 'medium', itemCount: 24, weightCount: 16, tagCount: 6 },
@@ -459,6 +472,10 @@ function sidecarCapabilityNames(capabilities = undefined) {
   return capabilities ? Object.keys(capabilities) : [];
 }
 
+function sidecarEncodedInputs(inputs = {}) {
+  return JSON.parse(encodeStructuredInputs(inputs));
+}
+
 function sidecarResumeAuth(snapshot) {
   return {
     snapshot_key_base64: SNAPSHOT_KEY_BASE64,
@@ -467,13 +484,14 @@ function sidecarResumeAuth(snapshot) {
   };
 }
 
-async function startSidecarProgram(request, program, capabilities = undefined) {
+async function startSidecarProgram(request, program, options = {}) {
+  const capabilities = options.capabilities;
   const capabilityNames = sidecarCapabilityNames(capabilities);
   const { payload, blob } = await request(
     sidecarStartRequestPayload(program, 2, {
-      inputs: {},
+      inputs: sidecarEncodedInputs(options.inputs ?? {}),
       capabilities: capabilityNames,
-      limits: {},
+      limits: options.limits ?? {},
     }),
     typeof program.programId === 'string' && program.programId.length > 0 ? undefined : program.program,
   );
@@ -505,21 +523,21 @@ async function resumeSidecarSnapshot(
   return sidecarStepValue(payload.result.step, payload.result, blob);
 }
 
-async function runSidecarProgram(request, program, capabilities = undefined, resumeValue = undefined) {
-  let { step } = await startSidecarProgram(request, program, capabilities);
+async function runSidecarProgram(request, program, options = {}, resumeValue = undefined) {
+  let { step } = await startSidecarProgram(request, program, options);
   let requestId = 3;
   while (step.type === 'suspended') {
     const payloadValue =
       typeof resumeValue === 'function'
         ? resumeValue(step)
-        : capabilities?.[step.capability]?.(...step.args) ?? step.args[0];
+        : options.capabilities?.[step.capability]?.(...step.args) ?? step.args[0];
     step = await resumeSidecarSnapshot(request, step, payloadValue, requestId);
     requestId += 1;
   }
   return step.value;
 }
 
-function installIsolateCapabilities(context, capabilities = {}) {
+function installIsolateCapabilities(context, capabilities = {}, inputs = {}) {
   const jail = context.global;
   jail.setSync('global', jail.derefInto());
   for (const [name, handler] of Object.entries(capabilities)) {
@@ -539,6 +557,13 @@ function installIsolateCapabilities(context, capabilities = {}) {
         .join('\n')}
     `);
   }
+  if (Object.keys(inputs).length > 0) {
+    context.evalSync(
+      Object.entries(inputs)
+        .map(([name, value]) => `global.${name} = ${JSON.stringify(value)};`)
+        .join('\n'),
+    );
+  }
 }
 
 function createIsolateContext(capabilities = {}) {
@@ -549,7 +574,7 @@ function createIsolateContext(capabilities = {}) {
 }
 
 function runIsolateScript(context, script) {
-  return script.runSync(context, { copy: true });
+  return script.run(context, { promise: true, copy: true });
 }
 
 function benchmarkFixtureSet() {
@@ -561,6 +586,7 @@ function benchmarkFixtureSet() {
     isolateLimitFailureSource: createIsolateLimitFailureSource(),
     hostFailureSource: createHostFailureSource(),
     workflowData: createWorkflowDataset(),
+    ptcScenarios: createPtcScenarios(),
   };
 }
 
@@ -592,6 +618,18 @@ function assertWorkflowResult(result) {
   assert.equal(typeof result.totalOver, 'number');
   assert.ok(Array.isArray(result.top));
   assert.ok(result.count >= result.top.length);
+}
+
+async function capturePtcTransfer(runScenario, scenario) {
+  const probe = createCapabilityTransferProbe(scenario.createCapabilities());
+  const result = await runScenario(probe.capabilities);
+  scenario.assertResult(result);
+  return {
+    laneId: scenario.laneId,
+    sizeName: scenario.sizeName,
+    ...scenario.shape,
+    ...probe.finalize(result),
+  };
 }
 
 async function measureRetainedMemory(runMany, options = {}) {
@@ -913,7 +951,10 @@ async function benchmarkAddon(fixtures) {
   const latency = {};
   const suspendState = {};
   const native = loadNative();
-  const { smallSource, codeModeSource, workflowSource, workflowData } = fixtures;
+  const { smallSource, codeModeSource, workflowSource, workflowData, ptcScenarios } = fixtures;
+  const ptc = {
+    transfer: {},
+  };
   const defaultContext = new ExecutionContext();
   const warmSmallRuntime = new Mustard(smallSource);
   const warmCodeModeRuntime = new Mustard(codeModeSource);
@@ -948,6 +989,34 @@ async function benchmarkAddon(fixtures) {
       assertWorkflowResult(result);
     }, DEFAULT_OPTIONS),
   ]));
+
+  for (const scenario of Object.values(ptcScenarios)) {
+    const runtime = new Mustard(scenario.source);
+    const metric = await measure(scenario.metricName, async () => {
+      const result = await runtime.run({
+        context: new ExecutionContext({
+          capabilities: scenario.createCapabilities(),
+          snapshotKey: SNAPSHOT_KEY,
+        }),
+        inputs: scenario.inputs,
+      });
+      scenario.assertResult(result);
+    }, DEFAULT_OPTIONS);
+    latency[metric[0]] = metric[1];
+    ptc.transfer[scenario.metricName] = await capturePtcTransfer(
+      (capabilities) => runtime.run({
+        context: new ExecutionContext({
+          capabilities,
+          snapshotKey: SNAPSHOT_KEY,
+        }),
+        inputs: scenario.inputs,
+      }),
+      scenario,
+    );
+  }
+  ptc.weightedScore = {
+    medium: summarizePtcWeightedScore(latency),
+  };
 
   for (const callCount of [1, 10, 50, 100]) {
     const runtime = new Mustard(createFanoutSource(callCount));
@@ -1097,14 +1166,17 @@ async function benchmarkAddon(fixtures) {
     snapshot_load_only: snapshotCounterInspection.metrics,
   };
 
-  return { latency, phases, boundary, counters, suspendState, memory, failureCleanup };
+  return { latency, phases, boundary, counters, ptc, suspendState, memory, failureCleanup };
 }
 
 async function benchmarkSidecar(fixtures, profile) {
   console.log('Running sidecar benchmarks...');
   const latency = {};
   const phases = {};
-  const { smallSource, codeModeSource, workflowSource, workflowData } = fixtures;
+  const { smallSource, codeModeSource, workflowSource, workflowData, ptcScenarios } = fixtures;
+  const ptc = {
+    transfer: {},
+  };
 
   const startupOnly = await measure('startup_only', async () => {
     await withSidecar(profile, async () => {});
@@ -1135,8 +1207,9 @@ async function benchmarkSidecar(fixtures, profile) {
     const codeModeProgram = await compileSidecarSource(request, codeModeSource);
     const workflowProgram = await compileSidecarSource(request, workflowSource);
     const transportProgram = await compileSidecarSource(request, createImmediateSuspendSource());
+    const ptcPrograms = new Map();
     const transportProbe = await startSidecarProgram(request, transportProgram, {
-      checkpoint() {},
+      capabilities: { checkpoint() {} },
     });
     assert.equal(transportProbe.step.type, 'suspended');
     assert.equal(transportProbe.step.capability, 'checkpoint');
@@ -1162,17 +1235,47 @@ async function benchmarkSidecar(fixtures, profile) {
     latency[warmCode[0]] = warmCode[1];
 
     const workflowMetric = await measure('programmatic_tool_workflow', async () => {
-      const result = await runSidecarProgram(request, workflowProgram, workflowCapabilities);
+      const result = await runSidecarProgram(request, workflowProgram, {
+        capabilities: workflowCapabilities,
+      });
       assertWorkflowResult(result);
     }, DEFAULT_OPTIONS);
     latency[workflowMetric[0]] = workflowMetric[1];
+
+    for (const scenario of Object.values(ptcScenarios)) {
+      let program = ptcPrograms.get(scenario.laneId);
+      if (!program) {
+        program = await compileSidecarSource(request, scenario.source);
+        ptcPrograms.set(scenario.laneId, program);
+      }
+      const metric = await measure(scenario.metricName, async () => {
+        const result = await runSidecarProgram(request, program, {
+          capabilities: scenario.createCapabilities(),
+          inputs: scenario.inputs,
+        });
+        scenario.assertResult(result);
+      }, DEFAULT_OPTIONS);
+      latency[metric[0]] = metric[1];
+      ptc.transfer[scenario.metricName] = await capturePtcTransfer(
+        (capabilities) => runSidecarProgram(request, program, {
+          capabilities,
+          inputs: scenario.inputs,
+        }),
+        scenario,
+      );
+    }
+    ptc.weightedScore = {
+      medium: summarizePtcWeightedScore(latency),
+    };
 
     for (const callCount of [1, 10, 50, 100]) {
       const program = await compileSidecarSource(request, createFanoutSource(callCount));
       const metric = await measure(`host_fanout_${callCount}`, async () => {
         const result = await runSidecarProgram(request, program, {
-          fetch_value(value) {
-            return value;
+          capabilities: {
+            fetch_value(value) {
+              return value;
+            },
           },
         });
         assert.equal(result, expectedFanoutTotal(callCount));
@@ -1184,8 +1287,10 @@ async function benchmarkSidecar(fixtures, profile) {
       const program = await compileSidecarSource(request, createSuspendResumeSource(boundaryCount));
       const metric = await measure(`suspend_resume_${boundaryCount}`, async () => {
         const result = await runSidecarProgram(request, program, {
-          checkpoint(value) {
-            return value;
+          capabilities: {
+            checkpoint(value) {
+              return value;
+            },
           },
         });
         assert.equal(result, expectedSuspendTotal(boundaryCount));
@@ -1196,7 +1301,9 @@ async function benchmarkSidecar(fixtures, profile) {
     const memory = await measureRetainedMemory(
       async () => {
         for (let i = 0; i < MEMORY_RUNS; i += 1) {
-          const result = await runSidecarProgram(request, workflowProgram, workflowCapabilities);
+          const result = await runSidecarProgram(request, workflowProgram, {
+            capabilities: workflowCapabilities,
+          });
           assertWorkflowResult(result);
         }
       },
@@ -1286,26 +1393,29 @@ async function benchmarkSidecar(fixtures, profile) {
   const failureCleanup = latency.__failureCleanup;
   delete latency.__memory;
   delete latency.__failureCleanup;
-  return { latency, phases, memory, failureCleanup };
+  return { latency, phases, ptc, memory, failureCleanup };
 }
 
 async function benchmarkIsolate(fixtures) {
   console.log('Running V8 isolate benchmarks...');
   const latency = {};
-  const { smallSource, codeModeSource, workflowSource, workflowData } = fixtures;
+  const { smallSource, codeModeSource, workflowSource, workflowData, ptcScenarios } = fixtures;
+  const ptc = {
+    transfer: {},
+  };
   const workflowCapabilities = createWorkflowCapabilities(workflowData);
 
   Object.assign(latency, Object.fromEntries([
     await measure('cold_start_small', async () => {
       const { isolate, context } = createIsolateContext();
       const script = isolate.compileScriptSync(smallSource);
-      const result = runIsolateScript(context, script);
+      const result = await runIsolateScript(context, script);
       assert.equal(typeof result, 'number');
     }, DEFAULT_OPTIONS),
     await measure('cold_start_code_mode_search', async () => {
       const { isolate, context } = createIsolateContext();
       const script = isolate.compileScriptSync(codeModeSource);
-      const result = runIsolateScript(context, script);
+      const result = await runIsolateScript(context, script);
       assert.equal(result.count > 0, true);
     }, DEFAULT_OPTIONS),
   ]));
@@ -1319,7 +1429,7 @@ async function benchmarkIsolate(fixtures) {
     const warmSmall = await measure('warm_run_small', async () => {
       const context = isolate.createContextSync();
       installIsolateCapabilities(context);
-      const result = runIsolateScript(context, smallScript);
+      const result = await runIsolateScript(context, smallScript);
       assert.equal(typeof result, 'number');
     }, DEFAULT_OPTIONS);
     latency[warmSmall[0]] = warmSmall[1];
@@ -1327,7 +1437,7 @@ async function benchmarkIsolate(fixtures) {
     const warmCode = await measure('warm_run_code_mode_search', async () => {
       const context = isolate.createContextSync();
       installIsolateCapabilities(context);
-      const result = runIsolateScript(context, codeModeScript);
+      const result = await runIsolateScript(context, codeModeScript);
       assert.equal(result.count > 0, true);
     }, DEFAULT_OPTIONS);
     latency[warmCode[0]] = warmCode[1];
@@ -1335,11 +1445,30 @@ async function benchmarkIsolate(fixtures) {
     const workflowMetric = await measure('programmatic_tool_workflow', async () => {
       const context = isolate.createContextSync();
       installIsolateCapabilities(context, workflowCapabilities);
-      const result = runIsolateScript(context, workflowScript);
+      const result = await runIsolateScript(context, workflowScript);
       assertWorkflowResult(result);
     }, DEFAULT_OPTIONS);
     latency[workflowMetric[0]] = workflowMetric[1];
+
+    for (const scenario of Object.values(ptcScenarios)) {
+      const script = isolate.compileScriptSync(scenario.source);
+      const metric = await measure(scenario.metricName, async () => {
+        const context = isolate.createContextSync();
+        installIsolateCapabilities(context, scenario.createCapabilities(), scenario.inputs);
+        const result = await runIsolateScript(context, script);
+        scenario.assertResult(result);
+      }, DEFAULT_OPTIONS);
+      latency[metric[0]] = metric[1];
+      ptc.transfer[scenario.metricName] = await capturePtcTransfer((capabilities) => {
+        const context = isolate.createContextSync();
+        installIsolateCapabilities(context, capabilities, scenario.inputs);
+        return runIsolateScript(context, script);
+      }, scenario);
+    }
   }
+  ptc.weightedScore = {
+    medium: summarizePtcWeightedScore(latency),
+  };
 
   for (const callCount of [1, 10, 50, 100]) {
     const source = createFanoutSource(callCount);
@@ -1352,7 +1481,7 @@ async function benchmarkIsolate(fixtures) {
           return value;
         },
       });
-      const result = runIsolateScript(context, script);
+      const result = await runIsolateScript(context, script);
       assert.equal(result, expectedFanoutTotal(callCount));
     }, DEFAULT_OPTIONS);
     latency[metric[0]] = metric[1];
@@ -1388,7 +1517,7 @@ async function benchmarkIsolate(fixtures) {
     for (let i = 0; i < MEMORY_RUNS; i += 1) {
       const context = isolate.createContextSync();
       installIsolateCapabilities(context, workflowCapabilities);
-      const result = runIsolateScript(context, script);
+      const result = await runIsolateScript(context, script);
       assertWorkflowResult(result);
     }
   });
@@ -1406,7 +1535,7 @@ async function benchmarkIsolate(fixtures) {
       const recoveryContext = recoveryIsolate.createContextSync();
       installIsolateCapabilities(recoveryContext);
       const recoveryScript = recoveryIsolate.compileScriptSync(fixtures.smallSource);
-      const recovered = runIsolateScript(recoveryContext, recoveryScript);
+      const recovered = await runIsolateScript(recoveryContext, recoveryScript);
       assert.equal(typeof recovered, 'number');
     }, DEFAULT_OPTIONS),
     hostFailure: await measureFailureCleanup('host_failure', async () => {
@@ -1421,18 +1550,16 @@ async function benchmarkIsolate(fixtures) {
           throw new Error('explode');
         },
       });
-      assert.throws(() => {
-        runIsolateScript(context, script);
-      });
+      await assert.rejects(runIsolateScript(context, script));
       const recoveryContext = isolate.createContextSync();
       installIsolateCapabilities(recoveryContext);
       const recoveryScript = isolate.compileScriptSync(fixtures.smallSource);
-      const recovered = runIsolateScript(recoveryContext, recoveryScript);
+      const recovered = await runIsolateScript(recoveryContext, recoveryScript);
       assert.equal(typeof recovered, 'number');
     }, DEFAULT_OPTIONS),
   };
 
-  return { latency, memory, failureCleanup };
+  return { latency, ptc, memory, failureCleanup };
 }
 
 function ratioTable(left, right) {
@@ -1460,6 +1587,28 @@ function failureRatioTable(left, right) {
     };
   }
   return ratios;
+}
+
+function writeWebsitePtcExport(results) {
+  const ptcMetric = results.addon.latency.ptc_website_demo_small;
+  const exportSource = `'use strict';\n\n` +
+    `export const benchmarkData = ${JSON.stringify({
+      sourceArtifact: path.basename(results.reportPath),
+      benchmarkKind: 'ptc_website_demo_small',
+      machine: {
+        cpuModel: results.machine.cpuModel,
+        nodeVersion: results.machine.nodeVersion,
+        platform: results.machine.platform,
+      },
+      addon: {
+        medianMs: Number(ptcMetric.medianMs.toFixed(3)),
+        p95Ms: Number(ptcMetric.p95Ms.toFixed(3)),
+      },
+      note: 'Representative 4-tool orchestration workflow derived from the audited programmatic tool-call gallery.',
+    }, null, 2)} as const;\n`;
+  fs.mkdirSync(path.dirname(WEBSITE_PTC_EXPORT_PATH), { recursive: true });
+  fs.writeFileSync(WEBSITE_PTC_EXPORT_PATH, exportSource);
+  return WEBSITE_PTC_EXPORT_PATH;
 }
 
 function printSummary(results) {
@@ -1507,6 +1656,18 @@ function printSummary(results) {
     );
   }
   console.log('');
+  console.log('Representative PTC weighted score (medium lanes):');
+  console.log(
+    `addon ${results.addon.ptc.weightedScore.medium.medianMs.toFixed(2)}ms median, sidecar ${results.sidecar.ptc.weightedScore.medium.medianMs.toFixed(2)}ms median, isolate ${results.isolate.ptc.weightedScore.medium.medianMs.toFixed(2)}ms median`,
+  );
+  console.log('');
+  console.log('Representative PTC transfer summaries:');
+  for (const [name, metric] of Object.entries(results.addon.ptc.transfer)) {
+    console.log(
+      `${name}: calls ${metric.toolCallCount}, families ${metric.toolFamilyCount}, toolBytes ${metric.toolBytesIn}B, resultBytes ${metric.resultBytesOut}B, reduction ${metric.reductionRatio.toFixed(2)}x`,
+    );
+  }
+  console.log('');
   console.log(`Memory retained after ${MEMORY_RUNS} workflow runs:`);
   console.log(`addon heap ${results.addon.memory.heapUsedDeltaBytes}B rss ${results.addon.memory.rssDeltaBytes}B`);
   console.log(`sidecar heap ${results.sidecar.memory.heapUsedDeltaBytes}B rss ${results.sidecar.memory.rssDeltaBytes}B`);
@@ -1516,6 +1677,7 @@ function printSummary(results) {
   console.log(`Failure cleanup hostFailure median ms: addon ${results.addon.failureCleanup.hostFailure.medianMs.toFixed(2)}, sidecar ${results.sidecar.failureCleanup.hostFailure.medianMs.toFixed(2)}, isolate ${results.isolate.failureCleanup.hostFailure.medianMs.toFixed(2)}`);
   console.log('');
   console.log(`Wrote JSON report to ${results.reportPath}`);
+  console.log(`Wrote website benchmark export to ${results.websiteExportPath}`);
 }
 
 async function main() {
@@ -1539,6 +1701,21 @@ async function main() {
       benchmarkKind: 'workloads',
       buildProfile: profile,
     }),
+    ptc: {
+      websiteMetric: 'addon.latency.ptc_website_demo_small',
+      weightedScoreMetric: 'addon.ptc.weightedScore.medium',
+      weights: PTC_WEIGHTS,
+      scenarios: Object.fromEntries(
+        Object.entries(fixtures.ptcScenarios).map(([metricName, scenario]) => [
+          metricName,
+          {
+            laneId: scenario.laneId,
+            sizeName: scenario.sizeName,
+            ...scenario.shape,
+          },
+        ]),
+      ),
+    },
     notes: {
       suspendResumeIsolate:
         'isolated-vm cannot snapshot continuations here; suspend_resume_* is measured as repeated isolate re-entry with explicit host-carried state rebuild.',
@@ -1554,6 +1731,10 @@ async function main() {
         'addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, and full accounting refresh counts.',
       suspendStateDefinitions:
         'addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.',
+      ptcDefinitions:
+        'Representative PTC lanes are sourced from the real programmatic-tool-call gallery: ptc_website_demo_* uses operations/triage-production-incident.js, ptc_incident_triage_* uses operations/triage-multi-region-auth-outage.js, ptc_fraud_investigation_* uses analytics/investigate-fraud-ring.js, and ptc_vendor_review_* uses workflows/vendor-compliance-renewal.js. addon/sidecar/isolate all run the same guest source with deterministic synthetic tool fixtures.',
+      ptcWeightedScoreDefinitions:
+        'runtime.ptc.weightedScore.medium is a weighted median/p95 rollup of ptc_incident_triage_medium (40%), ptc_fraud_investigation_medium (35%), and ptc_vendor_review_medium (25%). runtime.ptc.transfer records actual tool call counts plus JSON-encoded tool/result payload sizes for one untimed representative run of each PTC lane.',
     },
     addon,
     sidecar,
@@ -1563,6 +1744,11 @@ async function main() {
         sidecarVsAddon: ratioTable(addon.latency, sidecar.latency),
         isolateVsAddon: ratioTable(addon.latency, isolate.latency),
         sidecarVsIsolate: ratioTable(isolate.latency, sidecar.latency),
+      },
+      ptcWeightedScore: {
+        sidecarVsAddon: ratioTable(addon.ptc.weightedScore, sidecar.ptc.weightedScore),
+        isolateVsAddon: ratioTable(addon.ptc.weightedScore, isolate.ptc.weightedScore),
+        sidecarVsIsolate: ratioTable(isolate.ptc.weightedScore, sidecar.ptc.weightedScore),
       },
       failureCleanup: {
         sidecarVsAddon: failureRatioTable(addon.failureCleanup, sidecar.failureCleanup),
@@ -1574,6 +1760,7 @@ async function main() {
 
   const reportPath = writeBenchmarkArtifact(results);
   results.reportPath = reportPath;
+  results.websiteExportPath = writeWebsitePtcExport(results);
   printSummary(results);
 }
 

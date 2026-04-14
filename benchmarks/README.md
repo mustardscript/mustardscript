@@ -75,6 +75,19 @@ machine metadata and latency summaries for:
 - addon cold start vs warm run for a code-mode API search fixture
 - addon host-call fanout at 1, 10, 50, and 100 host boundaries
 - addon programmatic tool-calling workflow over synthetic team/budget/expense data
+- representative programmatic tool-calling lanes derived from the audited
+  example gallery:
+  - `ptc_website_demo_{small,medium,large}` from
+    `examples/programmatic-tool-calls/operations/triage-production-incident.js`
+  - `ptc_incident_triage_{small,medium,large}` from
+    `examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js`
+  - `ptc_fraud_investigation_{small,medium,large}` from
+    `examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js`
+  - `ptc_vendor_review_{small,medium,large}` from
+    `examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js`
+- per-lane PTC transfer summaries for actual tool call counts plus
+  JSON-encoded tool-bytes-in / result-bytes-out reduction ratios
+- per-runtime weighted PTC medium-lane score under `runtime.ptc.weightedScore.medium`
 - addon suspend/resume chains with snapshot reloads
 - addon boundary-only measurements for start inputs, suspended args, resume
   values, and resume errors across small/medium/large nested payloads
@@ -102,6 +115,21 @@ machine metadata and latency summaries for:
 
 The release workload artifact is the one to compare in performance writeups,
 plan updates, and optimization commits.
+
+The representative PTC scorecard now treats the three medium-sized primary
+lanes as the main real-world signal:
+
+- `ptc_incident_triage_medium`: `40%`
+- `ptc_fraud_investigation_medium`: `35%`
+- `ptc_vendor_review_medium`: `25%`
+
+`addon.ptc.weightedScore.medium` is the headline rollup for addon optimization
+work, and `addon.latency.ptc_website_demo_small` is the lane intended to back
+the website’s “4-tool orchestration workflow” speed story.
+
+The workload run also refreshes `website/src/generated/benchmarkData.ts` so the
+website speed section reads from the latest representative website-demo lane
+artifact instead of a hardcoded number.
 
 ## Rust Core Microbench Suite
 

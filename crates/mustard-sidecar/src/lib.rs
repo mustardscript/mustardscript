@@ -2,11 +2,14 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 use anyhow::{Context, Result, anyhow};
-use mustard::{BytecodeProgram, StructuredValue};
+use hmac::Mac;
+use mustard::{
+    BytecodeProgram, ExecutionOptions, ExecutionSnapshot, ExecutionStep, ResumeOptions,
+    StructuredValue, dump_snapshot, load_snapshot, resume_with_options, start_shared_bytecode,
+};
 use mustard_bridge::{
     ResumeDto, RuntimeLimitsDto, SnapshotPolicyDto, StartOptionsDto, StepDto,
-    compile_program_bytes, decode_base64, decode_program, encode_bytes_base64, resume_program,
-    start_shared_program,
+    compile_program_bytes, decode_base64, decode_program, encode_bytes_base64,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -221,19 +224,69 @@ fn digest_hex(bytes: &[u8]) -> String {
     encoded
 }
 
-fn step_from_dto(step: StepDto) -> Result<StepBody> {
-    Ok(match step {
-        StepDto::Completed { value } => StepBody::Completed { value },
-        StepDto::Suspended {
-            capability,
-            args,
-            snapshot_base64,
-        } => StepBody::Suspended {
-            capability,
-            args,
-            snapshot_bytes: decode_base64(&snapshot_base64)?,
-        },
-    })
+fn snapshot_key_digest_hex(snapshot_key: &[u8]) -> String {
+    let digest = Sha256::digest(snapshot_key);
+    let mut encoded = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut encoded, "{byte:02x}");
+    }
+    encoded
+}
+
+fn encode_snapshot_token(snapshot_id: &str, snapshot_key: &[u8]) -> Result<String> {
+    let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(snapshot_key)
+        .map_err(|_| anyhow!("invalid snapshot key"))?;
+    mac.update(snapshot_id.as_bytes());
+    let digest = mac.finalize().into_bytes();
+    let mut token = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut token, "{byte:02x}");
+    }
+    Ok(token)
+}
+
+fn assert_authenticated_snapshot_id(snapshot_id: &str, policy: &SnapshotPolicyDto) -> Result<()> {
+    let snapshot_key_base64 = policy
+        .snapshot_key_base64
+        .as_deref()
+        .ok_or_else(|| anyhow!("raw snapshot restore requires snapshot_key_base64"))?;
+    let snapshot_token = policy
+        .snapshot_token
+        .as_deref()
+        .ok_or_else(|| anyhow!("raw snapshot restore requires snapshot_token"))?;
+    let snapshot_key_digest = policy
+        .snapshot_key_digest
+        .as_deref()
+        .ok_or_else(|| anyhow!("raw snapshot restore requires snapshot_key_digest"))?;
+    let snapshot_key = decode_base64(snapshot_key_base64)?;
+    if snapshot_key_digest_hex(&snapshot_key) != snapshot_key_digest {
+        return Err(anyhow!(
+            "raw snapshot restore rejected a mismatched snapshot key digest"
+        ));
+    }
+    let expected = encode_snapshot_token(snapshot_id, &snapshot_key)?;
+    if expected != snapshot_token {
+        return Err(anyhow!(
+            "raw snapshot restore rejected a tampered or unauthenticated snapshot"
+        ));
+    }
+    Ok(())
+}
+
+fn assert_authenticated_snapshot(snapshot_bytes: &[u8], policy: &SnapshotPolicyDto) -> Result<()> {
+    let snapshot_id = policy
+        .snapshot_id
+        .as_deref()
+        .ok_or_else(|| anyhow!("raw snapshot restore requires snapshot_id"))?;
+    let expected_snapshot_id = digest_hex(snapshot_bytes);
+    if expected_snapshot_id != snapshot_id {
+        return Err(anyhow!(
+            "raw snapshot restore rejected a tampered or unauthenticated snapshot"
+        ));
+    }
+    assert_authenticated_snapshot_id(snapshot_id, policy)
 }
 
 fn step_to_json(step: StepBody) -> JsonResponsePayload {
@@ -467,6 +520,18 @@ impl ProgramEntry {
     }
 }
 
+#[derive(Debug)]
+struct SnapshotEntry {
+    bytes: Vec<u8>,
+    live: Option<ExecutionSnapshot>,
+}
+
+impl SnapshotEntry {
+    fn new(bytes: Vec<u8>, live: Option<ExecutionSnapshot>) -> Self {
+        Self { bytes, live }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PolicyEntry {
     capabilities: Vec<String>,
@@ -476,7 +541,7 @@ struct PolicyEntry {
 #[derive(Default)]
 pub struct SidecarSession {
     programs: HashMap<String, ProgramEntry>,
-    snapshots: HashMap<String, Vec<u8>>,
+    snapshots: HashMap<String, SnapshotEntry>,
     policies: HashMap<String, PolicyEntry>,
 }
 
@@ -515,11 +580,12 @@ impl SidecarSession {
         &mut self,
         snapshot_id: Option<String>,
         snapshot_bytes: Option<Vec<u8>>,
-    ) -> Result<(String, Vec<u8>)> {
+    ) -> Result<(String, Option<Vec<u8>>)> {
         if let Some(snapshot_id) = snapshot_id.as_ref()
-            && let Some(snapshot) = self.snapshots.get(snapshot_id)
+            && self.snapshots.contains_key(snapshot_id)
+            && snapshot_bytes.is_none()
         {
-            return Ok((snapshot_id.clone(), snapshot.clone()));
+            return Ok((snapshot_id.clone(), None));
         }
 
         let Some(bytes) = snapshot_bytes else {
@@ -535,10 +601,7 @@ impl SidecarSession {
         {
             return Err(anyhow!("snapshot_id did not match snapshot bytes"));
         }
-        self.snapshots
-            .entry(derived_snapshot_id.clone())
-            .or_insert_with(|| bytes.clone());
-        Ok((derived_snapshot_id, bytes))
+        Ok((derived_snapshot_id, Some(bytes)))
     }
 
     fn resolve_resume_policy(
@@ -595,19 +658,59 @@ impl SidecarSession {
         }
     }
 
-    fn suspended_step_metadata(
+    fn resolve_live_snapshot(
         &mut self,
-        step: &StepBody,
-        policy_id: Option<String>,
-    ) -> Result<(Option<String>, Option<String>)> {
-        let StepBody::Suspended { snapshot_bytes, .. } = step else {
-            return Ok((None, None));
+        snapshot_id: &str,
+        inline_snapshot_bytes: Option<Vec<u8>>,
+    ) -> Result<ExecutionSnapshot> {
+        if let Some(entry) = self.snapshots.get_mut(snapshot_id) {
+            if let Some(snapshot) = entry.live.take() {
+                return Ok(snapshot);
+            }
+            return Ok(load_snapshot(&entry.bytes)?);
+        }
+
+        let Some(snapshot_bytes) = inline_snapshot_bytes else {
+            return Err(anyhow!("unknown snapshot_id `{snapshot_id}`"));
         };
-        let snapshot_id = digest_hex(snapshot_bytes);
-        self.snapshots
-            .entry(snapshot_id.clone())
-            .or_insert_with(|| snapshot_bytes.clone());
-        Ok((Some(snapshot_id), policy_id))
+        let snapshot = load_snapshot(&snapshot_bytes)?;
+        self.snapshots.insert(
+            snapshot_id.to_string(),
+            SnapshotEntry::new(snapshot_bytes, None),
+        );
+        Ok(snapshot)
+    }
+
+    fn response_step(
+        &mut self,
+        step: ExecutionStep,
+        policy_id: Option<String>,
+    ) -> Result<(StepBody, Option<String>, Option<String>)> {
+        match step {
+            ExecutionStep::Completed(value) => Ok((StepBody::Completed { value }, None, None)),
+            ExecutionStep::Suspended(suspension) => {
+                let mustard::Suspension {
+                    capability,
+                    args,
+                    snapshot,
+                } = *suspension;
+                let snapshot_bytes = dump_snapshot(&snapshot)?;
+                let snapshot_id = digest_hex(&snapshot_bytes);
+                self.snapshots.insert(
+                    snapshot_id.clone(),
+                    SnapshotEntry::new(snapshot_bytes.clone(), Some(snapshot)),
+                );
+                Ok((
+                    StepBody::Suspended {
+                        capability,
+                        args,
+                        snapshot_bytes,
+                    },
+                    Some(snapshot_id),
+                    policy_id,
+                ))
+            }
+        }
     }
 
     fn resolve_program(
@@ -691,9 +794,16 @@ impl SidecarSession {
             } => (|| {
                 let program = self.resolve_program(program_id, program_bytes)?;
                 let policy_id = self.register_policy(&options.capabilities, &options.limits)?;
-                let step = step_from_dto(start_shared_program(program, options, None)?)?;
-                let (snapshot_id, policy_id) =
-                    self.suspended_step_metadata(&step, Some(policy_id))?;
+                let step = start_shared_bytecode(
+                    program,
+                    ExecutionOptions {
+                        inputs: options.inputs.into_iter().collect(),
+                        capabilities: options.capabilities,
+                        limits: options.limits.into_runtime_limits(),
+                        cancellation_token: None,
+                    },
+                )?;
+                let (step, snapshot_id, policy_id) = self.response_step(step, Some(policy_id))?;
                 Ok(ResponseBody::Step {
                     step,
                     snapshot_id,
@@ -709,13 +819,25 @@ impl SidecarSession {
                 payload,
                 ..
             } => (|| {
-                let (snapshot_id, snapshot_bytes) =
+                let (snapshot_id, inline_snapshot_bytes) =
                     self.resolve_snapshot(snapshot_id, snapshot_bytes)?;
                 let (policy, policy_id) =
                     self.resolve_resume_policy(policy, policy_id, &snapshot_id, auth)?;
-                let step = step_from_dto(resume_program(&snapshot_bytes, *payload, policy, None)?)?;
-                let (next_snapshot_id, policy_id) =
-                    self.suspended_step_metadata(&step, policy_id)?;
+                if let Some(snapshot_bytes) = inline_snapshot_bytes.as_deref() {
+                    assert_authenticated_snapshot(snapshot_bytes, &policy)?;
+                } else {
+                    assert_authenticated_snapshot_id(&snapshot_id, &policy)?;
+                }
+                let snapshot = self.resolve_live_snapshot(&snapshot_id, inline_snapshot_bytes)?;
+                let step = resume_with_options(
+                    snapshot,
+                    payload.into_resume_payload(),
+                    ResumeOptions {
+                        cancellation_token: None,
+                        snapshot_policy: Some(policy.into_snapshot_policy()?),
+                    },
+                )?;
+                let (step, next_snapshot_id, policy_id) = self.response_step(step, policy_id)?;
                 Ok(ResponseBody::Step {
                     step,
                     snapshot_id: next_snapshot_id,
