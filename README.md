@@ -79,6 +79,7 @@ The current implementation already supports:
 - [Runtime Value Model](docs/RUNTIME_MODEL.md)
 - [Sidecar Protocol](docs/SIDECAR_PROTOCOL.md)
 - [Benchmarking Notes and Comparison Plan](benchmarks/README.md)
+- [PTC Benchmark Coverage](docs/PTC_BENCHMARK_COVERAGE.md)
 - [Release Guide](docs/RELEASE.md)
 - [Architecture ADRs](docs/ADRs/0001-core-architecture.md)
 

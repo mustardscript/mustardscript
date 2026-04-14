@@ -12,6 +12,10 @@ lastUpdated: "2026-04-14"
 This document summarizes the latest kept benchmark evidence from:
 
 - workload suite: `benchmarks/results/2026-04-14T03-41-06-633Z-workloads.json`
+- phase-2 broad PTC suite:
+  `benchmarks/results/2026-04-14T07-34-09-931Z-ptc_broad_release-release.json`
+- phase-2 holdout PTC suite:
+  `benchmarks/results/2026-04-14T07-38-31-068Z-ptc_holdout_release-release.json`
 - release smoke suite: `benchmarks/results/2026-04-13T23-00-15-361Z-smoke-release.json`
 
 Machine and environment:
@@ -20,9 +24,59 @@ Machine and environment:
 - OS: `darwin 25.2.0`
 - Arch: `arm64`
 - Node: `v24.12.0`
-- Git SHA in workload artifact: `043e182`
-- Workload fixture version: `6`
+- Git SHA in broad artifact: `d50826f`
+- Workload fixture version: `8`
 - Smoke fixture version: `2`
+
+## Phase-2 Broad Baseline
+
+The current kept broad-panel phase-2 artifact comes from:
+
+- `npm run bench:ptc:broad`
+- artifact:
+  `benchmarks/results/2026-04-14T07-34-09-931Z-ptc_broad_release-release.json`
+
+That artifact keeps the phase-1 representative weighted score in the full
+`workloads` run, but it adds the new balanced real-gallery scorecard for the
+phase-2 optimization loop, the skewed headline seed companions, and the
+expanded durable panel.
+
+Current broad-panel position versus isolate on the kept phase-2 artifact:
+
+| Metric | Addon | Sidecar | Isolate |
+| --- | ---: | ---: | ---: |
+| `ptc.phase2.scorecards.headlineScore.medium` | `0.74 ms` | `2.83 ms` | `0.79 ms` |
+| `ptc.phase2.scorecards.broadScore.medium` | `0.61 ms` | `2.27 ms` | `0.70 ms` |
+| `ptc.phase2.scorecards.durableScore.medium` | `0.72 ms` | `0.96 ms` | `0.18 ms` |
+| `ptc.phase2.scorecards.p90LaneRatio.medium` | `1.20x` | `4.39x` | `1.00x` |
+| `ptc.phase2.scorecards.worstLaneRatio.medium` | `1.58x` | `6.63x` | `1.00x` |
+
+Matching holdout evidence now comes from:
+
+- `npm run bench:ptc:holdout`
+- artifact:
+  `benchmarks/results/2026-04-14T07-38-31-068Z-ptc_holdout_release-release.json`
+
+Current holdout-panel position versus isolate on that artifact:
+
+| Metric | Addon | Sidecar | Isolate |
+| --- | ---: | ---: | ---: |
+| `ptc.phase2.scorecards.holdoutScore.medium` | `0.67 ms` | `1.80 ms` | `0.75 ms` |
+
+The current broad-panel artifact is intentionally a baseline, not a victory lap.
+It proves the phase-2 portfolio is wired end to end and artifact-backed, and
+it gives future optimization work a real broad-panel number to beat instead of
+only the older three-lane weighted score.
+
+The current kept broad artifact also verifies the new phase-2 variation layer:
+
+- every headline lane now has a deterministic `medium_skewed` companion metric
+- the broad release command exact-checks those skewed headline seeds across
+  addon, sidecar, and isolate
+- the durable panel now covers:
+  - `ptc_vendor_review_durable_medium`
+  - `ptc_plan-database-failover_durable_medium`
+  - `ptc_privacy-erasure-orchestration_durable_medium`
 
 ## Headline Results
 
@@ -114,8 +168,10 @@ already-reduced boundary work instead of unresolved queue-time outcome cloning.
 
 The broader repo verification for the current kept state passed:
 
-- `npm run bench:rust`
-- `npm run bench:workloads:release`
+- `npm run bench:ptc:broad`
+- `npm run bench:ptc:holdout`
+- `npm run bench:ptc:sentinel`
+- `npm run bench:workloads:dev -- --mode ptc_headline_release`
 - `cargo test --workspace`
 - `npm test`
 - `npm run lint`

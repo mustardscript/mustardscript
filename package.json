@@ -77,6 +77,13 @@
     "bench:workloads": "npm run bench:workloads:release",
     "bench:workloads:dev": "node scripts/build-ts-dist.ts && napi build --platform --manifest-path crates/mustard-node/Cargo.toml --js-package-name mustardscript --output-dir . --no-js && cargo build -q -p mustard-sidecar && node --expose-gc benchmarks/workloads.ts --profile dev",
     "bench:workloads:release": "node scripts/build-ts-dist.ts && napi build --platform --release --manifest-path crates/mustard-node/Cargo.toml --js-package-name mustardscript --output-dir . --no-js && cargo build -q --release -p mustard-sidecar && node --expose-gc benchmarks/workloads.ts --profile release",
+    "bench:ptc:release": "npm run bench:workloads:release",
+    "bench:ptc:public": "npm run bench:workloads:release -- --mode ptc_public",
+    "bench:ptc:headline": "npm run bench:workloads:release -- --mode ptc_headline_release",
+    "bench:ptc:broad": "npm run bench:workloads:release -- --mode ptc_broad_release",
+    "bench:ptc:holdout": "npm run bench:workloads:release -- --mode ptc_holdout_release",
+    "bench:ptc:gallery-canary": "npm run bench:workloads:release -- --mode ptc_gallery_canary",
+    "bench:ptc:sentinel": "npm run bench:workloads:release -- --mode ptc_sentinel_release",
     "bench:compare": "node scripts/benchmark-compare.ts"
   },
   "repository": {

@@ -16,6 +16,12 @@ npm run bench:smoke:dev
 npm run bench:smoke:release
 npm run bench:workloads:dev
 npm run bench:workloads:release
+npm run bench:ptc:public
+npm run bench:ptc:headline
+npm run bench:ptc:broad
+npm run bench:ptc:holdout
+npm run bench:ptc:gallery-canary
+npm run bench:ptc:sentinel
 npm run bench:rust
 ```
 
@@ -28,6 +34,19 @@ npm run bench:workloads
 
 Those aliases currently map to the fast dev smoke run and the release workload
 run respectively.
+
+The new `bench:ptc:*` scripts all build the addon and sidecar first, then run
+`benchmarks/workloads.ts` with a targeted `--mode`:
+
+- `bench:ptc:public`: website-backed `ptc_website_demo_small` only
+- `bench:ptc:headline`: the 6-lane balanced engineering headline panel plus
+  the 6 skewed headline-seed companions and the durable panel
+- `bench:ptc:broad`: the 12-lane balanced broad panel plus the skewed
+  headline-seed companions and the durable panel
+- `bench:ptc:holdout`: the 12-lane holdout panel
+- `bench:ptc:gallery-canary`: all 24 audited gallery lanes with lower iteration
+  count
+- `bench:ptc:sentinel`: the three sentinel families only
 
 `npm run bench:rust` runs the Rust-core microbenchmark suite in
 `crates/mustard/benches/runtime_core.rs`.
@@ -85,9 +104,13 @@ machine metadata and latency summaries for:
     `examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js`
   - `ptc_vendor_review_{small,medium,large}` from
     `examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js`
-- durable-boundary vendor-review resume lanes:
+- durable-boundary resume lanes:
   - `ptc_vendor_review_durable_{small,medium,large}` from
     `examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js`
+  - `ptc_plan-database-failover_durable_medium` from
+    `examples/programmatic-tool-calls/operations/plan-database-failover.js`
+  - `ptc_privacy-erasure-orchestration_durable_medium` from
+    `examples/programmatic-tool-calls/workflows/privacy-erasure-orchestration.js`
 - per-lane PTC transfer summaries for actual tool call counts plus
   JSON-encoded tool-bytes-in / result-bytes-out reduction ratios
 - addon representative PTC boundary breakdowns for the website-sized public
@@ -125,11 +148,36 @@ machine metadata and latency summaries for:
   - `transport_resume_only`
 - the same workload classes over the sidecar transport
 - the same workload classes over an `isolated-vm` V8 isolate baseline
+- phase-2 real-gallery PTC lanes sourced directly from the audited
+  `examples/programmatic-tool-calls/*/catalog.ts` portfolio:
+  - headline panel: `6` medium lanes, balanced `2 / 2 / 2` across analytics,
+    operations, and workflows
+  - headline skew companions: one checked-in `medium_skewed` lane for each
+    headline workload
+  - broad panel: `12` medium lanes, balanced `4 / 4 / 4`
+  - holdout panel: the remaining `12` audited medium lanes
+  - gallery canary: a lower-iteration all-24 summary derived from the same
+    exact-output-checked gallery scenarios
+  - sentinel families:
+    - `code_mode_search`
+    - `result_materialization`
+    - `low_compaction_fanout`
 - retained parent-process heap/RSS deltas after repeated workflow runs
 - failure-and-recovery timing for runtime-limit and host-failure cases
 
 The release workload artifact is the one to compare in performance writeups,
 plan updates, and optimization commits.
+
+Phase-2 scorecards now live under `runtime.ptc.phase2.scorecards` and include:
+
+- `headlineScore.medium`
+- `broadScore.medium`
+- `holdoutScore.medium`
+- `durableScore.medium`
+- `categoryScore.{analytics,operations,workflows}.medium`
+- `p90LaneRatio.medium`
+- `worstLaneRatio.medium`
+- `sentinelFamily.{code_mode_search,result_materialization,low_compaction_fanout}`
 
 The representative PTC scorecard now treats the three medium-sized primary
 lanes as the main real-world signal:

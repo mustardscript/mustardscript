@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { createDurableGalleryScenarios } = require('./ptc-durable-gallery.ts');
+
 const EXAMPLES_ROOT = path.join(__dirname, '..', 'examples', 'programmatic-tool-calls');
 
 const PTC_WEIGHTS = Object.freeze({
@@ -534,6 +536,7 @@ function createVendorDurableScenario(sizeName) {
     metricName: `ptc_vendor_review_durable_${sizeName}`,
     laneId: 'vendor_review_durable',
     sizeName,
+    checkpointCapability: 'checkpoint_vendor_review',
     sourceFile: 'workflows/vendor-compliance-renewal-durable.js',
     source: loadExampleSource('workflows/vendor-compliance-renewal-durable.js'),
     inputs,
@@ -650,6 +653,7 @@ function createDurablePtcScenarios() {
     const scenario = createVendorDurableScenario(sizeName);
     scenarios[scenario.metricName] = scenario;
   }
+  Object.assign(scenarios, createDurableGalleryScenarios());
   return scenarios;
 }
 

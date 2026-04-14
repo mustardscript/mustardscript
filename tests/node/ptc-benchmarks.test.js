@@ -48,6 +48,8 @@ test('durable PTC scenarios cover the persisted vendor-review checkpoint lane ac
     'ptc_vendor_review_durable_small',
     'ptc_vendor_review_durable_medium',
     'ptc_vendor_review_durable_large',
+    'ptc_plan-database-failover_durable_medium',
+    'ptc_privacy-erasure-orchestration_durable_medium',
   ]);
 
   for (const scenario of Object.values(scenarios)) {
@@ -55,9 +57,10 @@ test('durable PTC scenarios cover the persisted vendor-review checkpoint lane ac
     assert.ok(scenario.source.length > 0);
     assert.equal(typeof scenario.createCapabilities, 'function');
     assert.equal(typeof scenario.assertResult, 'function');
+    assert.equal(typeof scenario.checkpointCapability, 'string');
     assert.equal(scenario.shape.finalAction, true);
     assert.equal(scenario.shape.durableBoundary, true);
-    assert.ok(scenario.shape.sourceRef.includes('vendor-compliance-renewal-durable.js'));
+    assert.ok(scenario.shape.sourceRef.includes('examples/programmatic-tool-calls/'));
   }
 });
 
