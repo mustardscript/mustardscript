@@ -18,6 +18,27 @@ Phase 2 must make that target robust:
 - the suite should stay practical enough to run regularly, while still being
   broad enough to resist overfitting
 
+## Closeout Decision
+
+Phase 2 is complete on the shipped generic path.
+
+The current default-on runtime already meets the plan's broad-panel objective
+without needing any benchmark-specific execution tier:
+
+- the phase-2 portfolio, coverage matrix, skewed headline seeds, durable panel,
+  holdout panel, gallery canary, sentinel families, anti-overfit scorecards,
+  and deeper attribution are all implemented and verified
+- the shipped default-on path beats the phase-2 stretch targets for headline,
+  broad, holdout, `p90`, and worst-lane median ratios on the current release
+  artifacts
+- milestones 5, 7, and 9 were still useful engineering explorations, but their
+  extra default-on paths did not beat the shipped broad/holdout guardrails and
+  therefore remain explicit opt-in experiments rather than required completion
+  criteria
+- milestone 10 is a no-go: the generic path no longer misses the broad-panel
+  target by a meaningful margin, so a dedicated PTC tier would add maintenance
+  cost without being justified by the current artifact-backed results
+
 ## Audited Baseline
 
 Audited inputs and evidence:

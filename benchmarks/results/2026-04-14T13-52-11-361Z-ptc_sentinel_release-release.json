@@ -1,0 +1,1900 @@
+{
+  "machine": {
+    "timestamp": "2026-04-14T13:52:11.361Z",
+    "benchmarkKind": "ptc_sentinel_release",
+    "buildProfile": "release",
+    "gitSha": "494a070",
+    "fixtureVersion": 10,
+    "hostname": "mac.lan",
+    "platform": "darwin 25.2.0",
+    "arch": "arm64",
+    "nodeVersion": "v24.12.0",
+    "cpuModel": "Apple M4",
+    "cpuCount": 10,
+    "totalMemoryBytes": 17179869184
+  },
+  "ptc": {
+    "websiteMetric": "addon.latency.ptc_website_demo_small",
+    "weightedScoreMetric": "addon.ptc.weightedScore.medium",
+    "phase2Mode": "ptc_sentinel_release",
+    "weights": {
+      "ptc_incident_triage_medium": 0.4,
+      "ptc_fraud_investigation_medium": 0.35,
+      "ptc_vendor_review_medium": 0.25
+    },
+    "scenarios": {
+      "ptc_website_demo_small": {
+        "laneId": "website_demo",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+        "toolFamilyCount": 4,
+        "logicalPeakFanout": 1,
+        "finalAction": false,
+        "usesPromiseAll": false,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "alertCount": 4,
+          "deployCount": 2,
+          "logCount": 9
+        }
+      },
+      "ptc_incident_triage_small": {
+        "laneId": "incident_triage",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 9,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "regionCount": 3,
+          "alertsPerRegion": 2,
+          "samplesPerRegion": 2
+        }
+      },
+      "ptc_fraud_investigation_small": {
+        "laneId": "fraud_investigation",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "transactionCount": 24,
+          "accountCount": 8,
+          "entityCount": 6,
+          "cardCount": 5
+        }
+      },
+      "ptc_vendor_review_small": {
+        "laneId": "vendor_review",
+        "sizeName": "small",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 3,
+          "flowCount": 4,
+          "subprocessorCount": 4
+        }
+      },
+      "ptc_website_demo_medium": {
+        "laneId": "website_demo",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+        "toolFamilyCount": 4,
+        "logicalPeakFanout": 1,
+        "finalAction": false,
+        "usesPromiseAll": false,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "alertCount": 10,
+          "deployCount": 4,
+          "logCount": 24
+        }
+      },
+      "ptc_incident_triage_medium": {
+        "laneId": "incident_triage",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 18,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "regionCount": 6,
+          "alertsPerRegion": 3,
+          "samplesPerRegion": 3
+        }
+      },
+      "ptc_fraud_investigation_medium": {
+        "laneId": "fraud_investigation",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "transactionCount": 96,
+          "accountCount": 24,
+          "entityCount": 16,
+          "cardCount": 12
+        }
+      },
+      "ptc_vendor_review_medium": {
+        "laneId": "vendor_review",
+        "sizeName": "medium",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 5,
+          "flowCount": 10,
+          "subprocessorCount": 10
+        }
+      },
+      "ptc_website_demo_large": {
+        "laneId": "website_demo",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-production-incident.js",
+        "toolFamilyCount": 4,
+        "logicalPeakFanout": 1,
+        "finalAction": false,
+        "usesPromiseAll": false,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "alertCount": 24,
+          "deployCount": 8,
+          "logCount": 60
+        }
+      },
+      "ptc_incident_triage_large": {
+        "laneId": "incident_triage",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 36,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "regionCount": 12,
+          "alertsPerRegion": 4,
+          "samplesPerRegion": 4
+        }
+      },
+      "ptc_fraud_investigation_large": {
+        "laneId": "fraud_investigation",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": false,
+        "usesPromiseAll": true,
+        "usesMap": true,
+        "usesSet": true,
+        "scale": {
+          "transactionCount": 384,
+          "accountCount": 96,
+          "entityCount": 64,
+          "cardCount": 48
+        }
+      },
+      "ptc_vendor_review_large": {
+        "laneId": "vendor_review",
+        "sizeName": "large",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 7,
+          "flowCount": 24,
+          "subprocessorCount": 24
+        }
+      }
+    },
+    "durableScenarios": {
+      "ptc_vendor_review_durable_small": {
+        "laneId": "vendor_review_durable",
+        "sizeName": "small",
+        "checkpointCapability": "checkpoint_vendor_review",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "durableBoundary": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 3,
+          "flowCount": 4,
+          "subprocessorCount": 4
+        }
+      },
+      "ptc_vendor_review_durable_medium": {
+        "laneId": "vendor_review_durable",
+        "sizeName": "medium",
+        "checkpointCapability": "checkpoint_vendor_review",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "durableBoundary": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 5,
+          "flowCount": 10,
+          "subprocessorCount": 10
+        }
+      },
+      "ptc_vendor_review_durable_large": {
+        "laneId": "vendor_review_durable",
+        "sizeName": "large",
+        "checkpointCapability": "checkpoint_vendor_review",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal-durable.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 4,
+        "finalAction": true,
+        "durableBoundary": true,
+        "usesPromiseAll": true,
+        "usesMap": false,
+        "usesSet": false,
+        "scale": {
+          "frameworkCount": 7,
+          "flowCount": 24,
+          "subprocessorCount": 24
+        }
+      },
+      "ptc_plan-database-failover_durable_medium": {
+        "laneId": "plan-database-failover",
+        "sizeName": "medium",
+        "checkpointCapability": "request_operator_approval",
+        "sourceRef": "examples/programmatic-tool-calls/operations/plan-database-failover.js",
+        "toolFamilyCount": 5,
+        "logicalPeakFanout": 1,
+        "compactionExpectation": "moderate_compaction",
+        "finalAction": true,
+        "firstStageAsyncFanout": false,
+        "derivedIdSecondStageFanout": false,
+        "mapHeavyJoinOrCounter": false,
+        "setHeavyDedupe": false,
+        "localRankingOrSort": false,
+        "stringNormalizationOrClassification": false,
+        "repeatedStaticPropertyReads": true,
+        "chronologyReasoning": true,
+        "finalActionWriteback": true,
+        "durableBoundary": true
+      },
+      "ptc_privacy-erasure-orchestration_durable_medium": {
+        "laneId": "privacy-erasure-orchestration",
+        "sizeName": "medium",
+        "checkpointCapability": "queue_erasure_job",
+        "sourceRef": "examples/programmatic-tool-calls/workflows/privacy-erasure-orchestration.js",
+        "toolFamilyCount": 6,
+        "logicalPeakFanout": 1,
+        "compactionExpectation": "moderate_compaction",
+        "finalAction": true,
+        "firstStageAsyncFanout": false,
+        "derivedIdSecondStageFanout": false,
+        "mapHeavyJoinOrCounter": false,
+        "setHeavyDedupe": false,
+        "localRankingOrSort": false,
+        "stringNormalizationOrClassification": false,
+        "repeatedStaticPropertyReads": true,
+        "chronologyReasoning": true,
+        "finalActionWriteback": true,
+        "durableBoundary": true
+      }
+    },
+    "phase2": {
+      "headlineUseCaseIds": [
+        "analytics_fraud_ring",
+        "analytics_revenue_quality",
+        "triage-multi-region-auth-outage",
+        "analyze-queue-backlog-regression",
+        "vendor-compliance-renewal",
+        "privacy-erasure-orchestration"
+      ],
+      "broadUseCaseIds": [
+        "analytics_revenue_quality",
+        "analytics_fraud_ring",
+        "analytics_supplier_disruption",
+        "analytics_model_regression",
+        "triage-multi-region-auth-outage",
+        "reconcile-marketplace-payouts",
+        "analyze-queue-backlog-regression",
+        "plan-database-failover",
+        "security-access-recertification",
+        "vendor-compliance-renewal",
+        "privacy-erasure-orchestration",
+        "chargeback-evidence-assembly"
+      ],
+      "holdoutUseCaseIds": [
+        "analytics_market_event_brief",
+        "analytics_enterprise_renewal",
+        "analytics_market_abuse_review",
+        "analytics_capital_allocation",
+        "guard-payments-rollout",
+        "stabilize-oncall-handoff",
+        "coordinate-warehouse-exception",
+        "assess-global-deployment-freeze",
+        "approval-exception-routing",
+        "vip-support-escalation",
+        "payout-batch-release-review",
+        "enterprise-renewal-save-plan"
+      ],
+      "galleryScenarios": {
+        "ptc_analytics_revenue_quality_medium": {
+          "laneId": "analytics_revenue_quality",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/analyze-revenue-quality.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 9,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_fraud_ring_medium": {
+          "laneId": "analytics_fraud_ring",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_supplier_disruption_medium": {
+          "laneId": "analytics_supplier_disruption",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/assess-supplier-disruption.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_market_event_brief_medium": {
+          "laneId": "analytics_market_event_brief",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/prepare-market-event-brief.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 5,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_model_regression_medium": {
+          "laneId": "analytics_model_regression",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/triage-model-regression.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 7,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_enterprise_renewal_medium": {
+          "laneId": "analytics_enterprise_renewal",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/underwrite-enterprise-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": true
+        },
+        "ptc_analytics_market_abuse_review_medium": {
+          "laneId": "analytics_market_abuse_review",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/escalate-market-abuse-review.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": true
+        },
+        "ptc_analytics_capital_allocation_medium": {
+          "laneId": "analytics_capital_allocation",
+          "category": "analytics",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/analytics/build-capital-allocation-brief.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_triage-multi-region-auth-outage_medium": {
+          "laneId": "triage-multi-region-auth-outage",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 10,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_guard-payments-rollout_medium": {
+          "laneId": "guard-payments-rollout",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/guard-payments-rollout.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 7,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_reconcile-marketplace-payouts_medium": {
+          "laneId": "reconcile-marketplace-payouts",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/reconcile-marketplace-payouts.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 7,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_stabilize-oncall-handoff_medium": {
+          "laneId": "stabilize-oncall-handoff",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/stabilize-oncall-handoff.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analyze-queue-backlog-regression_medium": {
+          "laneId": "analyze-queue-backlog-regression",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/analyze-queue-backlog-regression.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 12,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_plan-database-failover_medium": {
+          "laneId": "plan-database-failover",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/plan-database-failover.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": true,
+          "durableBoundary": true
+        },
+        "ptc_coordinate-warehouse-exception_medium": {
+          "laneId": "coordinate-warehouse-exception",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/coordinate-warehouse-exception.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 5,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_assess-global-deployment-freeze_medium": {
+          "laneId": "assess-global-deployment-freeze",
+          "category": "operations",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/operations/assess-global-deployment-freeze.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 8,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_approval-exception-routing_medium": {
+          "laneId": "approval-exception-routing",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/approval-exception-routing.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": true
+        },
+        "ptc_security-access-recertification_medium": {
+          "laneId": "security-access-recertification",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/security-access-recertification.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 5,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_vip-support-escalation_medium": {
+          "laneId": "vip-support-escalation",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vip-support-escalation.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 5,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_payout-batch-release-review_medium": {
+          "laneId": "payout-batch-release-review",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/payout-batch-release-review.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_enterprise-renewal-save-plan_medium": {
+          "laneId": "enterprise-renewal-save-plan",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/enterprise-renewal-save-plan.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_vendor-compliance-renewal_medium": {
+          "laneId": "vendor-compliance-renewal",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_privacy-erasure-orchestration_medium": {
+          "laneId": "privacy-erasure-orchestration",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/privacy-erasure-orchestration.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": true,
+          "durableBoundary": true
+        },
+        "ptc_chargeback-evidence-assembly_medium": {
+          "laneId": "chargeback-evidence-assembly",
+          "category": "workflows",
+          "sizeName": "medium",
+          "sourceRef": "examples/programmatic-tool-calls/workflows/chargeback-evidence-assembly.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        }
+      },
+      "headlineSeedScenarios": {
+        "ptc_analytics_revenue_quality_medium_skewed": {
+          "laneId": "analytics_revenue_quality",
+          "nominalMetricName": "ptc_analytics_revenue_quality_medium",
+          "category": "analytics",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "hotspot_cardinality_skew",
+            "duplicate_heavy_collections",
+            "longer_deal_reason_strings"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/analytics/analyze-revenue-quality.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 9,
+          "compactionExpectation": "lower_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analytics_fraud_ring_medium_skewed": {
+          "laneId": "analytics_fraud_ring",
+          "nominalMetricName": "ptc_analytics_fraud_ring_medium",
+          "category": "analytics",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "hotspot_cardinality_skew",
+            "duplicate_heavy_joins",
+            "noisier_identity_and_note_strings"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/analytics/investigate-fraud-ring.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_triage-multi-region-auth-outage_medium_skewed": {
+          "laneId": "triage-multi-region-auth-outage",
+          "nominalMetricName": "ptc_triage-multi-region-auth-outage_medium",
+          "category": "operations",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "duplicate_heavy_alert_dedupe",
+            "regional_hotspot_skew",
+            "longer_error_sample_strings"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/operations/triage-multi-region-auth-outage.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 10,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": true,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_analyze-queue-backlog-regression_medium_skewed": {
+          "laneId": "analyze-queue-backlog-regression",
+          "nominalMetricName": "ptc_analyze-queue-backlog-regression_medium",
+          "category": "operations",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "hotspot_cardinality_skew",
+            "larger_intermediate_payloads",
+            "noisier_dead_letter_strings"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/operations/analyze-queue-backlog-regression.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 12,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": true,
+          "mapHeavyJoinOrCounter": true,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": true,
+          "stringNormalizationOrClassification": true,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": false,
+          "durableBoundary": false
+        },
+        "ptc_vendor-compliance-renewal_medium_skewed": {
+          "laneId": "vendor-compliance-renewal",
+          "nominalMetricName": "ptc_vendor-compliance-renewal_medium",
+          "category": "workflows",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "larger_intermediate_payloads",
+            "duplicate_heavy_evidence_sets",
+            "lower_signal_to_noise"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/workflows/vendor-compliance-renewal.js",
+          "toolFamilyCount": 5,
+          "logicalPeakFanout": 4,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": true,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": false,
+          "finalActionWriteback": true,
+          "durableBoundary": false
+        },
+        "ptc_privacy-erasure-orchestration_medium_skewed": {
+          "laneId": "privacy-erasure-orchestration",
+          "nominalMetricName": "ptc_privacy-erasure-orchestration_medium",
+          "category": "workflows",
+          "sizeName": "medium",
+          "seedName": "skewed",
+          "skewPatterns": [
+            "writeback_fanout_skew",
+            "retention_hold_hotspot",
+            "larger_intermediate_payloads"
+          ],
+          "sourceRef": "examples/programmatic-tool-calls/workflows/privacy-erasure-orchestration.js",
+          "toolFamilyCount": 6,
+          "logicalPeakFanout": 1,
+          "compactionExpectation": "moderate_compaction",
+          "firstStageAsyncFanout": false,
+          "derivedIdSecondStageFanout": false,
+          "mapHeavyJoinOrCounter": false,
+          "setHeavyDedupe": false,
+          "localRankingOrSort": false,
+          "stringNormalizationOrClassification": false,
+          "repeatedStaticPropertyReads": true,
+          "chronologyReasoning": true,
+          "finalActionWriteback": true,
+          "durableBoundary": true
+        }
+      },
+      "sentinelFamilies": {
+        "code_mode_search": {
+          "medium_compact": {
+            "metricName": "sentinel_code_mode_search_medium_compact",
+            "toolFamilyCount": 0,
+            "logicalPeakFanout": 0,
+            "compactionExpectation": "moderate_compaction"
+          },
+          "large_compact": {
+            "metricName": "sentinel_code_mode_search_large_compact",
+            "toolFamilyCount": 0,
+            "logicalPeakFanout": 0,
+            "compactionExpectation": "moderate_compaction"
+          },
+          "large_structured": {
+            "metricName": "sentinel_code_mode_search_large_structured",
+            "toolFamilyCount": 0,
+            "logicalPeakFanout": 0,
+            "compactionExpectation": "lower_compaction"
+          }
+        },
+        "result_materialization": {
+          "medium_summary": {
+            "metricName": "sentinel_result_materialization_medium_summary",
+            "toolFamilyCount": 1,
+            "logicalPeakFanout": 1,
+            "compactionExpectation": "moderate_compaction"
+          },
+          "medium_structured": {
+            "metricName": "sentinel_result_materialization_medium_structured",
+            "toolFamilyCount": 1,
+            "logicalPeakFanout": 1,
+            "compactionExpectation": "lower_compaction"
+          },
+          "medium_expanded": {
+            "metricName": "sentinel_result_materialization_medium_expanded",
+            "toolFamilyCount": 1,
+            "logicalPeakFanout": 1,
+            "compactionExpectation": "lower_compaction"
+          }
+        },
+        "low_compaction_fanout": {
+          "medium_high_compaction": {
+            "metricName": "sentinel_low_compaction_fanout_medium_high_compaction",
+            "toolFamilyCount": 2,
+            "logicalPeakFanout": 2,
+            "compactionExpectation": "moderate_compaction"
+          },
+          "medium_moderate_compaction": {
+            "metricName": "sentinel_low_compaction_fanout_medium_moderate_compaction",
+            "toolFamilyCount": 2,
+            "logicalPeakFanout": 2,
+            "compactionExpectation": "lower_compaction"
+          },
+          "medium_low_compaction": {
+            "metricName": "sentinel_low_compaction_fanout_medium_low_compaction",
+            "toolFamilyCount": 2,
+            "logicalPeakFanout": 2,
+            "compactionExpectation": "lower_compaction"
+          }
+        }
+      }
+    }
+  },
+  "notes": {
+    "suspendResumeIsolate": "isolated-vm cannot snapshot continuations here; suspend_resume_* is measured as repeated isolate re-entry with explicit host-carried state rebuild.",
+    "sidecarMemory": "sidecar memory deltas include parent Node process RSS plus the live child sidecar RSS sampled via ps.",
+    "phaseSplitDefinitions": "addon.phases isolates compile-free runtime slices: runtime_init_only uses a precompiled trivial program, execution_only_small resumes pre-created suspended progress, snapshot_load_only uses raw native detached-snapshot inspection, and Progress.load_only measures the public JS wrapper before cleanup.",
+    "sidecarPhaseDefinitions": "sidecar.phases separates process startup from warm execution and transport-dominated resume work: startup_only measures spawn plus clean shutdown, execution_only_small reuses a precompiled program in a warm sidecar, and transport_resume_only replays an already-suspended minimal snapshot so snapshot bytes, auth metadata, and stdio round-trips dominate the timed region.",
+    "boundaryDefinitions": "addon.boundary isolates structured host-boundary work for start inputs, suspended args, resume values, and resume errors across small/medium/large nested payloads while keeping compile and unrelated guest execution out of the timed region.",
+    "counterDefinitions": "addon.counters records untimed cumulative runtime counters from representative addon executions: GC collection count, total GC time, reclaimed bytes/allocations, accounting refresh counts, dynamic instruction dispatch count, property IC counters, feedback-directed hot-site counts for property/collection/string sites, patched-property site hit/fallback/invalidation/deopt counters, object/array allocations, Map.get/Map.set, Set.add/Set.has, string case conversion, ASCII string case fast-path hit/fallback counts, literal string search, ASCII substring-search hit/fallback counts, regex search or replacement, ASCII cleanup replaceAll hit/fallback counts, comparator-based sort invocations, and line/column-resolved collection call-site hotspots for representative phase-2 gallery lanes.",
+    "suspendStateDefinitions": "addon.suspendState records serialized program bytes, dumped snapshot bytes, and retained live Progress memory deltas for the suspend_resume_* fixtures while holding a batch of suspended Progress objects live.",
+    "ptcDefinitions": "Representative PTC lanes are sourced from the real programmatic-tool-call gallery: ptc_website_demo_* uses operations/triage-production-incident.js, ptc_incident_triage_* uses operations/triage-multi-region-auth-outage.js, ptc_fraud_investigation_* uses analytics/investigate-fraud-ring.js, and ptc_vendor_review_* uses workflows/vendor-compliance-renewal.js. addon/sidecar/isolate all run the same guest source with deterministic synthetic tool fixtures.",
+    "ptcWeightedScoreDefinitions": "runtime.ptc.weightedScore.medium is a weighted median/p95 rollup of ptc_incident_triage_medium (40%), ptc_fraud_investigation_medium (35%), and ptc_vendor_review_medium (25%). runtime.ptc.transfer records actual tool call counts plus JSON-encoded tool/result payload sizes for one untimed representative run of each PTC lane.",
+    "ptcBreakdownDefinitions": "addon.ptc.breakdown records representative profiled addon runs for the website-small lane, the original medium primary lanes, and the phase-2 headline gallery lanes. hostCallbacks measures JS time spent inside host tool handlers, guestExecution measures Rust runtime execution between boundaries, boundaryParse measures native addon decode/parse of live start/resume payloads, boundaryEncode measures native addon encoding of step results, and boundaryCodec is parse+encode combined.",
+    "sidecarPtcBreakdownDefinitions": "sidecar.ptc.breakdown separates sidecar startup from representative lane-level request flow for the same website and headline gallery lanes. processStartup reuses sidecar.phases.startup_only, while the lane entries split client-observed requestTransport from sidecar execution and combined response materialization (sidecar response preparation plus client response decode/copy).",
+    "durablePtcDefinitions": "runtime.durablePtc.resumeOnly measures restore/resume from persisted checkpoints on the synthetic vendor-review durable lane plus the real audited plan-database-failover and privacy-erasure-orchestration workflows. addon.durablePtc.state records dumped snapshot bytes, detached suspended-manifest bytes, and the checkpoint payload size; sidecar.durablePtc.state records raw snapshot bytes, full raw-resume policy bytes, and the same checkpoint payload size; isolate.durablePtc.state records the explicit carried-state bytes required to emulate the same pause without continuation snapshots.",
+    "phase2PtcDefinitions": "runtime.ptc.phase2 adds real audited gallery lanes, skewed headline seed companions, balanced headline/broad/holdout panels, a multi-lane durable panel, a full-gallery canary summary, and separate sentinel-family scores. The gallery lanes execute the checked-in audited examples from examples/programmatic-tool-calls/*/catalog.ts with exact addon-generated expected outputs reused across addon, sidecar, and isolate runs.",
+    "phase2PtcMeasurementDefinitions": "The targeted phase-2 release modes (`ptc_public`, `ptc_headline_release`, `ptc_broad_release`, `ptc_holdout_release`, and `ptc_sentinel_release`) batch 5 inner executions into each reported warm sample and keep 5 reported samples per lane so sub-millisecond scorecards are less sensitive to timer and scheduler noise."
+  },
+  "addon": {
+    "latency": {
+      "sentinel_code_mode_search_medium_compact": {
+        "iterations": 5,
+        "minMs": 0.7747418000000152,
+        "medianMs": 0.8203666000000112,
+        "p95Ms": 0.9969916000000012,
+        "maxMs": 0.9969916000000012,
+        "meanMs": 0.8421783200000071
+      },
+      "sentinel_code_mode_search_large_compact": {
+        "iterations": 5,
+        "minMs": 2.105408199999988,
+        "medianMs": 2.1610916000000087,
+        "p95Ms": 2.1885668000000122,
+        "maxMs": 2.1885668000000122,
+        "meanMs": 2.149703320000003
+      },
+      "sentinel_code_mode_search_large_structured": {
+        "iterations": 5,
+        "minMs": 1.9013084000000162,
+        "medianMs": 2.1583083999999872,
+        "p95Ms": 2.3284999999999854,
+        "maxMs": 2.3284999999999854,
+        "meanMs": 2.1317950399999974
+      },
+      "sentinel_result_materialization_medium_summary": {
+        "iterations": 5,
+        "minMs": 0.6860083999999915,
+        "medianMs": 0.8273000000000138,
+        "p95Ms": 0.9004999999999882,
+        "maxMs": 0.9004999999999882,
+        "meanMs": 0.7900133199999982
+      },
+      "sentinel_result_materialization_medium_structured": {
+        "iterations": 5,
+        "minMs": 0.4976666000000023,
+        "medianMs": 0.9196915999999874,
+        "p95Ms": 0.9494834000000083,
+        "maxMs": 0.9494834000000083,
+        "meanMs": 0.833936679999997
+      },
+      "sentinel_result_materialization_medium_expanded": {
+        "iterations": 5,
+        "minMs": 0.5792249999999968,
+        "medianMs": 0.6409416000000192,
+        "p95Ms": 1.1054250000000139,
+        "maxMs": 1.1054250000000139,
+        "meanMs": 0.7118482800000084
+      },
+      "sentinel_low_compaction_fanout_medium_high_compaction": {
+        "iterations": 5,
+        "minMs": 0.9312833999999839,
+        "medianMs": 1.0048250000000052,
+        "p95Ms": 1.2594918000000006,
+        "maxMs": 1.2594918000000006,
+        "meanMs": 1.0687816799999972
+      },
+      "sentinel_low_compaction_fanout_medium_moderate_compaction": {
+        "iterations": 5,
+        "minMs": 0.9680916000000025,
+        "medianMs": 1.0198916000000053,
+        "p95Ms": 1.2982584000000088,
+        "maxMs": 1.2982584000000088,
+        "meanMs": 1.0966500000000043
+      },
+      "sentinel_low_compaction_fanout_medium_low_compaction": {
+        "iterations": 5,
+        "minMs": 1.3535331999999927,
+        "medianMs": 1.4850999999999885,
+        "p95Ms": 2.4308583999999884,
+        "maxMs": 2.4308583999999884,
+        "meanMs": 1.6427883599999906
+      }
+    },
+    "phases": {},
+    "boundary": {},
+    "counters": {},
+    "ptc": {
+      "transfer": {},
+      "breakdown": {},
+      "phase2": {
+        "gallery": {
+          "transfer": {}
+        },
+        "headlineSeeds": {
+          "transfer": {}
+        },
+        "canary": {},
+        "sentinel": {
+          "transfer": {
+            "sentinel_code_mode_search_medium_compact": {
+              "toolFamilyCount": 0,
+              "logicalPeakFanout": 0,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 0,
+              "toolBytesIn": 0,
+              "resultBytesOut": 292,
+              "reductionRatio": 0
+            },
+            "sentinel_code_mode_search_large_compact": {
+              "toolFamilyCount": 0,
+              "logicalPeakFanout": 0,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 0,
+              "toolBytesIn": 0,
+              "resultBytesOut": 293,
+              "reductionRatio": 0
+            },
+            "sentinel_code_mode_search_large_structured": {
+              "toolFamilyCount": 0,
+              "logicalPeakFanout": 0,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 0,
+              "toolBytesIn": 0,
+              "resultBytesOut": 1513,
+              "reductionRatio": 0
+            },
+            "sentinel_result_materialization_medium_summary": {
+              "toolFamilyCount": 1,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 1,
+              "toolBytesIn": 5318,
+              "resultBytesOut": 46,
+              "reductionRatio": 115.6086956521739
+            },
+            "sentinel_result_materialization_medium_structured": {
+              "toolFamilyCount": 1,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 1,
+              "toolBytesIn": 5318,
+              "resultBytesOut": 1373,
+              "reductionRatio": 3.8732702112163144
+            },
+            "sentinel_result_materialization_medium_expanded": {
+              "toolFamilyCount": 1,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 1,
+              "toolBytesIn": 5318,
+              "resultBytesOut": 5375,
+              "reductionRatio": 0.9893953488372093
+            },
+            "sentinel_low_compaction_fanout_medium_high_compaction": {
+              "toolFamilyCount": 2,
+              "logicalPeakFanout": 2,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 2,
+              "toolBytesIn": 10388,
+              "resultBytesOut": 91,
+              "reductionRatio": 114.15384615384616
+            },
+            "sentinel_low_compaction_fanout_medium_moderate_compaction": {
+              "toolFamilyCount": 2,
+              "logicalPeakFanout": 2,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 2,
+              "toolBytesIn": 10388,
+              "resultBytesOut": 2068,
+              "reductionRatio": 5.02321083172147
+            },
+            "sentinel_low_compaction_fanout_medium_low_compaction": {
+              "toolFamilyCount": 2,
+              "logicalPeakFanout": 2,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 2,
+              "toolBytesIn": 10388,
+              "resultBytesOut": 10871,
+              "reductionRatio": 0.9555698647778493
+            }
+          },
+          "familyScore": {
+            "code_mode_search": {
+              "medianMs": 1.7132555333333357,
+              "p95Ms": 1.8380194666666663
+            },
+            "result_materialization": {
+              "medianMs": 0.7959777333333401,
+              "p95Ms": 0.9851361333333367
+            },
+            "low_compaction_fanout": {
+              "medianMs": 1.1699388666666664,
+              "p95Ms": 1.6628695333333325
+            }
+          }
+        },
+        "scorecards": {
+          "headlineScore": {
+            "medium": null
+          },
+          "broadScore": {
+            "medium": null
+          },
+          "holdoutScore": {
+            "medium": null
+          },
+          "categoryScore": {
+            "analytics": {
+              "medium": null
+            },
+            "operations": {
+              "medium": null
+            },
+            "workflows": {
+              "medium": null
+            }
+          },
+          "p90LaneRatio": {
+            "medium": null
+          },
+          "worstLaneRatio": {
+            "medium": null
+          },
+          "sentinelFamily": {
+            "code_mode_search": {
+              "medianMs": 1.7132555333333357,
+              "p95Ms": 1.8380194666666663
+            },
+            "result_materialization": {
+              "medianMs": 0.7959777333333401,
+              "p95Ms": 0.9851361333333367
+            },
+            "low_compaction_fanout": {
+              "medianMs": 1.1699388666666664,
+              "p95Ms": 1.6628695333333325
+            }
+          },
+          "durableScore": {
+            "medium": null
+          }
+        }
+      }
+    },
+    "durablePtc": {
+      "resumeOnly": {},
+      "state": {}
+    },
+    "suspendState": {},
+    "memory": {},
+    "failureCleanup": {}
+  },
+  "sidecar": {
+    "latency": {
+      "sentinel_code_mode_search_medium_compact": {
+        "iterations": 5,
+        "minMs": 0.7731249999999819,
+        "medianMs": 0.8233749999999873,
+        "p95Ms": 1.297066599999971,
+        "maxMs": 1.297066599999971,
+        "meanMs": 0.9459616799999914
+      },
+      "sentinel_code_mode_search_large_compact": {
+        "iterations": 5,
+        "minMs": 2.1242665999999644,
+        "medianMs": 2.149891600000001,
+        "p95Ms": 2.2041999999999917,
+        "maxMs": 2.2041999999999917,
+        "meanMs": 2.156739959999986
+      },
+      "sentinel_code_mode_search_large_structured": {
+        "iterations": 5,
+        "minMs": 1.89294160000004,
+        "medianMs": 2.25300000000002,
+        "p95Ms": 2.3708333999999924,
+        "maxMs": 2.3708333999999924,
+        "meanMs": 2.21322164000001
+      },
+      "sentinel_result_materialization_medium_summary": {
+        "iterations": 5,
+        "minMs": 0.653650000000016,
+        "medianMs": 0.7232333999999809,
+        "p95Ms": 0.7935750000000098,
+        "maxMs": 0.7935750000000098,
+        "meanMs": 0.7300116799999978
+      },
+      "sentinel_result_materialization_medium_structured": {
+        "iterations": 5,
+        "minMs": 0.7381081999999879,
+        "medianMs": 0.7752915999999914,
+        "p95Ms": 1.2299583999999868,
+        "maxMs": 1.2299583999999868,
+        "meanMs": 0.8993966399999863
+      },
+      "sentinel_result_materialization_medium_expanded": {
+        "iterations": 5,
+        "minMs": 0.8896749999999883,
+        "medianMs": 0.9355083999999806,
+        "p95Ms": 1.187691599999971,
+        "maxMs": 1.187691599999971,
+        "meanMs": 0.974261639999986
+      },
+      "sentinel_low_compaction_fanout_medium_high_compaction": {
+        "iterations": 5,
+        "minMs": 1.594474999999966,
+        "medianMs": 1.6185581999999612,
+        "p95Ms": 2.05503319999998,
+        "maxMs": 2.05503319999998,
+        "meanMs": 1.6989682799999906
+      },
+      "sentinel_low_compaction_fanout_medium_moderate_compaction": {
+        "iterations": 5,
+        "minMs": 1.6447834000000057,
+        "medianMs": 1.6681166000000303,
+        "p95Ms": 2.6789250000000266,
+        "maxMs": 2.6789250000000266,
+        "meanMs": 1.8927166800000215
+      },
+      "sentinel_low_compaction_fanout_medium_low_compaction": {
+        "iterations": 5,
+        "minMs": 1.919941599999993,
+        "medianMs": 2.235725000000002,
+        "p95Ms": 2.308858400000008,
+        "maxMs": 2.308858400000008,
+        "meanMs": 2.174033360000003
+      }
+    },
+    "phases": {},
+    "ptc": {
+      "transfer": {},
+      "breakdown": {},
+      "phase2": {
+        "gallery": {
+          "transfer": {}
+        },
+        "headlineSeeds": {
+          "transfer": {}
+        },
+        "canary": {},
+        "sentinel": {
+          "transfer": {
+            "sentinel_code_mode_search_medium_compact": {
+              "toolFamilyCount": 0,
+              "logicalPeakFanout": 0,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 0,
+              "toolBytesIn": 0,
+              "resultBytesOut": 292,
+              "reductionRatio": 0
+            },
+            "sentinel_code_mode_search_large_compact": {
+              "toolFamilyCount": 0,
+              "logicalPeakFanout": 0,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 0,
+              "toolBytesIn": 0,
+              "resultBytesOut": 293,
+              "reductionRatio": 0
+            },
+            "sentinel_code_mode_search_large_structured": {
+              "toolFamilyCount": 0,
+              "logicalPeakFanout": 0,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 0,
+              "toolBytesIn": 0,
+              "resultBytesOut": 1513,
+              "reductionRatio": 0
+            },
+            "sentinel_result_materialization_medium_summary": {
+              "toolFamilyCount": 1,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 1,
+              "toolBytesIn": 5318,
+              "resultBytesOut": 46,
+              "reductionRatio": 115.6086956521739
+            },
+            "sentinel_result_materialization_medium_structured": {
+              "toolFamilyCount": 1,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 1,
+              "toolBytesIn": 5318,
+              "resultBytesOut": 1373,
+              "reductionRatio": 3.8732702112163144
+            },
+            "sentinel_result_materialization_medium_expanded": {
+              "toolFamilyCount": 1,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 1,
+              "toolBytesIn": 5318,
+              "resultBytesOut": 5375,
+              "reductionRatio": 0.9893953488372093
+            },
+            "sentinel_low_compaction_fanout_medium_high_compaction": {
+              "toolFamilyCount": 2,
+              "logicalPeakFanout": 2,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 2,
+              "toolBytesIn": 10388,
+              "resultBytesOut": 91,
+              "reductionRatio": 114.15384615384616
+            },
+            "sentinel_low_compaction_fanout_medium_moderate_compaction": {
+              "toolFamilyCount": 2,
+              "logicalPeakFanout": 2,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 2,
+              "toolBytesIn": 10388,
+              "resultBytesOut": 2068,
+              "reductionRatio": 5.02321083172147
+            },
+            "sentinel_low_compaction_fanout_medium_low_compaction": {
+              "toolFamilyCount": 2,
+              "logicalPeakFanout": 2,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 2,
+              "toolBytesIn": 10388,
+              "resultBytesOut": 10871,
+              "reductionRatio": 0.9555698647778493
+            }
+          },
+          "familyScore": {
+            "code_mode_search": {
+              "medianMs": 1.7420888666666692,
+              "p95Ms": 1.9573666666666518
+            },
+            "result_materialization": {
+              "medianMs": 0.811344466666651,
+              "p95Ms": 1.0704083333333225
+            },
+            "low_compaction_fanout": {
+              "medianMs": 1.8407999333333311,
+              "p95Ms": 2.3476055333333385
+            }
+          }
+        },
+        "scorecards": {
+          "headlineScore": {
+            "medium": null
+          },
+          "broadScore": {
+            "medium": null
+          },
+          "holdoutScore": {
+            "medium": null
+          },
+          "categoryScore": {
+            "analytics": {
+              "medium": null
+            },
+            "operations": {
+              "medium": null
+            },
+            "workflows": {
+              "medium": null
+            }
+          },
+          "p90LaneRatio": {
+            "medium": null
+          },
+          "worstLaneRatio": {
+            "medium": null
+          },
+          "sentinelFamily": {
+            "code_mode_search": {
+              "medianMs": 1.7420888666666692,
+              "p95Ms": 1.9573666666666518
+            },
+            "result_materialization": {
+              "medianMs": 0.811344466666651,
+              "p95Ms": 1.0704083333333225
+            },
+            "low_compaction_fanout": {
+              "medianMs": 1.8407999333333311,
+              "p95Ms": 2.3476055333333385
+            }
+          },
+          "durableScore": {
+            "medium": null
+          }
+        }
+      }
+    },
+    "durablePtc": {
+      "resumeOnly": {},
+      "state": {}
+    },
+    "memory": {},
+    "failureCleanup": {}
+  },
+  "isolate": {
+    "latency": {
+      "sentinel_code_mode_search_medium_compact": {
+        "iterations": 5,
+        "minMs": 0.4345917999999983,
+        "medianMs": 0.4460168000000067,
+        "p95Ms": 0.48840000000000144,
+        "maxMs": 0.48840000000000144,
+        "meanMs": 0.45768339999999624
+      },
+      "sentinel_code_mode_search_large_compact": {
+        "iterations": 5,
+        "minMs": 0.6461334000000079,
+        "medianMs": 0.6842333999999937,
+        "p95Ms": 0.6922833999999967,
+        "maxMs": 0.6922833999999967,
+        "meanMs": 0.6737950400000046
+      },
+      "sentinel_code_mode_search_large_structured": {
+        "iterations": 5,
+        "minMs": 0.41131679999998594,
+        "medianMs": 0.6850582000000032,
+        "p95Ms": 1.5017499999999928,
+        "maxMs": 1.5017499999999928,
+        "meanMs": 0.7901599999999963
+      },
+      "sentinel_result_materialization_medium_summary": {
+        "iterations": 5,
+        "minMs": 0.23529159999998228,
+        "medianMs": 0.3953168000000005,
+        "p95Ms": 2.6490000000000236,
+        "maxMs": 2.6490000000000236,
+        "meanMs": 0.7964916800000083
+      },
+      "sentinel_result_materialization_medium_structured": {
+        "iterations": 5,
+        "minMs": 0.41166659999998956,
+        "medianMs": 0.42417500000001385,
+        "p95Ms": 0.5398168000000169,
+        "maxMs": 0.5398168000000169,
+        "meanMs": 0.45681500000000597
+      },
+      "sentinel_result_materialization_medium_expanded": {
+        "iterations": 5,
+        "minMs": 0.4530999999999949,
+        "medianMs": 0.4886584000000312,
+        "p95Ms": 2.3780333999999583,
+        "maxMs": 2.3780333999999583,
+        "meanMs": 0.8527633199999946
+      },
+      "sentinel_low_compaction_fanout_medium_high_compaction": {
+        "iterations": 5,
+        "minMs": 0.494466599999987,
+        "medianMs": 0.5133831999999984,
+        "p95Ms": 3.067300000000023,
+        "maxMs": 3.067300000000023,
+        "meanMs": 1.0252283199999965
+      },
+      "sentinel_low_compaction_fanout_medium_moderate_compaction": {
+        "iterations": 5,
+        "minMs": 0.370174999999972,
+        "medianMs": 0.5583834000000024,
+        "p95Ms": 0.5964915999999902,
+        "maxMs": 0.5964915999999902,
+        "meanMs": 0.5055466799999977
+      },
+      "sentinel_low_compaction_fanout_medium_low_compaction": {
+        "iterations": 5,
+        "minMs": 0.6079665999999634,
+        "medianMs": 0.6696583999999802,
+        "p95Ms": 3.9633416000000126,
+        "maxMs": 3.9633416000000126,
+        "meanMs": 1.326324999999997
+      }
+    },
+    "ptc": {
+      "transfer": {},
+      "phase2": {
+        "gallery": {
+          "transfer": {}
+        },
+        "headlineSeeds": {
+          "transfer": {}
+        },
+        "canary": {},
+        "sentinel": {
+          "transfer": {
+            "sentinel_code_mode_search_medium_compact": {
+              "toolFamilyCount": 0,
+              "logicalPeakFanout": 0,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 0,
+              "toolBytesIn": 0,
+              "resultBytesOut": 292,
+              "reductionRatio": 0
+            },
+            "sentinel_code_mode_search_large_compact": {
+              "toolFamilyCount": 0,
+              "logicalPeakFanout": 0,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 0,
+              "toolBytesIn": 0,
+              "resultBytesOut": 293,
+              "reductionRatio": 0
+            },
+            "sentinel_code_mode_search_large_structured": {
+              "toolFamilyCount": 0,
+              "logicalPeakFanout": 0,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 0,
+              "toolBytesIn": 0,
+              "resultBytesOut": 1513,
+              "reductionRatio": 0
+            },
+            "sentinel_result_materialization_medium_summary": {
+              "toolFamilyCount": 1,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 1,
+              "toolBytesIn": 5318,
+              "resultBytesOut": 46,
+              "reductionRatio": 115.6086956521739
+            },
+            "sentinel_result_materialization_medium_structured": {
+              "toolFamilyCount": 1,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 1,
+              "toolBytesIn": 5318,
+              "resultBytesOut": 1373,
+              "reductionRatio": 3.8732702112163144
+            },
+            "sentinel_result_materialization_medium_expanded": {
+              "toolFamilyCount": 1,
+              "logicalPeakFanout": 1,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 1,
+              "toolBytesIn": 5318,
+              "resultBytesOut": 5375,
+              "reductionRatio": 0.9893953488372093
+            },
+            "sentinel_low_compaction_fanout_medium_high_compaction": {
+              "toolFamilyCount": 2,
+              "logicalPeakFanout": 2,
+              "compactionExpectation": "moderate_compaction",
+              "toolCallCount": 2,
+              "toolBytesIn": 10388,
+              "resultBytesOut": 91,
+              "reductionRatio": 114.15384615384616
+            },
+            "sentinel_low_compaction_fanout_medium_moderate_compaction": {
+              "toolFamilyCount": 2,
+              "logicalPeakFanout": 2,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 2,
+              "toolBytesIn": 10388,
+              "resultBytesOut": 2068,
+              "reductionRatio": 5.02321083172147
+            },
+            "sentinel_low_compaction_fanout_medium_low_compaction": {
+              "toolFamilyCount": 2,
+              "logicalPeakFanout": 2,
+              "compactionExpectation": "lower_compaction",
+              "toolCallCount": 2,
+              "toolBytesIn": 10388,
+              "resultBytesOut": 10871,
+              "reductionRatio": 0.9555698647778493
+            }
+          },
+          "familyScore": {
+            "code_mode_search": {
+              "medianMs": 0.6051028000000012,
+              "p95Ms": 0.8941444666666637
+            },
+            "result_materialization": {
+              "medianMs": 0.43605006666668183,
+              "p95Ms": 1.855616733333333
+            },
+            "low_compaction_fanout": {
+              "medianMs": 0.5804749999999936,
+              "p95Ms": 2.542377733333342
+            }
+          }
+        },
+        "scorecards": {
+          "headlineScore": {
+            "medium": null
+          },
+          "broadScore": {
+            "medium": null
+          },
+          "holdoutScore": {
+            "medium": null
+          },
+          "categoryScore": {
+            "analytics": {
+              "medium": null
+            },
+            "operations": {
+              "medium": null
+            },
+            "workflows": {
+              "medium": null
+            }
+          },
+          "p90LaneRatio": {
+            "medium": null
+          },
+          "worstLaneRatio": {
+            "medium": null
+          },
+          "sentinelFamily": {
+            "code_mode_search": {
+              "medianMs": 0.6051028000000012,
+              "p95Ms": 0.8941444666666637
+            },
+            "result_materialization": {
+              "medianMs": 0.43605006666668183,
+              "p95Ms": 1.855616733333333
+            },
+            "low_compaction_fanout": {
+              "medianMs": 0.5804749999999936,
+              "p95Ms": 2.542377733333342
+            }
+          },
+          "durableScore": {
+            "medium": null
+          }
+        }
+      }
+    },
+    "durablePtc": {
+      "resumeOnly": {},
+      "state": {}
+    },
+    "memory": {},
+    "failureCleanup": {}
+  },
+  "ratios": {
+    "latency": {
+      "sidecarVsAddon": {
+        "sentinel_code_mode_search_medium_compact": {
+          "medianRatio": 1.003667141007418,
+          "p95Ratio": 1.300980469644849
+        },
+        "sentinel_code_mode_search_large_compact": {
+          "medianRatio": 0.9948174339301454,
+          "p95Ratio": 1.007143122156463
+        },
+        "sentinel_code_mode_search_large_structured": {
+          "medianRatio": 1.0438730628116137,
+          "p95Ratio": 1.0181805454155066
+        },
+        "sentinel_result_materialization_medium_summary": {
+          "medianRatio": 0.8742093557354875,
+          "p95Ratio": 0.8812604108828653
+        },
+        "sentinel_result_materialization_medium_structured": {
+          "medianRatio": 0.8429908460618778,
+          "p95Ratio": 1.2953974761433176
+        },
+        "sentinel_result_materialization_medium_expanded": {
+          "medianRatio": 1.4595844613611482,
+          "p95Ratio": 1.0744207883845183
+        },
+        "sentinel_low_compaction_fanout_medium_high_compaction": {
+          "medianRatio": 1.6107861567934245,
+          "p95Ratio": 1.6316368236775969
+        },
+        "sentinel_low_compaction_fanout_medium_moderate_compaction": {
+          "medianRatio": 1.6355822520746532,
+          "p95Ratio": 2.0634759613340523
+        },
+        "sentinel_low_compaction_fanout_medium_low_compaction": {
+          "medianRatio": 1.5054373442865931,
+          "p95Ratio": 0.9498119676571943
+        }
+      },
+      "isolateVsAddon": {
+        "sentinel_code_mode_search_medium_compact": {
+          "medianRatio": 0.543679862149435,
+          "p95Ratio": 0.489873736147828
+        },
+        "sentinel_code_mode_search_large_compact": {
+          "medianRatio": 0.31661471452667295,
+          "p95Ratio": 0.3163181493934719
+        },
+        "sentinel_code_mode_search_large_structured": {
+          "medianRatio": 0.3174051493289871,
+          "p95Ratio": 0.6449430964140014
+        },
+        "sentinel_result_materialization_medium_summary": {
+          "medianRatio": 0.4778397195696772,
+          "p95Ratio": 2.9416990560800205
+        },
+        "sentinel_result_materialization_medium_structured": {
+          "medianRatio": 0.461214389693262,
+          "p95Ratio": 0.5685373751663401
+        },
+        "sentinel_result_materialization_medium_expanded": {
+          "medianRatio": 0.7624070586150384,
+          "p95Ratio": 2.1512390257140273
+        },
+        "sentinel_low_compaction_fanout_medium_high_compaction": {
+          "medianRatio": 0.5109180205508379,
+          "p95Ratio": 2.435347336124
+        },
+        "sentinel_low_compaction_fanout_medium_moderate_compaction": {
+          "medianRatio": 0.5474928904209031,
+          "p95Ratio": 0.45945522093289454
+        },
+        "sentinel_low_compaction_fanout_medium_low_compaction": {
+          "medianRatio": 0.45091805265637697,
+          "p95Ratio": 1.6304288230034425
+        }
+      },
+      "sidecarVsIsolate": {
+        "sentinel_code_mode_search_medium_compact": {
+          "medianRatio": 1.8460627492058033,
+          "p95Ratio": 2.655746519246452
+        },
+        "sentinel_code_mode_search_large_compact": {
+          "medianRatio": 3.142044220583241,
+          "p95Ratio": 3.1839561659285813
+        },
+        "sentinel_code_mode_search_large_structured": {
+          "medianRatio": 3.2887716693267954,
+          "p95Ratio": 1.578713767271519
+        },
+        "sentinel_result_materialization_medium_summary": {
+          "medianRatio": 1.8295033249282093,
+          "p95Ratio": 0.29957531143827965
+        },
+        "sentinel_result_materialization_medium_structured": {
+          "medianRatio": 1.8277635409912563,
+          "p95Ratio": 2.2784737340519015
+        },
+        "sentinel_result_materialization_medium_expanded": {
+          "medianRatio": 1.9144424817007564,
+          "p95Ratio": 0.49944277485757427
+        },
+        "sentinel_low_compaction_fanout_medium_high_compaction": {
+          "medianRatio": 3.1527291894241305,
+          "p95Ratio": 0.6699811560655836
+        },
+        "sentinel_low_compaction_fanout_medium_moderate_compaction": {
+          "medianRatio": 2.9874036369992787,
+          "p95Ratio": 4.491136170232859
+        },
+        "sentinel_low_compaction_fanout_medium_low_compaction": {
+          "medianRatio": 3.3386051754149104,
+          "p95Ratio": 0.5825534695268257
+        }
+      }
+    },
+    "ptcWeightedScore": {
+      "sidecarVsAddon": {},
+      "isolateVsAddon": {},
+      "sidecarVsIsolate": {}
+    },
+    "failureCleanup": {
+      "sidecarVsAddon": {},
+      "isolateVsAddon": {},
+      "sidecarVsIsolate": {}
+    }
+  }
+}

@@ -28,6 +28,47 @@ Machine and environment:
 - Workload fixture version: `10`
 - Smoke fixture version: `2`
 
+## Phase-2 Closeout
+
+Fresh release verification on the current shipped path re-ran:
+
+- `npm run bench:ptc:broad`
+- `npm run bench:ptc:holdout`
+- `npm run bench:ptc:gallery-canary`
+- `npm run bench:ptc:sentinel`
+
+using these artifacts:
+
+- `benchmarks/results/2026-04-14T13-51-47-508Z-ptc_broad_release-release.json`
+- `benchmarks/results/2026-04-14T13-51-53-806Z-ptc_holdout_release-release.json`
+- `benchmarks/results/2026-04-14T13-52-00-881Z-ptc_gallery_canary-release.json`
+- `benchmarks/results/2026-04-14T13-52-11-361Z-ptc_sentinel_release-release.json`
+
+Current default-on phase-2 position versus isolate on those verification
+artifacts:
+
+| Metric | Addon | Isolate |
+| --- | ---: | ---: |
+| `ptc.phase2.scorecards.headlineScore.medium` | `0.50 ms` | `0.74 ms` |
+| `ptc.phase2.scorecards.broadScore.medium` | `0.45 ms` | `0.70 ms` |
+| `ptc.phase2.scorecards.holdoutScore.medium` | `0.46 ms` | `0.68 ms` |
+| `ptc.phase2.scorecards.p90LaneRatio.medium` | `0.98x` | `1.00x` |
+| `ptc.phase2.scorecards.worstLaneRatio.medium` | `1.12x` | `1.00x` |
+
+Those numbers keep the shipped broad-panel path comfortably inside the plan's
+stretch targets without needing the later opt-in experiments to ship by
+default. The full-gallery canary remained correctness-green on the same HEAD,
+and the sentinel families remain reported separately so generic runtime work can
+still be judged without overfitting the primary gallery scorecards.
+
+The closeout decision for phase 2 is therefore:
+
+- keep the current default-on generic path as the shipped phase-2 baseline
+- keep milestones 5, 7, and 9 as explicit opt-in experiments only, because
+  their default-on broad/holdout evidence did not beat the shipped path
+- do not prototype a dedicated PTC tier from milestone 10, because the generic
+  path already clears the phase-2 broad-panel target by a meaningful margin
+
 ## Phase-2 Broad Baseline
 
 The current kept broad-panel phase-2 artifact comes from:
