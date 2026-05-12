@@ -7,7 +7,15 @@ cd "$repo_root"
 fuzz_seconds="${MUSTARD_FUZZ_SECONDS:-10}"
 fuzz_targets="${MUSTARD_FUZZ_TARGETS:-parser snapshot_load sidecar_protocol}"
 fuzz_toolchain="${MUSTARD_FUZZ_TOOLCHAIN:-nightly}"
+fuzz_install_toolchain="${MUSTARD_FUZZ_INSTALL_TOOLCHAIN:-stable}"
 fuzz_artifact_root="${MUSTARD_FUZZ_ARTIFACT_ROOT:-fuzz/artifacts}"
+
+ensure_toolchain() {
+  local toolchain="$1"
+  if ! rustup toolchain list | grep -q "^${toolchain}"; then
+    rustup toolchain install "${toolchain}" --profile minimal
+  fi
+}
 
 cargo test -p mustard --test security_hostile_inputs
 cargo test -p mustard --test property_generated_execution
@@ -19,12 +27,11 @@ npm run build
 node scripts/seed-fuzz-corpus.ts
 
 if ! cargo fuzz --help >/dev/null 2>&1; then
-  cargo install cargo-fuzz --locked
+  ensure_toolchain "${fuzz_install_toolchain}"
+  cargo +"${fuzz_install_toolchain}" install cargo-fuzz --locked
 fi
 
-if ! rustup toolchain list | grep -q "^${fuzz_toolchain}"; then
-  rustup toolchain install "${fuzz_toolchain}" --profile minimal
-fi
+ensure_toolchain "${fuzz_toolchain}"
 
 mkdir -p "${fuzz_artifact_root}"
 for target in ${fuzz_targets}; do

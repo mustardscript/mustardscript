@@ -91,6 +91,8 @@ For local tuning, `scripts/run-hardening.sh` accepts:
 - `MUSTARD_FUZZ_TARGETS` to override the fuzz target list
 - `MUSTARD_FUZZ_SECONDS` to change per-target runtime
 - `MUSTARD_FUZZ_TOOLCHAIN` to pick a non-default toolchain
+- `MUSTARD_FUZZ_INSTALL_TOOLCHAIN` to pick the toolchain used to install
+  `cargo-fuzz` when the subcommand is missing
 - `MUSTARD_FUZZ_ARTIFACT_ROOT` to redirect crash artifacts
 
 ## Denial-of-Service Audit
