@@ -1471,6 +1471,7 @@ mod tests {
             Instruction::Call {
                 argc: 0,
                 with_this: false,
+                member_name: None,
                 optional: false,
                 span: SourceSpan::new(0, 0),
             },
@@ -1485,6 +1486,7 @@ mod tests {
                 Instruction::Call {
                     argc: 0,
                     with_this: false,
+                    member_name: None,
                     optional: false,
                     span: _,
                 },

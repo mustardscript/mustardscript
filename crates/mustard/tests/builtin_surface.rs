@@ -1687,6 +1687,36 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
         assert!(error.to_string().contains(message));
     }
 
+    for (source, message) in [
+        (
+            r#""x".normalize();"#,
+            "String.prototype.normalize is not supported",
+        ),
+        (
+            "(1).toLocaleString();",
+            "Number.prototype.toLocaleString is not supported",
+        ),
+        ("[].groupBy();", "Array.prototype.groupBy is not supported"),
+        (
+            "new Date(0).toLocaleString();",
+            "Date.prototype.toLocaleString is not supported",
+        ),
+        ("Array.fromAsync([]);", "Array.fromAsync is not supported"),
+        (
+            "Object.groupBy([], value => value);",
+            "Object.groupBy is not supported",
+        ),
+        (
+            "({}).missing();",
+            "Object.prototype.missing is not supported",
+        ),
+    ] {
+        let program = compile(source).expect("source should compile");
+        let error =
+            execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
+        assert!(error.to_string().contains(message));
+    }
+
     let splice_receiver =
         compile("const splice = [1].splice; splice(0, 1);").expect("source should compile");
     let error =

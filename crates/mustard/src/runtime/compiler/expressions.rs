@@ -489,6 +489,7 @@ impl Compiler {
                     return Ok(());
                 }
                 let with_this = matches!(callee.as_ref(), Expr::Member { .. });
+                let mut member_name = None;
                 if let Expr::Member {
                     object,
                     property,
@@ -501,14 +502,17 @@ impl Compiler {
                     match property {
                         MemberProperty::Static(PropertyName::Identifier(name))
                         | MemberProperty::Static(PropertyName::String(name)) => {
+                            member_name = Some(name.clone());
                             context.code.push(Instruction::GetPropStatic {
                                 name: name.clone(),
                                 optional: *member_optional,
                             })
                         }
                         MemberProperty::Static(PropertyName::Number(number)) => {
+                            let name = format_number_key(*number);
+                            member_name = Some(name.clone());
                             context.code.push(Instruction::GetPropStatic {
-                                name: format_number_key(*number),
+                                name,
                                 optional: *member_optional,
                             })
                         }
@@ -537,6 +541,7 @@ impl Compiler {
                     context.code.push(Instruction::Call {
                         argc: arguments.len(),
                         with_this,
+                        member_name,
                         optional: *optional,
                         span: *span,
                     });
@@ -556,6 +561,7 @@ impl Compiler {
                     }
                     context.code.push(Instruction::CallWithArray {
                         with_this,
+                        member_name,
                         optional: *optional,
                         span: *span,
                     });

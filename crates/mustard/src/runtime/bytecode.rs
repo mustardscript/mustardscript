@@ -154,6 +154,8 @@ pub enum Instruction {
     Call {
         argc: usize,
         with_this: bool,
+        #[serde(skip, default)]
+        member_name: Option<String>,
         optional: bool,
         span: SourceSpan,
     },
@@ -168,6 +170,8 @@ pub enum Instruction {
     },
     CallWithArray {
         with_this: bool,
+        #[serde(skip, default)]
+        member_name: Option<String>,
         optional: bool,
         span: SourceSpan,
     },

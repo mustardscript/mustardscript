@@ -609,6 +609,7 @@ impl Runtime {
             Instruction::Call {
                 argc,
                 with_this,
+                member_name,
                 optional,
                 ..
             } => {
@@ -628,6 +629,11 @@ impl Runtime {
                 if *optional && matches!(callee, Value::Undefined | Value::Null) {
                     self.frames[frame_index].stack.push(Value::Undefined);
                     return Ok(StepAction::Continue);
+                }
+                if matches!(callee, Value::Undefined)
+                    && let Some(member_name) = member_name
+                {
+                    return Err(self.unsupported_member_call_error(&this_value, member_name));
                 }
                 match self.call_callable(callee, this_value, &args)? {
                     RunState::Completed(value) => {
@@ -729,6 +735,7 @@ impl Runtime {
             }
             Instruction::CallWithArray {
                 with_this,
+                member_name,
                 optional,
                 ..
             } => {
@@ -748,6 +755,11 @@ impl Runtime {
                 if *optional && matches!(callee, Value::Undefined | Value::Null) {
                     self.frames[frame_index].stack.push(Value::Undefined);
                     return Ok(StepAction::Continue);
+                }
+                if matches!(callee, Value::Undefined)
+                    && let Some(member_name) = member_name
+                {
+                    return Err(self.unsupported_member_call_error(&this_value, member_name));
                 }
                 match self.call_callable(callee, this_value, &args)? {
                     RunState::Completed(value) => {
@@ -1023,6 +1035,101 @@ impl Runtime {
                 }
             }
             _ => Err(MustardError::runtime("value is not callable")),
+        }
+    }
+
+    fn unsupported_member_call_error(&self, receiver: &Value, member_name: &str) -> MustardError {
+        let receiver = self
+            .member_receiver_surface(receiver)
+            .unwrap_or("value".to_string());
+        MustardError::runtime(format!(
+            "TypeError: {receiver}.{member_name} is not supported"
+        ))
+    }
+
+    fn member_receiver_surface(&self, receiver: &Value) -> Option<String> {
+        match receiver {
+            Value::String(_) => Some("String.prototype".to_string()),
+            Value::Number(_) => Some("Number.prototype".to_string()),
+            Value::Bool(_) => Some("Boolean.prototype".to_string()),
+            Value::Array(_) => Some("Array.prototype".to_string()),
+            Value::Map(_) => Some("Map.prototype".to_string()),
+            Value::Set(_) => Some("Set.prototype".to_string()),
+            Value::Iterator(_) => Some("Iterator.prototype".to_string()),
+            Value::Promise(_) => Some("Promise.prototype".to_string()),
+            Value::Closure(_) | Value::HostFunction(_) => Some("Function.prototype".to_string()),
+            Value::BuiltinFunction(function) => Some(self.builtin_function_surface(*function)),
+            Value::Object(object) => self.objects.get(*object).map(|object| match &object.kind {
+                ObjectKind::Plain => "Object.prototype".to_string(),
+                ObjectKind::Global => "globalThis".to_string(),
+                ObjectKind::Math => "Math".to_string(),
+                ObjectKind::Json => "JSON".to_string(),
+                ObjectKind::Console => "console".to_string(),
+                ObjectKind::Intl => "Intl".to_string(),
+                ObjectKind::FunctionPrototype(constructor) => {
+                    self.prototype_surface_for_constructor(constructor)
+                }
+                ObjectKind::BoundFunction(_) => "Function.prototype".to_string(),
+                ObjectKind::Error(name) => format!("{name}.prototype"),
+                ObjectKind::Date(_) => "Date.prototype".to_string(),
+                ObjectKind::RegExp(_) => "RegExp.prototype".to_string(),
+                ObjectKind::NumberObject(_) => "Number.prototype".to_string(),
+                ObjectKind::StringObject(_) => "String.prototype".to_string(),
+                ObjectKind::BooleanObject(_) => "Boolean.prototype".to_string(),
+                ObjectKind::IntlDateTimeFormat(_) => "Intl.DateTimeFormat.prototype".to_string(),
+                ObjectKind::IntlNumberFormat(_) => "Intl.NumberFormat.prototype".to_string(),
+            }),
+            Value::Undefined | Value::Null | Value::BigInt(_) => None,
+        }
+    }
+
+    fn prototype_surface_for_constructor(&self, constructor: &Value) -> String {
+        match constructor {
+            Value::BuiltinFunction(BuiltinFunction::ArrayCtor) => "Array.prototype".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::StringCtor) => "String.prototype".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::NumberCtor) => "Number.prototype".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::BooleanCtor) => "Boolean.prototype".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::DateCtor) => "Date.prototype".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::RegExpCtor) => "RegExp.prototype".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::MapCtor) => "Map.prototype".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::SetCtor) => "Set.prototype".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::PromiseCtor) => "Promise.prototype".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::FunctionCtor) => {
+                "Function.prototype".to_string()
+            }
+            Value::BuiltinFunction(BuiltinFunction::ObjectCtor) => "Object.prototype".to_string(),
+            Value::BuiltinFunction(BuiltinFunction::IntlDateTimeFormatCtor) => {
+                "Intl.DateTimeFormat.prototype".to_string()
+            }
+            Value::BuiltinFunction(BuiltinFunction::IntlNumberFormatCtor) => {
+                "Intl.NumberFormat.prototype".to_string()
+            }
+            Value::BuiltinFunction(function) => self.builtin_function_surface(*function),
+            _ => "Object.prototype".to_string(),
+        }
+    }
+
+    fn builtin_function_surface(&self, function: BuiltinFunction) -> String {
+        match function {
+            BuiltinFunction::ArrayCtor => "Array".to_string(),
+            BuiltinFunction::ObjectCtor => "Object".to_string(),
+            BuiltinFunction::MapCtor => "Map".to_string(),
+            BuiltinFunction::SetCtor => "Set".to_string(),
+            BuiltinFunction::PromiseCtor => "Promise".to_string(),
+            BuiltinFunction::RegExpCtor => "RegExp".to_string(),
+            BuiltinFunction::DateCtor => "Date".to_string(),
+            BuiltinFunction::NumberCtor => "Number".to_string(),
+            BuiltinFunction::StringCtor => "String".to_string(),
+            BuiltinFunction::BooleanCtor => "Boolean".to_string(),
+            BuiltinFunction::FunctionCtor => "Function".to_string(),
+            BuiltinFunction::IntlDateTimeFormatCtor => "Intl.DateTimeFormat".to_string(),
+            BuiltinFunction::IntlNumberFormatCtor => "Intl.NumberFormat".to_string(),
+            BuiltinFunction::ErrorCtor => "Error".to_string(),
+            BuiltinFunction::TypeErrorCtor => "TypeError".to_string(),
+            BuiltinFunction::ReferenceErrorCtor => "ReferenceError".to_string(),
+            BuiltinFunction::RangeErrorCtor => "RangeError".to_string(),
+            BuiltinFunction::SyntaxErrorCtor => "SyntaxError".to_string(),
+            _ => "Function.prototype".to_string(),
         }
     }
 

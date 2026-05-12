@@ -133,7 +133,7 @@ test('console methods fail guest-safely when callbacks are not registered', asyn
     `).run(),
     isMustardError({
       kind: 'Runtime',
-      message: /value is not callable/,
+      message: 'TypeError: console.log is not supported',
       guestSafe: true,
     }),
   );

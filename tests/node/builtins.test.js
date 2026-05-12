@@ -550,6 +550,27 @@ test('Number prototype formatting helpers fail closed for invalid receivers and 
   );
 });
 
+test('unsupported static and prototype member calls report the missing supported surface', async () => {
+  for (const [source, message] of [
+    ['"x".normalize();', 'TypeError: String.prototype.normalize is not supported'],
+    ['(1).toLocaleString();', 'TypeError: Number.prototype.toLocaleString is not supported'],
+    ['[].groupBy();', 'TypeError: Array.prototype.groupBy is not supported'],
+    ['new Date(0).toLocaleString();', 'TypeError: Date.prototype.toLocaleString is not supported'],
+    ['Array.fromAsync([]);', 'TypeError: Array.fromAsync is not supported'],
+    ['Object.groupBy([], value => value);', 'TypeError: Object.groupBy is not supported'],
+    ['({}).missing();', 'TypeError: Object.prototype.missing is not supported'],
+  ]) {
+    await assert.rejects(
+      () => runtime(source).run(),
+      isMustardError({
+        kind: 'Runtime',
+        message,
+        guestSafe: true,
+      }),
+    );
+  }
+});
+
 test('Object.assign copies supported enumerable properties and unsupported object helpers fail closed', async () => {
   await assert.rejects(
     () => runtime('Object.assign(1, { alpha: 1 });').run(),
