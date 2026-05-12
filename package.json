@@ -1,6 +1,6 @@
 {
   "name": "mustardscript",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Sandboxed, subset JavaScript runtime for Node services.",
   "main": "dist/index.js",
   "types": "mustard.d.ts",
@@ -28,10 +28,10 @@
     ]
   },
   "optionalDependencies": {
-    "@mustardscript/binding-darwin-arm64": "0.1.1",
-    "@mustardscript/binding-darwin-x64": "0.1.1",
-    "@mustardscript/binding-linux-x64-gnu": "0.1.1",
-    "@mustardscript/binding-win32-x64-msvc": "0.1.1"
+    "@mustardscript/binding-darwin-arm64": "0.1.2",
+    "@mustardscript/binding-darwin-x64": "0.1.2",
+    "@mustardscript/binding-linux-x64-gnu": "0.1.2",
+    "@mustardscript/binding-win32-x64-msvc": "0.1.2"
   },
   "scripts": {
     "prepack": "node scripts/build-ts-dist.ts",
