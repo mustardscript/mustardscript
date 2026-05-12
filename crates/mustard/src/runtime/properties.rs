@@ -394,6 +394,8 @@ impl Runtime {
             BuiltinFunction::NumberToString => "toString",
             BuiltinFunction::NumberValueOf => "valueOf",
             BuiltinFunction::NumberToFixed => "toFixed",
+            BuiltinFunction::NumberToExponential => "toExponential",
+            BuiltinFunction::NumberToPrecision => "toPrecision",
             BuiltinFunction::MathAbs => "abs",
             BuiltinFunction::MathMax => "max",
             BuiltinFunction::MathMin => "min",
@@ -566,6 +568,8 @@ impl Runtime {
             BuiltinFunction::NumberToString => 0,
             BuiltinFunction::NumberValueOf => 0,
             BuiltinFunction::NumberToFixed => 1,
+            BuiltinFunction::NumberToExponential => 1,
+            BuiltinFunction::NumberToPrecision => 1,
             BuiltinFunction::MathAbs => 1,
             BuiltinFunction::MathMax => 2,
             BuiltinFunction::MathMin => 2,
@@ -701,7 +705,11 @@ impl Runtime {
                                         | "getUTCSeconds"
                                 ) | (
                                     Value::BuiltinFunction(BuiltinFunction::NumberCtor),
-                                    "toString" | "valueOf" | "toFixed"
+                                    "toString"
+                                        | "valueOf"
+                                        | "toFixed"
+                                        | "toExponential"
+                                        | "toPrecision"
                                 )
                             )
                     }
@@ -784,7 +792,12 @@ impl Runtime {
                     ObjectKind::NumberObject(_) => {
                         matches!(
                             key.as_str(),
-                            "constructor" | "toString" | "valueOf" | "toFixed"
+                            "constructor"
+                                | "toString"
+                                | "valueOf"
+                                | "toFixed"
+                                | "toExponential"
+                                | "toPrecision"
                         )
                     }
                     ObjectKind::BooleanObject(_) => {
@@ -1655,6 +1668,14 @@ impl Runtime {
                         "toFixed" => {
                             return Ok(Value::BuiltinFunction(BuiltinFunction::NumberToFixed));
                         }
+                        "toExponential" => {
+                            return Ok(Value::BuiltinFunction(
+                                BuiltinFunction::NumberToExponential,
+                            ));
+                        }
+                        "toPrecision" => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::NumberToPrecision));
+                        }
                         _ => {}
                     }
                 }
@@ -1788,6 +1809,16 @@ impl Runtime {
                             }
                             "toFixed" => {
                                 return Ok(Value::BuiltinFunction(BuiltinFunction::NumberToFixed));
+                            }
+                            "toExponential" => {
+                                return Ok(Value::BuiltinFunction(
+                                    BuiltinFunction::NumberToExponential,
+                                ));
+                            }
+                            "toPrecision" => {
+                                return Ok(Value::BuiltinFunction(
+                                    BuiltinFunction::NumberToPrecision,
+                                ));
                             }
                             _ => {}
                         }
@@ -2026,6 +2057,8 @@ impl Runtime {
                 "toString" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToString)),
                 "valueOf" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberValueOf)),
                 "toFixed" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToFixed)),
+                "toExponential" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToExponential)),
+                "toPrecision" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToPrecision)),
                 _ => Ok(Value::Undefined),
             },
             Value::Bool(_) => match key {

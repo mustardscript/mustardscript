@@ -451,6 +451,26 @@ fn callable_metadata_and_primitive_wrappers_cover_supported_surface() {
             objectStringPadStart: Object("7").padStart(3, "0"),
             newStringPadStart: new String("7").padStart(3, "0"),
             newNumberToString: new Number(1).toString(),
+            numberToStringRadix: (255).toString(16),
+            negativeNumberToStringRadix: (-10).toString(2),
+            numberToFixed: (12.345).toFixed(2),
+            numberToFixedDefault: (12.345).toFixed(),
+            numberToFixedStringDigits: (12.345).toFixed("1"),
+            boxedNumberToFixed: new Number(1.5).toFixed(3),
+            prototypeToFixed: Number.prototype.toFixed.call(7.5, 1),
+            nanToFixed: (0 / 0).toFixed(2),
+            infinityToFixed: (1 / 0).toFixed(2),
+            negativeZeroToFixed: (-0).toFixed(2),
+            largeToFixed: (1e21).toFixed(2),
+            numberToExponential: (12.345).toExponential(),
+            numberToExponentialDigits: (12.345).toExponential(2),
+            zeroToExponential: (0).toExponential(2),
+            negativeToExponential: (-1.2).toExponential(3),
+            numberToPrecisionDefault: (12.345).toPrecision(),
+            numberToPrecisionFixed: (12.345).toPrecision(4),
+            numberToPrecisionExponential: (12345).toPrecision(3),
+            numberToPrecisionSmall: (0.0000012345).toPrecision(3),
+            zeroToPrecision: (0).toPrecision(3),
             newBooleanToString: new Boolean(false).toString(),
           },
         });
@@ -527,6 +547,26 @@ fn callable_metadata_and_primitive_wrappers_cover_supported_surface() {
                     ("objectStringPadStart".to_string(), "007".into()),
                     ("newStringPadStart".to_string(), "007".into()),
                     ("newNumberToString".to_string(), "1".into()),
+                    ("numberToStringRadix".to_string(), "ff".into()),
+                    ("negativeNumberToStringRadix".to_string(), "-1010".into()),
+                    ("numberToFixed".to_string(), "12.35".into()),
+                    ("numberToFixedDefault".to_string(), "12".into()),
+                    ("numberToFixedStringDigits".to_string(), "12.3".into()),
+                    ("boxedNumberToFixed".to_string(), "1.500".into()),
+                    ("prototypeToFixed".to_string(), "7.5".into()),
+                    ("nanToFixed".to_string(), "NaN".into()),
+                    ("infinityToFixed".to_string(), "Infinity".into()),
+                    ("negativeZeroToFixed".to_string(), "0.00".into()),
+                    ("largeToFixed".to_string(), "1e+21".into()),
+                    ("numberToExponential".to_string(), "1.2345e+1".into()),
+                    ("numberToExponentialDigits".to_string(), "1.23e+1".into()),
+                    ("zeroToExponential".to_string(), "0.00e+0".into()),
+                    ("negativeToExponential".to_string(), "-1.200e+0".into()),
+                    ("numberToPrecisionDefault".to_string(), "12.345".into()),
+                    ("numberToPrecisionFixed".to_string(), "12.35".into()),
+                    ("numberToPrecisionExponential".to_string(), "1.23e+4".into()),
+                    ("numberToPrecisionSmall".to_string(), "0.00000123".into()),
+                    ("zeroToPrecision".to_string(), "0.00".into()),
                     ("newBooleanToString".to_string(), "false".into()),
                 ])),
             ),
@@ -1615,19 +1655,36 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
             .contains("Array.prototype.at called on incompatible receiver")
     );
 
-    for source in [
-        "(1).toFixed(2);",
-        "new Number(1).toFixed(2);",
-        "Number.prototype.toFixed.call(1, 2);",
+    for (source, message) in [
+        (
+            r#"Number.prototype.toFixed.call("1", 2);"#,
+            "Number.prototype.toFixed called on incompatible receiver",
+        ),
+        (
+            "(1).toFixed(101);",
+            "Number.prototype.toFixed digits must be between 0 and 100",
+        ),
+        (
+            "(1).toFixed(-1);",
+            "Number.prototype.toFixed digits must be between 0 and 100",
+        ),
+        (
+            "(10).toString(1);",
+            "Number.prototype.toString radix must be between 2 and 36",
+        ),
+        (
+            "(1).toExponential(101);",
+            "Number.prototype.toExponential digits must be between 0 and 100",
+        ),
+        (
+            "(1).toPrecision(0);",
+            "Number.prototype.toPrecision precision must be between 1 and 100",
+        ),
     ] {
         let program = compile(source).expect("source should compile");
         let error =
             execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
-        assert!(
-            error
-                .to_string()
-                .contains("Number.prototype.toFixed is not supported")
-        );
+        assert!(error.to_string().contains(message));
     }
 
     let splice_receiver =

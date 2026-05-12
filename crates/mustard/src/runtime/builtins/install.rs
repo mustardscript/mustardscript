@@ -201,9 +201,13 @@ impl Runtime {
             BuiltinFunction::BooleanCtor => self.call_boolean_ctor(args),
             BuiltinFunction::BooleanToString => self.call_boolean_to_string(this_value),
             BuiltinFunction::BooleanValueOf => self.call_boolean_value_of(this_value),
-            BuiltinFunction::NumberToString => self.call_number_to_string(this_value),
+            BuiltinFunction::NumberToString => self.call_number_to_string(this_value, args),
             BuiltinFunction::NumberValueOf => self.call_number_value_of(this_value),
             BuiltinFunction::NumberToFixed => self.call_number_to_fixed(this_value, args),
+            BuiltinFunction::NumberToExponential => {
+                self.call_number_to_exponential(this_value, args)
+            }
+            BuiltinFunction::NumberToPrecision => self.call_number_to_precision(this_value, args),
             BuiltinFunction::MathAbs => self.call_math_abs(args),
             BuiltinFunction::MathMax => self.call_math_max(args),
             BuiltinFunction::MathMin => self.call_math_min(args),

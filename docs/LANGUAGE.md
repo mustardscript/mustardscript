@@ -390,6 +390,9 @@ extensions are called out explicitly instead of being implied.
 - `Number.isFinite`
 - `Number.isInteger`
 - `Number.isSafeInteger`
+- `Number.prototype.toFixed`
+- `Number.prototype.toExponential`
+- `Number.prototype.toPrecision`
 - global `parseInt`
 - global `parseFloat`
 - global `isNaN`
@@ -502,7 +505,8 @@ extensions are called out explicitly instead of being implied.
 - `Object(value)` preserves existing supported object-like guest values and
   boxes primitive strings, numbers, and booleans into conservative wrapper
   objects; boxed strings expose the documented string helper surface, while
-  boxed numbers and booleans expose `toString()` / `valueOf()`
+  boxed numbers expose the documented number helper surface and boxed booleans
+  expose `toString()` / `valueOf()`
 - supported guest functions, bound functions, and built-in callables expose
   own `name` / `length`, inherit `constructor` plus `call` / `apply` / `bind`
   from the shared callable surface, and expose the usual
@@ -539,7 +543,10 @@ extensions are called out explicitly instead of being implied.
   accept string-coercible patterns and real `RegExp` instances
 - primitive strings expose `length`, numeric index reads, `constructor`,
   `toString()`, and `valueOf()` in the conservative helper surface; primitive
-  numbers and booleans expose `constructor`, `toString()`, and `valueOf()`
+  numbers expose `constructor`, `toString()`, `valueOf()`, `toFixed()`,
+  `toExponential()`, and `toPrecision()`; `Number.prototype.toString`
+  supports radix arguments from 2 through 36; primitive booleans expose
+  `constructor`, `toString()`, and `valueOf()`
 - `String.prototype.trimStart`, `trimEnd`, `padStart`, and `padEnd` are
   supported on primitive strings and boxed `String` wrappers in the
   conservative helper surface
@@ -578,6 +585,9 @@ extensions are called out explicitly instead of being implied.
 - `Number.MAX_SAFE_INTEGER`, `MIN_SAFE_INTEGER`, `EPSILON`, `MAX_VALUE`,
   `MIN_VALUE`, `POSITIVE_INFINITY`, `NEGATIVE_INFINITY`, and `NaN` are exposed
   as conservative static constants on `Number`
+- `Number.prototype.toFixed`, `toExponential`, and `toPrecision` support
+  fraction/precision arguments in the ECMAScript 0..100 / 1..100 ranges;
+  `Number.prototype.toString` supports radix arguments from 2 through 36
 - `Intl.DateTimeFormat` and `Intl.NumberFormat` are available in a narrow
   deterministic subset: locale support is currently limited to `en-US`,
   `DateTimeFormat` currently accepts only `UTC` time-zone formatting plus the

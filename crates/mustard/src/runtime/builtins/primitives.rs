@@ -427,10 +427,22 @@ impl Runtime {
         )))
     }
 
-    pub(crate) fn call_number_to_string(&self, this_value: Value) -> MustardResult<Value> {
-        Ok(Value::String(self.to_string(Value::Number(
-            self.number_receiver(this_value, "toString")?,
-        ))?))
+    pub(crate) fn call_number_to_string(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
+        let number = self.number_receiver(this_value, "toString")?;
+        let radix = match args.first() {
+            None | Some(Value::Undefined) => 10,
+            Some(value) => self.to_integer(value.clone())?,
+        };
+        if !(2..=36).contains(&radix) {
+            return Err(MustardError::runtime(
+                "RangeError: Number.prototype.toString radix must be between 2 and 36",
+            ));
+        }
+        Ok(Value::String(number_to_radix_string(number, radix as u32)))
     }
 
     pub(crate) fn call_number_value_of(&self, this_value: Value) -> MustardResult<Value> {
@@ -440,12 +452,79 @@ impl Runtime {
     pub(crate) fn call_number_to_fixed(
         &self,
         this_value: Value,
-        _args: &[Value],
+        args: &[Value],
     ) -> MustardResult<Value> {
-        self.number_receiver(this_value, "toFixed")?;
-        Err(MustardError::runtime(
-            "TypeError: Number.prototype.toFixed is not supported",
-        ))
+        let number = self.number_receiver(this_value, "toFixed")?;
+        let digits = self.to_integer(args.first().cloned().unwrap_or(Value::Undefined))?;
+        if !(0..=100).contains(&digits) {
+            return Err(MustardError::runtime(
+                "RangeError: Number.prototype.toFixed digits must be between 0 and 100",
+            ));
+        }
+
+        if number.is_nan() {
+            return Ok(Value::String("NaN".to_string()));
+        }
+        if number.is_infinite() {
+            return Ok(Value::String(if number.is_sign_negative() {
+                "-Infinity".to_string()
+            } else {
+                "Infinity".to_string()
+            }));
+        }
+        if number.abs() >= 1e21 {
+            return Ok(Value::String(number.to_js_string()));
+        }
+
+        let digits = digits as usize;
+        let rendered = format!("{:.*}", digits, number.abs());
+        if number.is_sign_negative() && number != 0.0 {
+            Ok(Value::String(format!("-{rendered}")))
+        } else {
+            Ok(Value::String(rendered))
+        }
+    }
+
+    pub(crate) fn call_number_to_exponential(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
+        let number = self.number_receiver(this_value, "toExponential")?;
+        let digits = match args.first() {
+            None | Some(Value::Undefined) => None,
+            Some(value) => {
+                let digits = self.to_integer(value.clone())?;
+                if !(0..=100).contains(&digits) {
+                    return Err(MustardError::runtime(
+                        "RangeError: Number.prototype.toExponential digits must be between 0 and 100",
+                    ));
+                }
+                Some(digits as usize)
+            }
+        };
+        Ok(Value::String(number_to_exponential_string(number, digits)))
+    }
+
+    pub(crate) fn call_number_to_precision(
+        &self,
+        this_value: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
+        let number = self.number_receiver(this_value, "toPrecision")?;
+        let precision = match args.first() {
+            None | Some(Value::Undefined) => return Ok(Value::String(number.to_js_string())),
+            Some(value) => self.to_integer(value.clone())?,
+        };
+        if !(1..=100).contains(&precision) {
+            return Err(MustardError::runtime(
+                "RangeError: Number.prototype.toPrecision precision must be between 1 and 100",
+            ));
+        }
+        Ok(Value::String(number_to_precision_string(
+            number,
+            precision as usize,
+        )))
     }
 
     pub(crate) fn call_boolean_to_string(&self, this_value: Value) -> MustardResult<Value> {
@@ -876,6 +955,118 @@ fn json_number_to_string(value: f64) -> String {
         "null".to_string()
     } else {
         value.to_js_string()
+    }
+}
+
+fn number_to_radix_string(value: f64, radix: u32) -> String {
+    if radix == 10 || !value.is_finite() {
+        return value.to_js_string();
+    }
+
+    let negative = value.is_sign_negative() && value != 0.0;
+    let mut integer = value.abs().trunc();
+    let mut integer_digits = Vec::new();
+    if integer == 0.0 {
+        integer_digits.push('0');
+    } else {
+        while integer >= 1.0 && integer_digits.len() < 4096 {
+            let digit = (integer % radix as f64).floor() as u32;
+            integer_digits.push(radix_digit(digit));
+            let next = (integer / radix as f64).floor();
+            if next == integer {
+                break;
+            }
+            integer = next;
+        }
+        integer_digits.reverse();
+    }
+
+    let mut rendered = integer_digits.into_iter().collect::<String>();
+    let mut fraction = value.abs().fract();
+    if fraction != 0.0 {
+        rendered.push('.');
+        let mut digits = 0;
+        while fraction != 0.0 && digits < 64 {
+            fraction *= radix as f64;
+            let digit = fraction.floor();
+            rendered.push(radix_digit(digit as u32));
+            fraction -= digit;
+            digits += 1;
+        }
+        while rendered.ends_with('0') {
+            rendered.pop();
+        }
+        if rendered.ends_with('.') {
+            rendered.pop();
+        }
+    }
+
+    if negative {
+        format!("-{rendered}")
+    } else {
+        rendered
+    }
+}
+
+fn number_to_exponential_string(value: f64, fraction_digits: Option<usize>) -> String {
+    if !value.is_finite() {
+        return value.to_js_string();
+    }
+    let negative = value.is_sign_negative() && value != 0.0;
+    let magnitude = value.abs();
+    let rendered = match fraction_digits {
+        Some(digits) => format!("{magnitude:.*e}", digits),
+        None => format!("{magnitude:e}"),
+    };
+    let rendered = normalize_exponent(&rendered);
+    if negative {
+        format!("-{rendered}")
+    } else {
+        rendered
+    }
+}
+
+fn number_to_precision_string(value: f64, precision: usize) -> String {
+    if !value.is_finite() {
+        return value.to_js_string();
+    }
+
+    let negative = value.is_sign_negative() && value != 0.0;
+    let magnitude = value.abs();
+    let exponent = if magnitude == 0.0 {
+        0
+    } else {
+        magnitude.log10().floor() as i32
+    };
+    let mut rendered = if exponent >= -6 && exponent < precision as i32 {
+        let fraction_digits = precision as i32 - exponent - 1;
+        format!("{magnitude:.*}", fraction_digits.max(0) as usize)
+    } else {
+        normalize_exponent(&format!("{magnitude:.*e}", precision - 1))
+    };
+    if negative {
+        rendered.insert(0, '-');
+    }
+    rendered
+}
+
+fn normalize_exponent(value: &str) -> String {
+    let Some((mantissa, exponent)) = value.split_once('e') else {
+        return value.to_string();
+    };
+    let exponent = exponent.parse::<i32>().unwrap_or(0);
+    if exponent >= 0 {
+        format!("{mantissa}e+{exponent}")
+    } else {
+        format!("{mantissa}e{exponent}")
+    }
+}
+
+fn radix_digit(value: u32) -> char {
+    match value {
+        0..=9 => (b'0' + value as u8) as char,
+        10..=35 => (b'a' + (value as u8 - 10)) as char,
+        _ => '?',
     }
 }
 

@@ -486,8 +486,9 @@ Current built-in helper support is intentionally conservative:
 - `Date.now()`, `new Date(value).getTime()`, `Date.prototype.toISOString()`,
   `Date.prototype.toJSON()`, and the documented UTC field accessors are
   supported
-- `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`, and
-  `Number.isFinite` are supported
+- `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`,
+  `Number.isFinite`, and the documented number formatting helpers are
+  supported
 - `Intl.DateTimeFormat` and `Intl.NumberFormat` are available in a narrow
   `en-US` / `UTC` subset with explicit fail-closed behavior for unsupported
   locales and options

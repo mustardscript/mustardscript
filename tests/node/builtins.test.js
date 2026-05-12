@@ -494,21 +494,60 @@ test('Array.prototype.concat and Array.prototype.at fail closed for incompatible
   );
 });
 
-test('Number.prototype.toFixed fails closed with a targeted unsupported error', async () => {
-  for (const source of [
-    '(1).toFixed(2);',
-    'new Number(1).toFixed(2);',
-    'Number.prototype.toFixed.call(1, 2);',
-  ]) {
-    await assert.rejects(
-      () => runtime(source).run(),
-      isMustardError({
-        kind: 'Runtime',
-        message: 'TypeError: Number.prototype.toFixed is not supported',
-        guestSafe: true,
-      }),
-    );
-  }
+test('Number prototype formatting helpers fail closed for invalid receivers and digit ranges', async () => {
+  await assert.rejects(
+    () => runtime('Number.prototype.toFixed.call("1", 2);').run(),
+    isMustardError({
+      kind: 'Runtime',
+      message: 'Number.prototype.toFixed called on incompatible receiver',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('(1).toFixed(101);').run(),
+    isMustardError({
+      kind: 'Runtime',
+      message: 'RangeError: Number.prototype.toFixed digits must be between 0 and 100',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('(1).toFixed(-1);').run(),
+    isMustardError({
+      kind: 'Runtime',
+      message: 'RangeError: Number.prototype.toFixed digits must be between 0 and 100',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('(10).toString(1);').run(),
+    isMustardError({
+      kind: 'Runtime',
+      message: 'RangeError: Number.prototype.toString radix must be between 2 and 36',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('(1).toExponential(101);').run(),
+    isMustardError({
+      kind: 'Runtime',
+      message: 'RangeError: Number.prototype.toExponential digits must be between 0 and 100',
+      guestSafe: true,
+    }),
+  );
+
+  await assert.rejects(
+    () => runtime('(1).toPrecision(0);').run(),
+    isMustardError({
+      kind: 'Runtime',
+      message: 'RangeError: Number.prototype.toPrecision precision must be between 1 and 100',
+      guestSafe: true,
+    }),
+  );
 });
 
 test('Object.assign copies supported enumerable properties and unsupported object helpers fail closed', async () => {
@@ -961,6 +1000,26 @@ test('run matches callable own-property ordering, stringification, inferred name
         objectStringPadStart: Object("7").padStart(3, "0"),
         newStringPadStart: new String("7").padStart(3, "0"),
         newNumberToString: new Number(1).toString(),
+        numberToStringRadix: (255).toString(16),
+        negativeNumberToStringRadix: (-10).toString(2),
+        numberToFixed: (12.345).toFixed(2),
+        numberToFixedDefault: (12.345).toFixed(),
+        numberToFixedStringDigits: (12.345).toFixed("1"),
+        boxedNumberToFixed: new Number(1.5).toFixed(3),
+        prototypeToFixed: Number.prototype.toFixed.call(7.5, 1),
+        nanToFixed: (0 / 0).toFixed(2),
+        infinityToFixed: (1 / 0).toFixed(2),
+        negativeZeroToFixed: (-0).toFixed(2),
+        largeToFixed: (1e21).toFixed(2),
+        numberToExponential: (12.345).toExponential(),
+        numberToExponentialDigits: (12.345).toExponential(2),
+        zeroToExponential: (0).toExponential(2),
+        negativeToExponential: (-1.2).toExponential(3),
+        numberToPrecisionDefault: (12.345).toPrecision(),
+        numberToPrecisionFixed: (12.345).toPrecision(4),
+        numberToPrecisionExponential: (12345).toPrecision(3),
+        numberToPrecisionSmall: (0.0000012345).toPrecision(3),
+        zeroToPrecision: (0).toPrecision(3),
         newBooleanToString: new Boolean(false).toString(),
       },
     });
@@ -998,6 +1057,26 @@ test('run matches callable own-property ordering, stringification, inferred name
       objectStringPadStart: '007',
       newStringPadStart: '007',
       newNumberToString: '1',
+      numberToStringRadix: 'ff',
+      negativeNumberToStringRadix: '-1010',
+      numberToFixed: '12.35',
+      numberToFixedDefault: '12',
+      numberToFixedStringDigits: '12.3',
+      boxedNumberToFixed: '1.500',
+      prototypeToFixed: '7.5',
+      nanToFixed: 'NaN',
+      infinityToFixed: 'Infinity',
+      negativeZeroToFixed: '0.00',
+      largeToFixed: '1e+21',
+      numberToExponential: '1.2345e+1',
+      numberToExponentialDigits: '1.23e+1',
+      zeroToExponential: '0.00e+0',
+      negativeToExponential: '-1.200e+0',
+      numberToPrecisionDefault: '12.345',
+      numberToPrecisionFixed: '12.35',
+      numberToPrecisionExponential: '1.23e+4',
+      numberToPrecisionSmall: '0.00000123',
+      zeroToPrecision: '0.00',
       newBooleanToString: 'false',
     },
   });
