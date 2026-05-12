@@ -197,6 +197,80 @@ impl Runtime {
         Ok(cell.value.clone())
     }
 
+    pub(super) fn lookup_slot_string_property(
+        &mut self,
+        env: EnvKey,
+        depth: usize,
+        slot: usize,
+        key: &str,
+    ) -> MustardResult<Option<Value>> {
+        let (name, cell_key) = self.resolve_slot_binding(env, depth, slot)?;
+        let string_cache_key = {
+            let cell = self
+                .cells
+                .get(cell_key)
+                .ok_or_else(|| MustardError::runtime("binding cell missing"))?;
+            if !cell.initialized {
+                return Err(MustardError::runtime(format!(
+                    "ReferenceError: `{name}` accessed before initialization"
+                )));
+            }
+            match &cell.value {
+                Value::String(value) => (value.as_ptr() as usize, value.len()),
+                _ => return Ok(None),
+            }
+        };
+
+        let is_ascii = match self.string_ascii_cache.get(&string_cache_key) {
+            Some(is_ascii) => *is_ascii,
+            None => {
+                let value = match &self
+                    .cells
+                    .get(cell_key)
+                    .ok_or_else(|| MustardError::runtime("binding cell missing"))?
+                    .value
+                {
+                    Value::String(value) => value,
+                    _ => return Ok(None),
+                };
+                let is_ascii = value.is_ascii();
+                self.string_ascii_cache.insert(string_cache_key, is_ascii);
+                is_ascii
+            }
+        };
+
+        let value = match &self
+            .cells
+            .get(cell_key)
+            .ok_or_else(|| MustardError::runtime("binding cell missing"))?
+            .value
+        {
+            Value::String(value) => value,
+            _ => return Ok(None),
+        };
+
+        if key == "length" {
+            return Ok(Some(Value::Number(if is_ascii {
+                value.len() as f64
+            } else {
+                value.chars().count() as f64
+            })));
+        }
+
+        let Some(index) = array_index_from_property_key(key) else {
+            return Ok(None);
+        };
+        let value = if is_ascii {
+            value
+                .as_bytes()
+                .get(index)
+                .map(|byte| Value::String(char::from(*byte).to_string()))
+        } else {
+            string_index_property_value(value, index)
+        };
+        Ok(Some(value.unwrap_or(Value::Undefined)))
+    }
+
     pub(super) fn assign_slot(
         &mut self,
         env: EnvKey,
@@ -227,6 +301,7 @@ impl Runtime {
             cell.value = value;
         }
         self.apply_cell_component_delta(cell_key, old_value_bytes, new_value_bytes)?;
+        self.string_ascii_cache.clear();
         if self
             .envs
             .get(self.globals)
@@ -356,6 +431,7 @@ impl Runtime {
                 cell.value = value;
             }
             self.apply_cell_component_delta(cell_key, old_value_bytes, new_value_bytes)?;
+            self.string_ascii_cache.clear();
             let value = self
                 .cells
                 .get(cell_key)
@@ -411,6 +487,7 @@ impl Runtime {
             }
         }
         self.apply_cell_component_delta(cell_key, old_value_bytes, new_value_bytes)?;
+        self.string_ascii_cache.clear();
         if env == self.globals {
             let value = self
                 .cells

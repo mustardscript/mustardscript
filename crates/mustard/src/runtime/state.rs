@@ -1397,6 +1397,8 @@ pub(super) struct Runtime {
     #[serde(skip, default)]
     pub(super) static_property_inline_caches: HashMap<(usize, usize), GetPropStaticInlineCache>,
     #[serde(skip, default)]
+    pub(super) string_ascii_cache: HashMap<(usize, usize), bool>,
+    #[serde(skip, default)]
     pub(super) property_feedback_sites: HashMap<(usize, usize), PropertyFeedbackSite>,
     #[serde(skip, default)]
     pub(super) builtin_feedback_sites: HashMap<(usize, usize), BuiltinFeedbackSite>,

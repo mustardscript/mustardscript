@@ -1035,6 +1035,9 @@ impl Compiler {
             Instruction::LoadSlotGetPropStatic { .. } | Instruction::DupGetPropStatic { .. } => {
                 state.push_temporary();
             }
+            Instruction::LoadSlotLoadSlotGetPropComputed { .. } => {
+                state.push_temporary();
+            }
             Instruction::LoadSlotDupGetPropStatic { .. } => {
                 state.push_temporary();
                 state.push_temporary();
@@ -1059,6 +1062,10 @@ impl Compiler {
                 Instruction::LoadSlot { .. },
                 Instruction::Dup,
                 Instruction::GetPropStatic { .. },
+            ] | [
+                Instruction::LoadSlot { .. },
+                Instruction::LoadSlot { .. },
+                Instruction::GetPropComputed { .. },
             ]
         )
     }
@@ -1124,6 +1131,23 @@ impl Compiler {
                 depth: *depth,
                 slot: *slot,
                 name: name.clone(),
+                optional: *optional,
+            }),
+            [
+                Instruction::LoadSlot {
+                    depth: object_depth,
+                    slot: object_slot,
+                },
+                Instruction::LoadSlot {
+                    depth: property_depth,
+                    slot: property_slot,
+                },
+                Instruction::GetPropComputed { optional },
+            ] => Some(Instruction::LoadSlotLoadSlotGetPropComputed {
+                object_depth: *object_depth,
+                object_slot: *object_slot,
+                property_depth: *property_depth,
+                property_slot: *property_slot,
                 optional: *optional,
             }),
             _ => None,
@@ -1340,6 +1364,48 @@ mod tests {
                 Instruction::Return,
             ] if name == "value"
         ));
+    }
+
+    #[test]
+    fn superinstruction_peephole_fuses_slot_computed_property_triplets() {
+        let optimized = Compiler::apply_superinstruction_peephole(vec![
+            Instruction::LoadSlot { depth: 0, slot: 1 },
+            Instruction::LoadSlot { depth: 0, slot: 2 },
+            Instruction::GetPropComputed { optional: false },
+            Instruction::Return,
+        ]);
+
+        assert!(matches!(
+            optimized.as_slice(),
+            [
+                Instruction::LoadSlotLoadSlotGetPropComputed {
+                    object_depth: 0,
+                    object_slot: 1,
+                    property_depth: 0,
+                    property_slot: 2,
+                    optional: false,
+                },
+                Instruction::Return,
+            ]
+        ));
+    }
+
+    #[test]
+    fn compiler_emits_slot_computed_property_superinstruction_for_local_index_reads() {
+        let program = compile(
+            "async function m(){let t=await read_file('x'),n=0;for(let i=0;i<t.length;i++)if(t[i]=='\\n')n++;return String(n)}m()",
+        )
+        .expect("source should compile");
+        let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
+
+        assert!(bytecode.functions.iter().any(|function| {
+            function.code.iter().any(|instruction| {
+                matches!(
+                    instruction,
+                    Instruction::LoadSlotLoadSlotGetPropComputed { .. }
+                )
+            })
+        }));
     }
 
     #[test]

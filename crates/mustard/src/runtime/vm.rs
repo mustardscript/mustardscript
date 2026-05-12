@@ -73,15 +73,41 @@ impl Runtime {
                 optional,
             } => {
                 let env = self.frames[frame_index].env;
-                let object = self.lookup_slot(env, *depth, *slot)?;
                 self.record_static_property_read();
                 let site = (function_id, ip);
-                let value =
+                let value = if let Some(value) =
+                    self.lookup_slot_string_property(env, *depth, *slot, name)?
+                {
+                    value
+                } else {
+                    let object = self.lookup_slot(env, *depth, *slot)?;
                     if let Some(value) = self.try_get_patched_property_value(site, &object)? {
                         value
                     } else {
                         self.get_property_static_at_site(object, name, *optional, Some(site))?
-                    };
+                    }
+                };
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::LoadSlotLoadSlotGetPropComputed {
+                object_depth,
+                object_slot,
+                property_depth,
+                property_slot,
+                optional,
+            } => {
+                let env = self.frames[frame_index].env;
+                let property = self.lookup_slot(env, *property_depth, *property_slot)?;
+                let key = self.to_property_key(property)?;
+                self.record_computed_property_read();
+                let value = if let Some(value) =
+                    self.lookup_slot_string_property(env, *object_depth, *object_slot, &key)?
+                {
+                    value
+                } else {
+                    let object = self.lookup_slot(env, *object_depth, *object_slot)?;
+                    self.get_property(object, Value::String(key), *optional)?
+                };
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::LoadSlotDupGetPropStatic {

@@ -40,7 +40,7 @@ use std::sync::{Arc, OnceLock};
 
 use self::properties::{
     array_index_from_property_key, format_number_key, ordered_own_property_keys,
-    property_name_to_key,
+    property_name_to_key, string_index_property_value, string_property_len,
 };
 use self::shared::{
     CallbackCallOptions, is_callable, is_truthy, limit_error, next_snapshot_nonce, pop_many,
@@ -127,6 +127,7 @@ impl Runtime {
             object_shapes: HashMap::new(),
             next_object_shape_id: 1,
             static_property_inline_caches: HashMap::new(),
+            string_ascii_cache: HashMap::new(),
             property_feedback_sites: HashMap::new(),
             builtin_feedback_sites: HashMap::new(),
             collection_call_sites: HashMap::new(),
@@ -178,6 +179,7 @@ impl Runtime {
             object_shapes: HashMap::new(),
             next_object_shape_id: 1,
             static_property_inline_caches: HashMap::new(),
+            string_ascii_cache: HashMap::new(),
             property_feedback_sites: HashMap::new(),
             builtin_feedback_sites: HashMap::new(),
             collection_call_sites: HashMap::new(),

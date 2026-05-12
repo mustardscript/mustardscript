@@ -49,6 +49,13 @@ pub enum Instruction {
         name: String,
         optional: bool,
     },
+    LoadSlotLoadSlotGetPropComputed {
+        object_depth: usize,
+        object_slot: usize,
+        property_depth: usize,
+        property_slot: usize,
+        optional: bool,
+    },
     LoadSlotDupGetPropStatic {
         depth: usize,
         slot: usize,

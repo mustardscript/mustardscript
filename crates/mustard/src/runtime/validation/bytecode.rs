@@ -232,6 +232,7 @@ fn apply_validation_effect(
         | Instruction::PushRegExp { .. }
         | Instruction::LoadSlot { .. }
         | Instruction::LoadSlotGetPropStatic { .. }
+        | Instruction::LoadSlotLoadSlotGetPropComputed { .. }
         | Instruction::LoadName(_)
         | Instruction::LoadGlobal(_)
         | Instruction::LoadGlobalObject

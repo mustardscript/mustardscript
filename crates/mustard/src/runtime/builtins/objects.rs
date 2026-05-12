@@ -75,7 +75,7 @@ impl Runtime {
                         .ok_or_else(|| MustardError::runtime("object missing"))?;
                     match &object.kind {
                         ObjectKind::StringObject(value) => {
-                            let mut keys = (0..value.chars().count())
+                            let mut keys = (0..string_property_len(value))
                                 .map(|index| index.to_string())
                                 .collect::<Vec<_>>();
                             keys.extend(object.properties.ordered_keys());
@@ -144,9 +144,9 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
                 if let ObjectKind::StringObject(value) = &object.kind
                     && let Some(index) = array_index_from_property_key(key)
-                    && let Some(ch) = value.chars().nth(index)
+                    && let Some(value) = string_index_property_value(value, index)
                 {
-                    return Ok(Value::String(ch.to_string()));
+                    return Ok(value);
                 }
                 object
                     .properties

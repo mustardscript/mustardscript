@@ -1217,6 +1217,50 @@ fn additional_string_and_array_helpers_cover_supported_surface() {
 }
 
 #[test]
+fn string_index_reads_preserve_ascii_and_unicode_scalar_semantics() {
+    let program = compile(
+        r#"
+        const ascii = "line\nnext";
+        const unicode = "A🙂éB";
+        const boxed = new String("A🙂éB");
+        ({
+          asciiLength: ascii.length,
+          asciiFirst: ascii[0],
+          asciiNewline: ascii[4],
+          asciiMissing: ascii[99],
+          unicodeLength: unicode.length,
+          unicodeSmile: unicode[1],
+          unicodeAccent: unicode[2],
+          boxedLength: boxed.length,
+          boxedSmile: boxed[1],
+          boxedKeys: Object.keys(boxed),
+        });
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Object(IndexMap::from([
+            ("asciiLength".to_string(), number(9.0)),
+            ("asciiFirst".to_string(), "l".into()),
+            ("asciiNewline".to_string(), "\n".into()),
+            ("asciiMissing".to_string(), StructuredValue::Undefined),
+            ("unicodeLength".to_string(), number(4.0)),
+            ("unicodeSmile".to_string(), "🙂".into()),
+            ("unicodeAccent".to_string(), "é".into()),
+            ("boxedLength".to_string(), number(4.0)),
+            ("boxedSmile".to_string(), "🙂".into()),
+            (
+                "boxedKeys".to_string(),
+                StructuredValue::Array(vec!["0".into(), "1".into(), "2".into(), "3".into()]),
+            ),
+        ]))
+    );
+}
+
+#[test]
 fn intl_subset_covers_supported_surface() {
     let program = compile(
         r#"

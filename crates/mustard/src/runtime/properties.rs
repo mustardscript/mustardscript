@@ -772,8 +772,9 @@ impl Runtime {
                                     | "toString"
                                     | "valueOf"
                             )
-                            || array_index_from_property_key(&key)
-                                .is_some_and(|index| value.chars().nth(index).is_some())
+                            || array_index_from_property_key(&key).is_some_and(|index| {
+                                string_index_property_value(value, index).is_some()
+                            })
                     }
                     ObjectKind::NumberObject(_) | ObjectKind::BooleanObject(_) => {
                         matches!(key.as_str(), "constructor" | "toString" | "valueOf")
@@ -1579,12 +1580,12 @@ impl Runtime {
                 }
                 if let ObjectKind::StringObject(value) = &object.kind {
                     if key == "length" {
-                        return Ok(Value::Number(value.chars().count() as f64));
+                        return Ok(Value::Number(string_property_len(value) as f64));
                     }
                     if let Some(index) = array_index_from_property_key(key)
-                        && let Some(ch) = value.chars().nth(index)
+                        && let Some(value) = string_index_property_value(value, index)
                     {
-                        return Ok(Value::String(ch.to_string()));
+                        return Ok(value);
                     }
                     if let Some(method) = match key {
                         "trim" => Some(Value::BuiltinFunction(BuiltinFunction::StringTrim)),
@@ -1953,7 +1954,7 @@ impl Runtime {
                 }
             }
             Value::String(value) => match key {
-                "length" => Ok(Value::Number(value.chars().count() as f64)),
+                "length" => Ok(Value::Number(string_property_len(&value) as f64)),
                 "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::StringCtor)),
                 "trim" => Ok(Value::BuiltinFunction(BuiltinFunction::StringTrim)),
                 "trimStart" => Ok(Value::BuiltinFunction(BuiltinFunction::StringTrimStart)),
@@ -1982,16 +1983,10 @@ impl Runtime {
                 "toString" => Ok(Value::BuiltinFunction(BuiltinFunction::StringToString)),
                 "valueOf" => Ok(Value::BuiltinFunction(BuiltinFunction::StringValueOf)),
                 _ if array_index_from_property_key(key)
-                    .is_some_and(|index| value.chars().nth(index).is_some()) =>
+                    .is_some_and(|index| string_index_property_value(&value, index).is_some()) =>
                 {
                     let index = array_index_from_property_key(key).expect("index already checked");
-                    Ok(Value::String(
-                        value
-                            .chars()
-                            .nth(index)
-                            .expect("index already checked")
-                            .to_string(),
-                    ))
+                    Ok(string_index_property_value(&value, index).expect("index already checked"))
                 }
                 _ => Ok(Value::Undefined),
             },
@@ -2200,6 +2195,28 @@ pub(super) fn array_index_from_property_key(key: &str) -> Option<usize> {
         Some(index as usize)
     } else {
         None
+    }
+}
+
+pub(super) fn string_property_len(value: &str) -> usize {
+    if value.is_ascii() {
+        value.len()
+    } else {
+        value.chars().count()
+    }
+}
+
+pub(super) fn string_index_property_value(value: &str, index: usize) -> Option<Value> {
+    if value.is_ascii() {
+        value
+            .as_bytes()
+            .get(index)
+            .map(|byte| Value::String(char::from(*byte).to_string()))
+    } else {
+        value
+            .chars()
+            .nth(index)
+            .map(|ch| Value::String(ch.to_string()))
     }
 }
 
