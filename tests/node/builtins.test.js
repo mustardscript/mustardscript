@@ -494,6 +494,23 @@ test('Array.prototype.concat and Array.prototype.at fail closed for incompatible
   );
 });
 
+test('Number.prototype.toFixed fails closed with a targeted unsupported error', async () => {
+  for (const source of [
+    '(1).toFixed(2);',
+    'new Number(1).toFixed(2);',
+    'Number.prototype.toFixed.call(1, 2);',
+  ]) {
+    await assert.rejects(
+      () => runtime(source).run(),
+      isMustardError({
+        kind: 'Runtime',
+        message: 'TypeError: Number.prototype.toFixed is not supported',
+        guestSafe: true,
+      }),
+    );
+  }
+});
+
 test('Object.assign copies supported enumerable properties and unsupported object helpers fail closed', async () => {
   await assert.rejects(
     () => runtime('Object.assign(1, { alpha: 1 });').run(),

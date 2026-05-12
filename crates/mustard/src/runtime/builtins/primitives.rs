@@ -437,6 +437,17 @@ impl Runtime {
         Ok(Value::Number(self.number_receiver(this_value, "valueOf")?))
     }
 
+    pub(crate) fn call_number_to_fixed(
+        &self,
+        this_value: Value,
+        _args: &[Value],
+    ) -> MustardResult<Value> {
+        self.number_receiver(this_value, "toFixed")?;
+        Err(MustardError::runtime(
+            "TypeError: Number.prototype.toFixed is not supported",
+        ))
+    }
+
     pub(crate) fn call_boolean_to_string(&self, this_value: Value) -> MustardResult<Value> {
         Ok(Value::String(self.to_string(Value::Bool(
             self.boolean_receiver(this_value, "toString")?,

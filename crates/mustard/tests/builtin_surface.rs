@@ -1615,6 +1615,21 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
             .contains("Array.prototype.at called on incompatible receiver")
     );
 
+    for source in [
+        "(1).toFixed(2);",
+        "new Number(1).toFixed(2);",
+        "Number.prototype.toFixed.call(1, 2);",
+    ] {
+        let program = compile(source).expect("source should compile");
+        let error =
+            execute(&program, ExecutionOptions::default()).expect_err("execution should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("Number.prototype.toFixed is not supported")
+        );
+    }
+
     let splice_receiver =
         compile("const splice = [1].splice; splice(0, 1);").expect("source should compile");
     let error =

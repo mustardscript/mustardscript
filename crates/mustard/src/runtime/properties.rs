@@ -393,6 +393,7 @@ impl Runtime {
             BuiltinFunction::BooleanValueOf => "valueOf",
             BuiltinFunction::NumberToString => "toString",
             BuiltinFunction::NumberValueOf => "valueOf",
+            BuiltinFunction::NumberToFixed => "toFixed",
             BuiltinFunction::MathAbs => "abs",
             BuiltinFunction::MathMax => "max",
             BuiltinFunction::MathMin => "min",
@@ -564,6 +565,7 @@ impl Runtime {
             BuiltinFunction::BooleanValueOf => 0,
             BuiltinFunction::NumberToString => 0,
             BuiltinFunction::NumberValueOf => 0,
+            BuiltinFunction::NumberToFixed => 1,
             BuiltinFunction::MathAbs => 1,
             BuiltinFunction::MathMax => 2,
             BuiltinFunction::MathMin => 2,
@@ -697,6 +699,9 @@ impl Runtime {
                                         | "getUTCHours"
                                         | "getUTCMinutes"
                                         | "getUTCSeconds"
+                                ) | (
+                                    Value::BuiltinFunction(BuiltinFunction::NumberCtor),
+                                    "toString" | "valueOf" | "toFixed"
                                 )
                             )
                     }
@@ -776,7 +781,13 @@ impl Runtime {
                                 string_index_property_value(value, index).is_some()
                             })
                     }
-                    ObjectKind::NumberObject(_) | ObjectKind::BooleanObject(_) => {
+                    ObjectKind::NumberObject(_) => {
+                        matches!(
+                            key.as_str(),
+                            "constructor" | "toString" | "valueOf" | "toFixed"
+                        )
+                    }
+                    ObjectKind::BooleanObject(_) => {
                         matches!(key.as_str(), "constructor" | "toString" | "valueOf")
                     }
                     ObjectKind::Console => self.console_method(&key).is_some(),
@@ -1641,6 +1652,9 @@ impl Runtime {
                         "valueOf" => {
                             return Ok(Value::BuiltinFunction(BuiltinFunction::NumberValueOf));
                         }
+                        "toFixed" => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::NumberToFixed));
+                        }
                         _ => {}
                     }
                 }
@@ -1757,6 +1771,23 @@ impl Runtime {
                                 return Ok(Value::BuiltinFunction(
                                     BuiltinFunction::DateGetUTCSeconds,
                                 ));
+                            }
+                            _ => {}
+                        }
+                    }
+                    if matches!(
+                        constructor,
+                        Value::BuiltinFunction(BuiltinFunction::NumberCtor)
+                    ) {
+                        match key {
+                            "toString" => {
+                                return Ok(Value::BuiltinFunction(BuiltinFunction::NumberToString));
+                            }
+                            "valueOf" => {
+                                return Ok(Value::BuiltinFunction(BuiltinFunction::NumberValueOf));
+                            }
+                            "toFixed" => {
+                                return Ok(Value::BuiltinFunction(BuiltinFunction::NumberToFixed));
                             }
                             _ => {}
                         }
@@ -1994,6 +2025,7 @@ impl Runtime {
                 "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberCtor)),
                 "toString" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToString)),
                 "valueOf" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberValueOf)),
+                "toFixed" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToFixed)),
                 _ => Ok(Value::Undefined),
             },
             Value::Bool(_) => match key {

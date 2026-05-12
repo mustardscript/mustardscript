@@ -203,6 +203,7 @@ impl Runtime {
             BuiltinFunction::BooleanValueOf => self.call_boolean_value_of(this_value),
             BuiltinFunction::NumberToString => self.call_number_to_string(this_value),
             BuiltinFunction::NumberValueOf => self.call_number_value_of(this_value),
+            BuiltinFunction::NumberToFixed => self.call_number_to_fixed(this_value, args),
             BuiltinFunction::MathAbs => self.call_math_abs(args),
             BuiltinFunction::MathMax => self.call_math_max(args),
             BuiltinFunction::MathMin => self.call_math_min(args),

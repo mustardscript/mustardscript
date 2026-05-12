@@ -565,6 +565,7 @@ pub(super) enum BuiltinFunction {
     BooleanValueOf,
     NumberToString,
     NumberValueOf,
+    NumberToFixed,
     MathAbs,
     MathMax,
     MathMin,
