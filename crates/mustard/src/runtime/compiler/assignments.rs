@@ -11,7 +11,10 @@ use super::bindings::assign_op_to_binary;
 impl Compiler {
     fn declare_internal_binding(&mut self, context: &mut CompileContext, prefix: &str) -> String {
         let name = self.fresh_internal_name(context, prefix);
-        self.emit_declare_name(context, name.clone(), true);
+        context.code.push(Instruction::DeclareName {
+            name: name.clone(),
+            mutable: true,
+        });
         name
     }
 

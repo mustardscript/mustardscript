@@ -365,6 +365,114 @@ fn nested_closures_keep_shadowed_slots_distinct_while_updating_outer_bindings() 
 }
 
 #[test]
+fn nested_helpers_after_loop_keep_function_binding_slots_stable() {
+    let program = compile(
+        r#"
+        function main() {
+          const text = "Survived,Age,SibSp,Parch\n1,22,1,0\n0,65,0,0\n";
+          const lines = text.split("\n");
+
+          function parseLine(line) {
+            const out = [];
+            let cur = "";
+            for (let i = 0; i < line.length; i++) {
+              const c = line[i];
+              if (c === ",") {
+                out.push(cur);
+                cur = "";
+              } else if (c !== "\r") {
+                cur += c;
+              }
+            }
+            out.push(cur);
+            return out;
+          }
+
+          const header = parseLine(lines[0]);
+          const idx = {};
+          for (let i = 0; i < header.length; i++) {
+            idx[header[i]] = i;
+          }
+
+          const bands = { a: { total: 0, survived: 0 } };
+          const family = {
+            solo: { total: 0, survived: 0 },
+            small: { total: 0, survived: 0 },
+            large: { total: 0, survived: 0 },
+          };
+          const ageBySurv = { 0: { count: 0, sum: 0 }, 1: { count: 0, sum: 0 } };
+
+          for (let li = 1; li < lines.length; li++) {
+            const line = lines[li];
+            if (!line) continue;
+            const r = parseLine(line);
+            const survived = +r[idx["Survived"]];
+            const ageRaw = r[idx["Age"]];
+            const age = ageRaw === "" ? null : +ageRaw;
+            if (age != null && age === age) {
+              ageBySurv[survived].count++;
+              ageBySurv[survived].sum += age;
+            }
+            let band = "a";
+            bands[band].total++;
+            if (survived === 1) bands[band].survived++;
+            const sib = +r[idx["SibSp"]];
+            const par = +r[idx["Parch"]];
+            const fam = sib + par;
+            let fk = "large";
+            if (fam === 0) fk = "solo";
+            else if (fam <= 3) fk = "small";
+            family[fk].total++;
+            if (survived === 1) family[fk].survived++;
+          }
+
+          function rates(obj) {
+            const out = {};
+            for (const key in obj) {
+              out[key] = {
+                total: obj[key].total,
+                survived: obj[key].survived,
+              };
+            }
+            return out;
+          }
+
+          return JSON.stringify({
+            bands: rates(bands),
+            family: rates(family),
+            died_age_sum: ageBySurv[0].sum,
+          });
+        }
+
+        main();
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(
+        &program,
+        ExecutionOptions {
+            limits: RuntimeLimits {
+                instruction_budget: 10_000_000,
+                heap_limit_bytes: 64 * 1024 * 1024,
+                allocation_budget: 1_000_000,
+                ..RuntimeLimits::default()
+            },
+            ..ExecutionOptions::default()
+        },
+    )
+    .expect("program should run without missing lexical binding slots");
+
+    assert_eq!(
+        result,
+        StructuredValue::String(
+            r#"{"bands":{"a":{"total":2,"survived":1}},"family":{"solo":{"total":1,"survived":0},"small":{"total":1,"survived":1},"large":{"total":0,"survived":0}},"died_age_sum":65}"#
+                .to_string()
+        )
+    );
+}
+
+#[test]
 fn unresolved_globals_lower_to_fast_path_and_preserve_runtime_behavior() {
     let program = compile(
         r#"

@@ -1,5 +1,11 @@
 use super::*;
 
+fn is_ephemeral_internal_binding(name: &str) -> bool {
+    name.starts_with("\0mustard_pattern_")
+        || name.starts_with("\0mustard_assign_")
+        || name.starts_with("\0mustard_update_")
+}
+
 impl Runtime {
     pub(super) fn global_object_key(&self) -> Option<ObjectKey> {
         let cell = self
@@ -164,12 +170,15 @@ impl Runtime {
         slot: usize,
     ) -> MustardResult<(String, CellKey)> {
         let env = self.env_at_depth(env, depth)?;
-        let (name, cell) = self
+        let bindings = &self
             .envs
             .get(env)
             .ok_or_else(|| MustardError::runtime("environment missing"))?
-            .bindings
-            .get_index(slot)
+            .bindings;
+        let (name, cell) = bindings
+            .iter()
+            .filter(|(name, _)| !is_ephemeral_internal_binding(name))
+            .nth(slot)
             .ok_or_else(|| {
                 MustardError::runtime(format!(
                     "binding slot {slot} missing in environment at depth {depth}"

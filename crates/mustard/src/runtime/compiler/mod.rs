@@ -352,6 +352,12 @@ impl Compiler {
         name
     }
 
+    fn is_internal_name(name: &str) -> bool {
+        name.starts_with("\0mustard_pattern_")
+            || name.starts_with("\0mustard_assign_")
+            || name.starts_with("\0mustard_update_")
+    }
+
     fn enter_env_scope(&self, context: &mut CompileContext) {
         context.code.push(Instruction::PushEnv);
         context.scope_depth += 1;
@@ -424,6 +430,10 @@ impl Compiler {
     }
 
     fn emit_load_name(&self, context: &mut CompileContext, name: &str) {
+        if Self::is_internal_name(name) {
+            context.code.push(Instruction::LoadName(name.to_string()));
+            return;
+        }
         if let Some(binding) = context.resolve_binding(name) {
             context.code.push(Instruction::LoadSlot {
                 depth: binding.depth,
