@@ -21,7 +21,10 @@ impl Runtime {
         self.run()
     }
 
-    pub(super) fn step_active_frame(&mut self) -> MustardResult<StepAction> {
+    pub(super) fn step_active_frame(
+        &mut self,
+        program: &Arc<BytecodeProgram>,
+    ) -> MustardResult<StepAction> {
         let frame_index = self
             .frames
             .len()
@@ -29,7 +32,6 @@ impl Runtime {
             .ok_or_else(|| MustardError::runtime("vm lost all frames"))?;
         let function_id = self.frames[frame_index].function_id;
         let ip = self.frames[frame_index].ip;
-        let program = Arc::clone(&self.program);
         let instruction = program
             .functions
             .get(function_id)
@@ -98,15 +100,34 @@ impl Runtime {
             } => {
                 let env = self.frames[frame_index].env;
                 let property = self.lookup_slot(env, *property_depth, *property_slot)?;
-                let key = self.to_property_key(property)?;
                 self.record_computed_property_read();
-                let value = if let Some(value) =
-                    self.lookup_slot_string_property(env, *object_depth, *object_slot, &key)?
-                {
-                    value
-                } else {
+                let value = if matches!(property, Value::Number(_)) {
+                    // Numeric index: try the direct array fast path before
+                    // stringifying the key. Non-array receivers (e.g. a string
+                    // indexed by number) fall back to the existing key path,
+                    // preserving the string-index fast path below.
                     let object = self.lookup_slot(env, *object_depth, *object_slot)?;
-                    self.get_property(object, Value::String(key), *optional)?
+                    match self.try_array_numeric_index_get(&object, &property) {
+                        Some(value) => value,
+                        None => {
+                            let key = self.to_property_key(property)?;
+                            match self
+                                .lookup_slot_string_property(env, *object_depth, *object_slot, &key)?
+                            {
+                                Some(value) => value,
+                                None => self.get_property(object, Value::String(key), *optional)?,
+                            }
+                        }
+                    }
+                } else {
+                    let key = self.to_property_key(property)?;
+                    match self.lookup_slot_string_property(env, *object_depth, *object_slot, &key)? {
+                        Some(value) => value,
+                        None => {
+                            let object = self.lookup_slot(env, *object_depth, *object_slot)?;
+                            self.get_property(object, Value::String(key), *optional)?
+                        }
+                    }
                 };
                 self.frames[frame_index].stack.push(value);
             }
@@ -417,7 +438,36 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
-                let result = self.apply_binary(*operator, left, right)?;
+                // Number-Number fast path: bypass the to_number / string / BigInt
+                // coercion cascade for the overwhelmingly common arithmetic and
+                // ordering-comparison case. `to_number(Number(x)) == x`, so these
+                // results are bit-identical to `apply_binary`. Equality, `in`,
+                // `instanceof`, and bitwise ops are intentionally NOT handled here
+                // (they have distinct -0/NaN/strict-equality semantics) and fall
+                // through to the slow path unchanged.
+                let fast = match (&left, &right) {
+                    (Value::Number(l), Value::Number(r)) => {
+                        let (l, r) = (*l, *r);
+                        match *operator {
+                            BinaryOp::Add => Some(Value::Number(l + r)),
+                            BinaryOp::Sub => Some(Value::Number(l - r)),
+                            BinaryOp::Mul => Some(Value::Number(l * r)),
+                            BinaryOp::Div => Some(Value::Number(l / r)),
+                            BinaryOp::Rem => Some(Value::Number(l % r)),
+                            BinaryOp::Pow => Some(Value::Number(l.powf(r))),
+                            BinaryOp::LessThan => Some(Value::Bool(l < r)),
+                            BinaryOp::LessThanEq => Some(Value::Bool(l <= r)),
+                            BinaryOp::GreaterThan => Some(Value::Bool(l > r)),
+                            BinaryOp::GreaterThanEq => Some(Value::Bool(l >= r)),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                let result = match fast {
+                    Some(value) => value,
+                    None => self.apply_binary(*operator, left, right)?,
+                };
                 self.frames[frame_index].stack.push(result);
             }
             Instruction::Update(operator) => {
@@ -823,6 +873,10 @@ impl Runtime {
     }
 
     pub(super) fn run(&mut self) -> MustardResult<ExecutionStep> {
+        // The program is immutable for the lifetime of this run loop, so clone
+        // the Arc once here instead of paying an atomic refcount bump on every
+        // dispatched instruction.
+        let program = Arc::clone(&self.program);
         loop {
             self.check_cancellation()
                 .map_err(|error| self.annotate_runtime_error(error))?;
@@ -833,7 +887,7 @@ impl Runtime {
                     Err(error) => return Err(self.annotate_runtime_error(error)),
                 }
             }
-            let action = match self.step_active_frame() {
+            let action = match self.step_active_frame(&program) {
                 Ok(action) => action,
                 Err(error) => match self.handle_runtime_fault(error) {
                     Ok(action) => action,
@@ -853,9 +907,10 @@ impl Runtime {
         target_depth: usize,
         host_suspension_message: &str,
     ) -> MustardResult<()> {
+        let program = Arc::clone(&self.program);
         while self.frames.len() > target_depth {
             self.check_cancellation()?;
-            let action = match self.step_active_frame() {
+            let action = match self.step_active_frame(&program) {
                 Ok(action) => action,
                 Err(error) => self.handle_runtime_fault(error)?,
             };

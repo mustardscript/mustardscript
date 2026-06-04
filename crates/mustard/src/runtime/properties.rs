@@ -1454,12 +1454,46 @@ impl Runtime {
         Ok(Some(value))
     }
 
+    /// Fast path for `array[n]` where `n` is a non-negative integer index in
+    /// range. Returns `Some(element-or-undefined)` matching the general
+    /// `get_property_by_key` array semantics (out-of-bounds and holes read as
+    /// `undefined`), or `None` when the receiver is not an array or the key is
+    /// not a valid array index (negative, fractional, NaN, infinite, or
+    /// `>= u32::MAX`), in which case the caller must fall through to the
+    /// stringifying named-property path. Avoids the index->string->index
+    /// round-trip (two heap allocations) on the hot array-indexing path.
+    pub(super) fn try_array_numeric_index_get(
+        &self,
+        object: &Value,
+        property: &Value,
+    ) -> Option<Value> {
+        let (Value::Array(array_key), Value::Number(index)) = (object, property) else {
+            return None;
+        };
+        let index = *index;
+        if !(index >= 0.0 && index.fract() == 0.0 && index < u32::MAX as f64) {
+            return None;
+        }
+        let array = self.arrays.get(*array_key)?;
+        Some(
+            array
+                .elements
+                .get(index as usize)
+                .cloned()
+                .flatten()
+                .unwrap_or(Value::Undefined),
+        )
+    }
+
     pub(super) fn get_property(
         &mut self,
         object: Value,
         property: Value,
         optional: bool,
     ) -> MustardResult<Value> {
+        if let Some(value) = self.try_array_numeric_index_get(&object, &property) {
+            return Ok(value);
+        }
         if let Value::Object(object) = object.clone() {
             self.materialize_object_properties_if_needed(object)?;
         }

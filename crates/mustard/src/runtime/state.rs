@@ -23,7 +23,8 @@ use crate::{
 };
 
 use super::{
-    api::ExecutionStep, bytecode::BytecodeProgram, properties::array_index_from_property_key,
+    accounting::measure_collection_index_entry_bytes, api::ExecutionStep,
+    bytecode::BytecodeProgram, properties::array_index_from_property_key,
 };
 
 new_key_type! { pub(super) struct EnvKey; }
@@ -35,6 +36,14 @@ new_key_type! { pub(super) struct SetKey; }
 new_key_type! { pub(super) struct IteratorKey; }
 new_key_type! { pub(super) struct ClosureKey; }
 new_key_type! { pub(super) struct PromiseKey; }
+
+/// Hash index from a collection key to its slot in the `entries` Vec. This is a
+/// runtime-only acceleration structure (`#[serde(skip)]`, rebuilt on load) and
+/// never drives observable iteration order — that comes from `entries` — so it
+/// uses a fast, fixed-seed (deterministic) `FxBuildHasher` instead of the
+/// default SipHash. Determinism across runs and snapshot reloads is preserved.
+pub(super) type CollectionLookup =
+    IndexMap<CollectionIndexKey, usize, rustc_hash::FxBuildHasher>;
 
 pub(super) const COLLECTION_LOOKUP_PROMOTION_LEN: usize = 32;
 pub(super) const COLLECTION_STRING_LOOKUP_PROMOTION_LEN: usize = 8;
@@ -598,6 +607,13 @@ pub(super) struct Env {
     pub(super) bindings: IndexMap<String, CellKey>,
     #[serde(skip, default)]
     pub(super) accounted_bytes: usize,
+    /// Number of ephemeral internal temporaries (`\0mustard_*`) inserted into
+    /// `bindings`. When zero, `bindings` order matches the compiler's slot
+    /// numbering, so slot resolution can index in O(1) instead of doing a
+    /// filtered linear scan. Recomputed after snapshot load in
+    /// `recompute_accounting_totals`.
+    #[serde(skip, default)]
+    pub(super) ephemeral_binding_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -928,7 +944,9 @@ pub(super) struct MapObject {
     #[serde(default)]
     pub(super) clear_epoch: u64,
     #[serde(skip, default)]
-    pub(super) lookup: IndexMap<CollectionIndexKey, usize>,
+    pub(super) lookup: CollectionLookup,
+    #[serde(skip, default)]
+    pub(super) lookup_accounted_bytes: usize,
     #[serde(skip, default)]
     pub(super) accounted_bytes: usize,
 }
@@ -949,7 +967,9 @@ pub(super) struct SetObject {
     #[serde(default)]
     pub(super) clear_epoch: u64,
     #[serde(skip, default)]
-    pub(super) lookup: IndexMap<CollectionIndexKey, usize>,
+    pub(super) lookup: CollectionLookup,
+    #[serde(skip, default)]
+    pub(super) lookup_accounted_bytes: usize,
     #[serde(skip, default)]
     pub(super) accounted_bytes: usize,
 }
@@ -1020,7 +1040,8 @@ impl MapObject {
             live_len: 0,
             string_key_live_len: 0,
             clear_epoch: 0,
-            lookup: IndexMap::new(),
+            lookup: CollectionLookup::default(),
+            lookup_accounted_bytes: 0,
             accounted_bytes: 0,
         };
         map.rebuild_lookup();
@@ -1056,6 +1077,15 @@ impl MapObject {
                     .insert(CollectionIndexKey::from_value(&entry.key), index);
             }
         }
+        self.recompute_lookup_accounted_bytes();
+    }
+
+    pub(super) fn recompute_lookup_accounted_bytes(&mut self) {
+        self.lookup_accounted_bytes = self
+            .lookup
+            .keys()
+            .map(measure_collection_index_entry_bytes)
+            .sum();
     }
 }
 
@@ -1077,11 +1107,20 @@ impl SetObject {
             live_len: 0,
             string_key_live_len: 0,
             clear_epoch: 0,
-            lookup: IndexMap::new(),
+            lookup: CollectionLookup::default(),
+            lookup_accounted_bytes: 0,
             accounted_bytes: 0,
         };
         set.rebuild_lookup();
         set
+    }
+
+    pub(super) fn recompute_lookup_accounted_bytes(&mut self) {
+        self.lookup_accounted_bytes = self
+            .lookup
+            .keys()
+            .map(measure_collection_index_entry_bytes)
+            .sum();
     }
 
     pub(super) fn rebuild_lookup(&mut self) {
@@ -1113,6 +1152,7 @@ impl SetObject {
                     .insert(CollectionIndexKey::from_value(value), index);
             }
         }
+        self.recompute_lookup_accounted_bytes();
     }
 }
 

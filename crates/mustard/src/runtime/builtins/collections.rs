@@ -189,17 +189,27 @@ impl Runtime {
     }
 
     fn map_lookup_bytes(map: &MapObject) -> usize {
-        map.lookup
-            .keys()
-            .map(Self::collection_index_entry_bytes)
-            .sum()
+        debug_assert_eq!(
+            map.lookup_accounted_bytes,
+            map.lookup
+                .keys()
+                .map(Self::collection_index_entry_bytes)
+                .sum::<usize>(),
+            "map lookup_accounted_bytes drifted from full scan"
+        );
+        map.lookup_accounted_bytes
     }
 
     fn set_lookup_bytes(set: &SetObject) -> usize {
-        set.lookup
-            .keys()
-            .map(Self::collection_index_entry_bytes)
-            .sum()
+        debug_assert_eq!(
+            set.lookup_accounted_bytes,
+            set.lookup
+                .keys()
+                .map(Self::collection_index_entry_bytes)
+                .sum::<usize>(),
+            "set lookup_accounted_bytes drifted from full scan"
+        );
+        set.lookup_accounted_bytes
     }
 
     fn map_slot_by_key(map: &MapObject, key: &Value) -> Option<usize> {
@@ -320,9 +330,12 @@ impl Runtime {
                     map_ref.rebuild_lookup();
                     Self::map_lookup_bytes(map_ref)
                 } else if !map_ref.lookup.is_empty() {
+                    let added = Self::collection_index_entry_bytes(&index_key);
                     map_ref.lookup.insert(index_key, slot);
+                    map_ref.lookup_accounted_bytes += added;
                     if map_ref.live_len < map_ref.lookup_promotion_len() {
                         map_ref.lookup.clear();
+                        map_ref.lookup_accounted_bytes = 0;
                     }
                     Self::map_lookup_bytes(map_ref)
                 } else {
@@ -371,7 +384,11 @@ impl Runtime {
                 .as_ref()
                 .is_some_and(|entry| uses_string_heavy_collection_lookup(&entry.key));
             *entry = None;
-            map_ref.lookup.swap_remove(&removed_key);
+            if map_ref.lookup.swap_remove(&removed_key).is_some() {
+                map_ref.lookup_accounted_bytes = map_ref
+                    .lookup_accounted_bytes
+                    .saturating_sub(Self::collection_index_entry_bytes(&removed_key));
+            }
             map_ref.live_len = map_ref
                 .live_len
                 .checked_sub(1)
@@ -384,6 +401,7 @@ impl Runtime {
             }
             if !map_ref.lookup.is_empty() && map_ref.live_len < map_ref.lookup_promotion_len() {
                 map_ref.lookup.clear();
+                map_ref.lookup_accounted_bytes = 0;
             }
             let new_bytes = Self::map_slot_bytes(None) + Self::map_lookup_bytes(map_ref);
             (old_slot_bytes + old_lookup_bytes, new_bytes)
@@ -411,6 +429,7 @@ impl Runtime {
             .ok_or_else(|| MustardError::runtime("map missing"))?;
         map_ref.entries.clear();
         map_ref.lookup.clear();
+        map_ref.lookup_accounted_bytes = 0;
         map_ref.live_len = 0;
         map_ref.string_key_live_len = 0;
         map_ref.clear_epoch = map_ref.clear_epoch.wrapping_add(1);
@@ -469,9 +488,12 @@ impl Runtime {
                     set_ref.rebuild_lookup();
                     Self::set_lookup_bytes(set_ref)
                 } else if !set_ref.lookup.is_empty() {
+                    let added = Self::collection_index_entry_bytes(&index_key);
                     set_ref.lookup.insert(index_key, slot);
+                    set_ref.lookup_accounted_bytes += added;
                     if set_ref.live_len < set_ref.lookup_promotion_len() {
                         set_ref.lookup.clear();
+                        set_ref.lookup_accounted_bytes = 0;
                     }
                     Self::set_lookup_bytes(set_ref)
                 } else {
@@ -603,7 +625,11 @@ impl Runtime {
                 .as_ref()
                 .is_some_and(uses_string_heavy_collection_lookup);
             *entry = None;
-            set_ref.lookup.swap_remove(&removed_key);
+            if set_ref.lookup.swap_remove(&removed_key).is_some() {
+                set_ref.lookup_accounted_bytes = set_ref
+                    .lookup_accounted_bytes
+                    .saturating_sub(Self::collection_index_entry_bytes(&removed_key));
+            }
             set_ref.live_len = set_ref
                 .live_len
                 .checked_sub(1)
@@ -616,6 +642,7 @@ impl Runtime {
             }
             if !set_ref.lookup.is_empty() && set_ref.live_len < set_ref.lookup_promotion_len() {
                 set_ref.lookup.clear();
+                set_ref.lookup_accounted_bytes = 0;
             }
             let new_bytes = Self::set_slot_bytes(None) + Self::set_lookup_bytes(set_ref);
             (old_slot_bytes + old_lookup_bytes, new_bytes)
@@ -643,6 +670,7 @@ impl Runtime {
             .ok_or_else(|| MustardError::runtime("set missing"))?;
         set_ref.entries.clear();
         set_ref.lookup.clear();
+        set_ref.lookup_accounted_bytes = 0;
         set_ref.live_len = 0;
         set_ref.string_key_live_len = 0;
         set_ref.clear_epoch = set_ref.clear_epoch.wrapping_add(1);

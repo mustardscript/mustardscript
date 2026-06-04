@@ -102,6 +102,7 @@ impl Runtime {
             parent: None,
             bindings: IndexMap::new(),
             accounted_bytes: 0,
+            ephemeral_binding_count: 0,
         });
         Self {
             program,
@@ -460,3 +461,4 @@ impl Runtime {
         Ok(())
     }
 }
+

@@ -521,6 +521,12 @@ impl Runtime {
         old_bytes: usize,
         new_bytes: usize,
     ) -> MustardResult<()> {
+        // A net-zero delta cannot grow the heap, accrue GC debt, or trip a limit,
+        // so short-circuit before touching growth/limit bookkeeping. This is the
+        // common case for primitive-to-primitive stores (e.g. numeric counters).
+        if old_bytes == new_bytes {
+            return Ok(());
+        }
         if new_bytes >= old_bytes {
             let added_bytes = new_bytes - old_bytes;
             self.prepare_for_growth(added_bytes, 0)?;
@@ -730,6 +736,14 @@ impl Runtime {
         old_component_bytes: usize,
         new_component_bytes: usize,
     ) -> MustardResult<()> {
+        // When the component byte size is unchanged the cell's accounted total is
+        // unchanged, so skip the cell lookups and heap-delta bookkeeping entirely.
+        // This is the hot path for storing a new primitive into a binding (e.g.
+        // `total += x` in a loop), where both old and new values are zero-extra-byte
+        // numbers/bools/null/undefined.
+        if old_component_bytes == new_component_bytes {
+            return Ok(());
+        }
         let old_bytes = self
             .cells
             .get(key)
@@ -910,6 +924,7 @@ impl Runtime {
             parent,
             bindings: IndexMap::new(),
             accounted_bytes: 0,
+            ephemeral_binding_count: 0,
         };
         env.accounted_bytes = measure_env_bytes(&env);
         self.account_new_allocation(env.accounted_bytes)?;
@@ -1023,7 +1038,8 @@ impl Runtime {
             live_len: 0,
             string_key_live_len: 0,
             clear_epoch: 0,
-            lookup: IndexMap::new(),
+            lookup: CollectionLookup::default(),
+            lookup_accounted_bytes: 0,
             accounted_bytes: 0,
         };
         map.rebuild_lookup();
@@ -1048,7 +1064,8 @@ impl Runtime {
             live_len: 0,
             string_key_live_len: 0,
             clear_epoch: 0,
-            lookup: IndexMap::new(),
+            lookup: CollectionLookup::default(),
+            lookup_accounted_bytes: 0,
             accounted_bytes: 0,
         };
         set.rebuild_lookup();
@@ -1212,6 +1229,11 @@ impl Runtime {
         }
         for env in self.envs.values_mut() {
             env.accounted_bytes = measure_env_bytes(env);
+            env.ephemeral_binding_count = env
+                .bindings
+                .keys()
+                .filter(|name| super::env::is_ephemeral_internal_binding(name))
+                .count();
             heap_bytes_used = heap_bytes_used
                 .checked_add(env.accounted_bytes)
                 .ok_or_else(|| "heap accounting overflow".to_string())?;
@@ -1409,7 +1431,7 @@ fn extra_collection_index_key_bytes(key: &CollectionIndexKey) -> usize {
     }
 }
 
-fn measure_collection_index_entry_bytes(key: &CollectionIndexKey) -> usize {
+pub(super) fn measure_collection_index_entry_bytes(key: &CollectionIndexKey) -> usize {
     std::mem::size_of::<(CollectionIndexKey, usize)>() + extra_collection_index_key_bytes(key)
 }
 

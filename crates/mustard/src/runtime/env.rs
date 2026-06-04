@@ -1,6 +1,6 @@
 use super::*;
 
-fn is_ephemeral_internal_binding(name: &str) -> bool {
+pub(super) fn is_ephemeral_internal_binding(name: &str) -> bool {
     name.starts_with("\0mustard_pattern_")
         || name.starts_with("\0mustard_assign_")
         || name.starts_with("\0mustard_update_")
@@ -140,11 +140,15 @@ impl Runtime {
         }
         let cell = self.insert_cell(Value::Undefined, mutable, false)?;
         let binding_bytes = Self::binding_entry_bytes(&name);
-        self.envs
+        let is_ephemeral = is_ephemeral_internal_binding(&name);
+        let env_data = self
+            .envs
             .get_mut(env)
-            .ok_or_else(|| MustardError::runtime("environment missing"))?
-            .bindings
-            .insert(name, cell);
+            .ok_or_else(|| MustardError::runtime("environment missing"))?;
+        env_data.bindings.insert(name, cell);
+        if is_ephemeral {
+            env_data.ephemeral_binding_count += 1;
+        }
         self.apply_env_component_delta(env, 0, binding_bytes)?;
         Ok(())
     }
@@ -163,28 +167,72 @@ impl Runtime {
         })
     }
 
-    fn resolve_slot_binding(
+    /// Hot-path slot resolution: returns the resolved environment plus the bound
+    /// cell without cloning the binding name. Names are only needed for rare
+    /// diagnostics, so callers fetch them lazily via [`Self::slot_binding_name`].
+    ///
+    /// When the resolved environment contains no ephemeral internal temporaries
+    /// (`\0mustard_*` bindings created by destructuring/compound-assignment
+    /// lowering), the binding order in `bindings` matches the compiler's slot
+    /// numbering exactly, so we can index in O(1). Otherwise we fall back to the
+    /// filtered scan, which is identical in result to the fast path whenever no
+    /// ephemeral bindings are present.
+    fn resolve_slot_cell(
         &self,
         env: EnvKey,
         depth: usize,
         slot: usize,
-    ) -> MustardResult<(String, CellKey)> {
-        let env = self.env_at_depth(env, depth)?;
-        let bindings = &self
+    ) -> MustardResult<(EnvKey, CellKey)> {
+        let resolved = self.env_at_depth(env, depth)?;
+        let env_data = self
             .envs
-            .get(env)
-            .ok_or_else(|| MustardError::runtime("environment missing"))?
-            .bindings;
-        let (name, cell) = bindings
-            .iter()
-            .filter(|(name, _)| !is_ephemeral_internal_binding(name))
-            .nth(slot)
-            .ok_or_else(|| {
-                MustardError::runtime(format!(
-                    "binding slot {slot} missing in environment at depth {depth}"
-                ))
-            })?;
-        Ok((name.clone(), *cell))
+            .get(resolved)
+            .ok_or_else(|| MustardError::runtime("environment missing"))?;
+        let cell = if env_data.ephemeral_binding_count == 0 {
+            env_data.bindings.get_index(slot).map(|(_, cell)| *cell)
+        } else {
+            env_data
+                .bindings
+                .iter()
+                .filter(|(name, _)| !is_ephemeral_internal_binding(name))
+                .nth(slot)
+                .map(|(_, cell)| *cell)
+        };
+        let cell = cell.ok_or_else(|| {
+            MustardError::runtime(format!(
+                "binding slot {slot} missing in environment at depth {depth}"
+            ))
+        })?;
+        Ok((resolved, cell))
+    }
+
+    /// Resolve only the name bound at a `(depth, slot)` for diagnostics. This is
+    /// off the hot path and may allocate.
+    fn slot_binding_name(&self, env: EnvKey, depth: usize, slot: usize) -> String {
+        self.env_at_depth(env, depth)
+            .ok()
+            .and_then(|resolved| self.envs.get(resolved))
+            .and_then(|env_data| {
+                env_data
+                    .bindings
+                    .iter()
+                    .filter(|(name, _)| !is_ephemeral_internal_binding(name))
+                    .nth(slot)
+                    .map(|(name, _)| name.clone())
+            })
+            .unwrap_or_else(|| format!("<slot {slot}>"))
+    }
+
+    /// The string-index ASCII cache (`string_ascii_cache`) is keyed by the
+    /// `(ptr, len)` of live string data. A store that neither removes a string
+    /// from a cell nor introduces one cannot invalidate any cached entry (no
+    /// string buffer is freed or reused), so only clear when a string actually
+    /// enters or leaves the cell. Storing a number/bool into a numeric counter
+    /// in a hot loop therefore no longer nukes the whole cache each iteration.
+    fn invalidate_string_index_cache_on_store(&mut self, old_was_string: bool, new_is_string: bool) {
+        if old_was_string || new_is_string {
+            self.string_ascii_cache.clear();
+        }
     }
 
     pub(super) fn lookup_slot(
@@ -193,12 +241,13 @@ impl Runtime {
         depth: usize,
         slot: usize,
     ) -> MustardResult<Value> {
-        let (name, cell_key) = self.resolve_slot_binding(env, depth, slot)?;
+        let (_, cell_key) = self.resolve_slot_cell(env, depth, slot)?;
         let cell = self
             .cells
             .get(cell_key)
             .ok_or_else(|| MustardError::runtime("binding cell missing"))?;
         if !cell.initialized {
+            let name = self.slot_binding_name(env, depth, slot);
             return Err(MustardError::runtime(format!(
                 "ReferenceError: `{name}` accessed before initialization"
             )));
@@ -213,13 +262,14 @@ impl Runtime {
         slot: usize,
         key: &str,
     ) -> MustardResult<Option<Value>> {
-        let (name, cell_key) = self.resolve_slot_binding(env, depth, slot)?;
+        let (_, cell_key) = self.resolve_slot_cell(env, depth, slot)?;
         let string_cache_key = {
             let cell = self
                 .cells
                 .get(cell_key)
                 .ok_or_else(|| MustardError::runtime("binding cell missing"))?;
             if !cell.initialized {
+                let name = self.slot_binding_name(env, depth, slot);
                 return Err(MustardError::runtime(format!(
                     "ReferenceError: `{name}` accessed before initialization"
                 )));
@@ -287,43 +337,59 @@ impl Runtime {
         slot: usize,
         value: Value,
     ) -> MustardResult<()> {
-        let (name, cell_key) = self.resolve_slot_binding(env, depth, slot)?;
-        self.infer_closure_name(&value, &name)?;
+        let (resolved_env, cell_key) = self.resolve_slot_cell(env, depth, slot)?;
+        if matches!(value, Value::Closure(_)) {
+            let name = self.slot_binding_name(env, depth, slot);
+            self.infer_closure_name(&value, &name)?;
+        }
         let new_value_bytes = Self::cell_value_bytes(&value);
+        let new_is_string = matches!(value, Value::String(_));
         let old_value_bytes;
+        let old_was_string;
         {
             let cell = self
                 .cells
                 .get_mut(cell_key)
                 .ok_or_else(|| MustardError::runtime("binding cell missing"))?;
             if !cell.initialized {
+                let name = self.slot_binding_name(env, depth, slot);
                 return Err(MustardError::runtime(format!(
                     "ReferenceError: `{name}` accessed before initialization"
                 )));
             }
             if !cell.mutable {
+                let name = self.slot_binding_name(env, depth, slot);
                 return Err(MustardError::runtime(format!(
                     "TypeError: assignment to constant variable `{name}`"
                 )));
             }
             old_value_bytes = Self::cell_value_bytes(&cell.value);
+            old_was_string = matches!(cell.value, Value::String(_));
             cell.value = value;
         }
         self.apply_cell_component_delta(cell_key, old_value_bytes, new_value_bytes)?;
-        self.string_ascii_cache.clear();
-        if self
-            .envs
-            .get(self.globals)
-            .and_then(|globals| globals.bindings.get(name.as_str()))
-            .is_some_and(|bound| *bound == cell_key)
-        {
-            let value = self
-                .cells
-                .get(cell_key)
-                .ok_or_else(|| MustardError::runtime("binding cell missing"))?
-                .value
-                .clone();
-            self.set_global_property_value(name, value)?;
+        self.invalidate_string_index_cache_on_store(old_was_string, new_is_string);
+        // A slot binding only needs to be mirrored into the global object when it
+        // actually resolves into the globals environment. Lexical slots never
+        // resolve to globals (free names compile to `LoadGlobal`/`StoreGlobal`),
+        // so this branch is effectively only taken for global-scope bindings and
+        // we avoid resolving the name string on the common local-assignment path.
+        if resolved_env == self.globals {
+            let name = self.slot_binding_name(env, depth, slot);
+            if self
+                .envs
+                .get(self.globals)
+                .and_then(|globals| globals.bindings.get(name.as_str()))
+                .is_some_and(|bound| *bound == cell_key)
+            {
+                let value = self
+                    .cells
+                    .get(cell_key)
+                    .ok_or_else(|| MustardError::runtime("binding cell missing"))?
+                    .value
+                    .clone();
+                self.set_global_property_value(name, value)?;
+            }
         }
         Ok(())
     }
@@ -420,7 +486,9 @@ impl Runtime {
         if let Some(cell_key) = self.global_binding_cell(name) {
             self.infer_closure_name(&value, name)?;
             let new_value_bytes = Self::cell_value_bytes(&value);
+            let new_is_string = matches!(value, Value::String(_));
             let old_value_bytes;
+            let old_was_string;
             {
                 let cell = self
                     .cells
@@ -437,10 +505,11 @@ impl Runtime {
                     )));
                 }
                 old_value_bytes = Self::cell_value_bytes(&cell.value);
+                old_was_string = matches!(cell.value, Value::String(_));
                 cell.value = value;
             }
             self.apply_cell_component_delta(cell_key, old_value_bytes, new_value_bytes)?;
-            self.string_ascii_cache.clear();
+            self.invalidate_string_index_cache_on_store(old_was_string, new_is_string);
             let value = self
                 .cells
                 .get(cell_key)
@@ -474,7 +543,9 @@ impl Runtime {
             })?;
         let mut was_initialized = false;
         let new_value_bytes = Self::cell_value_bytes(&value);
+        let new_is_string = matches!(value, Value::String(_));
         let old_value_bytes;
+        let old_was_string;
         {
             let cell = self
                 .cells
@@ -487,16 +558,18 @@ impl Runtime {
                     )));
                 }
                 old_value_bytes = Self::cell_value_bytes(&cell.value);
+                old_was_string = matches!(cell.value, Value::String(_));
                 cell.value = value;
                 was_initialized = true;
             } else {
                 old_value_bytes = Self::cell_value_bytes(&cell.value);
+                old_was_string = matches!(cell.value, Value::String(_));
                 cell.value = value;
                 cell.initialized = true;
             }
         }
         self.apply_cell_component_delta(cell_key, old_value_bytes, new_value_bytes)?;
-        self.string_ascii_cache.clear();
+        self.invalidate_string_index_cache_on_store(old_was_string, new_is_string);
         if env == self.globals {
             let value = self
                 .cells
