@@ -43,6 +43,13 @@ fn rejects_module_syntax() {
 }
 
 #[test]
+fn rejects_await_inside_non_async_functions() {
+    let error = compile("function run() { await Promise.resolve(1); }")
+        .expect_err("await in a non-async function should fail");
+    assert!(error.to_string().contains("`await` is only allowed"));
+}
+
+#[test]
 fn rejects_meta_properties_even_near_supported_spread_constructs() {
     assert_validation_reject(
         "new.target(...values);",

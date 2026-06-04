@@ -16,7 +16,9 @@ lastUpdated: "2026-04-14"
 - A `BytecodeProgram` is a function table plus a `root` function id.
 - Each `FunctionPrototype` stores parameter patterns, bytecode instructions, an
   `is_async` flag, and the guest source span that produced the function.
-- The root function is executed first and represents the top-level script.
+- The root function is executed first and represents the top-level script. It
+  remains synchronous for ordinary scripts and is marked async only when the
+  script contains top-level `await`.
 
 ## Operand Model
 

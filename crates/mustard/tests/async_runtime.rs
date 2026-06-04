@@ -63,6 +63,81 @@ fn executes_async_functions_and_microtasks() {
 }
 
 #[test]
+fn executes_top_level_await_and_microtasks() {
+    let program = compile(
+        r#"
+        let events = [];
+        const first = Promise.resolve(3).then((value) => {
+          events[events.length] = "then:" + value;
+          return value + 4;
+        });
+        events[events.length] = "sync";
+        const resolved = await first;
+        [resolved, events];
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            number(7.0),
+            StructuredValue::Array(vec!["sync".into(), "then:3".into()]),
+        ])
+    );
+}
+
+#[test]
+fn top_level_await_suspends_and_resumes_host_calls() {
+    let program = compile(
+        r#"
+        const resolved = await fetch_data(6);
+        resolved * 2;
+        "#,
+    )
+    .expect("source should compile");
+
+    let suspended = match start(
+        &program,
+        ExecutionOptions {
+            inputs: IndexMap::new(),
+            capabilities: vec!["fetch_data".to_string()],
+            limits: RuntimeLimits::default(),
+            cancellation_token: None,
+        },
+    )
+    .expect("start should succeed")
+    {
+        ExecutionStep::Suspended(suspension) => suspension,
+        ExecutionStep::Completed(value) => panic!("expected suspension, got {value:?}"),
+    };
+
+    assert_eq!(suspended.capability, "fetch_data");
+    assert_eq!(suspended.args, vec![number(6.0)]);
+
+    let snapshot_bytes = dump_snapshot(&suspended.snapshot).expect("snapshot dump should succeed");
+    let loaded_snapshot = load_snapshot(&snapshot_bytes).expect("snapshot load should succeed");
+    let resumed = resume_with_options(
+        loaded_snapshot,
+        ResumePayload::Value(number(9.0)),
+        ResumeOptions {
+            cancellation_token: None,
+            snapshot_policy: Some(SnapshotPolicy {
+                capabilities: vec!["fetch_data".to_string()],
+                limits: RuntimeLimits::default(),
+            }),
+        },
+    )
+    .expect("resume should succeed");
+
+    match resumed {
+        ExecutionStep::Completed(value) => assert_eq!(value, number(18.0)),
+        ExecutionStep::Suspended(_) => panic!("expected completion after resume"),
+    }
+}
+
+#[test]
 fn suspends_and_resumes_async_host_calls() {
     let program = compile(
         r#"

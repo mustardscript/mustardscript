@@ -61,8 +61,9 @@ still fall back to the same plain-object semantics documented here.
 - Capability lookup is explicit.
 - The core runtime represents capability calls as suspension points.
 - In synchronous guest code, a capability call suspends immediately.
-- In async guest code, a capability call produces an internal guest promise,
-  queues the host request, and suspends at the next runtime checkpoint.
+- In async guest code, including the async root used for top-level `await`, a
+  capability call produces an internal guest promise, queues the host request,
+  and suspends at the next runtime checkpoint.
 - `start()` returns a suspension object containing the capability name, the
   converted arguments, and a resumable snapshot. In the current addon path,
   that live snapshot stays in a process-local opaque native handle until the

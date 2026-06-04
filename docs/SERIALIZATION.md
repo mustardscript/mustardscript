@@ -61,6 +61,9 @@ the safety rules they are expected to follow.
 - `Map` and `Set` values are serialized only inside internal runtime snapshots,
   where their insertion-ordered entry lists and referenced guest values are
   preserved after validation.
+- Suspended top-level `await` executions serialize the internal async root
+  promise and continuation state using the same snapshot machinery as async
+  function waits.
 - In the Node wrapper, `start()` and `Progress.dump()` happen before any async
   capability promise is awaited, so JavaScript `Promise` objects never enter the
   serialized snapshot.

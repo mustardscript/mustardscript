@@ -42,8 +42,7 @@ new_key_type! { pub(super) struct PromiseKey; }
 /// never drives observable iteration order — that comes from `entries` — so it
 /// uses a fast, fixed-seed (deterministic) `FxBuildHasher` instead of the
 /// default SipHash. Determinism across runs and snapshot reloads is preserved.
-pub(super) type CollectionLookup =
-    IndexMap<CollectionIndexKey, usize, rustc_hash::FxBuildHasher>;
+pub(super) type CollectionLookup = IndexMap<CollectionIndexKey, usize, rustc_hash::FxBuildHasher>;
 
 pub(super) const COLLECTION_LOOKUP_PROMOTION_LEN: usize = 32;
 pub(super) const COLLECTION_STRING_LOOKUP_PROMOTION_LEN: usize = 8;

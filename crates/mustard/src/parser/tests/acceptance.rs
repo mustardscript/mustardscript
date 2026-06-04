@@ -121,6 +121,20 @@ fn parses_for_await_of_inside_async_functions() {
 }
 
 #[test]
+fn parses_top_level_await_while_still_rejecting_module_syntax_later() {
+    let program = compile(
+        r#"
+        const value = await Promise.resolve(4);
+        value + 1;
+        "#,
+    )
+    .expect("top-level await should compile");
+
+    assert_eq!(program.script.body.len(), 2);
+    assert!(matches!(program.script.body[0], Stmt::VariableDecl { .. }));
+}
+
+#[test]
 fn parses_default_parameters_and_default_destructuring() {
     compile(
         r#"

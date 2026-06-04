@@ -7,6 +7,19 @@ impl Runtime {
         self.check_cancellation()?;
         self.check_call_depth()?;
         let root_env = self.new_env(Some(self.globals))?;
+        let root_is_async = self
+            .program
+            .functions
+            .get(self.program.root)
+            .map(|function| function.is_async)
+            .ok_or_else(|| MustardError::runtime("root function not found"))?;
+        let async_promise = if root_is_async {
+            let promise = self.insert_promise(PromiseState::Pending)?;
+            self.root_result = Some(Value::Promise(promise));
+            Some(promise)
+        } else {
+            None
+        };
         self.push_frame(
             self.program.root,
             root_env,
@@ -15,7 +28,7 @@ impl Runtime {
                 self.global_object_key()
                     .ok_or_else(|| MustardError::runtime("missing global object"))?,
             ),
-            None,
+            async_promise,
         )?;
         self.reset_gc_debt();
         self.run()
@@ -111,9 +124,12 @@ impl Runtime {
                         Some(value) => value,
                         None => {
                             let key = self.to_property_key(property)?;
-                            match self
-                                .lookup_slot_string_property(env, *object_depth, *object_slot, &key)?
-                            {
+                            match self.lookup_slot_string_property(
+                                env,
+                                *object_depth,
+                                *object_slot,
+                                &key,
+                            )? {
                                 Some(value) => value,
                                 None => self.get_property(object, Value::String(key), *optional)?,
                             }
@@ -121,7 +137,12 @@ impl Runtime {
                     }
                 } else {
                     let key = self.to_property_key(property)?;
-                    match self.lookup_slot_string_property(env, *object_depth, *object_slot, &key)? {
+                    match self.lookup_slot_string_property(
+                        env,
+                        *object_depth,
+                        *object_slot,
+                        &key,
+                    )? {
                         Some(value) => value,
                         None => {
                             let object = self.lookup_slot(env, *object_depth, *object_slot)?;

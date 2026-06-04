@@ -229,7 +229,11 @@ impl Runtime {
     /// string buffer is freed or reused), so only clear when a string actually
     /// enters or leaves the cell. Storing a number/bool into a numeric counter
     /// in a hot loop therefore no longer nukes the whole cache each iteration.
-    fn invalidate_string_index_cache_on_store(&mut self, old_was_string: bool, new_is_string: bool) {
+    fn invalidate_string_index_cache_on_store(
+        &mut self,
+        old_was_string: bool,
+        new_is_string: bool,
+    ) {
         if old_was_string || new_is_string {
             self.string_ascii_cache.clear();
         }

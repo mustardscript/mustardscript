@@ -32,6 +32,42 @@ test('run executes guest async functions, await, and Promise microtasks in order
   ]);
 });
 
+test('run executes top-level await and Promise microtasks in order', async () => {
+  const runtime = new Mustard(`
+    let events = [];
+    const first = Promise.resolve(3).then((value) => {
+      events[events.length] = 'then:' + value;
+      return value + 4;
+    });
+    events[events.length] = 'sync';
+    const resolved = await first;
+    [resolved, events];
+  `);
+
+  const result = await runtime.run();
+  assert.deepEqual(result, [7, ['sync', 'then:3']]);
+});
+
+test('start and resume drive host capability suspension from top-level await', () => {
+  const runtime = new Mustard(`
+    const resolved = await fetch_data(8);
+    resolved * 2;
+  `);
+
+  const progress = runtime.start({
+    capabilities: {
+      fetch_data() {
+        throw new Error('start should suspend before invoking JS handlers');
+      },
+    },
+  });
+
+  assert.ok(progress instanceof Progress);
+  assert.equal(progress.capability, 'fetch_data');
+  assert.deepEqual(progress.args, [8]);
+  assert.equal(progress.resume(9), 18);
+});
+
 test('start and resume drive async host capability suspension inside guest async functions', () => {
   const runtime = new Mustard(`
     async function load(value) {

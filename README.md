@@ -38,9 +38,9 @@ The current implementation already supports:
 - `Map` and `Set` with supported iterable constructors, SameValueZero key and
   membership semantics, insertion-order-preserving storage, and iterator
   helpers
-- `async` functions, `await`, guest promises, `new Promise(...)`, Promise
-  combinators and instance methods, basic thenable adoption, and internal
-  microtask scheduling for the supported subset
+- `async` functions, top-level `await`, guest promises, `new Promise(...)`,
+  Promise combinators and instance methods, basic thenable adoption, and
+  internal microtask scheduling for the supported subset
 - guest-internal `BigInt` literals with exact-integer arithmetic,
   comparison, keyed-collection membership, and string/property-key coercion
 - conservative array, string, object, and Math helper methods, including
@@ -348,7 +348,7 @@ JavaScript.
 - Arrays, plain objects, `Map`, and `Set`
 - `let` and `const`
 - Functions and closures
-- `async` functions and `await`
+- `async` functions and `await`, including top-level `await`
 - Arrow functions
 - `if`, `switch`, loops, `break`, and `continue`
 - `throw`, `try`, `catch`, and `finally`
@@ -432,7 +432,7 @@ Currently implemented built-ins:
 
 Current Promise support is intentionally narrow:
 
-- async functions return internal guest promises
+- async functions and top-level `await` return through internal guest promises
 - `new Promise(executor)` is supported when `executor` is callable and
   completes synchronously from the runtime's perspective
 - `Promise.resolve(...)`, `Promise.reject(...)`, `Promise.all(...)`,

@@ -11,7 +11,7 @@ use std::collections::HashSet;
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
-use oxc_parser::{ParseOptions, Parser};
+use oxc_parser::{ParseOptions, Parser, ParserReturn};
 use oxc_span::{GetSpan, SourceType};
 
 use crate::{
@@ -37,12 +37,7 @@ const FORBIDDEN_AMBIENT_GLOBALS: &[&str] = &[
 
 pub fn compile(source: &str) -> MustardResult<CompiledProgram> {
     let allocator = Allocator::default();
-    let parser = Parser::new(&allocator, source, SourceType::default().with_script(true))
-        .with_options(ParseOptions {
-            allow_return_outside_function: false,
-            ..ParseOptions::default()
-        });
-    let parsed = parser.parse();
+    let parsed = parse_source(&allocator, source);
     let mut diagnostics = Vec::new();
     diagnostics.extend(
         parsed
@@ -63,6 +58,42 @@ pub fn compile(source: &str) -> MustardResult<CompiledProgram> {
     Ok(CompiledProgram {
         source: source.to_string(),
         script,
+    })
+}
+
+fn parse_source<'a>(allocator: &'a Allocator, source: &'a str) -> ParserReturn<'a> {
+    let parsed = parse_with_source_type(allocator, source, SourceType::default().with_script(true));
+    if parsed.panicked || !has_top_level_await_parse_error(&parsed) {
+        return parsed;
+    }
+
+    let module_parsed =
+        parse_with_source_type(allocator, source, SourceType::default().with_module(true));
+    if module_parsed.panicked {
+        parsed
+    } else {
+        module_parsed
+    }
+}
+
+fn parse_with_source_type<'a>(
+    allocator: &'a Allocator,
+    source: &'a str,
+    source_type: SourceType,
+) -> ParserReturn<'a> {
+    Parser::new(allocator, source, source_type)
+        .with_options(ParseOptions {
+            allow_return_outside_function: false,
+            ..ParseOptions::default()
+        })
+        .parse()
+}
+
+fn has_top_level_await_parse_error(parsed: &ParserReturn<'_>) -> bool {
+    parsed.errors.iter().any(|error| {
+        error.to_string().contains(
+            "`await` is only allowed within async functions and at the top levels of modules",
+        )
     })
 }
 

@@ -15,7 +15,8 @@ extensions are called out explicitly instead of being implied.
 ## Baseline Rules
 
 - Guest code always runs with strict semantics.
-- Input is script-only; module syntax is rejected.
+- Input has no module system; `import` and `export` syntax is rejected even
+  though top-level `await` is supported.
 - Unsupported features fail closed with explicit diagnostics.
 - Free references to forbidden ambient globals are rejected when lexical
   resolution proves they are unresolved.
@@ -43,7 +44,7 @@ extensions are called out explicitly instead of being implied.
   parameter initializers
 - `async` function declarations and expressions
 - arrow functions
-- `await` inside async functions
+- `await` inside async functions and at top level
 - literals, arrays, and plain-object literals with static keys, computed keys,
   method shorthand, and spread from plain objects or arrays
 - `if`, `switch`, `while`, `do...while`, `for`, `for...of`,
@@ -74,12 +75,15 @@ extensions are called out explicitly instead of being implied.
 ## Supported Async Surface
 
 - async functions return guest promise values
+- top-level `await` is supported by running the root script body as an internal
+  async continuation only when top-level await syntax is present
 - `await` suspends the current async continuation onto the runtime microtask
   queue
 - `for await...of` is supported inside async functions over the documented
   iterable surface by awaiting each yielded value before the loop body runs
-- host capability calls inside async guest code return guest promises and still
-  suspend through the existing `start()` / `resume()` boundary
+- host capability calls inside async guest code, including code reached from
+  top-level `await`, return guest promises and still suspend through the
+  existing `start()` / `resume()` boundary
 - `new Promise(executor)` is available when `executor` is callable and
   completes synchronously from the runtime's perspective
 - `Promise.resolve(...)`, `Promise.reject(...)`, `Promise.all(...)`,
