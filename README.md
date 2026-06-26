@@ -807,6 +807,20 @@ inside the supported language subset, and lowers to an executable compiled
 program. It does not prove that a later `run()` or `start()` call will succeed
 with a particular host policy, input set, capability map, or runtime limit.
 
+For LLM-generated snippets, hosts can opt into a narrow compile-time
+compatibility mode:
+
+```ts
+const program = new Mustard('const value = 41; return value + 1;', {
+  lenientMode: true,
+})
+```
+
+`lenientMode` only accepts a `return` when it is the final top-level statement;
+that statement is treated like MustardScript's normal final expression result.
+Nested top-level returns, non-final top-level returns, and all forbidden forms
+still fail closed. Strict behavior remains the default.
+
 `Progress.load(...)` always requires explicit restore authority: the host must
 pass either a reusable `ExecutionContext` or explicit `capabilities` /
 `console`, explicit `limits` as an object (use `{}` for default runtime

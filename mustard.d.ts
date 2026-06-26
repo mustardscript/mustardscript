@@ -24,6 +24,7 @@ export interface ConsoleCallbacks {
 
 export interface CompileOptions {
   inputs?: string[];
+  lenientMode?: boolean;
 }
 
 export type SnapshotKey = string | Buffer | Uint8Array;
@@ -203,7 +204,7 @@ export class Mustard {
   start(options?: ExecutionOptions): StructuredValue | Progress;
   dump(): Buffer;
 
-  static validateProgram(code: string): void;
+  static validateProgram(code: string, options?: CompileOptions): void;
   static load(buffer: Buffer): Mustard;
 }
 

@@ -1,4 +1,4 @@
-use crate::compile;
+use crate::{CompileOptions, compile, compile_with_options};
 
 fn assert_validation_reject(source: &str, message: &str) {
     let error = compile(source).expect_err("source should fail validation");
@@ -40,6 +40,41 @@ fn rejects_free_arguments() {
 fn rejects_module_syntax() {
     let error = compile("export const x = 1;").expect_err("module syntax should fail");
     assert!(error.to_string().contains("module syntax"));
+}
+
+#[test]
+fn rejects_top_level_return_by_default() {
+    let error = compile("return 1;").expect_err("top-level return should stay strict by default");
+    assert!(
+        error
+            .to_string()
+            .contains("A 'return' statement can only be used within a function body")
+    );
+}
+
+#[test]
+fn lenient_mode_rejects_non_final_top_level_return() {
+    let error = compile_with_options("return 1; 2;", CompileOptions { lenient_mode: true })
+        .expect_err("non-final top-level return should fail in lenient mode");
+    assert!(
+        error
+            .to_string()
+            .contains("final top-level statement when lenientMode is enabled")
+    );
+}
+
+#[test]
+fn lenient_mode_rejects_nested_top_level_return() {
+    let error = compile_with_options(
+        "if (true) { return 1; } return 2;",
+        CompileOptions { lenient_mode: true },
+    )
+    .expect_err("nested top-level return should fail in lenient mode");
+    assert!(
+        error
+            .to_string()
+            .contains("final top-level statement when lenientMode is enabled")
+    );
 }
 
 #[test]

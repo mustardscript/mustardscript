@@ -28,7 +28,24 @@ function createMustardClass({ native, materializeStep, parseStep }) {
         })
       : null;
 
-  function compileProgram(code) {
+  function compileOptionsJson(options = {}) {
+    if (options === null || typeof options !== 'object' || Array.isArray(options)) {
+      throw new TypeError('compile options must be a plain object');
+    }
+    if (options.lenientMode === undefined || options.lenientMode === false) {
+      return null;
+    }
+    if (options.lenientMode !== true) {
+      throw new TypeError('options.lenientMode must be a boolean');
+    }
+    return '{"lenient_mode":true}';
+  }
+
+  function compileProgram(code, options = {}) {
+    const optionsJson = compileOptionsJson(options);
+    if (optionsJson !== null) {
+      return callNative(native.compileProgramWithOptions, code, optionsJson);
+    }
     return callNative(native.compileProgram, code);
   }
 
@@ -38,15 +55,15 @@ function createMustardClass({ native, materializeStep, parseStep }) {
 
   return class Mustard {
     constructor(code, options = {}) {
-      this._programHandle = compileProgram(code);
+      this._programHandle = compileProgram(code, options);
       this._program = null;
       this._inputNames = options.inputs ?? [];
       this._programHandleToken = {};
       programHandleRegistry?.register(this, this._programHandle, this._programHandleToken);
     }
 
-    static validateProgram(code) {
-      const programHandle = compileProgram(code);
+    static validateProgram(code, options = {}) {
+      const programHandle = compileProgram(code, options);
       releaseProgram(programHandle);
     }
 

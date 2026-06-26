@@ -1,7 +1,7 @@
 use mustard::runtime::Instruction;
 use mustard::{
-    ExecutionOptions, ExecutionStep, RuntimeLimits, StructuredValue, compile, execute,
-    lower_to_bytecode, start,
+    CompileOptions, ExecutionOptions, ExecutionStep, RuntimeLimits, StructuredValue, compile,
+    compile_with_options, execute, lower_to_bytecode, start,
 };
 
 fn number(value: f64) -> StructuredValue {
@@ -21,6 +21,18 @@ fn nullish_assignment_preserves_existing_identifier_values() {
 
     let result = execute(&program, ExecutionOptions::default()).expect("program should run");
     assert_eq!(result, number(3.0));
+}
+
+#[test]
+fn lenient_final_top_level_return_executes_as_script_result() {
+    let program = compile_with_options(
+        "const value = 41; return value + 1;",
+        CompileOptions { lenient_mode: true },
+    )
+    .expect("source should compile in lenient mode");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(result, number(42.0));
 }
 
 #[test]

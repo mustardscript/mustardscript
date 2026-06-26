@@ -35,9 +35,21 @@ const FORBIDDEN_AMBIENT_GLOBALS: &[&str] = &[
     "fetch",
 ];
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CompileOptions {
+    pub lenient_mode: bool,
+}
+
 pub fn compile(source: &str) -> MustardResult<CompiledProgram> {
+    compile_with_options(source, CompileOptions::default())
+}
+
+pub fn compile_with_options(
+    source: &str,
+    options: CompileOptions,
+) -> MustardResult<CompiledProgram> {
     let allocator = Allocator::default();
-    let parsed = parse_source(&allocator, source);
+    let parsed = parse_source(&allocator, source, options);
     let mut diagnostics = Vec::new();
     diagnostics.extend(
         parsed
@@ -49,7 +61,7 @@ pub fn compile(source: &str) -> MustardResult<CompiledProgram> {
         return Err(MustardError::Diagnostics(diagnostics));
     }
 
-    let mut lowerer = Lowerer::new(source);
+    let mut lowerer = Lowerer::new(source, options);
     let script = lowerer.lower_program(&parsed.program);
     diagnostics.extend(lowerer.diagnostics);
     if !diagnostics.is_empty() {
@@ -61,14 +73,27 @@ pub fn compile(source: &str) -> MustardResult<CompiledProgram> {
     })
 }
 
-fn parse_source<'a>(allocator: &'a Allocator, source: &'a str) -> ParserReturn<'a> {
-    let parsed = parse_with_source_type(allocator, source, SourceType::default().with_script(true));
+fn parse_source<'a>(
+    allocator: &'a Allocator,
+    source: &'a str,
+    options: CompileOptions,
+) -> ParserReturn<'a> {
+    let parsed = parse_with_source_type(
+        allocator,
+        source,
+        SourceType::default().with_script(true),
+        options,
+    );
     if parsed.panicked || !has_top_level_await_parse_error(&parsed) {
         return parsed;
     }
 
-    let module_parsed =
-        parse_with_source_type(allocator, source, SourceType::default().with_module(true));
+    let module_parsed = parse_with_source_type(
+        allocator,
+        source,
+        SourceType::default().with_module(true),
+        options,
+    );
     if module_parsed.panicked {
         parsed
     } else {
@@ -80,10 +105,11 @@ fn parse_with_source_type<'a>(
     allocator: &'a Allocator,
     source: &'a str,
     source_type: SourceType,
+    options: CompileOptions,
 ) -> ParserReturn<'a> {
     Parser::new(allocator, source, source_type)
         .with_options(ParseOptions {
-            allow_return_outside_function: false,
+            allow_return_outside_function: options.lenient_mode,
             ..ParseOptions::default()
         })
         .parse()
@@ -100,16 +126,20 @@ fn has_top_level_await_parse_error(parsed: &ParserReturn<'_>) -> bool {
 struct Lowerer<'a> {
     diagnostics: Vec<Diagnostic>,
     _source: &'a str,
+    options: CompileOptions,
     scopes: Vec<HashSet<String>>,
+    function_depth: usize,
     internal_name_counter: usize,
 }
 
 impl<'a> Lowerer<'a> {
-    fn new(source: &'a str) -> Self {
+    fn new(source: &'a str, options: CompileOptions) -> Self {
         Self {
             diagnostics: Vec::new(),
             _source: source,
+            options,
             scopes: vec![HashSet::new()],
+            function_depth: 0,
             internal_name_counter: 0,
         }
     }
@@ -119,7 +149,11 @@ impl<'a> Lowerer<'a> {
         let body = program
             .body
             .iter()
-            .filter_map(|statement| self.lower_stmt(statement))
+            .enumerate()
+            .filter_map(|(index, statement)| {
+                let is_last = index + 1 == program.body.len();
+                self.lower_root_stmt(statement, is_last)
+            })
             .collect();
         Script {
             span: program.span.into(),

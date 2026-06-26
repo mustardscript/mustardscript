@@ -1,6 +1,7 @@
 import type {
   Capability,
   CapabilityError,
+  CompileOptions,
   ConsoleCallbacks,
   ExecutionOptions,
   InMemoryMustardExecutorStore as InMemoryMustardExecutorStoreType,
@@ -23,6 +24,13 @@ const { InMemoryMustardExecutorStore, Mustard, MustardError, MustardExecutor, Pr
 const runtime = new Mustard('const response = fetch_data(seed); response + 1;', {
   inputs: ['seed'],
 });
+const lenientRuntime = new Mustard('return 1;', {
+  lenientMode: true,
+});
+const compileOptions: CompileOptions = {
+  inputs: ['seed'],
+  lenientMode: true,
+};
 
 const executionOptions: ExecutionOptions = {
   inputs: {
@@ -95,6 +103,7 @@ const consoleCallbacks: ConsoleCallbacks = {
 
 async function typecheck(): Promise<void> {
   Mustard.validateProgram('const value = 1; value + 1;');
+  Mustard.validateProgram('return 1;', { lenientMode: true });
 
   const result: StructuredValue = await runtime.run({
     ...executionOptions,
@@ -140,6 +149,8 @@ async function typecheck(): Promise<void> {
   }
 
   void result;
+  void lenientRuntime;
+  void compileOptions;
 }
 
 void typecheck();

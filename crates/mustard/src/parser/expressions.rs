@@ -22,6 +22,7 @@ impl<'a> Lowerer<'a> {
         };
         let (params, rest, param_init, length) = self.lower_function_params(&function.params)?;
         self.push_scope();
+        self.function_depth += 1;
         for statement in &param_init {
             if let Stmt::VariableDecl { declarators, .. } = statement {
                 for declarator in declarators {
@@ -35,6 +36,7 @@ impl<'a> Lowerer<'a> {
             .iter()
             .filter_map(|statement| self.lower_stmt(statement))
             .collect();
+        self.function_depth -= 1;
         self.pop_scope();
         Some(FunctionExpr {
             span: function.span.into(),
@@ -56,6 +58,7 @@ impl<'a> Lowerer<'a> {
     ) -> Option<FunctionExpr> {
         let (params, rest, param_init, length) = self.lower_function_params(&function.params)?;
         self.push_scope();
+        self.function_depth += 1;
         for statement in &param_init {
             if let Stmt::VariableDecl { declarators, .. } = statement {
                 for declarator in declarators {
@@ -67,11 +70,31 @@ impl<'a> Lowerer<'a> {
         let body = if function.expression {
             if function.body.statements.len() == 1 {
                 match &function.body.statements[0] {
-                    Statement::ExpressionStatement(statement) => vec![Stmt::Return {
-                        span: statement.span.into(),
-                        value: Some(self.lower_expr(&statement.expression)?),
-                    }],
-                    statement => vec![self.lower_stmt(statement)?],
+                    Statement::ExpressionStatement(statement) => {
+                        let expression = match self.lower_expr(&statement.expression) {
+                            Some(expression) => expression,
+                            None => {
+                                self.function_depth -= 1;
+                                self.pop_scope();
+                                return None;
+                            }
+                        };
+                        vec![Stmt::Return {
+                            span: statement.span.into(),
+                            value: Some(expression),
+                        }]
+                    }
+                    statement => {
+                        let statement = match self.lower_stmt(statement) {
+                            Some(statement) => statement,
+                            None => {
+                                self.function_depth -= 1;
+                                self.pop_scope();
+                                return None;
+                            }
+                        };
+                        vec![statement]
+                    }
                 }
             } else {
                 function
@@ -89,6 +112,7 @@ impl<'a> Lowerer<'a> {
                 .filter_map(|statement| self.lower_stmt(statement))
                 .collect()
         };
+        self.function_depth -= 1;
         self.pop_scope();
         Some(FunctionExpr {
             span: function.span.into(),

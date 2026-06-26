@@ -15,11 +15,12 @@ use std::sync::{
 use std::time::Instant;
 
 use mustard::{
-    BytecodeProgram, CancellationToken, ExecutionOptions, ExecutionSnapshot, ExecutionStep,
-    ResumeOptions, RuntimeDebugMetrics, RuntimeLimits, StructuredValue, apply_snapshot_policy,
-    compile, dump_detached_snapshot, dump_program as encode_program_bytes, dump_snapshot,
-    load_detached_snapshot, load_snapshot, lower_to_bytecode, resume_with_options_and_metrics,
-    snapshot_inspection, start_shared_bytecode_with_metrics,
+    BytecodeProgram, CancellationToken, CompileOptions, ExecutionOptions, ExecutionSnapshot,
+    ExecutionStep, ResumeOptions, RuntimeDebugMetrics, RuntimeLimits, StructuredValue,
+    apply_snapshot_policy, compile, compile_with_options, dump_detached_snapshot,
+    dump_program as encode_program_bytes, dump_snapshot, load_detached_snapshot, load_snapshot,
+    lower_to_bytecode, resume_with_options_and_metrics, snapshot_inspection,
+    start_shared_bytecode_with_metrics,
 };
 use mustard_bridge::{
     ResumeDto, RuntimeLimitsDto, SnapshotPolicyDto, StartOptionsDto, decode_program, encode_json,
@@ -57,6 +58,20 @@ struct ExecutionContextDto {
     capabilities: Vec<String>,
     #[serde(default)]
     limits: RuntimeLimitsDto,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct CompileOptionsDto {
+    #[serde(default)]
+    lenient_mode: bool,
+}
+
+impl CompileOptionsDto {
+    fn into_compile_options(self) -> CompileOptions {
+        CompileOptions {
+            lenient_mode: self.lenient_mode,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -551,6 +566,15 @@ fn load_detached_snapshot_handle_from_context(
 #[napi]
 pub fn compile_program(source: String) -> Result<String> {
     let parsed = compile(&source).map_err(to_napi_error)?;
+    let bytecode = lower_to_bytecode(&parsed).map_err(to_napi_error)?;
+    insert_program(bytecode)
+}
+
+#[napi]
+pub fn compile_program_with_options(source: String, options_json: String) -> Result<String> {
+    let options: CompileOptionsDto = parse_json(&options_json).map_err(to_napi_error)?;
+    let parsed =
+        compile_with_options(&source, options.into_compile_options()).map_err(to_napi_error)?;
     let bytecode = lower_to_bytecode(&parsed).map_err(to_napi_error)?;
     insert_program(bytecode)
 }

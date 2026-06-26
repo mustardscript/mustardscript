@@ -1,5 +1,5 @@
 use crate::{
-    compile,
+    CompileOptions, compile, compile_with_options,
     ir::{ArrayElement, AssignOp, CallArgument, Expr, Stmt},
 };
 
@@ -132,6 +132,34 @@ fn parses_top_level_await_while_still_rejecting_module_syntax_later() {
 
     assert_eq!(program.script.body.len(), 2);
     assert!(matches!(program.script.body[0], Stmt::VariableDecl { .. }));
+}
+
+#[test]
+fn lenient_mode_rewrites_final_top_level_return_to_expression() {
+    let program = compile_with_options(
+        "const value = 41; return value + 1;",
+        CompileOptions { lenient_mode: true },
+    )
+    .expect("final top-level return should compile in lenient mode");
+
+    assert_eq!(program.script.body.len(), 2);
+    assert!(matches!(program.script.body[1], Stmt::Expression { .. }));
+}
+
+#[test]
+fn lenient_mode_rewrites_bare_final_top_level_return_to_undefined_expression() {
+    let program = compile_with_options("return;", CompileOptions { lenient_mode: true })
+        .expect("bare final top-level return should compile in lenient mode");
+
+    match &program.script.body[..] {
+        [
+            Stmt::Expression {
+                expression: Expr::Undefined { .. },
+                ..
+            },
+        ] => {}
+        other => panic!("unexpected lowered body: {other:?}"),
+    }
 }
 
 #[test]

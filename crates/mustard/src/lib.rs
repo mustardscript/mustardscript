@@ -11,7 +11,7 @@ pub use cancellation::CancellationToken;
 pub use diagnostic::{Diagnostic, DiagnosticKind, MustardError, MustardResult};
 pub use ir::CompiledProgram;
 pub use limits::RuntimeLimits;
-pub use parser::compile;
+pub use parser::{CompileOptions, compile, compile_with_options};
 pub use runtime::{
     BytecodeProgram, CollectionCallSiteMetrics, ExecutionOptions, ExecutionSnapshot, ExecutionStep,
     HostError, ResumeOptions, ResumePayload, RuntimeDebugMetrics, SnapshotInspection,

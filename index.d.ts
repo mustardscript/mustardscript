@@ -4,6 +4,8 @@ export declare function cancelCancellationToken(tokenId: string): void
 
 export declare function compileProgram(source: string): string
 
+export declare function compileProgramWithOptions(source: string, optionsJson: string): string
+
 export declare function createCancellationToken(): string
 
 export declare function createExecutionContext(policyJson: string): string

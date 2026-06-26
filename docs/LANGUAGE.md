@@ -21,6 +21,10 @@ extensions are called out explicitly instead of being implied.
 - Free references to forbidden ambient globals are rejected when lexical
   resolution proves they are unresolved.
 - Free `eval` and free `Function` are rejected for the same reason.
+- Hosts may opt into `lenientMode` at compile time for generated snippets. In
+  that mode, only a final top-level `return <expr>;` is accepted, and it is
+  treated exactly like the final expression result of the script. Other
+  top-level returns still fail closed.
 
 ## Supported Value Types
 
@@ -62,6 +66,13 @@ extensions are called out explicitly instead of being implied.
 - update expressions
 - binary `**`, `in`, and conservative `instanceof`
 - named host capability calls
+
+By default, `return` is accepted only inside function bodies. With the Node
+compile option `{ lenientMode: true }`, a final root statement such as
+`return answer;` is normalized to `answer;` for compatibility with generated
+snippets. This does not add script-level early-return control flow: `return`
+inside top-level `if`, loop, block, or any non-final root statement is still
+rejected.
 
 ## Supported Function Call Surface
 

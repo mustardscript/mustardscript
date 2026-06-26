@@ -1,6 +1,29 @@
 use super::*;
 
 impl<'a> Lowerer<'a> {
+    pub(super) fn lower_root_stmt(
+        &mut self,
+        statement: &Statement<'a>,
+        is_last: bool,
+    ) -> Option<Stmt> {
+        if self.options.lenient_mode
+            && is_last
+            && let Statement::ReturnStatement(statement) = statement
+        {
+            return Some(Stmt::Expression {
+                span: statement.span.into(),
+                expression: statement
+                    .argument
+                    .as_ref()
+                    .and_then(|expr| self.lower_expr(expr))
+                    .unwrap_or(Expr::Undefined {
+                        span: statement.span.into(),
+                    }),
+            });
+        }
+        self.lower_stmt(statement)
+    }
+
     pub(super) fn lower_block_stmt(&mut self, block: &BlockStatement<'a>) -> Stmt {
         self.push_scope();
         self.predeclare_block(&block.body);
@@ -119,13 +142,23 @@ impl<'a> Lowerer<'a> {
                     .and_then(|alternate| self.lower_stmt(alternate))
                     .map(Box::new),
             }),
-            Statement::ReturnStatement(statement) => Some(Stmt::Return {
-                span: statement.span.into(),
-                value: statement
-                    .argument
-                    .as_ref()
-                    .and_then(|expr| self.lower_expr(expr)),
-            }),
+            Statement::ReturnStatement(statement) => {
+                if self.function_depth == 0 {
+                    self.unsupported(
+                        "`return` outside a function body is only supported as the final top-level statement when lenientMode is enabled",
+                        Some(statement.span.into()),
+                    );
+                    None
+                } else {
+                    Some(Stmt::Return {
+                        span: statement.span.into(),
+                        value: statement
+                            .argument
+                            .as_ref()
+                            .and_then(|expr| self.lower_expr(expr)),
+                    })
+                }
+            }
             Statement::SwitchStatement(statement) => Some(Stmt::Switch {
                 span: statement.span.into(),
                 discriminant: self.lower_expr(&statement.discriminant)?,
