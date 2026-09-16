@@ -1388,6 +1388,12 @@ pub(super) enum CompletionRecord {
     },
     Return(Value),
     Throw(Value),
+    StructuredJump {
+        target: usize,
+        target_handler_depth: usize,
+        target_scope_depth: usize,
+        target_finally_depth: usize,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

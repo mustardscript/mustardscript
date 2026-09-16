@@ -201,11 +201,25 @@ fn validate_frame(runtime: &Runtime, frame: &Frame) -> MustardResult<()> {
         }
     }
     for completion in &frame.pending_completions {
+        if let CompletionRecord::StructuredJump {
+            target_finally_depth,
+            ..
+        } = completion
+            && *target_finally_depth > frame.active_finally.len()
+        {
+            return Err(snapshot_error("pending jump targets missing finally depth"));
+        }
         match completion {
             CompletionRecord::Jump {
                 target,
                 target_handler_depth,
                 target_scope_depth,
+            }
+            | CompletionRecord::StructuredJump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+                ..
             } => {
                 if *target >= function.code.len() {
                     return Err(snapshot_error(format!(

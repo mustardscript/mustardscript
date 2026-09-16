@@ -325,11 +325,11 @@ const FEATURE_CONTRACT = Object.freeze([
   },
   {
     id: 'validation.labeled-statements',
-    title: 'labeled statements are a validation reject',
+    title: 'labeled function declarations are a validation reject',
     outcome: OUTCOME.VALIDATION_REJECT,
     coverage: [COVERAGE.PROPERTY_NEGATIVE],
-    source: 'label: 1;',
-    messageIncludes: 'labeled statements are not supported in v1',
+    source: 'label: function f() {}',
+    messageIncludes: 'labeled function declarations are not supported',
   },
   {
     id: 'validation.private-fields',

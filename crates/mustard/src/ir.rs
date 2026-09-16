@@ -97,6 +97,19 @@ pub enum Stmt {
     Empty {
         span: SourceSpan,
     },
+    Labeled {
+        span: SourceSpan,
+        label: String,
+        body: Box<Stmt>,
+    },
+    LabeledBreak {
+        span: SourceSpan,
+        label: String,
+    },
+    LabeledContinue {
+        span: SourceSpan,
+        label: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

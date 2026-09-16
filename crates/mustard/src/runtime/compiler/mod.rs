@@ -669,7 +669,9 @@ impl Compiler {
                 | Instruction::JumpIfTrue(target)
                 | Instruction::JumpIfNullish(target)
                 | Instruction::EnterFinally { exit: target }
-                | Instruction::PushPendingJump { target, .. } => {
+                | Instruction::PushPendingJump { target, .. }
+                | Instruction::PushCompletionJump { target, .. }
+                | Instruction::AbruptJump { target, .. } => {
                     targets[*target] = true;
                 }
                 Instruction::PushHandler { catch, finally } => {
@@ -715,6 +717,10 @@ impl Compiler {
                 | Instruction::PushPendingReturn
                 | Instruction::PushPendingThrow
                 | Instruction::ContinuePending
+                | Instruction::ContinuePendingRegion { .. }
+                | Instruction::AbruptReturn
+                | Instruction::AbruptJump { .. }
+                | Instruction::PushCompletionJump { .. }
                 | Instruction::Jump(_)
                 | Instruction::JumpIfFalse(_)
                 | Instruction::JumpIfTrue(_)
@@ -996,6 +1002,10 @@ impl Compiler {
             | Instruction::JumpIfTrue(_)
             | Instruction::JumpIfNullish(_)
             | Instruction::ContinuePending
+            | Instruction::ContinuePendingRegion { .. }
+            | Instruction::AbruptReturn
+            | Instruction::AbruptJump { .. }
+            | Instruction::PushCompletionJump { .. }
             | Instruction::Return => {}
             Instruction::BeginCatch => {
                 state.push_temporary();
@@ -1212,7 +1222,9 @@ impl Compiler {
             | Instruction::JumpIfTrue(target)
             | Instruction::JumpIfNullish(target)
             | Instruction::EnterFinally { exit: target }
-            | Instruction::PushPendingJump { target, .. } => {
+            | Instruction::PushPendingJump { target, .. }
+            | Instruction::PushCompletionJump { target, .. }
+            | Instruction::AbruptJump { target, .. } => {
                 *target = old_to_new[*target];
             }
             Instruction::PushHandler { catch, finally } => {
@@ -1234,6 +1246,7 @@ fn statements_contain_top_level_await(statements: &[Stmt]) -> bool {
 
 fn stmt_contains_top_level_await(statement: &Stmt) -> bool {
     match statement {
+        Stmt::Labeled { body, .. } => stmt_contains_top_level_await(body),
         Stmt::Block { body, .. } => statements_contain_top_level_await(body),
         Stmt::VariableDecl { declarators, .. } => declarators.iter().any(|declarator| {
             pattern_contains_top_level_await(&declarator.pattern)
@@ -1323,7 +1336,11 @@ fn stmt_contains_top_level_await(statement: &Stmt) -> bool {
                         || statements_contain_top_level_await(&case.consequent)
                 })
         }
-        Stmt::Break { .. } | Stmt::Continue { .. } | Stmt::Empty { .. } => false,
+        Stmt::Break { .. }
+        | Stmt::Continue { .. }
+        | Stmt::LabeledBreak { .. }
+        | Stmt::LabeledContinue { .. }
+        | Stmt::Empty { .. } => false,
     }
 }
 

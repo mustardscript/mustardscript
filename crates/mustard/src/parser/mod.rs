@@ -130,6 +130,7 @@ struct Lowerer<'a> {
     scopes: Vec<HashSet<String>>,
     function_depth: usize,
     internal_name_counter: usize,
+    labels: Vec<(String, bool, usize)>,
 }
 
 impl<'a> Lowerer<'a> {
@@ -141,6 +142,7 @@ impl<'a> Lowerer<'a> {
             scopes: vec![HashSet::new()],
             function_depth: 0,
             internal_name_counter: 0,
+            labels: Vec::new(),
         }
     }
 

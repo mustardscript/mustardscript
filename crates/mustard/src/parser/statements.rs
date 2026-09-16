@@ -1,6 +1,33 @@
 use super::*;
 
 impl<'a> Lowerer<'a> {
+    fn validate_control_label(
+        &mut self,
+        label: &str,
+        continuing: bool,
+        span: SourceSpan,
+    ) -> Option<()> {
+        match self
+            .labels
+            .iter()
+            .rev()
+            .find(|(name, _, depth)| name == label && *depth == self.function_depth)
+        {
+            None => {
+                self.unsupported("unknown or out-of-scope statement label", Some(span));
+                None
+            }
+            Some((_, false, _)) if continuing => {
+                self.unsupported(
+                    "continue label must target an iteration statement",
+                    Some(span),
+                );
+                None
+            }
+            _ => Some(()),
+        }
+    }
+
     pub(super) fn lower_root_stmt(
         &mut self,
         statement: &Statement<'a>,
@@ -42,12 +69,32 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_stmt(&mut self, statement: &Statement<'a>) -> Option<Stmt> {
         match statement {
             Statement::BlockStatement(block) => Some(self.lower_block_stmt(block)),
-            Statement::BreakStatement(statement) => Some(Stmt::Break {
-                span: statement.span.into(),
-            }),
-            Statement::ContinueStatement(statement) => Some(Stmt::Continue {
-                span: statement.span.into(),
-            }),
+            Statement::BreakStatement(statement) => {
+                if let Some(label) = &statement.label {
+                    self.validate_control_label(label.name.as_str(), false, statement.span.into())?;
+                    Some(Stmt::LabeledBreak {
+                        span: statement.span.into(),
+                        label: label.name.to_string(),
+                    })
+                } else {
+                    Some(Stmt::Break {
+                        span: statement.span.into(),
+                    })
+                }
+            }
+            Statement::ContinueStatement(statement) => {
+                if let Some(label) = &statement.label {
+                    self.validate_control_label(label.name.as_str(), true, statement.span.into())?;
+                    Some(Stmt::LabeledContinue {
+                        span: statement.span.into(),
+                        label: label.name.to_string(),
+                    })
+                } else {
+                    Some(Stmt::Continue {
+                        span: statement.span.into(),
+                    })
+                }
+            }
             Statement::EmptyStatement(statement) => Some(Stmt::Empty {
                 span: statement.span.into(),
             }),
@@ -236,11 +283,46 @@ impl<'a> Lowerer<'a> {
                 None
             }
             Statement::LabeledStatement(statement) => {
-                self.unsupported(
-                    "labeled statements are not supported in v1",
-                    Some(statement.span.into()),
+                let label = statement.label.name.to_string();
+                if self
+                    .labels
+                    .iter()
+                    .any(|(name, _, depth)| name == &label && *depth == self.function_depth)
+                {
+                    self.unsupported(
+                        "duplicate active statement label",
+                        Some(statement.span.into()),
+                    );
+                    return None;
+                }
+                let mut target = &statement.body;
+                while let Statement::LabeledStatement(nested) = target {
+                    target = &nested.body;
+                }
+                if matches!(target, Statement::FunctionDeclaration(_)) {
+                    self.unsupported(
+                        "labeled function declarations are not supported",
+                        Some(statement.span.into()),
+                    );
+                    return None;
+                }
+                let iteration = matches!(
+                    target,
+                    Statement::WhileStatement(_)
+                        | Statement::DoWhileStatement(_)
+                        | Statement::ForStatement(_)
+                        | Statement::ForOfStatement(_)
+                        | Statement::ForInStatement(_)
                 );
-                None
+                self.labels
+                    .push((label.clone(), iteration, self.function_depth));
+                let body = self.lower_stmt(&statement.body);
+                self.labels.pop();
+                Some(Stmt::Labeled {
+                    span: statement.span.into(),
+                    label,
+                    body: Box::new(body?),
+                })
             }
             statement if statement.is_module_declaration() => {
                 self.unsupported(

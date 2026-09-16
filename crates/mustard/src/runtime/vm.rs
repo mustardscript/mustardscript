@@ -620,6 +620,38 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 return self.raise_exception(value, Some(*span));
             }
+            Instruction::AbruptJump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+                target_finally_depth,
+            }
+            | Instruction::PushCompletionJump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+                target_finally_depth,
+            } => {
+                let completion = CompletionRecord::StructuredJump {
+                    target: *target,
+                    target_handler_depth: *target_handler_depth,
+                    target_scope_depth: *target_scope_depth,
+                    target_finally_depth: *target_finally_depth,
+                };
+                if matches!(instruction, Instruction::AbruptJump { .. }) {
+                    return self.resume_completion(completion);
+                }
+                self.frames[frame_index]
+                    .pending_completions
+                    .push(completion);
+            }
+            Instruction::AbruptReturn => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                return self.resume_completion(CompletionRecord::Return(value));
+            }
             Instruction::PushPendingJump {
                 target,
                 target_handler_depth,
@@ -648,7 +680,7 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 self.store_completion(frame_index, CompletionRecord::Throw(value))?;
             }
-            Instruction::ContinuePending => {
+            Instruction::ContinuePending | Instruction::ContinuePendingRegion { .. } => {
                 let marker = self.frames[frame_index]
                     .active_finally
                     .pop()

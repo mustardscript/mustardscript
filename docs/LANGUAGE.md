@@ -203,7 +203,6 @@ rejected.
   `const` binding, and declaration initializers in `for...of` / `for...in`
   headers
 - `debugger`
-- labeled statements
 - object literal accessors
 
 ## Explicit Deferrals
@@ -829,3 +828,16 @@ suspension is rejected. Iteration, copying and callback work are budgeted.
 Results preserve ECMAScript order, SameValueZero membership and object identity;
 intersection selects iteration order by the reported sizes. Live Set iteration
 observes additions and deletions, including appends after deleting a tail slot.
+
+### Labeled control flow
+
+Labels may wrap statements, including blocks and nested loop-label aliases.
+`break label` exits the labeled statement; `continue label` requires an enclosing
+iteration statement. Unlabeled continue skips intervening switches. Duplicate
+active labels, unknown/out-of-scope labels, cross-function transfers and labeled
+function declarations reject during validation.
+
+Exits preserve lexical scope, run intervening `finally` blocks in order and allow
+cleanup to override a pending break, continue, return or throw. Exits wholly
+inside a finally block leave its pending completion intact. Pending transfers
+and nested cleanup survive authenticated suspension snapshots.

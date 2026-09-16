@@ -203,3 +203,37 @@ fn rejects_pending_promise_reaction_microtask_source() {
         "unexpected error: {error}"
     );
 }
+
+#[test]
+fn rejects_malformed_structured_control_transfers() {
+    for instruction in [
+        Instruction::AbruptJump {
+            target: 99,
+            target_handler_depth: 0,
+            target_scope_depth: 0,
+            target_finally_depth: 0,
+        },
+        Instruction::AbruptJump {
+            target: 1,
+            target_handler_depth: 0,
+            target_scope_depth: 0,
+            target_finally_depth: 1,
+        },
+        Instruction::PushCompletionJump {
+            target: 1,
+            target_handler_depth: 1,
+            target_scope_depth: 0,
+            target_finally_depth: 0,
+        },
+        Instruction::ContinuePendingRegion {
+            handler_depth: 0,
+            scope_depth: 0,
+        },
+        Instruction::AbruptReturn,
+    ] {
+        let mut program = lower_to_bytecode(&compile("1;").unwrap()).unwrap();
+        program.functions[program.root].code = vec![instruction, Instruction::Return];
+        let bytes = dump_program(&program).expect("serialize malformed program");
+        assert!(load_program(&bytes).is_err(), "malformed transfer accepted");
+    }
+}

@@ -26,7 +26,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 16. BigInt conversion
 - [x] 17. Set algebra
 - [x] 18. Remaining Math helpers
-- [ ] 19. Labeled break and continue
+- [x] 19. Labeled break and continue
 - [ ] 20. Promise.withResolvers and Array.fromAsync
 
 ## Verification and delivery
@@ -203,3 +203,14 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm run build`, full Node suite and
   `npm run lint`. Tests compare Node for sizes/order/mutations, duplicate keys,
   Promise-valued has callbacks, prototype membership, snapshots and 128 KiB GC.
+
+### Labeled control flow and structured cleanup
+
+- Added validated labels, block exits, loop aliases and labeled continue, with
+  switch-aware unlabeled continue. Structured transfer instructions preserve
+  nested finally completions and inner catch/finally ordering; new serialized
+  variants keep existing bytecode/frame layouts readable.
+- Passed: `cargo test --workspace`, `npm run build`, full Node suite and
+  `npm run lint`; additionally ran the malformed-control-transfer unit regression.
+  Node comparisons cover return/throw overrides, local exits inside cleanup,
+  nested cleanup and authenticated snapshots with pending labeled transfers.

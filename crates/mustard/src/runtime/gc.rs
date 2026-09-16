@@ -505,7 +505,7 @@ impl Runtime {
         }
         for completion in &frame.pending_completions {
             match completion {
-                CompletionRecord::Jump { .. } => {}
+                CompletionRecord::Jump { .. } | CompletionRecord::StructuredJump { .. } => {}
                 CompletionRecord::Return(value) | CompletionRecord::Throw(value) => {
                     self.mark_value(value, marks, worklist);
                 }

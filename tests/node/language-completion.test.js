@@ -480,3 +480,47 @@ test('Set algebra roots callback values under GC and survives snapshots', async 
   const restored = Progress.load(first.dump(), {capabilities, snapshotKey, limits: {}});
   assert.deepEqual(restored.resume(undefined), [1, 2, 3]);
 });
+
+test('labeled exits and nested finally completions match Node', async () => {
+  const vm = require('node:vm');
+  const cases = [
+    `const log=[]; outer: alias: for(let i=0;i<3;i++){ try { for(let j=0;j<3;j++){ if(j===1) continue alias; log.push(i*10+j); } } finally { log.push('f'+i); } } log;`,
+    `const log=[]; block: { try { break block; } finally { log.push('f'); } log.push('bad'); } log;`,
+    `const log=[]; outer: for(const x of [1,2,3]) { for(const y in {a:1,b:2}) { log.push(x+y); continue outer; } } log;`,
+    `const log=[]; let i=0; outer: do { i++; inner: while(true) { if(i<3) continue outer; break inner; } log.push(i); } while(i<3); log;`,
+    `const log=[]; for(let i=0;i<3;i++){ switch(i){case 0: continue; case 1: log.push(i); break; default: log.push(i); } log.push('tail'); } log;`,
+    `const log=[]; function f(){ try{return 1;}finally{ local: { log.push('inside'); break local; } log.push('after'); } } [f(),log];`,
+    `const log=[]; function f(){ try{return 1;}finally{ try {} finally { log.push('nested'); } log.push('after'); } } [f(),log];`,
+    `const log=[]; function f(){ try{return 1;}finally{ try {return 2;} finally {log.push('nested');} } } [f(),log];`,
+    `const log=[]; function f(){ try { try{return 1;}finally{try {throw 2;} catch(e){log.push(e);} log.push('after');} } finally {log.push('outer');} } [f(),log];`,
+    `const log=[]; outer: { try {} finally { try {break outer;} finally {log.push('inner');} log.push('bad'); } } log.push('done'); log;`,
+    `const log=[]; outer: { try {try {break outer;} finally { try {} finally {log.push('inner');} log.push('middle'); }} finally {log.push('outer');}} log;`,
+    `const log=[]; try { outer: { try { break outer; } finally {throw new Error('override');} } } catch(e) { log.push(e.message); } log;`,
+    `const log=[]; try { try { throw 1; } finally { try { throw 2; } finally { log.push('inner'); } } } catch(e) { log.push(e); } log;`,
+    `const log=[]; function f(){ try{return 1;}finally{ for(let i=0;i<3;i++){ if(i===1) continue; log.push(i); if(i===2) break; } log.push('after'); } } [f(),log];`,
+    `let sum=0; loop: for(let i=0;i<3;i++){ try{continue loop;} finally{ sum+=i; if(i===1) break loop; } } sum;`,
+  ];
+  for (const source of cases) {
+    const expected = vm.runInNewContext(source);
+    const actual = await runtime(source).run();
+    assert.deepEqual(JSON.parse(JSON.stringify(actual)), JSON.parse(JSON.stringify(expected)), source);
+  }
+  for (const source of ['x: { continue x; }', 'x: x: while(false) {}', 'x: while(false) { (()=>{break x;})(); }', 'x: function f() {}', 'break absent;']) {
+    assert.throws(() => runtime(source), /label|Jump|jump|Break/i, source);
+  }
+  assert.equal(await runtime('label: { await Promise.resolve(1); break label; } 42;').run(), 42);
+});
+
+test('labeled pending exits survive snapshots taken inside nested cleanup', () => {
+  const capabilities = {checkpoint() {}};
+  const snapshotKey = Buffer.from('language-completion-test-key');
+  const source = `const log=[]; outer: for(let i=0;i<3;i++){ try { if(i===1) break outer; continue outer; } finally { try { log.push(i); } finally { checkpoint(i); } log.push('tail'); } } log;`;
+  let progress = runtime(source).start({capabilities, snapshotKey});
+  for (let i=0;i<2;i++) {
+    assert.ok(progress instanceof Progress);
+    assert.deepEqual(progress.args, [i]);
+    const restored = Progress.load(progress.dump(), {capabilities, snapshotKey, limits: {}});
+    progress = restored.resume(undefined);
+  }
+  assert.deepEqual(progress, [0, 'tail', 1, 'tail']);
+});

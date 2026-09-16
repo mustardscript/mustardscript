@@ -169,6 +169,40 @@ impl Runtime {
         self.raise_exception_with_origin(value, span, None)
     }
 
+    // The finally exit instruction carries lexical boundary metadata without
+    // changing serialized frame/handler layouts. Older snapshots retain their
+    // legacy ContinuePending instruction and remain readable.
+    fn active_finally_boundary(&self, frame_index: usize) -> Option<(usize, usize)> {
+        let frame = &self.frames[frame_index];
+        let active = frame.active_finally.last()?;
+        match self.program.functions[frame.function_id]
+            .code
+            .get(active.exit)?
+        {
+            Instruction::ContinuePendingRegion {
+                handler_depth,
+                scope_depth,
+            } => Some((*handler_depth, *scope_depth)),
+            _ => None,
+        }
+    }
+
+    fn restore_scope_depth(&mut self, frame_index: usize, depth: usize) -> MustardResult<()> {
+        let frame = &mut self.frames[frame_index];
+        if depth > frame.scope_stack.len() {
+            return Err(MustardError::runtime(
+                "completion targets missing scope depth",
+            ));
+        }
+        while frame.scope_stack.len() > depth {
+            frame.env = frame
+                .scope_stack
+                .pop()
+                .ok_or_else(|| MustardError::runtime("scope stack underflow"))?;
+        }
+        Ok(())
+    }
+
     pub(super) fn raise_exception_with_origin(
         &mut self,
         value: Value,
@@ -186,10 +220,15 @@ impl Runtime {
                 return Err(MustardError::runtime("vm lost all frames"));
             };
 
+            let boundary = self.active_finally_boundary(frame_index);
             if let Some(handler_index) = self.frames[frame_index]
                 .handlers
                 .iter()
-                .rposition(|handler| handler.catch.is_some() || handler.finally.is_some())
+                .enumerate()
+                .rposition(|(index, handler)| {
+                    index >= boundary.map_or(0, |(depth, _)| depth)
+                        && (handler.catch.is_some() || handler.finally.is_some())
+                })
             {
                 let handler = self.frames[frame_index].handlers[handler_index].clone();
                 self.frames[frame_index].handlers.truncate(handler_index);
@@ -215,6 +254,10 @@ impl Runtime {
                     return Err(MustardError::runtime(
                         "active finally references missing completion",
                     ));
+                }
+                if let Some((handler_depth, scope_depth)) = boundary {
+                    self.frames[frame_index].handlers.truncate(handler_depth);
+                    self.restore_scope_depth(frame_index, scope_depth)?;
                 }
                 self.frames[frame_index].pending_completions[active.completion_index] =
                     CompletionRecord::Throw(thrown);
@@ -275,23 +318,31 @@ impl Runtime {
         &mut self,
         completion: CompletionRecord,
     ) -> MustardResult<StepAction> {
-        match completion {
-            CompletionRecord::Throw(value) => self.raise_exception(value, None),
+        match &completion {
+            CompletionRecord::Throw(value) => self.raise_exception(value.clone(), None),
             CompletionRecord::Jump {
-                target,
                 target_handler_depth,
                 target_scope_depth,
+                ..
             } => self.resume_nonthrow_completion(
+                *target_handler_depth,
+                *target_scope_depth,
+                None,
+                completion,
+            ),
+            CompletionRecord::StructuredJump {
                 target_handler_depth,
                 target_scope_depth,
-                CompletionRecord::Jump {
-                    target,
-                    target_handler_depth,
-                    target_scope_depth,
-                },
+                target_finally_depth,
+                ..
+            } => self.resume_nonthrow_completion(
+                *target_handler_depth,
+                *target_scope_depth,
+                Some(*target_finally_depth),
+                completion,
             ),
-            CompletionRecord::Return(value) => {
-                self.resume_nonthrow_completion(0, 0, CompletionRecord::Return(value))
+            CompletionRecord::Return(_) => {
+                self.resume_nonthrow_completion(0, 0, Some(0), completion)
             }
         }
     }
@@ -300,6 +351,7 @@ impl Runtime {
         &mut self,
         target_handler_depth: usize,
         target_scope_depth: usize,
+        target_finally_depth: Option<usize>,
         completion: CompletionRecord,
     ) -> MustardResult<StepAction> {
         let frame_index = self
@@ -319,6 +371,23 @@ impl Runtime {
             ));
         }
 
+        if target_finally_depth
+            .is_some_and(|depth| depth > self.frames[frame_index].active_finally.len())
+        {
+            return Err(MustardError::runtime(
+                "completion targets missing finally depth",
+            ));
+        }
+        let exiting_finally = target_finally_depth
+            .is_some_and(|depth| depth < self.frames[frame_index].active_finally.len());
+        let boundary = if exiting_finally {
+            self.active_finally_boundary(frame_index)
+        } else {
+            None
+        };
+        let search_depth = boundary.map_or(target_handler_depth, |(depth, _)| {
+            depth.max(target_handler_depth)
+        });
         let restore_state = if target_handler_depth < current_depth {
             self.frames[frame_index]
                 .handlers
@@ -328,7 +397,7 @@ impl Runtime {
             None
         };
 
-        if let Some(handler_index) = (target_handler_depth..current_depth)
+        if let Some(handler_index) = (search_depth..current_depth)
             .rev()
             .find(|index| self.frames[frame_index].handlers[*index].finally.is_some())
         {
@@ -344,6 +413,21 @@ impl Runtime {
             return Ok(StepAction::Continue);
         }
 
+        if exiting_finally {
+            let active = self.frames[frame_index]
+                .active_finally
+                .last()
+                .cloned()
+                .ok_or_else(|| MustardError::runtime("missing active finally"))?;
+            if let Some((handler_depth, scope_depth)) = boundary {
+                self.frames[frame_index].handlers.truncate(handler_depth);
+                self.restore_scope_depth(frame_index, scope_depth)?;
+            }
+            self.store_completion(frame_index, completion)?;
+            self.frames[frame_index].ip = active.exit;
+            return Ok(StepAction::Continue);
+        }
+
         if let Some(handler) = restore_state.as_ref() {
             self.restore_handler_state(frame_index, handler)?;
         }
@@ -352,7 +436,8 @@ impl Runtime {
             .truncate(target_handler_depth);
 
         match completion {
-            CompletionRecord::Jump { target, .. } => {
+            CompletionRecord::Jump { target, .. }
+            | CompletionRecord::StructuredJump { target, .. } => {
                 if self.frames[frame_index].scope_stack.len() < target_scope_depth {
                     return Err(MustardError::runtime(
                         "completion targets missing scope depth",

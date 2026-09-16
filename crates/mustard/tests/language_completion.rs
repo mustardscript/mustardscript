@@ -591,3 +591,33 @@ fn set_algebra_preserves_order_and_validates_set_like_records() {
         assert!(error.to_string().contains(name), "{source}: {error}");
     }
 }
+
+#[test]
+fn labeled_control_flow_preserves_nested_finally_and_loop_targets() {
+    assert_eq!(
+        run(r#"
+        const log = [];
+        outer: alias: for (let i = 0; i < 3; i++) {
+            try {
+                for (let j = 0; j < 3; j++) {
+                    if (j === 1) continue alias;
+                    log.push(i * 10 + j);
+                }
+            } finally { log.push('f' + i); }
+        }
+        block: { try { break block; } finally { log.push('block'); } log.push('bad'); }
+        function f() { try { return 1; } finally { try {} finally { log.push('nested'); } log.push('after'); } }
+        log.push(f()); JSON.stringify(log);
+    "#),
+        "[0,\"f0\",10,\"f1\",20,\"f2\",\"block\",\"nested\",\"after\",1]".into()
+    );
+    for source in [
+        "x: { continue x; }",
+        "x: { y: { break missing; } }",
+        "x: x: while(false) {}",
+        "x: while(false) { function f() { break x; } }",
+        "x: function f() {}",
+    ] {
+        assert!(compile(source).is_err(), "{source}");
+    }
+}

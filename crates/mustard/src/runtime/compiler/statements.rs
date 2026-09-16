@@ -1,7 +1,7 @@
 use super::super::bytecode::Instruction;
 use super::{
     Compiler,
-    context::{CompileContext, LoopContext},
+    context::{CompileContext, LabelContext, LoopContext},
     pattern_bindings,
 };
 use crate::{
@@ -74,6 +74,7 @@ impl Compiler {
                 let exit_jump = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
                 context.code.push(Instruction::Pop);
                 context.loop_stack.push(LoopContext {
+                    finally_depth: context.active_finally.len(),
                     handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
@@ -96,6 +97,7 @@ impl Compiler {
             Stmt::DoWhile { body, test, .. } => {
                 let loop_start = context.code.len();
                 context.loop_stack.push(LoopContext {
+                    finally_depth: context.active_finally.len(),
                     handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
@@ -172,6 +174,7 @@ impl Compiler {
                     None
                 };
                 context.loop_stack.push(LoopContext {
+                    finally_depth: context.active_finally.len(),
                     handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
@@ -246,6 +249,7 @@ impl Compiler {
                     }
                 }
                 context.loop_stack.push(LoopContext {
+                    finally_depth: context.active_finally.len(),
                     handler_depth: context.active_handlers.len(),
                     scope_depth: loop_scope_depth,
                     ..LoopContext::default()
@@ -305,37 +309,89 @@ impl Compiler {
                     },
                 )?;
             }
-            Stmt::Break { span } => {
-                let Some(loop_ctx) = context.loop_stack.last() else {
-                    return Err(MustardError::runtime_at(
-                        "`break` used outside of a loop",
-                        *span,
+            Stmt::Labeled { span, label, body } => {
+                if context.labels.iter().any(|entry| entry.name == *label) {
+                    return Err(MustardError::validation(
+                        "duplicate active statement label",
+                        Some(*span),
                     ));
-                };
-                let patch =
-                    self.emit_jump_transfer(context, loop_ctx.handler_depth, loop_ctx.scope_depth);
-                context
-                    .loop_stack
-                    .last_mut()
-                    .expect("loop context should still exist")
-                    .break_jumps
-                    .push(patch);
+                }
+                let mut target = body.as_ref();
+                while let Stmt::Labeled { body, .. } = target {
+                    target = body.as_ref();
+                }
+                let iteration = matches!(
+                    target,
+                    Stmt::While { .. }
+                        | Stmt::DoWhile { .. }
+                        | Stmt::For { .. }
+                        | Stmt::ForOf { .. }
+                        | Stmt::ForIn { .. }
+                );
+                context.labels.push(LabelContext {
+                    name: label.clone(),
+                    loop_index: iteration.then_some(context.loop_stack.len()),
+                    break_jumps: Vec::new(),
+                    handler_depth: context.active_handlers.len(),
+                    scope_depth: context.scope_depth,
+                    finally_depth: context.active_finally.len(),
+                });
+                self.compile_stmt(context, body)?;
+                let label = context.labels.pop().expect("active label");
+                let end = context.code.len();
+                for patch in label.break_jumps {
+                    self.patch_control_transfer(context, patch, end);
+                }
             }
-            Stmt::Continue { span } => {
-                let Some(loop_ctx) = context.loop_stack.last() else {
-                    return Err(MustardError::runtime_at(
-                        "`continue` used outside of a loop",
-                        *span,
+            Stmt::LabeledBreak { span, label } => {
+                let index = context
+                    .labels
+                    .iter()
+                    .rposition(|entry| entry.name == *label)
+                    .ok_or_else(|| {
+                        MustardError::validation("unknown statement label", Some(*span))
+                    })?;
+                let target = &context.labels[index];
+                let patch = self.emit_jump_transfer(
+                    context,
+                    target.handler_depth,
+                    target.scope_depth,
+                    target.finally_depth,
+                );
+                context.labels[index].break_jumps.push(patch);
+            }
+            Stmt::Break { span } | Stmt::Continue { span } | Stmt::LabeledContinue { span, .. } => {
+                let continuing = !matches!(statement, Stmt::Break { .. });
+                let index = if let Stmt::LabeledContinue { label, .. } = statement {
+                    context
+                        .labels
+                        .iter()
+                        .rfind(|entry| entry.name == *label)
+                        .and_then(|entry| entry.loop_index)
+                } else {
+                    context
+                        .loop_stack
+                        .iter()
+                        .rposition(|entry| !continuing || !entry.is_switch)
+                };
+                let Some(index) = index else {
+                    return Err(MustardError::validation(
+                        "break/continue has no matching loop, switch or label",
+                        Some(*span),
                     ));
                 };
-                let patch =
-                    self.emit_jump_transfer(context, loop_ctx.handler_depth, loop_ctx.scope_depth);
-                context
-                    .loop_stack
-                    .last_mut()
-                    .expect("loop context should still exist")
-                    .continue_jumps
-                    .push(patch);
+                let target = &context.loop_stack[index];
+                let patch = self.emit_jump_transfer(
+                    context,
+                    target.handler_depth,
+                    target.scope_depth,
+                    target.finally_depth,
+                );
+                if continuing {
+                    context.loop_stack[index].continue_jumps.push(patch);
+                } else {
+                    context.loop_stack[index].break_jumps.push(patch);
+                }
             }
             Stmt::Return { value, .. } => {
                 if let Some(value) = value {
@@ -347,13 +403,7 @@ impl Compiler {
             }
             Stmt::Throw { span, value } => {
                 self.compile_expr(context, value)?;
-                if let Some(active_finally) = context.active_finally.last() {
-                    self.emit_scope_cleanup(context, active_finally.scope_depth);
-                    context.code.push(Instruction::PushPendingThrow);
-                    self.emit_jump_to_active_finally_exit(context);
-                } else {
-                    context.code.push(Instruction::Throw { span: *span });
-                }
+                context.code.push(Instruction::Throw { span: *span });
             }
             Stmt::Try {
                 body,
@@ -372,6 +422,8 @@ impl Compiler {
                 let mut case_jumps = Vec::new();
                 let mut default_case_index = None;
                 context.loop_stack.push(LoopContext {
+                    is_switch: true,
+                    finally_depth: context.active_finally.len(),
                     handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()

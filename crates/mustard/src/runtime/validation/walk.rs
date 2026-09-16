@@ -73,7 +73,7 @@ where
     for completion in &frame.pending_completions {
         match completion {
             CompletionRecord::Return(value) | CompletionRecord::Throw(value) => visit(value)?,
-            CompletionRecord::Jump { .. } => {}
+            CompletionRecord::Jump { .. } | CompletionRecord::StructuredJump { .. } => {}
         }
     }
     Ok(())
