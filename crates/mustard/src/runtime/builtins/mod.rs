@@ -13,6 +13,7 @@ mod promises;
 mod regexp;
 mod strings;
 mod support;
+mod unicode;
 mod uri;
 
 use self::support::{

@@ -34,3 +34,23 @@ It does not enable arbitrary prototype mutation. The structured host boundary
 continues to transport own data only. See the normative algorithms for
 [Object.groupBy](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-object.groupby)
 and [Map.groupBy](https://tc39.es/ecma262/multipage/keyed-collections.html#sec-map.groupby).
+
+## Explicit Unicode string profile
+
+Retain the existing well-formed Unicode scalar string representation and its
+scalar-based length, indexing, slicing, iteration and regexp offsets. Migrating
+all strings, keys, serialization and host transport to arbitrary UTF-16 would be
+an incompatible object/boundary redesign, not a helper addition. New `charCodeAt`
+and `codePointAt` expose an explicit UTF-16 *numeric view*, using ECMAScript unit
+offsets; `fromCharCode` accepts complete UTF-16 sequences (including surrogate
+pairs) and `fromCodePoint` accepts Unicode scalar values. Attempts to create lone
+surrogate strings throw RangeError; source literals/templates/keys containing
+lone surrogates are validation rejects. UTF-8 Node boundary encoding rejects them
+before a lossy conversion; Rust transport already requires valid Unicode.
+
+`isWellFormed` is therefore true for every supported string. JSON parsing and URI
+decoding retain their SyntaxError/URIError failures for malformed encoded text.
+The parser must not expose Oxc's internal lone-surrogate escape representation.
+NFC/NFD/NFKC/NFKD use the maintained
+[unicode-normalization implementation](https://docs.rs/unicode-normalization/latest/unicode_normalization/trait.UnicodeNormalization.html),
+with decomposition-buffer allocation and sorting work preflighted against limits.

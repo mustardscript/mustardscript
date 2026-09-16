@@ -281,3 +281,27 @@ test('URI codecs match Node and reject malformed percent/UTF-8 sequences', async
   const source = `const text = '🙂'.repeat(2000); encodeURIComponent(text);`;
   await assert.rejects(runtime(source).run({limits: {instructionBudget: 2000}}), /instruction budget/);
 });
+
+test('Unicode APIs match Node over well-formed strings and reject unsupported surrogates', async () => {
+  const vm = require('node:vm');
+  const cases = [
+    `const s = 'A🙂é𝄞'; [-1,0,1,2,3,4,5,6,7,Infinity,NaN].map(i => [s.charCodeAt(i), s.codePointAt(i)]);`,
+    `['NFC','NFD','NFKC','NFKD'].map(form => 'éﬃÅ각a\u0315\u0300'.normalize(form));`,
+    `[String.fromCharCode('0x41',65537,-65535,Infinity,0xD83D,0xDE42), String.fromCodePoint(0,0x1F642,0x10FFFF), ''.isWellFormed(), '�'.isWellFormed(), 'x'.normalize(), String.prototype.normalize.call(123)];`,
+    `['', '  ', '\uFEFF1\u00a0', '0xFF', '0b11', '0o77', '+0x1', 'inf', '1e2', '\u0085'].map(Number);`,
+  ];
+  for (const source of cases) {
+    assert.deepEqual(JSON.parse(JSON.stringify(await runtime(source).run())), JSON.parse(JSON.stringify(vm.runInNewContext(source))), source);
+  }
+  for (const source of [String.raw`'\ud800';`, String.raw`'\udfff';`, String.raw`({'\ud800': 1});`, '`\\ud800`;']) {
+    assert.throws(() => runtime(source), /lone surrogates/, source);
+  }
+  for (const source of ['String.fromCharCode(0xD800);', 'String.fromCodePoint(0xDFFF);', 'String.fromCodePoint(0x110000);', 'String.fromCodePoint(1.5);', 'String.fromCodePoint(NaN);', "'x'.normalize('bad');"]) {
+    await assert.rejects(runtime(source).run(), /RangeError/);
+  }
+  await assert.rejects(runtime('text.normalize();').run({inputs: {text: 'a' + '\u0301'.repeat(10000)}, limits: {instructionBudget: 2000}}), /instruction budget/);
+  await assert.rejects(runtime('text;').run({inputs: {text: '\ud800'}}), /lone surrogates/);
+  await assert.rejects(runtime('text;').run({inputs: {text: {'\ud800': 1}}}), /lone surrogates/);
+  assert.throws(() => runtime("'\ud800';"), /lone surrogates/);
+  await assert.rejects(runtime('checkpoint();').run({capabilities: {checkpoint() { return '\ud800'; }}}), /lone surrogates/);
+});

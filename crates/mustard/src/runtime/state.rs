@@ -619,6 +619,12 @@ pub(super) enum BuiltinFunction {
     EncodeURIComponent,
     DecodeURI,
     DecodeURIComponent,
+    StringCharCodeAt,
+    StringCodePointAt,
+    StringFromCharCode,
+    StringFromCodePoint,
+    StringNormalize,
+    StringIsWellFormed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

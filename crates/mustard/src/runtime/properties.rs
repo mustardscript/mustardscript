@@ -340,6 +340,13 @@ impl Runtime {
             BuiltinFunction::ObjectEntries => "entries",
             BuiltinFunction::ObjectHasOwn => "hasOwn",
             BuiltinFunction::ObjectIs => "is",
+            BuiltinFunction::StringCharCodeAt => "charCodeAt",
+            BuiltinFunction::StringCodePointAt => "codePointAt",
+            BuiltinFunction::StringFromCharCode => "fromCharCode",
+            BuiltinFunction::StringFromCodePoint => "fromCodePoint",
+            BuiltinFunction::StringNormalize => "normalize",
+            BuiltinFunction::StringIsWellFormed => "isWellFormed",
+
             BuiltinFunction::EncodeURI => "encodeURI",
             BuiltinFunction::EncodeURIComponent => "encodeURIComponent",
             BuiltinFunction::DecodeURI => "decodeURI",
@@ -535,6 +542,13 @@ impl Runtime {
             BuiltinFunction::ObjectEntries => 1,
             BuiltinFunction::ObjectHasOwn => 2,
             BuiltinFunction::ObjectIs => 2,
+            BuiltinFunction::StringCharCodeAt => 1,
+            BuiltinFunction::StringCodePointAt => 1,
+            BuiltinFunction::StringFromCharCode => 1,
+            BuiltinFunction::StringFromCodePoint => 1,
+            BuiltinFunction::StringNormalize => 0,
+            BuiltinFunction::StringIsWellFormed => 0,
+
             BuiltinFunction::EncodeURI => 1,
             BuiltinFunction::EncodeURIComponent => 1,
             BuiltinFunction::DecodeURI => 1,
@@ -724,6 +738,15 @@ impl Runtime {
                 BuiltinFunction::DateCtor if key == "now" => {
                     Some(Value::BuiltinFunction(BuiltinFunction::DateNow))
                 }
+                BuiltinFunction::StringCtor => match key {
+                    "fromCharCode" => {
+                        Some(Value::BuiltinFunction(BuiltinFunction::StringFromCharCode))
+                    }
+                    "fromCodePoint" => {
+                        Some(Value::BuiltinFunction(BuiltinFunction::StringFromCodePoint))
+                    }
+                    _ => None,
+                },
                 BuiltinFunction::NumberCtor => match key {
                     "parseInt" => Some(Value::BuiltinFunction(BuiltinFunction::NumberParseInt)),
                     "parseFloat" => Some(Value::BuiltinFunction(BuiltinFunction::NumberParseFloat)),
@@ -767,6 +790,11 @@ impl Runtime {
         property: Value,
     ) -> MustardResult<bool> {
         let key = self.to_property_key(property)?;
+        if Self::string_extension_method(&key).is_some()
+            && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::StringObject(_) | ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::StringCtor)))))
+        {
+            return Ok(true);
+        }
         if Self::object_prototype_method(&key).is_some()
             && !matches!(
                 object,
@@ -1636,6 +1664,16 @@ impl Runtime {
         self.get_property_by_key(object, key, optional)
     }
 
+    pub(super) fn string_extension_method(key: &str) -> Option<BuiltinFunction> {
+        Some(match key {
+            "charCodeAt" => BuiltinFunction::StringCharCodeAt,
+            "codePointAt" => BuiltinFunction::StringCodePointAt,
+            "normalize" => BuiltinFunction::StringNormalize,
+            "isWellFormed" => BuiltinFunction::StringIsWellFormed,
+            _ => return None,
+        })
+    }
+
     pub(super) fn object_prototype_method(key: &str) -> Option<BuiltinFunction> {
         match key {
             "hasOwnProperty" => Some(BuiltinFunction::ObjectHasOwnProperty),
@@ -1651,6 +1689,17 @@ impl Runtime {
         optional: bool,
     ) -> MustardResult<Value> {
         let value = self.get_property_by_key_surface(object.clone(), key, optional)?;
+        if matches!(value, Value::Undefined)
+            && (matches!(object, Value::String(_))
+                || matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::StringObject(_)))))
+            && let Some(method) = Self::string_extension_method(key)
+            && matches!(
+                self.call_object_has_own(&[object.clone(), Value::String(key.to_string())])?,
+                Value::Bool(false)
+            )
+        {
+            return Ok(Value::BuiltinFunction(method));
+        }
         if !matches!(value, Value::Undefined)
             || matches!(object, Value::Null | Value::Undefined)
             || matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::NullPrototype)))
@@ -1936,6 +1985,13 @@ impl Runtime {
                     return Ok(value.clone());
                 }
                 if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
+                    if matches!(
+                        constructor,
+                        Value::BuiltinFunction(BuiltinFunction::StringCtor)
+                    ) && let Some(method) = Self::string_extension_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
+                    }
                     if matches!(
                         constructor,
                         Value::BuiltinFunction(BuiltinFunction::ObjectCtor)

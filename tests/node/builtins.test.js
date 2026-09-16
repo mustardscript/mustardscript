@@ -552,7 +552,7 @@ test('Number prototype formatting helpers fail closed for invalid receivers and 
 
 test('unsupported static and prototype member calls report the missing supported surface', async () => {
   for (const [source, message] of [
-    ['"x".normalize();', 'TypeError: String.prototype.normalize is not supported'],
+    ['"x".normalize("unsupported");', 'RangeError: normalization form must be NFC, NFD, NFKC, or NFKD'],
     ['(1).toLocaleString();', 'TypeError: Number.prototype.toLocaleString is not supported'],
     ['[].groupBy();', 'TypeError: Array.prototype.groupBy is not supported'],
     ['new Date(0).toLocaleString();', 'TypeError: Date.prototype.toLocaleString is not supported'],

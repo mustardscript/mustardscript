@@ -403,3 +403,38 @@ fn uri_codecs_round_trip_unicode_and_reject_malformed_utf8() {
         true.into()
     );
 }
+
+#[test]
+fn unicode_character_apis_expose_utf16_without_lone_surrogate_strings() {
+    assert_eq!(run(r#"
+        const text = 'A🙂é';
+        JSON.stringify([text.length, text.charAt(1), text.charCodeAt(1), text.charCodeAt(2),
+          text.codePointAt(1), text.codePointAt(2), text.codePointAt(10), text.charCodeAt(-1),
+          String.fromCharCode(65, 0xD83D, 0xDE42, 233), String.fromCodePoint(65, 0x1F642, 233),
+          String.fromCharCode('0x41', 65537, -65535, NaN),
+          'e\u0301'.normalize(), 'ﬃ'.normalize('NFKC'), 'é'.normalize('NFD'),
+          text.isWellFormed(), String.prototype.isWellFormed.call(42),
+          Object.hasOwn(String.prototype, 'charCodeAt'), 'normalize' in new String('x')]);
+    "#), r#"[3,"🙂",55357,56898,128578,56898,null,null,"A🙂é","A🙂é","A\u0001\u0001\u0000","é","ffi","é",true,true,true,true]"#.into());
+    for source in [r#"'\ud800';"#, r#"`\udfff`;"#, r#"({'\ud800': 1});"#] {
+        assert!(
+            compile(source)
+                .unwrap_err()
+                .to_string()
+                .contains("lone surrogates")
+        );
+    }
+    for source in [
+        "String.fromCharCode(0xD800);",
+        "String.fromCodePoint(0xDFFF);",
+        "String.fromCodePoint(0x110000);",
+        "String.fromCodePoint(1.5);",
+        "'x'.normalize('bad');",
+    ] {
+        let error = execute(&compile(source).unwrap(), ExecutionOptions::default()).unwrap_err();
+        assert!(
+            error.to_string().contains("RangeError"),
+            "{source}: {error}"
+        );
+    }
+}

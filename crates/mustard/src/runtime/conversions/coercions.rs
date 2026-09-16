@@ -1,4 +1,5 @@
 use super::*;
+use num_traits::ToPrimitive;
 use oxc_syntax::number::ToJsString;
 
 impl Runtime {
@@ -19,7 +20,7 @@ impl Runtime {
                     "TypeError: cannot coerce BigInt values to numbers",
                 ));
             }
-            Value::String(value) => value.parse::<f64>().unwrap_or(f64::NAN),
+            Value::String(value) => parse_string_number(&value),
             Value::Object(object) => match &self
                 .objects
                 .get(object)
@@ -27,7 +28,7 @@ impl Runtime {
                 .kind
             {
                 ObjectKind::NumberObject(value) => *value,
-                ObjectKind::StringObject(value) => value.parse::<f64>().unwrap_or(f64::NAN),
+                ObjectKind::StringObject(value) => parse_string_number(value),
                 ObjectKind::BooleanObject(value) => {
                     if *value {
                         1.0
@@ -249,4 +250,40 @@ impl Runtime {
             _ => self.to_string(value.clone())?,
         })
     }
+}
+
+// ECMAScript WhiteSpace + LineTerminator, intentionally not Rust's broader trim set.
+pub(in crate::runtime) fn is_ecmascript_whitespace(ch: char) -> bool {
+    matches!(ch, '\u{0009}'..='\u{000D}' | ' ' | '\u{00A0}' | '\u{1680}' | '\u{2000}'..='\u{200A}' | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}' | '\u{FEFF}')
+}
+
+fn parse_string_number(value: &str) -> f64 {
+    let value = value.trim_matches(is_ecmascript_whitespace);
+    if value.is_empty() {
+        return 0.0;
+    }
+    match value {
+        "Infinity" | "+Infinity" => return f64::INFINITY,
+        "-Infinity" => return f64::NEG_INFINITY,
+        _ => {}
+    }
+    for (prefixes, radix) in [(["0x", "0X"], 16), (["0o", "0O"], 8), (["0b", "0B"], 2)] {
+        if let Some(digits) = prefixes
+            .iter()
+            .find_map(|prefix| value.strip_prefix(prefix))
+        {
+            if digits.is_empty() || !digits.chars().all(|ch| ch.is_digit(radix)) {
+                return f64::NAN;
+            }
+            return num_bigint::BigUint::parse_bytes(digits.as_bytes(), radix)
+                .map_or(f64::NAN, |value| value.to_f64().unwrap_or(f64::INFINITY));
+        }
+    }
+    if !value
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || b"+-.eE".contains(&byte))
+    {
+        return f64::NAN;
+    }
+    value.parse::<f64>().unwrap_or(f64::NAN)
 }

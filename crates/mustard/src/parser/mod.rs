@@ -144,7 +144,19 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    fn check_directives(&mut self, directives: &[Directive<'a>]) {
+        for directive in directives {
+            if directive.expression.lone_surrogates {
+                self.unsupported(
+                    "lone surrogates are not supported by the Unicode string profile",
+                    Some(directive.span.into()),
+                );
+            }
+        }
+    }
+
     fn lower_program(&mut self, program: &Program<'a>) -> Script {
+        self.check_directives(&program.directives);
         self.predeclare_block(&program.body);
         let body = program
             .body

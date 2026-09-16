@@ -30,6 +30,7 @@ impl<'a> Lowerer<'a> {
                 }
             }
         }
+        self.check_directives(&body.directives);
         self.predeclare_block(&body.statements);
         let lowered = body
             .statements
@@ -66,6 +67,7 @@ impl<'a> Lowerer<'a> {
                 }
             }
         }
+        self.check_directives(&function.body.directives);
         self.predeclare_block(&function.body.statements);
         let body = if function.expression {
             if function.body.statements.len() == 1 {
@@ -208,10 +210,26 @@ impl<'a> Lowerer<'a> {
                 span: literal.span.into(),
                 value: literal.value.as_str().to_string(),
             }),
+            Expression::StringLiteral(literal) if literal.lone_surrogates => {
+                self.unsupported(
+                    "lone surrogates are not supported by the Unicode string profile",
+                    Some(literal.span.into()),
+                );
+                None
+            }
             Expression::StringLiteral(literal) => Some(Expr::String {
                 span: literal.span.into(),
                 value: literal.value.as_str().to_string(),
             }),
+            Expression::TemplateLiteral(literal)
+                if literal.quasis.iter().any(|quasi| quasi.lone_surrogates) =>
+            {
+                self.unsupported(
+                    "lone surrogates are not supported by the Unicode string profile",
+                    Some(literal.span.into()),
+                );
+                None
+            }
             Expression::TemplateLiteral(literal) => Some(Expr::Template {
                 span: literal.span.into(),
                 quasis: literal

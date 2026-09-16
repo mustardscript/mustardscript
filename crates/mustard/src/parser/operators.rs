@@ -6,6 +6,13 @@ impl<'a> Lowerer<'a> {
             PropertyKey::StaticIdentifier(identifier) => Some(PropertyName::Identifier(
                 identifier.name.as_str().to_string(),
             )),
+            PropertyKey::StringLiteral(literal) if literal.lone_surrogates => {
+                self.unsupported(
+                    "lone surrogates are not supported by the Unicode string profile",
+                    Some(literal.span.into()),
+                );
+                None
+            }
             PropertyKey::StringLiteral(literal) => {
                 Some(PropertyName::String(literal.value.as_str().to_string()))
             }

@@ -1689,8 +1689,8 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
 
     for (source, message) in [
         (
-            r#""x".normalize();"#,
-            "String.prototype.normalize is not supported",
+            r#""x".normalize("unsupported");"#,
+            "normalization form must be NFC, NFD, NFKC, or NFKD",
         ),
         (
             "(1).toLocaleString();",

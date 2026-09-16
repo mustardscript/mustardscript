@@ -735,3 +735,24 @@ Malformed escapes, overlong UTF-8, surrogate encodings, and out-of-range code po
 throw `URIError`. Work and output allocation are budgeted. These functions operate
 on the existing well-formed Unicode string surface; URL and URLSearchParams remain
 host APIs, not guest globals.
+
+### Unicode character APIs and normalization
+
+`normalize()` supports NFC (default), NFD, NFKC and NFKD; invalid form names throw
+RangeError. Normalization uses pinned Unicode data in the Rust dependency and
+meters decomposition buffering and combining-mark sorting. `isWellFormed()` is
+true for all supported strings.
+
+The existing string profile is **Unicode scalar based**, not arbitrary UTF-16:
+`'🙂'.length` is 1, and indexing, slicing and regexp offsets count scalars. The new
+`charCodeAt(index)` and `codePointAt(index)` deliberately expose ECMAScript's
+**UTF-16 numeric view**: `'🙂'.charCodeAt(0)` is 55357,
+`'🙂'.codePointAt(0)` is 128578, and both at index 1 return the low surrogate 56898.
+Out-of-range results are NaN and undefined respectively.
+
+`String.fromCharCode(...units)` wraps numbers to unsigned 16-bit units and accepts
+valid surrogate pairs. `String.fromCodePoint(...points)` accepts scalar values up
+to 0x10FFFF. Both reject lone-surrogate results with RangeError; fromCodePoint also
+rejects non-integers and out-of-range values. Lone-surrogate source literals,
+template fragments and property keys are validation errors, and lone-surrogate
+host strings/keys are boundary TypeErrors. They are never silently replaced.

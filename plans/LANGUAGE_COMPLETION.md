@@ -21,7 +21,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [ ] 11. UTC-profile Date completion
 - [ ] 12. Deterministic, real en-US collation
 - [ ] 13. Number and multi-currency formatting
-- [ ] 14. Unicode normalization and character APIs with an explicit string contract
+- [x] 14. Unicode normalization and character APIs with an explicit string contract
 - [ ] 15. Bitwise/shift operators and assignments
 - [ ] 16. BigInt conversion
 - [ ] 17. Set algebra
@@ -134,3 +134,15 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm run build`, `npm run lint` and full
   Node suite. Tests compare Node across punctuation/Unicode/numeric coercion,
   malformed/overlong/surrogate sequences and instruction-budget exhaustion.
+
+### Unicode character APIs and explicit string contract
+
+- Added UTF-16 numeric character views, valid-sequence character constructors,
+  maintained NFC/NFD/NFKC/NFKD normalization with buffer/work preflights, and
+  isWellFormed. ADR 0002 preserves scalar-based legacy indexing. Lone surrogate
+  source strings/templates/keys/directives and Node boundary values/keys reject
+  before lossy encoding. Primitive string-to-number coercion now handles exact
+  ECMAScript whitespace, radix prefixes and infinities for character conversion.
+- Passed: `cargo test --workspace`, `npm test` (Node suite, types and package
+  smoke), `npm run lint`; focused tests compare Node, normalization/case data,
+  UTF-16 pairs/indices, invalid construction, source/boundary rejection and limits.
