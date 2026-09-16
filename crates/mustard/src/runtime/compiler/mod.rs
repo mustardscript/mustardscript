@@ -834,6 +834,7 @@ impl Compiler {
                 let value = state.binding_value(&AbstractBinding::Name(name.clone()));
                 state.push_value(value);
             }
+            Instruction::LoadNameForTypeof(_) => state.push_temporary(),
             Instruction::LoadGlobal(name) => {
                 let value = state.binding_value(&AbstractBinding::Global(name.clone()));
                 state.push_value(value);

@@ -21,6 +21,10 @@ extensions are called out explicitly instead of being implied.
 - Free references to forbidden ambient globals are rejected when lexical
   resolution proves they are unresolved.
 - Free `eval` and free `Function` are rejected for the same reason.
+- `typeof` an unresolvable non-forbidden identifier returns `"undefined"`;
+  uninitialized lexical bindings still throw `ReferenceError`. This exception
+  does not suppress errors while evaluating member expressions or bypass the
+  forbidden-ambient-global validation policy.
 - Hosts may opt into `lenientMode` at compile time for generated snippets. In
   that mode, only a final top-level `return <expr>;` is accepted, and it is
   treated exactly like the final expression result of the script. Other

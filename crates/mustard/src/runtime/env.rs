@@ -398,6 +398,16 @@ impl Runtime {
         Ok(())
     }
 
+    pub(super) fn lookup_name_for_typeof(&self, env: EnvKey, name: &str) -> MustardResult<Value> {
+        if self.find_cell(env, name).is_none()
+            && self.global_binding_cell(name).is_none()
+            && self.global_property_value(name).is_none()
+        {
+            return Ok(Value::Undefined);
+        }
+        self.lookup_name(env, name)
+    }
+
     pub(super) fn lookup_name(&self, env: EnvKey, name: &str) -> MustardResult<Value> {
         let Some(cell) = self.find_cell(env, name) else {
             return self.lookup_global_name(name);

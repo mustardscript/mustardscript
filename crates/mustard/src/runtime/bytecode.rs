@@ -182,4 +182,5 @@ pub enum Instruction {
     ConstructWithArray,
     Return,
     PushBigInt(String),
+    LoadNameForTypeof(String),
 }

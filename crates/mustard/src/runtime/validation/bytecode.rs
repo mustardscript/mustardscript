@@ -234,6 +234,7 @@ fn apply_validation_effect(
         | Instruction::LoadSlotGetPropStatic { .. }
         | Instruction::LoadSlotLoadSlotGetPropComputed { .. }
         | Instruction::LoadName(_)
+        | Instruction::LoadNameForTypeof(_)
         | Instruction::LoadGlobal(_)
         | Instruction::LoadGlobalObject
         | Instruction::MakeClosure { .. }

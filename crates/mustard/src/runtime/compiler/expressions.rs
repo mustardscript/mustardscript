@@ -346,7 +346,15 @@ impl Compiler {
             Expr::Unary {
                 operator, argument, ..
             } => {
-                self.compile_expr(context, argument)?;
+                if let (crate::ir::UnaryOp::Typeof, Expr::Identifier { name, .. }) =
+                    (operator, argument.as_ref())
+                {
+                    context
+                        .code
+                        .push(Instruction::LoadNameForTypeof(name.clone()));
+                } else {
+                    self.compile_expr(context, argument)?;
+                }
                 context.code.push(Instruction::Unary(*operator));
             }
             Expr::Binary {

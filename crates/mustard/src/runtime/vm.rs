@@ -177,6 +177,11 @@ impl Runtime {
                 let value = self.lookup_name(env, name)?;
                 self.frames[frame_index].stack.push(value);
             }
+            Instruction::LoadNameForTypeof(name) => {
+                let env = self.frames[frame_index].env;
+                let value = self.lookup_name_for_typeof(env, name)?;
+                self.frames[frame_index].stack.push(value);
+            }
             Instruction::LoadGlobal(name) => {
                 let value = self.lookup_global_name(name)?;
                 self.frames[frame_index].stack.push(value);
