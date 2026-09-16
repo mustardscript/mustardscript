@@ -348,6 +348,7 @@ impl DetachedRuntime {
             pending_internal_exception: None,
             pending_sync_callback_result: None,
             native_callback_host_suspension_message: None,
+            native_temporary_roots: Vec::new(),
             snapshot_policy_required: false,
             pending_resume_behavior: self.pending_resume_behavior,
         }

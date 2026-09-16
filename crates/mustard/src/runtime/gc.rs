@@ -154,6 +154,15 @@ impl Runtime {
         if let Some(root_result) = &self.root_result {
             self.mark_value(root_result, &mut marks, &mut worklist);
         }
+        for value in &self.native_temporary_roots {
+            self.mark_value(value, &mut marks, &mut worklist);
+        }
+        if let Some(value) = &self.pending_sync_callback_result {
+            self.mark_value(value, &mut marks, &mut worklist);
+        }
+        if let Some(rejection) = &self.pending_internal_exception {
+            self.mark_value(&rejection.value, &mut marks, &mut worklist);
+        }
         for frame in &self.frames {
             self.mark_frame_roots(frame, &mut marks, &mut worklist);
         }

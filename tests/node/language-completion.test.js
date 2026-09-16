@@ -106,3 +106,41 @@ test('JSON callbacks preserve failures and cannot bypass runtime limits', async 
   `).run({ limits: { heapLimitBytes: 32768 } });
   assert.equal(text, '{"a":{"x":1},"b":{"x":2}}');
 });
+
+test('error constructors, AggregateError, and guest-only stacks are complete', async () => {
+  const source = `
+    const rows = [Error, TypeError, ReferenceError, RangeError, SyntaxError, EvalError, URIError].map(C => {
+      const error = new C("message", {cause: 1});
+      return [error instanceof C, error instanceof Error, error.constructor === C,
+        error.name === C.name, error.cause, error.toString(), Object.keys(error), typeof error.stack, C.length];
+    });
+    const error = new AggregateError([1,2], "failed", {cause: 3});
+    JSON.stringify([rows, [error instanceof AggregateError, error instanceof Error, error.errors,
+      error.cause, error.toString(), Object.keys(error), AggregateError.length]]);
+  `;
+  assert.equal(await runtime(source).run(), require('node:vm').runInNewContext(source));
+  const stack = await runtime('function guestFailure() { return new URIError("bad"); } guestFailure().stack;').run();
+  assert.match(stack, /^URIError: bad\n/);
+  assert.match(stack, /guestFailure \(guest:\d+\.\.\d+\)/);
+  assert.ok(!stack.includes(process.cwd()));
+  assert.ok(!stack.includes('.rs:'));
+  assert.equal(await runtime(`
+    (async () => { try { await Promise.any([Promise.reject(1)]); }
+      catch(error) { return error instanceof AggregateError && error instanceof Error; } })();
+  `).run(), true);
+  await assert.rejects(runtime('new AggregateError({length:1});').run(), /not iterable/);
+});
+
+test('error stacks and nested causes survive snapshot restore', () => {
+  const snapshotKey = Buffer.from('language-error-stack-test');
+  const capabilities = { checkpoint() {} };
+  const first = runtime(`
+    function failure() { return new AggregateError([new URIError("inner")], "outer", {cause: "cause"}); }
+    const error = failure(); const stack = error.stack;
+    checkpoint();
+    [error instanceof AggregateError, error.errors[0] instanceof URIError,
+      error.cause, error.stack === stack, error.stack.includes("failure")];
+  `).start({ snapshotKey, capabilities });
+  const restored = Progress.load(first.dump(), { snapshotKey, capabilities, limits: {} });
+  assert.deepEqual(restored.resume(undefined), [true, true, 'cause', true, true]);
+});

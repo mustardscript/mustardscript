@@ -336,6 +336,10 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => "ReferenceError",
             BuiltinFunction::RangeErrorCtor => "RangeError",
             BuiltinFunction::SyntaxErrorCtor => "SyntaxError",
+            BuiltinFunction::EvalErrorCtor => "EvalError",
+            BuiltinFunction::URIErrorCtor => "URIError",
+            BuiltinFunction::AggregateErrorCtor => "AggregateError",
+            BuiltinFunction::ErrorToString => "toString",
             BuiltinFunction::NumberCtor => "Number",
             BuiltinFunction::NumberParseInt => "parseInt",
             BuiltinFunction::NumberParseFloat => "parseFloat",
@@ -510,6 +514,10 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => 1,
             BuiltinFunction::RangeErrorCtor => 1,
             BuiltinFunction::SyntaxErrorCtor => 1,
+            BuiltinFunction::EvalErrorCtor => 1,
+            BuiltinFunction::URIErrorCtor => 1,
+            BuiltinFunction::AggregateErrorCtor => 2,
+            BuiltinFunction::ErrorToString => 0,
             BuiltinFunction::NumberCtor => 1,
             BuiltinFunction::NumberParseInt => 2,
             BuiltinFunction::NumberParseFloat => 1,
@@ -807,8 +815,8 @@ impl Runtime {
                     ObjectKind::Plain
                     | ObjectKind::Global
                     | ObjectKind::Math
-                    | ObjectKind::Json
-                    | ObjectKind::Error(_) => key == "constructor",
+                    | ObjectKind::Json => key == "constructor",
+                    ObjectKind::Error(_) => matches!(key.as_str(), "constructor" | "toString"),
                 })
             }
             Value::Array(array) => {
@@ -1525,7 +1533,7 @@ impl Runtime {
         self.get_property_by_key(object, key, optional)
     }
 
-    fn get_property_by_key(
+    pub(super) fn get_property_by_key(
         &self,
         object: Value,
         key: &str,
@@ -1569,12 +1577,19 @@ impl Runtime {
                         if let Some(value) = object.properties.get(key) {
                             return Ok(value.clone());
                         }
+                        if key == "toString" {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::ErrorToString));
+                        }
                         if key == "constructor" {
                             let ctor = match name.as_str() {
                                 "TypeError" => BuiltinFunction::TypeErrorCtor,
                                 "ReferenceError" => BuiltinFunction::ReferenceErrorCtor,
                                 "RangeError" => BuiltinFunction::RangeErrorCtor,
                                 "SyntaxError" => BuiltinFunction::SyntaxErrorCtor,
+                                "EvalError" => BuiltinFunction::EvalErrorCtor,
+                                "URIError" => BuiltinFunction::URIErrorCtor,
+                                "AggregateError" => BuiltinFunction::AggregateErrorCtor,
+
                                 _ => BuiltinFunction::ErrorCtor,
                             };
                             return Ok(Value::BuiltinFunction(ctor));

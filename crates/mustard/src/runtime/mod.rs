@@ -146,6 +146,7 @@ impl Runtime {
             pending_internal_exception: None,
             pending_sync_callback_result: None,
             native_callback_host_suspension_message: None,
+            native_temporary_roots: Vec::new(),
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         }
@@ -199,6 +200,7 @@ impl Runtime {
             pending_internal_exception: None,
             pending_sync_callback_result: None,
             native_callback_host_suspension_message: None,
+            native_temporary_roots: Vec::new(),
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         }
@@ -292,15 +294,12 @@ impl Runtime {
     where
         F: FnOnce(&mut Self) -> MustardResult<T>,
     {
-        let frame_index = self.frames.len().checked_sub(1).ok_or_else(|| {
-            MustardError::runtime("no active frame available for temporary roots")
-        })?;
-        let original_len = self.frames[frame_index].stack.len();
-        self.frames[frame_index].stack.extend(roots.iter().cloned());
+        // Native helper work can run from a microtask with no active frame.
+        // Separate roots also survive nested callback frame pushes/unwinding.
+        let original_len = self.native_temporary_roots.len();
+        self.native_temporary_roots.extend(roots.iter().cloned());
         let result = f(self);
-        if let Some(frame) = self.frames.get_mut(frame_index) {
-            frame.stack.truncate(original_len);
-        }
+        self.native_temporary_roots.truncate(original_len);
         result
     }
 

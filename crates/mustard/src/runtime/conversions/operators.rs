@@ -249,6 +249,11 @@ impl Runtime {
                 BuiltinFunction::SyntaxErrorCtor => {
                     Ok(self.error_kind_matches(left, "SyntaxError"))
                 }
+                BuiltinFunction::EvalErrorCtor => Ok(self.error_kind_matches(left, "EvalError")),
+                BuiltinFunction::URIErrorCtor => Ok(self.error_kind_matches(left, "URIError")),
+                BuiltinFunction::AggregateErrorCtor => {
+                    Ok(self.error_kind_matches(left, "AggregateError"))
+                }
                 _ => Err(MustardError::runtime(
                     "TypeError: right-hand side of instanceof must be a supported constructor",
                 )),

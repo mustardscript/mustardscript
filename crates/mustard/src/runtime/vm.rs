@@ -1242,6 +1242,10 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => "ReferenceError".to_string(),
             BuiltinFunction::RangeErrorCtor => "RangeError".to_string(),
             BuiltinFunction::SyntaxErrorCtor => "SyntaxError".to_string(),
+            BuiltinFunction::EvalErrorCtor => "EvalError".to_string(),
+            BuiltinFunction::URIErrorCtor => "URIError".to_string(),
+            BuiltinFunction::AggregateErrorCtor => "AggregateError".to_string(),
+
             _ => "Function.prototype".to_string(),
         }
     }
@@ -1323,6 +1327,9 @@ impl Runtime {
                 | BuiltinFunction::ReferenceErrorCtor
                 | BuiltinFunction::RangeErrorCtor
                 | BuiltinFunction::SyntaxErrorCtor
+                | BuiltinFunction::EvalErrorCtor
+                | BuiltinFunction::URIErrorCtor
+                | BuiltinFunction::AggregateErrorCtor
                 | BuiltinFunction::NumberCtor
                 | BuiltinFunction::StringCtor
                 | BuiltinFunction::BooleanCtor

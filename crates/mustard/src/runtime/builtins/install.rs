@@ -136,6 +136,10 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => self.call_error_ctor(args, "ReferenceError"),
             BuiltinFunction::RangeErrorCtor => self.call_error_ctor(args, "RangeError"),
             BuiltinFunction::SyntaxErrorCtor => self.call_error_ctor(args, "SyntaxError"),
+            BuiltinFunction::EvalErrorCtor => self.call_error_ctor(args, "EvalError"),
+            BuiltinFunction::URIErrorCtor => self.call_error_ctor(args, "URIError"),
+            BuiltinFunction::AggregateErrorCtor => self.call_aggregate_error_ctor(args),
+            BuiltinFunction::ErrorToString => self.call_error_to_string(this_value),
             BuiltinFunction::NumberCtor => self.call_number_ctor(args),
             BuiltinFunction::NumberParseInt => self.call_number_parse_int(args),
             BuiltinFunction::NumberParseFloat => self.call_number_parse_float(args),
@@ -250,6 +254,9 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor,
             BuiltinFunction::RangeErrorCtor,
             BuiltinFunction::SyntaxErrorCtor,
+            BuiltinFunction::EvalErrorCtor,
+            BuiltinFunction::URIErrorCtor,
+            BuiltinFunction::AggregateErrorCtor,
             BuiltinFunction::NumberCtor,
             BuiltinFunction::BooleanCtor,
             BuiltinFunction::IntlDateTimeFormatCtor,
@@ -325,6 +332,21 @@ impl Runtime {
         self.define_global(
             "SyntaxError".to_string(),
             Value::BuiltinFunction(BuiltinFunction::SyntaxErrorCtor),
+            false,
+        )?;
+        self.define_global(
+            "EvalError".into(),
+            Value::BuiltinFunction(BuiltinFunction::EvalErrorCtor),
+            false,
+        )?;
+        self.define_global(
+            "URIError".into(),
+            Value::BuiltinFunction(BuiltinFunction::URIErrorCtor),
+            false,
+        )?;
+        self.define_global(
+            "AggregateError".into(),
+            Value::BuiltinFunction(BuiltinFunction::AggregateErrorCtor),
             false,
         )?;
         self.define_global(
@@ -496,8 +518,20 @@ impl Runtime {
     }
 
     fn register_builtin_prototype(&mut self, function: BuiltinFunction) -> MustardResult<()> {
+        let properties = if let Some(name) = Self::builtin_error_name(function) {
+            IndexMap::from([
+                ("name".into(), Value::String(name.into())),
+                ("message".into(), Value::String(String::new())),
+                (
+                    "toString".into(),
+                    Value::BuiltinFunction(BuiltinFunction::ErrorToString),
+                ),
+            ])
+        } else {
+            IndexMap::new()
+        };
         let prototype = self.insert_object(
-            IndexMap::new(),
+            properties,
             ObjectKind::FunctionPrototype(Value::BuiltinFunction(function)),
         )?;
         self.builtin_prototypes.insert(function, prototype);

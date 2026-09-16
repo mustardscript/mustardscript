@@ -168,3 +168,55 @@ fn json_callback_host_suspensions_fail_before_transferring_vm_state() {
         );
     }
 }
+
+#[test]
+fn error_family_has_correct_constructors_metadata_and_guest_stacks() {
+    assert_eq!(
+        run(r#"
+        const rows = [Error, TypeError, ReferenceError, RangeError, SyntaxError, EvalError, URIError].map(C => {
+            const error = new C("message", {cause: 1});
+            return [error instanceof C, error instanceof Error, error.constructor === C,
+                error.name === C.name, error.cause, error.toString(), Object.keys(error).length,
+                typeof error.stack, C.prototype.name, C.length];
+        });
+        rows.every(row => row[0] && row[1] && row[2] && row[3] && row[4] === 1 && row[6] === 0 && row[7] === "string" && row[9] === 1);
+    "#),
+        true.into()
+    );
+    assert_eq!(
+        run(r#"
+        function guestFailure() { return new URIError("bad URI"); }
+        const error = guestFailure();
+        error.stack.startsWith("URIError: bad URI") && error.stack.includes("guestFailure") && !error.stack.includes("crates/mustard") && !error.stack.includes(".rs:");
+    "#),
+        true.into()
+    );
+    assert_eq!(
+        run(r#"
+        const errors = [1, "two"];
+        const error = AggregateError(errors, "failed", {cause: 3});
+        errors.push(4);
+        JSON.stringify([error instanceof AggregateError, error instanceof Error, error.constructor === AggregateError, error.name, error.errors, error.cause, Object.keys(error), error.toString(), AggregateError.length]);
+    "#),
+        r#"[true,true,true,"AggregateError",[1,"two"],3,[],"AggregateError: failed",2]"#.into()
+    );
+    assert_eq!(
+        run(r#"
+        (async () => { try { await Promise.any([Promise.reject(1), Promise.reject(2)]); } catch(error) { return error instanceof AggregateError && error instanceof Error && typeof error.stack === "string"; } })();
+    "#),
+        true.into()
+    );
+    assert_eq!(
+        run(r#"Error.prototype.toString.call({name: "", message: "just text"});"#),
+        "just text".into()
+    );
+    assert!(
+        execute(
+            &compile("new AggregateError({length: 1});").unwrap(),
+            ExecutionOptions::default()
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("not iterable")
+    );
+}

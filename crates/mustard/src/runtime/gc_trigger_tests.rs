@@ -1137,3 +1137,21 @@ fn deletion_releases_property_payloads_without_corrupting_cached_heap_totals() {
     #[cfg(debug_assertions)]
     runtime.debug_assert_cached_accounting_matches_full_walk();
 }
+
+#[test]
+fn native_temporary_roots_protect_microtask_values_without_an_active_frame() {
+    let mut runtime = test_runtime();
+    runtime.frames.clear();
+    let object = runtime
+        .insert_object(IndexMap::new(), ObjectKind::Plain)
+        .unwrap();
+    runtime
+        .with_temporary_roots(&[Value::Object(object)], |runtime| {
+            runtime.collect_garbage()?;
+            assert!(runtime.objects.contains_key(object));
+            Ok(())
+        })
+        .unwrap();
+    runtime.collect_garbage().unwrap();
+    assert!(!runtime.objects.contains_key(object));
+}

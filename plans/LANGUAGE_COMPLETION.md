@@ -11,7 +11,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 1. JSON replacer, reviver, and indentation
 - [x] 2. Object and array property deletion
 - [x] 3. `typeof` unresolvable identifiers, preserving TDZ and ambient policy
-- [ ] 4. Error constructors, parse-error types, and guest-safe stack properties
+- [x] 4. Error constructors, parse-error types, and guest-safe stack properties
 - [ ] 5. `Array.from` array-like inputs
 - [ ] 6. Array queue, copy, and copy-within methods
 - [ ] 7. Object/Map grouping
@@ -82,3 +82,13 @@ language docs, tests, and comparative runtime probes before implementation.
   type checks and 2 package-smoke tests passed), `npm run lint`. Focused tests
   include Node comparisons, callback exceptions, suspension rejection, GC pressure,
   instruction limits, Unicode IO, cycles and nesting limits.
+
+### Error family and microtask GC roots
+
+- Added EvalError, URIError, AggregateError, error toString/prototype metadata,
+  non-enumerable error metadata, and snapshot-preserved guest-only stack strings.
+- Native temporary roots no longer depend on a guest frame. GC also traces pending
+  callback results/exceptions; Promise.any protects its constructed AggregateError.
+- Passed: `cargo test --workspace`, `npm run lint`, `npm run build`, and the full
+  Node suite (`node --test --test-reporter=dot tests/node/**/*.test.js`). Added
+  constructor/Node parity, Promise.any identity, snapshot, and no-frame GC tests.

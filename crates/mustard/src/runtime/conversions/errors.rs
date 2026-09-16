@@ -13,9 +13,25 @@ impl Runtime {
             Some(Value::Undefined) | None => String::new(),
             Some(value) => self.to_string(value.clone())?,
         };
+        let mut stack = if message.is_empty() {
+            name.to_string()
+        } else {
+            format!("{name}: {message}")
+        };
+        for frame in self.traceback_frames() {
+            self.charge_native_helper_work(1)?;
+            stack.push_str(&format!(
+                "\n    at {} (guest:{}..{})",
+                frame.function_name.as_deref().unwrap_or("anonymous"),
+                frame.span.start,
+                frame.span.end
+            ));
+            self.ensure_heap_capacity(stack.len())?;
+        }
         let mut properties = IndexMap::from([
             ("name".to_string(), Value::String(name.to_string())),
             ("message".to_string(), Value::String(message)),
+            ("stack".to_string(), Value::String(stack)),
         ]);
         if let Some(code) = code {
             properties.insert("code".to_string(), Value::String(code));
@@ -114,5 +130,93 @@ impl Runtime {
         }
 
         Ok(Some(summary))
+    }
+}
+
+impl Runtime {
+    pub(in crate::runtime) fn builtin_error_name(
+        function: BuiltinFunction,
+    ) -> Option<&'static str> {
+        Some(match function {
+            BuiltinFunction::ErrorCtor => "Error",
+            BuiltinFunction::TypeErrorCtor => "TypeError",
+            BuiltinFunction::ReferenceErrorCtor => "ReferenceError",
+            BuiltinFunction::RangeErrorCtor => "RangeError",
+            BuiltinFunction::SyntaxErrorCtor => "SyntaxError",
+            BuiltinFunction::EvalErrorCtor => "EvalError",
+            BuiltinFunction::URIErrorCtor => "URIError",
+            BuiltinFunction::AggregateErrorCtor => "AggregateError",
+            _ => return None,
+        })
+    }
+
+    pub(in crate::runtime) fn call_error_to_string(&self, receiver: Value) -> MustardResult<Value> {
+        if matches!(
+            receiver,
+            Value::Undefined
+                | Value::Null
+                | Value::Number(_)
+                | Value::String(_)
+                | Value::Bool(_)
+                | Value::BigInt(_)
+        ) {
+            return Err(MustardError::runtime(
+                "TypeError: Error.prototype.toString called on incompatible receiver",
+            ));
+        }
+        let name = self.get_property_by_key(receiver.clone(), "name", false)?;
+        let name = if matches!(name, Value::Undefined) {
+            "Error".into()
+        } else {
+            self.to_string(name)?
+        };
+        let message = self.get_property_by_key(receiver, "message", false)?;
+        let message = if matches!(message, Value::Undefined) {
+            String::new()
+        } else {
+            self.to_string(message)?
+        };
+        Ok(Value::String(if name.is_empty() {
+            message
+        } else if message.is_empty() {
+            name
+        } else {
+            format!("{name}: {message}")
+        }))
+    }
+
+    pub(in crate::runtime) fn call_aggregate_error_ctor(
+        &mut self,
+        args: &[Value],
+    ) -> MustardResult<Value> {
+        self.with_temporary_roots(args, |runtime| {
+            let error = runtime.call_error_ctor(
+                &[
+                    args.get(1).cloned().unwrap_or(Value::Undefined),
+                    args.get(2).cloned().unwrap_or(Value::Undefined),
+                ],
+                "AggregateError",
+            )?;
+            runtime.with_temporary_roots(std::slice::from_ref(&error), |runtime| {
+                let iterator =
+                    runtime.create_iterator(args.first().cloned().unwrap_or(Value::Undefined))?;
+                runtime.with_temporary_roots(std::slice::from_ref(&iterator), |runtime| {
+                    let errors = Value::Array(runtime.insert_array(Vec::new(), IndexMap::new())?);
+                    runtime.set_property_static(error.clone(), "errors", errors.clone())?;
+                    let Value::Array(array) = errors else {
+                        unreachable!()
+                    };
+                    loop {
+                        runtime.charge_native_helper_work(1)?;
+                        let (value, done) = runtime.iterator_next(iterator.clone())?;
+                        if done {
+                            break;
+                        }
+                        runtime.push_array_element(array, Some(value))?;
+                    }
+                    Ok(error.clone())
+                })
+            })
+        })
     }
 }

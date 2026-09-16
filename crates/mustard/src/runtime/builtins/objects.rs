@@ -81,6 +81,22 @@ impl Runtime {
                             keys.extend(object.properties.ordered_keys());
                             (keys.len(), keys)
                         }
+                        ObjectKind::Error(_) => (
+                            object.properties.len(),
+                            object.properties.ordered_keys_filtered(|key, _| {
+                                !matches!(key, "name" | "message" | "stack" | "cause" | "errors")
+                            }),
+                        ),
+                        ObjectKind::FunctionPrototype(Value::BuiltinFunction(function))
+                            if Self::builtin_error_name(*function).is_some() =>
+                        {
+                            (
+                                object.properties.len(),
+                                object.properties.ordered_keys_filtered(|key, _| {
+                                    !matches!(key, "name" | "message" | "toString")
+                                }),
+                            )
+                        }
                         _ => (object.properties.len(), object.properties.ordered_keys()),
                     }
                 };

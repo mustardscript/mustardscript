@@ -333,6 +333,10 @@ rejected.
 - `TypeError`
 - `ReferenceError`
 - `RangeError`
+- `SyntaxError`
+- `EvalError`
+- `URIError`
+- `AggregateError`
 - `Number`
 - `Boolean`
 - `Intl`
@@ -651,3 +655,18 @@ rejected.
   `multiline`, `dotAll`, `unicode`, `sticky`, `lastIndex`, `exec`, and `test`
 - symbol-based match/replace protocol hooks and full ECMAScript `RegExp`
   parity remain deferred
+
+## Error objects
+
+All eight standard error constructors are available with call/new, constructor
+metadata, built-in `instanceof`, optional `cause`, and `toString()` behavior.
+`AggregateError(errors, message, options)` copies the supported iterable into its
+`errors` array; non-iterables fail closed. `Promise.any` uses the same visible kind.
+Malformed JSON raises `SyntaxError`. Error metadata (`name`, `message`, `stack`,
+`cause`, `errors`) is excluded from enumerable-key helpers and JSON's default keys.
+
+Every error captures a deterministic guest-only `stack` string at creation:
+`Name: message` followed by guest function names and source-span offsets. It never
+adds Rust frames, host filenames, process details or native addresses. The stack
+is ordinary snapshot-preserved data, not a host `Error` object. Full mutable
+prototype-chain and property-descriptor semantics remain deferred.
