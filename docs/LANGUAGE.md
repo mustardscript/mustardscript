@@ -190,7 +190,7 @@ rejected.
 ## Rejected With Validation Diagnostics
 
 - `import`, `export`, and dynamic `import()`
-- `delete` for plain objects and arrays
+- `delete` of bindings and compound optional chains
 - free `arguments`
 - free `eval` and free `Function`
 - free references to `process`, `module`, `exports`, `global`, `require`,
@@ -215,7 +215,6 @@ rejected.
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
 - legacy `var` hoisting, same-scope redeclaration, and loop interaction rules
-- plain-object and array deletion semantics, including sparse-array behavior
 - symbol-based custom iterable protocol support
 - custom iterator authoring beyond the documented collection helpers
 - module loading
@@ -233,13 +232,16 @@ rejected.
 - `var` is intentionally out of scope for v1. The supported binding surface is
   lexical `let` / `const` only, so the runtime does not emulate function or
   global hoisting, same-scope redeclaration, or legacy loop-scoping behavior.
-- The `delete` operator is intentionally out of scope for plain objects and
-  arrays. Supporting it would require an explicit model for own-property
-  absence, sparse arrays, JSON/host-boundary interactions, and whether
-  descriptor-level configurability exists at all. Until that broader model is
-  chosen, validation rejects every use of the language operator. This does not
-  affect the supported `Map.prototype.delete` and `Set.prototype.delete`
-  collection methods.
+- `delete` removes own data properties from plain objects and arrays. Array
+  index deletion creates a hole without changing length. Missing properties
+  return `true`; delete/reinsert puts non-index keys at the end of enumeration.
+  Static/computed references are evaluated once. A single optional member
+  short-circuits without evaluating its key; compound optional chains fail closed
+  until the chain IR can preserve their boundaries. Binding deletion is rejected
+  during validation. Array `length` and string indices/`length` are non-configurable
+  and throw `TypeError`; deletion on special objects (including `globalThis`),
+  callable values, and collections remains outside the supported surface.
+  See [ADR 0002](ADRs/0002-language-completion.md).
 - `instanceof` is intentionally conservative in v1. The supported surface is
   constructor-instance checks for the runtime's built-in instance kinds,
   conservative primitive-wrapper objects, and `Object` checks over the

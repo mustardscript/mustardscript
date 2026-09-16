@@ -391,6 +391,7 @@ pub enum UnaryOp {
     Not,
     Typeof,
     Void,
+    Delete,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

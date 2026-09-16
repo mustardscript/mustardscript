@@ -53,7 +53,7 @@ fn diagnostics_match_golden_files() {
     );
 
     let delete_error =
-        compile("delete record.value;").expect_err("delete should be rejected explicitly");
+        compile("delete record;").expect_err("binding deletion should be rejected explicitly");
     assert_golden(
         "diagnostics",
         "delete-operator.txt",

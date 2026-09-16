@@ -1,7 +1,7 @@
 'use strict';
 
 const { snapshotToken } = require('../../lib/policy.ts');
-const { Mustard, Progress, assert, isMustardError, test } = require('../node/support/helpers.js');
+const { ExecutionContext, Mustard, Progress, assert, isMustardError, test } = require('../node/support/helpers.js');
 
 const SNAPSHOT_KEY = Buffer.from('mutation-guards-snapshot-key');
 
@@ -18,6 +18,8 @@ test('mutation guards keep validator rejection conditions fail-closed', async ()
   const baseline = new Mustard('const value = 1; value + 1;');
   assert.equal(await baseline.run(), 2);
 
+  assert.equal(await new Mustard('function wrap(value = 1) { return value; } wrap();').run(), 1);
+
   const cases = [
     {
       label: 'var binding',
@@ -25,19 +27,14 @@ test('mutation guards keep validator rejection conditions fail-closed', async ()
       message: 'only let and const are supported',
     },
     {
-      label: 'default parameter',
-      source: 'function wrap(value = 1) { return value; }',
-      message: 'default parameters are not supported in v1',
-    },
-    {
       label: 'class declaration',
       source: 'class Box {}',
       message: 'classes are not supported in v1',
     },
     {
-      label: 'delete operator',
-      source: 'const value = { prop: 1 }; delete value.prop;',
-      message: 'delete is not supported in v1',
+      label: 'delete lexical binding',
+      source: 'const value = { prop: 1 }; delete value;',
+      message: 'delete of an identifier is not supported in strict mode',
     },
   ];
 
@@ -108,11 +105,15 @@ test('mutation guards keep snapshot authorization and replay protections fail-cl
     }),
   );
 
-  const first = Progress.load(dumped);
-  const second = Progress.load(dumped);
+  const context = new ExecutionContext({
+    capabilities: { fetch_data() {} },
+    limits: {},
+    snapshotKey: SNAPSHOT_KEY,
+  });
+  const first = Progress.load(dumped, { context });
   assert.equal(first.resume(4), 5);
   assert.throws(
-    () => second.resume(4),
+    () => Progress.load(dumped, { context }),
     isMustardError({
       kind: 'Runtime',
       message: 'single-use',

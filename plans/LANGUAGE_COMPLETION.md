@@ -9,7 +9,7 @@ language docs, tests, and comparative runtime probes before implementation.
 ## Verified milestones
 
 - [ ] 1. JSON replacer, reviver, and indentation
-- [ ] 2. Object and array property deletion
+- [x] 2. Object and array property deletion
 - [x] 3. `typeof` unresolvable identifiers, preserving TDZ and ambient policy
 - [ ] 4. Error constructors, parse-error types, and guest-safe stack properties
 - [ ] 5. `Array.from` array-like inputs
@@ -58,3 +58,15 @@ language docs, tests, and comparative runtime probes before implementation.
   `node --test --test-reporter=dot tests/node/language-completion.test.js
   tests/node/language-gaps.test.js tests/node/exceptions.test.js
   tests/node/serialization.test.js` (23 tests). Node commands use Node 24, matching CI.
+
+### Property deletion
+
+- Implemented plain-object/array deletion, cache invalidation, sparse holes,
+  incremental heap accounting and budgeted ordered removals. ADR 0002 records
+  non-configurable and unsupported receiver/compound-chain behavior.
+- Passed: `cargo test --workspace`, `npm run lint`, `npm run build`; Node
+  language-completion, builtins, serialization, coverage-audit, property-differential,
+  differential and Test262 suites (172 tests); deletion snapshot and hardening
+  mutation-guard tests (7 tests).
+- Updated stale hardening assumptions: default parameters already work, and
+  snapshot load requires policy and claims single-use before resume.

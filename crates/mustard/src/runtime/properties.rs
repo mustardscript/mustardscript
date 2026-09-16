@@ -2154,6 +2154,109 @@ impl Runtime {
         })
     }
 
+    pub(super) fn delete_property(&mut self, object: Value, property: Value) -> MustardResult<()> {
+        if matches!(object, Value::Undefined | Value::Null) {
+            return Err(MustardError::runtime(
+                "TypeError: cannot delete properties of nullish value",
+            ));
+        }
+        let key = self.to_property_key(property)?;
+        self.delete_property_by_key(object, &key)
+    }
+
+    pub(super) fn delete_property_by_key(&mut self, object: Value, key: &str) -> MustardResult<()> {
+        match object {
+            Value::Object(object) => {
+                let object_ref = self
+                    .objects
+                    .get(object)
+                    .ok_or_else(|| MustardError::runtime("object missing"))?;
+                if !matches!(object_ref.kind, ObjectKind::Plain) {
+                    return Err(MustardError::runtime(
+                        "TypeError: delete only supports plain objects and arrays on the supported surface",
+                    ));
+                }
+                let work = object_ref.properties.len();
+                self.charge_native_helper_work(work)?;
+                self.materialize_object_properties_if_needed(object)?;
+                let removed = self
+                    .objects
+                    .get_mut(object)
+                    .expect("object checked")
+                    .properties
+                    .materialize()
+                    .shift_remove(key);
+                if let Some(value) = removed {
+                    self.apply_object_component_delta(
+                        object,
+                        Self::property_entry_bytes(key, &value),
+                        0,
+                    )?;
+                }
+                Ok(())
+            }
+            Value::Array(array) => {
+                if key == "length" {
+                    return Err(MustardError::runtime(
+                        "TypeError: cannot delete non-configurable array length",
+                    ));
+                }
+                if let Some(index) = array_index_from_property_key(key) {
+                    let removed = self
+                        .arrays
+                        .get_mut(array)
+                        .ok_or_else(|| MustardError::runtime("array missing"))?
+                        .elements
+                        .get_mut(index)
+                        .and_then(Option::take);
+                    if let Some(value) = removed {
+                        self.apply_array_component_delta(
+                            array,
+                            Self::array_slot_bytes(Some(&value)),
+                            Self::array_slot_bytes(None),
+                        )?;
+                    }
+                } else {
+                    let work = self
+                        .arrays
+                        .get(array)
+                        .ok_or_else(|| MustardError::runtime("array missing"))?
+                        .properties
+                        .len();
+                    self.charge_native_helper_work(work)?;
+                    let removed = self
+                        .arrays
+                        .get_mut(array)
+                        .expect("array checked")
+                        .properties
+                        .shift_remove(key);
+                    if let Some(value) = removed {
+                        self.apply_array_component_delta(
+                            array,
+                            Self::property_entry_bytes(key, &value),
+                            0,
+                        )?;
+                    }
+                }
+                Ok(())
+            }
+            Value::String(value)
+                if key == "length"
+                    || array_index_from_property_key(key).is_some_and(|index| {
+                        string_index_property_value(&value, index).is_some()
+                    }) =>
+            {
+                Err(MustardError::runtime(
+                    "TypeError: cannot delete non-configurable string property",
+                ))
+            }
+            Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::BigInt(_) => Ok(()),
+            _ => Err(MustardError::runtime(
+                "TypeError: delete only supports plain objects and arrays on the supported surface",
+            )),
+        }
+    }
+
     pub(super) fn set_property(
         &mut self,
         object: Value,

@@ -343,7 +343,7 @@ fn apply_validation_effect(
                 ..state
             }
         }
-        Instruction::GetPropComputed { .. } => {
+        Instruction::GetPropComputed { .. } | Instruction::DeletePropComputed => {
             require_stack(2)?;
             ValidationState {
                 stack_depth: state.stack_depth - 1,

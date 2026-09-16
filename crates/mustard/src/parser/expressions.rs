@@ -304,11 +304,16 @@ impl<'a> Lowerer<'a> {
             Expression::FunctionExpression(function) => Some(Expr::Function(Box::new(
                 self.lower_function(function, false)?,
             ))),
-            Expression::UnaryExpression(expression) => Some(Expr::Unary {
-                span: expression.span.into(),
-                operator: self.lower_unary_op(expression.operator, expression.span)?,
-                argument: Box::new(self.lower_expr(&expression.argument)?),
-            }),
+            Expression::UnaryExpression(expression) => {
+                if expression.operator == UnaryOperator::Delete {
+                    self.validate_delete_argument(&expression.argument)?;
+                }
+                Some(Expr::Unary {
+                    span: expression.span.into(),
+                    operator: self.lower_unary_op(expression.operator, expression.span)?,
+                    argument: Box::new(self.lower_expr(&expression.argument)?),
+                })
+            }
             Expression::BinaryExpression(expression) => Some(Expr::Binary {
                 span: expression.span.into(),
                 operator: self.lower_binary_op(expression.operator, expression.span)?,
@@ -743,5 +748,60 @@ impl<'a> Lowerer<'a> {
                 .and_then(|rest| self.lower_assignment_target(&rest.target))
                 .map(Box::new),
         })
+    }
+}
+
+impl<'a> Lowerer<'a> {
+    fn validate_delete_argument(&mut self, expression: &Expression<'a>) -> Option<()> {
+        match expression {
+            Expression::ParenthesizedExpression(inner) => {
+                self.validate_delete_argument(&inner.expression)
+            }
+            Expression::Identifier(_) => {
+                self.unsupported(
+                    "delete of an identifier is not supported in strict mode",
+                    Some(expression.span().into()),
+                );
+                None
+            }
+            Expression::ChainExpression(chain) => {
+                // The current chain IR does not retain chain boundaries. Only a
+                // single optional member is representable without conflating
+                // short-circuiting with a genuine undefined intermediate value.
+                let supported = match &chain.expression {
+                    ChainElement::StaticMemberExpression(member) => {
+                        member.optional && !delete_base_has_chain(&member.object)
+                    }
+                    ChainElement::ComputedMemberExpression(member) => {
+                        member.optional && !delete_base_has_chain(&member.object)
+                    }
+                    _ => false,
+                };
+                if !supported {
+                    self.unsupported(
+                        "delete with a compound optional chain is not supported",
+                        Some(expression.span().into()),
+                    );
+                    return None;
+                }
+                Some(())
+            }
+            _ => Some(()),
+        }
+    }
+}
+
+fn delete_base_has_chain(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::ChainExpression(_) => true,
+        Expression::StaticMemberExpression(member) => {
+            member.optional || delete_base_has_chain(&member.object)
+        }
+        Expression::ComputedMemberExpression(member) => {
+            member.optional || delete_base_has_chain(&member.object)
+        }
+        Expression::CallExpression(call) => call.optional || delete_base_has_chain(&call.callee),
+        Expression::ParenthesizedExpression(_) => false,
+        _ => false,
     }
 }

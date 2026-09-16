@@ -242,6 +242,11 @@ module.exports = {
       file: 'cases/pass/language/statements/function/rest-parameters.js',
       expected: [1, 2, 2, 3],
     },
+    {
+      id: 'language/expressions/delete/property.js',
+      file: 'cases/pass/language/expressions/delete/property.js',
+      expected: [true, false, true, 2, false, '[null,2]'],
+    },
   ],
   unsupported: [
     {
@@ -262,8 +267,8 @@ module.exports = {
       id: 'language/expressions/delete/basic.js',
       file: 'cases/unsupported/language/expressions/delete/basic.js',
       errorKind: 'Validation',
-      messageIncludes: 'delete is not supported in v1',
-      reason: 'Plain-object and array deletion stay out of scope until absence, sparse-array, and descriptor semantics are explicit.',
+      messageIncludes: 'delete of an identifier is not supported in strict mode',
+      reason: 'Deleting an identifier is forbidden in the strict-mode contract.',
     },
     {
       id: 'language/statements/with/basic.js',

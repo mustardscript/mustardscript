@@ -1105,3 +1105,35 @@ fn promise_combinator_completion_moves_driver_buffers_without_full_refreshes() {
         }))
     ));
 }
+
+#[test]
+fn deletion_releases_property_payloads_without_corrupting_cached_heap_totals() {
+    let mut runtime = test_runtime();
+    let object = runtime
+        .insert_object(
+            IndexMap::from([("payload".into(), Value::String("large".repeat(256)))]),
+            ObjectKind::Plain,
+        )
+        .unwrap();
+    let array = runtime
+        .insert_array(
+            vec![Value::String("other".repeat(256))],
+            IndexMap::from([("extra".into(), Value::String("extra".repeat(256)))]),
+        )
+        .unwrap();
+    let before = runtime.heap_bytes_used;
+    runtime
+        .delete_property_by_key(Value::Object(object), "payload")
+        .unwrap();
+    runtime
+        .delete_property_by_key(Value::Array(array), "0")
+        .unwrap();
+    runtime
+        .delete_property_by_key(Value::Array(array), "extra")
+        .unwrap();
+    assert!(runtime.heap_bytes_used < before);
+    assert_eq!(runtime.array_length(array).unwrap(), 1);
+    assert!(!runtime.array_has_index(array, 0).unwrap());
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}

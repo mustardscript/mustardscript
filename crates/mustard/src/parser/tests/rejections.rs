@@ -93,16 +93,21 @@ fn rejects_meta_properties_even_near_supported_spread_constructs() {
 }
 
 #[test]
-fn rejects_delete_operator() {
-    let error = compile("delete record.value;").expect_err("delete should fail");
-    let text = error.to_string();
-    assert!(text.contains("delete is not supported in v1"));
-    assert!(text.contains("[0..19]"));
-}
-
-#[test]
-fn rejects_delete_on_array_elements() {
-    assert_validation_reject("delete values[0];", "delete is not supported in v1");
+fn rejects_delete_bindings_and_unrepresentable_optional_chains() {
+    assert_validation_reject(
+        "delete record;",
+        "delete of an identifier is not supported in strict mode",
+    );
+    assert_validation_reject(
+        "delete (record);",
+        "delete of an identifier is not supported in strict mode",
+    );
+    assert_validation_reject(
+        "delete values?.[0].x;",
+        "delete with a compound optional chain is not supported",
+    );
+    compile("delete record.value;").expect("object deletion is supported");
+    compile("delete values[0];").expect("array deletion is supported");
 }
 
 #[test]

@@ -935,7 +935,7 @@ impl Compiler {
                 state.pop_value();
                 state.push_temporary();
             }
-            Instruction::GetPropComputed { .. } => {
+            Instruction::GetPropComputed { .. } | Instruction::DeletePropComputed => {
                 state.pop_value();
                 state.pop_value();
                 state.push_temporary();

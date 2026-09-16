@@ -28,10 +28,7 @@ impl<'a> Lowerer<'a> {
             UnaryOperator::LogicalNot => Some(UnaryOp::Not),
             UnaryOperator::Typeof => Some(UnaryOp::Typeof),
             UnaryOperator::Void => Some(UnaryOp::Void),
-            UnaryOperator::Delete => {
-                self.unsupported("delete is not supported in v1", Some(span.into()));
-                None
-            }
+            UnaryOperator::Delete => Some(UnaryOp::Delete),
             _ => {
                 self.unsupported("unsupported unary operator in v1", Some(span.into()));
                 None

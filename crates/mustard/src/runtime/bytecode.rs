@@ -183,4 +183,5 @@ pub enum Instruction {
     Return,
     PushBigInt(String),
     LoadNameForTypeof(String),
+    DeletePropComputed,
 }

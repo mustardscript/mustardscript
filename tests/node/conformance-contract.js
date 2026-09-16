@@ -255,19 +255,19 @@ const FEATURE_CONTRACT = Object.freeze([
   },
   {
     id: 'validation.delete',
-    title: 'delete is a validation reject until object and array deletion semantics exist',
+    title: 'strict-mode binding deletion is a validation reject',
     outcome: OUTCOME.VALIDATION_REJECT,
     coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
-    source: 'delete value.prop;',
-    messageIncludes: 'delete is not supported in v1',
+    source: 'delete value;',
+    messageIncludes: 'delete of an identifier is not supported in strict mode',
   },
   {
-    id: 'validation.delete-array-element',
-    title: 'delete stays rejected for array element removal semantics',
+    id: 'validation.delete-compound-chain',
+    title: 'compound optional deletion fails closed until chain IR preserves boundaries',
     outcome: OUTCOME.VALIDATION_REJECT,
     coverage: [COVERAGE.PROPERTY_NEGATIVE],
-    source: 'delete values[0];',
-    messageIncludes: 'delete is not supported in v1',
+    source: 'delete values?.[0].x;',
+    messageIncludes: 'delete with a compound optional chain is not supported',
   },
   {
     id: 'validation.for-in',
@@ -556,7 +556,7 @@ const REJECT_EXPECTATIONS = Object.freeze({
     phase: REJECT_PHASE.CONSTRUCTOR,
     category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
   },
-  'validation.delete-array-element': {
+  'validation.delete-compound-chain': {
     phase: REJECT_PHASE.CONSTRUCTOR,
     category: DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR,
   },

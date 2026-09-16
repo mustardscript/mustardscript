@@ -393,6 +393,18 @@ impl Runtime {
                 let value = self.get_property(object, property, *optional)?;
                 self.frames[frame_index].stack.push(value);
             }
+            Instruction::DeletePropComputed => {
+                let property = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let object = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                self.delete_property(object, property)?;
+                self.frames[frame_index].stack.push(Value::Bool(true));
+            }
             Instruction::SetPropStatic { name } => {
                 let value = self.frames[frame_index]
                     .stack

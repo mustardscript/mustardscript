@@ -66,6 +66,7 @@ impl Runtime {
                 .to_string(),
             )),
             UnaryOp::Void => Ok(Value::Undefined),
+            UnaryOp::Delete => Ok(Value::Bool(true)),
         }
     }
 
