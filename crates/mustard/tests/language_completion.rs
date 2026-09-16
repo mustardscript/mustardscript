@@ -298,3 +298,47 @@ fn array_queue_copy_and_overlap_operations_preserve_presence() {
         .contains("RangeError")
     );
 }
+
+#[test]
+fn grouping_preserves_order_key_identity_and_null_prototype_absence() {
+    assert_eq!(
+        run(r#"
+        const groups = Object.groupBy([1,2,3,4], (value,index) => index % 2);
+        const empty = Object.groupBy([], () => "x");
+        JSON.stringify([groups, empty.constructor === undefined, !("toString" in empty), empty instanceof Object]);
+    "#),
+        r#"[{"0":[1,3],"1":[2,4]},true,true,false]"#.into()
+    );
+    assert_eq!(
+        run(r#"
+        const groups = Object.groupBy(["__proto__", "constructor", "__proto__"], value => value);
+        const copied = {...groups}; delete groups.constructor;
+        JSON.stringify([Object.keys(groups), groups.__proto__, copied.constructor]);
+    "#),
+        r#"[["__proto__"],["__proto__","__proto__"],["constructor"]]"#.into()
+    );
+    assert_eq!(
+        run(r#"
+        const a = {}, b = {};
+        const groups = Map.groupBy([a,b,a], value => value);
+        const keys = [...groups.keys()];
+        const numeric = Map.groupBy([NaN, -0, NaN, 0], value => value);
+        JSON.stringify([groups.size, keys[0] === a, keys[1] === b, groups.get(a).length,
+          numeric.size, numeric.get(NaN).length, numeric.get(0).length, 1 / [...numeric.keys()][1] === Infinity]);
+    "#),
+        "[2,true,true,2,2,2,2,true]".into()
+    );
+    for source in [
+        "Object.groupBy({}, value=>value)",
+        "Object.groupBy([], 1)",
+        "Map.groupBy(null, value=>value)",
+        "String(Object.groupBy([], value=>value))",
+    ] {
+        assert!(
+            execute(&compile(source).unwrap(), ExecutionOptions::default())
+                .unwrap_err()
+                .to_string()
+                .contains("TypeError")
+        );
+    }
+}

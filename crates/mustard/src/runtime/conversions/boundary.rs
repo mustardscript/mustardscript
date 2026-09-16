@@ -193,7 +193,7 @@ impl Runtime {
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
                 match &object_ref.kind {
-                    ObjectKind::Plain => {}
+                    ObjectKind::Plain | ObjectKind::NullPrototype => {}
                     ObjectKind::Date(_) => {
                         return Err(MustardError::runtime(
                             "Date values cannot cross the structured host boundary",

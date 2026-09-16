@@ -181,6 +181,9 @@ impl Runtime {
                     _ => false,
                 }),
                 BuiltinFunction::ArrayCtor => Ok(matches!(left, Value::Array(_))),
+                BuiltinFunction::ObjectCtor if matches!(left, Value::Object(object) if self.objects.get(object).is_some_and(|object| matches!(object.kind, ObjectKind::NullPrototype))) => {
+                    Ok(false)
+                }
                 BuiltinFunction::ObjectCtor => Ok(matches!(
                     left,
                     Value::Object(_)

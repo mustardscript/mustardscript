@@ -113,6 +113,11 @@ impl Runtime {
                 .ok_or_else(|| MustardError::runtime("object missing"))?
                 .kind
             {
+                ObjectKind::NullPrototype => {
+                    return Err(MustardError::runtime(
+                        "TypeError: cannot convert prototype-less object to a primitive value",
+                    ));
+                }
                 ObjectKind::Date(_) => "[object Date]".to_string(),
                 ObjectKind::RegExp(regex) => format!("/{}/{}", regex.pattern, regex.flags),
                 ObjectKind::NumberObject(value) => {

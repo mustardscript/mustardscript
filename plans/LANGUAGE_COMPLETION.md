@@ -14,7 +14,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 4. Error constructors, parse-error types, and guest-safe stack properties
 - [x] 5. `Array.from` array-like inputs
 - [x] 6. Array queue, copy, and copy-within methods
-- [ ] 7. Object/Map grouping
+- [x] 7. Object/Map grouping
 - [ ] 8. Object/Array compatibility helpers
 - [ ] 9. RegExp character-class parity and match indices
 - [ ] 10. URI encoding and decoding
@@ -106,3 +106,12 @@ language docs, tests, and comparative runtime probes before implementation.
   suite; 122 focused Node cases include direct Node comparisons, errors, snapshots
   and billion-element capacity rejection. Updated the superseded array-like
   rejection in builtin_surface to retain nullish-input rejection coverage.
+
+### Object and Map grouping
+
+- Implemented ordered, budgeted grouping with callback/key/value GC roots,
+  SameValueZero Map keys, and true prototype-less Object results. The new object
+  kind survives snapshots and exports own data safely (including __proto__).
+- Passed: `cargo test --workspace`, `npm run lint`, `npm run build`, full Node
+  suite; focused tests cover sparse inputs, key identity, prototype absence,
+  invalid callbacks/inputs, GC pressure and snapshot restoration.

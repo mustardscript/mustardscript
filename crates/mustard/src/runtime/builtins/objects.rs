@@ -22,6 +22,7 @@ impl Runtime {
                 .kind
             {
                 ObjectKind::Plain
+                | ObjectKind::NullPrototype
                 | ObjectKind::FunctionPrototype(_)
                 | ObjectKind::NumberObject(_)
                 | ObjectKind::StringObject(_)
@@ -53,7 +54,7 @@ impl Runtime {
                 .ok_or_else(|| MustardError::runtime("object missing"))?
                 .kind
             {
-                ObjectKind::Plain => Ok(()),
+                ObjectKind::Plain | ObjectKind::NullPrototype => Ok(()),
                 _ => Err(Self::object_spread_type_error()),
             },
             Value::Array(array) => {

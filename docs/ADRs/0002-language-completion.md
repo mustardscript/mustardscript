@@ -23,3 +23,14 @@ property deletion fail closed rather than inventing descriptor/prototype semanti
 Mutation materializes shaped objects to invalidate property caches and updates heap
 accounting. Ordered removals are charged proportionally to their work. The new
 bytecode instruction is validated when loading serialized programs.
+
+## Prototype-less grouping results
+
+Object.groupBy uses a distinct prototype-less data-object kind, not an ordinary
+object with inherited fallback methods. This implements observable absence for
+constructor/toString and treats __proto__ as own data. The kind is preserved in
+guest snapshots and is otherwise handled like a plain object for data operations.
+It does not enable arbitrary prototype mutation. The structured host boundary
+continues to transport own data only. See the normative algorithms for
+[Object.groupBy](https://tc39.es/ecma262/multipage/fundamental-objects.html#sec-object.groupby)
+and [Map.groupBy](https://tc39.es/ecma262/multipage/keyed-collections.html#sec-map.groupby).

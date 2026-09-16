@@ -1703,10 +1703,6 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
         ),
         ("Array.fromAsync([]);", "Array.fromAsync is not supported"),
         (
-            "Object.groupBy([], value => value);",
-            "Object.groupBy is not supported",
-        ),
-        (
             "({}).missing();",
             "Object.prototype.missing is not supported",
         ),

@@ -927,3 +927,70 @@ impl Runtime {
         Ok(Value::Undefined)
     }
 }
+
+impl Runtime {
+    pub(crate) fn call_group_by(&mut self, args: &[Value], as_map: bool) -> MustardResult<Value> {
+        self.with_temporary_roots(args, |runtime| {
+            let source = args.first().cloned().unwrap_or(Value::Undefined);
+            if matches!(source, Value::Undefined | Value::Null) {
+                return Err(MustardError::runtime("TypeError: groupBy requires a non-null iterable"));
+            }
+            let callback = args.get(1).cloned().unwrap_or(Value::Undefined);
+            if !runtime.is_callable_value(&callback)? {
+                return Err(MustardError::runtime("TypeError: groupBy expects a callable callback"));
+            }
+            let iterator = runtime.create_iterator(source)?;
+            runtime.with_temporary_roots(std::slice::from_ref(&iterator), |runtime| {
+                let result = if as_map {
+                    Value::Map(runtime.insert_map(Vec::new())?)
+                } else {
+                    Value::Object(runtime.insert_object(IndexMap::new(), ObjectKind::NullPrototype)?)
+                };
+                runtime.with_temporary_roots(std::slice::from_ref(&result), |runtime| {
+                    let mut index = 0usize;
+                    loop {
+                        runtime.charge_native_helper_work(1)?;
+                        let (value, done) = runtime.iterator_next(iterator.clone())?;
+                        if done { break; }
+                        runtime.with_temporary_roots(std::slice::from_ref(&value), |runtime| {
+                            let key = runtime.call_callback(callback.clone(), Value::Undefined, &[value.clone(), Value::Number(index as f64)], CallbackCallOptions {
+                                non_callable_message: "TypeError: groupBy expects a callable callback",
+                                host_suspension_message: "TypeError: groupBy callbacks do not support synchronous host suspensions",
+                                unsettled_message: "synchronous groupBy callback did not settle",
+                                allow_host_suspension: false,
+                                allow_pending_promise_result: true,
+                            })?;
+                            runtime.with_temporary_roots(std::slice::from_ref(&key), |runtime| {
+                                let (existing, property) = match result {
+                                    Value::Map(map) => (runtime.map_get(map, &key)?.map(|entry| entry.value), None),
+                                    Value::Object(object) => {
+                                        let property = runtime.to_property_key(key.clone())?;
+                                        let existing = runtime.objects.get(object).ok_or_else(|| MustardError::runtime("object missing"))?.properties.get(&property).cloned();
+                                        (existing, Some(property))
+                                    }
+                                    _ => unreachable!(),
+                                };
+                                let bucket = match existing {
+                                    Some(Value::Array(array)) => array,
+                                    None => {
+                                        let array = runtime.insert_array(Vec::new(), IndexMap::new())?;
+                                        match result {
+                                            Value::Map(map) => { runtime.map_set(map, key.clone(), Value::Array(array))?; }
+                                            Value::Object(_) => runtime.set_property_static(result.clone(), property.as_deref().expect("object key"), Value::Array(array))?,
+                                            _ => unreachable!(),
+                                        }
+                                        array
+                                    }
+                                    _ => return Err(MustardError::runtime("invalid internal groupBy bucket")),
+                                };
+                                runtime.push_array_element(bucket, Some(value.clone()))
+                            })
+                        })?;
+                        index += 1;
+                    }
+                    Ok(result.clone())
+                })
+            })
+        })
+    }
+}

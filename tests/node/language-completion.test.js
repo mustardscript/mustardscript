@@ -193,3 +193,50 @@ test('array helpers and their builtin identities survive snapshots', () => {
   const restored = Progress.load(first.dump(), {snapshotKey, capabilities, limits: {}});
   assert.deepEqual(restored.resume(undefined), [[1,3,undefined], ['0','1','2'], [undefined,4,1], undefined, 3, [2,3,1]]);
 });
+
+test('groupBy handles ordered keys, object identity, and prototype-less results', async () => {
+  const sources = [
+    'JSON.stringify(Object.groupBy([1,2,3,4], (v,i)=>i%2));',
+    'JSON.stringify(Object.groupBy("aba", value=>value));',
+    'JSON.stringify(Object.groupBy(new Set([3,1,2]), value=>value%2));',
+    'JSON.stringify(Object.groupBy(["__proto__","constructor","toString"], value=>value));',
+    'const g=Object.groupBy([], value=>value); JSON.stringify([g.constructor===undefined, !("toString" in g), g instanceof Object]);',
+    'const g=Object.groupBy([1,2], value=>value); const copy={...g}; delete g[1]; JSON.stringify([g,copy,Object.keys(g)]);',
+    'JSON.stringify(Object.groupBy([1,2,3], function(value) { return value % this.n; }.bind({n:2})));',
+    'const a={},b={}; const g=Map.groupBy([a,b,a], value=>value); const keys=[...g.keys()]; JSON.stringify([g.size,keys[0]===a,keys[1]===b,g.get(a).length]);',
+    'const g=Map.groupBy([NaN,-0,NaN,0], value=>value); JSON.stringify([g.size,g.get(NaN).length,g.get(0).length,1/[...g.keys()][1]===Infinity]);',
+    'const seen=[]; const g=Map.groupBy([1,2,3], (v,i)=>{seen.push(i); return v%2;}); JSON.stringify([[...g.entries()],seen]);',
+  ];
+  for (const source of sources) assert.equal(await runtime(source).run(), require('node:vm').runInNewContext(source), source);
+  const result = await runtime('Object.groupBy(["__proto__","constructor"], v=>v);').run();
+  assert.ok(Object.hasOwn(result, '__proto__'));
+  assert.deepEqual(result.__proto__, ['__proto__']);
+  assert.deepEqual(result.constructor, ['constructor']);
+  for (const source of ['Object.groupBy({},v=>v)', 'Object.groupBy([],null)', 'Map.groupBy(null,v=>v)', 'String(Object.groupBy([],v=>v))']) {
+    await assert.rejects(runtime(source).run(), /TypeError/);
+  }
+  await assert.rejects(runtime('Object.groupBy([1], ()=>{throw new Error("group callback");});').run(), /group callback/);
+  await assert.rejects(runtime('Map.groupBy([1], ()=>checkpoint());').run({capabilities:{checkpoint(){return 1;}}}), /groupBy callbacks do not support synchronous host suspensions/);
+});
+
+test('grouping protects keys and values under GC pressure and snapshots', async () => {
+  const result = await runtime(`
+    const values=Array.from({length:100}, (_,i)=>({i}));
+    const groups=Map.groupBy(values, value=> {
+      for(let i=0;i<50;i++) { const garbage={text:"x".repeat(100)}; }
+      return {key:value.i};
+    });
+    [...groups.entries()].every(entry=>entry[0].key===entry[1][0].i) && groups.size===100;
+  `).run({limits:{heapLimitBytes:128*1024}});
+  assert.equal(result, true);
+  const snapshotKey=Buffer.from('group-by-snapshot-test');
+  const capabilities={checkpoint(){}};
+  const first=runtime(`
+    const key={x:1}; const map=Map.groupBy([key,key], v=>v);
+    const object=Object.groupBy([1,2], v=>v%2);
+    checkpoint();
+    [map.get(key).length, Object.keys(object), object.constructor===undefined, object instanceof Object];
+  `).start({snapshotKey, capabilities});
+  const restored=Progress.load(first.dump(), {snapshotKey, capabilities, limits:{}});
+  assert.deepEqual(restored.resume(undefined), [2,['0','1'],true,false]);
+});

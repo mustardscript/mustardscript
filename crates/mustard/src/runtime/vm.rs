@@ -1173,7 +1173,7 @@ impl Runtime {
             Value::Closure(_) | Value::HostFunction(_) => Some("Function.prototype".to_string()),
             Value::BuiltinFunction(function) => Some(self.builtin_function_surface(*function)),
             Value::Object(object) => self.objects.get(*object).map(|object| match &object.kind {
-                ObjectKind::Plain => "Object.prototype".to_string(),
+                ObjectKind::Plain | ObjectKind::NullPrototype => "Object.prototype".to_string(),
                 ObjectKind::Global => "globalThis".to_string(),
                 ObjectKind::Math => "Math".to_string(),
                 ObjectKind::Json => "JSON".to_string(),

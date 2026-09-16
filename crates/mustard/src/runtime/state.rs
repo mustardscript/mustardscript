@@ -609,6 +609,8 @@ pub(super) enum BuiltinFunction {
     ArrayToSpliced,
     ArrayWith,
     ArrayCopyWithin,
+    ObjectGroupBy,
+    MapGroupBy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -880,6 +882,7 @@ pub(super) enum ObjectKind {
     BooleanObject(bool),
     IntlDateTimeFormat(IntlDateTimeFormatObject),
     IntlNumberFormat(IntlNumberFormatObject),
+    NullPrototype,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

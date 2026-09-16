@@ -389,6 +389,7 @@ impl Runtime {
             BuiltinFunction::ArrayToSpliced => "toSpliced",
             BuiltinFunction::ArrayWith => "with",
             BuiltinFunction::ArrayCopyWithin => "copyWithin",
+            BuiltinFunction::ObjectGroupBy | BuiltinFunction::MapGroupBy => "groupBy",
 
             BuiltinFunction::NumberCtor => "Number",
             BuiltinFunction::NumberParseInt => "parseInt",
@@ -575,6 +576,7 @@ impl Runtime {
             BuiltinFunction::ArrayToSpliced => 2,
             BuiltinFunction::ArrayWith => 2,
             BuiltinFunction::ArrayCopyWithin => 2,
+            BuiltinFunction::ObjectGroupBy | BuiltinFunction::MapGroupBy => 2,
 
             BuiltinFunction::NumberCtor => 1,
             BuiltinFunction::NumberParseInt => 2,
@@ -683,7 +685,11 @@ impl Runtime {
                     "of" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayOf)),
                     _ => None,
                 },
+                BuiltinFunction::MapCtor if key == "groupBy" => {
+                    Some(Value::BuiltinFunction(BuiltinFunction::MapGroupBy))
+                }
                 BuiltinFunction::ObjectCtor => match key {
+                    "groupBy" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectGroupBy)),
                     "assign" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectAssign)),
                     "create" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectCreate)),
                     "freeze" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectFreeze)),
@@ -879,6 +885,7 @@ impl Runtime {
                     | ObjectKind::Math
                     | ObjectKind::Json => key == "constructor",
                     ObjectKind::Error(_) => matches!(key.as_str(), "constructor" | "toString"),
+                    ObjectKind::NullPrototype => false,
                 })
             }
             Value::Array(array) => {
@@ -1612,6 +1619,13 @@ impl Runtime {
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
                 match &object.kind {
+                    ObjectKind::NullPrototype => {
+                        return Ok(object
+                            .properties
+                            .get(key)
+                            .cloned()
+                            .unwrap_or(Value::Undefined));
+                    }
                     ObjectKind::Plain
                     | ObjectKind::Global
                     | ObjectKind::Math
@@ -2221,7 +2235,10 @@ impl Runtime {
                     .objects
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
-                if !matches!(object_ref.kind, ObjectKind::Plain) {
+                if !matches!(
+                    object_ref.kind,
+                    ObjectKind::Plain | ObjectKind::NullPrototype
+                ) {
                     return Err(MustardError::runtime(
                         "TypeError: delete only supports plain objects and arrays on the supported surface",
                     ));

@@ -392,6 +392,8 @@ rejected.
 - `Object.assign`
 - `Object.fromEntries`
 - `Object.hasOwn`
+- `Object.groupBy`
+- `Map.groupBy`
 - `Map.prototype.get`
 - `Map.prototype.set`
 - `Map.prototype.has`
@@ -690,3 +692,19 @@ Every error captures a deterministic guest-only `stack` string at creation:
 adds Rust frames, host filenames, process details or native addresses. The stack
 is ordinary snapshot-preserved data, not a host `Error` object. Full mutable
 prototype-chain and property-descriptor semantics remain deferred.
+
+## Grouping
+
+`Object.groupBy(items, callback)` and `Map.groupBy(items, callback)` consume the
+supported iterable surface and call the callback with `(value, index)` and an
+undefined receiver. Bound callbacks work; exceptions propagate, synchronous host
+suspension rejects, and work/allocation limits apply throughout.
+
+Object grouping coerces keys to supported property keys and returns a prototype-less
+plain data object. Missing `constructor`, `toString`, and `hasOwnProperty` really are
+absent; `__proto__` is ordinary data. These objects support deletion, enumeration,
+spread/assignment, JSON, snapshots and the structured data boundary. The host boundary
+carries their own data, not guest prototype metadata. Full prototype manipulation
+remains deferred. Map grouping preserves key identity and SameValueZero semantics,
+including NaN and canonical positive-zero keys. Bucket values retain input order;
+Map keys retain first occurrence order, and Object keys follow own-key ordering.
