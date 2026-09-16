@@ -724,3 +724,14 @@ Object's type tag. Ordinary arrays join with commas; nullish values, holes, and
 cyclic references contribute empty strings. Array string conversion is bounded by
 work/output limits and a 128-array nesting limit (RangeError). User-defined coercion
 hooks on nested elements and arbitrary prototype-chain mutation remain unsupported.
+
+### URI encoding and decoding
+
+The pure globals `encodeURI`, `encodeURIComponent`, `decodeURI`, and
+`decodeURIComponent` implement UTF-8 percent encoding/decoding. URI variants keep
+URI-reserved punctuation; component variants encode/decode it. Decoding does not
+turn plus signs into spaces and preserves reserved escape spelling in `decodeURI`.
+Malformed escapes, overlong UTF-8, surrogate encodings, and out-of-range code points
+throw `URIError`. Work and output allocation are budgeted. These functions operate
+on the existing well-formed Unicode string surface; URL and URLSearchParams remain
+host APIs, not guest globals.

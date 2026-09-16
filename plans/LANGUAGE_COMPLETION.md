@@ -17,7 +17,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 7. Object/Map grouping
 - [x] 8. Object/Array compatibility helpers
 - [ ] 9. RegExp character-class parity and match indices
-- [ ] 10. URI encoding and decoding
+- [x] 10. URI encoding and decoding
 - [ ] 11. UTC-profile Date completion
 - [ ] 12. Deterministic, real en-US collation
 - [ ] 13. Number and multi-currency formatting
@@ -125,3 +125,12 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm run build`, full Node suite and
   `npm run lint`; focused tests compare Node, signed zeros/identity, shadowing,
   prototype-less objects, sparse/cyclic arrays and nullish/deep-nesting failures.
+
+### URI codecs
+
+- Added four budgeted UTF-8 percent codecs with reserved-punctuation handling,
+  spelling-preserving decodeURI, and URIError for malformed escapes/UTF-8.
+  Shared numeric string coercion now uses the existing ECMAScript formatter.
+- Passed: `cargo test --workspace`, `npm run build`, `npm run lint` and full
+  Node suite. Tests compare Node across punctuation/Unicode/numeric coercion,
+  malformed/overlong/surrogate sequences and instruction-budget exhaustion.

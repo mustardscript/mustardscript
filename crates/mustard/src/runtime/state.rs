@@ -615,6 +615,10 @@ pub(super) enum BuiltinFunction {
     ObjectHasOwnProperty,
     ObjectToString,
     ArrayToString,
+    EncodeURI,
+    EncodeURIComponent,
+    DecodeURI,
+    DecodeURIComponent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

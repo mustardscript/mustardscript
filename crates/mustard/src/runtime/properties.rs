@@ -340,6 +340,11 @@ impl Runtime {
             BuiltinFunction::ObjectEntries => "entries",
             BuiltinFunction::ObjectHasOwn => "hasOwn",
             BuiltinFunction::ObjectIs => "is",
+            BuiltinFunction::EncodeURI => "encodeURI",
+            BuiltinFunction::EncodeURIComponent => "encodeURIComponent",
+            BuiltinFunction::DecodeURI => "decodeURI",
+            BuiltinFunction::DecodeURIComponent => "decodeURIComponent",
+
             BuiltinFunction::ObjectHasOwnProperty => "hasOwnProperty",
             BuiltinFunction::ObjectToString | BuiltinFunction::ArrayToString => "toString",
             BuiltinFunction::MapCtor => "Map",
@@ -530,6 +535,11 @@ impl Runtime {
             BuiltinFunction::ObjectEntries => 1,
             BuiltinFunction::ObjectHasOwn => 2,
             BuiltinFunction::ObjectIs => 2,
+            BuiltinFunction::EncodeURI => 1,
+            BuiltinFunction::EncodeURIComponent => 1,
+            BuiltinFunction::DecodeURI => 1,
+            BuiltinFunction::DecodeURIComponent => 1,
+
             BuiltinFunction::ObjectHasOwnProperty => 1,
             BuiltinFunction::ObjectToString | BuiltinFunction::ArrayToString => 0,
             BuiltinFunction::MapCtor => 0,

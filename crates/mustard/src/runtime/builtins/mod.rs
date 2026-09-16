@@ -13,6 +13,7 @@ mod promises;
 mod regexp;
 mod strings;
 mod support;
+mod uri;
 
 use self::support::{
     DateTimeFields, RegExpFlagsState, StringSearchPattern, advance_char_index,

@@ -250,6 +250,10 @@ impl Runtime {
             BuiltinFunction::MathRandom => Ok(self.call_math_random()),
             BuiltinFunction::JsonStringify => self.call_json_stringify(args),
             BuiltinFunction::JsonParse => self.call_json_parse(args),
+            BuiltinFunction::EncodeURI => self.call_uri_codec(args, true, false),
+            BuiltinFunction::EncodeURIComponent => self.call_uri_codec(args, true, true),
+            BuiltinFunction::DecodeURI => self.call_uri_codec(args, false, false),
+            BuiltinFunction::DecodeURIComponent => self.call_uri_codec(args, false, true),
             BuiltinFunction::ObjectGroupBy => self.call_group_by(args, false),
             BuiltinFunction::MapGroupBy => self.call_group_by(args, true),
             BuiltinFunction::ArrayShift => self.call_array_shift(this_value),
@@ -292,6 +296,26 @@ impl Runtime {
         self.define_global_binding(
             "globalThis".to_string(),
             Value::Object(global_object),
+            false,
+        )?;
+        self.define_global(
+            "encodeURI".into(),
+            Value::BuiltinFunction(BuiltinFunction::EncodeURI),
+            false,
+        )?;
+        self.define_global(
+            "encodeURIComponent".into(),
+            Value::BuiltinFunction(BuiltinFunction::EncodeURIComponent),
+            false,
+        )?;
+        self.define_global(
+            "decodeURI".into(),
+            Value::BuiltinFunction(BuiltinFunction::DecodeURI),
+            false,
+        )?;
+        self.define_global(
+            "decodeURIComponent".into(),
+            Value::BuiltinFunction(BuiltinFunction::DecodeURIComponent),
             false,
         )?;
         self.define_global(

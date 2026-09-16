@@ -260,3 +260,24 @@ test('Object compatibility helpers and explicit array stringification match Node
   }
   await assert.rejects(runtime('let a = []; for (let i = 0; i < 140; i++) a = [a]; a.toString();').run(), /nesting limit/);
 });
+
+test('URI codecs match Node and reject malformed percent/UTF-8 sequences', async () => {
+  const samples = [undefined, null, true, -0, NaN, Infinity, -Infinity, 1e21, 1e-7,
+    '', "AZaz09-_.!~*'();/?:@&=+$,# %", 'é🙂片\u0000\n', 'https://x.test/a b?q=é🙂&v=+%#片'];
+  for (const name of ['encodeURI', 'encodeURIComponent']) {
+    for (const value of samples) {
+      const sourceValue = typeof value === 'number' ? String(value) : JSON.stringify(value) ?? 'undefined';
+      assert.equal(await runtime(`${name}(${sourceValue});`).run(), globalThis[name](value));
+    }
+  }
+  for (const name of ['decodeURI', 'decodeURIComponent']) {
+    for (const value of ['a+b', '%2f%3F%23%2b%20%25', '%00%7F%C2%80%F4%8F%BF%BF', 'é%E7%89%87🙂']) {
+      assert.equal(await runtime(`${name}(${JSON.stringify(value)});`).run(), globalThis[name](value));
+    }
+    for (const value of ['%', '%0', '%GG', '%FF', '%80', '%C0%AF', '%E0%80%AF', '%ED%A0%80', '%F4%90%80%80', '%F0%9F%99', '%C2x', '%E2%28%A1']) {
+      assert.equal(await runtime(`(() => { try { ${name}(${JSON.stringify(value)}); return false; } catch (e) { return e instanceof URIError; } })();`).run(), true);
+    }
+  }
+  const source = `const text = '🙂'.repeat(2000); encodeURIComponent(text);`;
+  await assert.rejects(runtime(source).run({limits: {instructionBudget: 2000}}), /instruction budget/);
+});

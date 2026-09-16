@@ -1,4 +1,5 @@
 use super::*;
+use oxc_syntax::number::ToJsString;
 
 impl Runtime {
     pub(in crate::runtime) fn to_number(&self, value: Value) -> MustardResult<f64> {
@@ -91,13 +92,7 @@ impl Runtime {
             Value::Undefined => "undefined".to_string(),
             Value::Null => "null".to_string(),
             Value::Bool(value) => value.to_string(),
-            Value::Number(value) => {
-                if value.fract() == 0.0 {
-                    format!("{}", value as i64)
-                } else {
-                    value.to_string()
-                }
-            }
+            Value::Number(value) => value.to_js_string(),
             Value::BigInt(value) => value.to_string(),
             Value::String(value) => value,
             Value::Array(array) => self.stringify_array(array, ",", active, work)?,
@@ -116,13 +111,7 @@ impl Runtime {
                 }
                 ObjectKind::Date(_) => "[object Date]".to_string(),
                 ObjectKind::RegExp(regex) => format!("/{}/{}", regex.pattern, regex.flags),
-                ObjectKind::NumberObject(value) => {
-                    if value.fract() == 0.0 {
-                        format!("{}", *value as i64)
-                    } else {
-                        value.to_string()
-                    }
-                }
+                ObjectKind::NumberObject(value) => value.to_js_string(),
                 ObjectKind::StringObject(value) => value.clone(),
                 ObjectKind::BooleanObject(value) => value.to_string(),
                 ObjectKind::BoundFunction(_) => {

@@ -382,3 +382,24 @@ fn object_compatibility_and_array_stringification_preserve_identity_and_absence(
     .unwrap_err();
     assert!(error.to_string().contains("nesting limit"));
 }
+
+#[test]
+fn uri_codecs_round_trip_unicode_and_reject_malformed_utf8() {
+    assert_eq!(run(r#"
+        const input = "https://x.test/a b?q=é🙂&v=+%#片";
+        JSON.stringify([encodeURI(input), decodeURI(encodeURI(input)),
+            encodeURIComponent(input), decodeURIComponent(encodeURIComponent(input)),
+            decodeURI('%2f%3F%23%2b%20%25'), decodeURIComponent('%2f%3F%23%2b%20%25'),
+            encodeURIComponent(), encodeURIComponent(Infinity), encodeURIComponent(1e21)]);
+    "#), r#"["https://x.test/a%20b?q=%C3%A9%F0%9F%99%82&v=+%25#%E7%89%87","https://x.test/a b?q=é🙂&v=+%#片","https%3A%2F%2Fx.test%2Fa%20b%3Fq%3D%C3%A9%F0%9F%99%82%26v%3D%2B%25%23%E7%89%87","https://x.test/a b?q=é🙂&v=+%#片","%2f%3F%23%2b %","/?#+ %","undefined","Infinity","1e%2B21"]"#.into());
+    assert_eq!(
+        run(r#"
+        ['%', '%0', '%GG', '%FF', '%80', '%C0%AF', '%E0%80%AF', '%ED%A0%80',
+         '%F4%90%80%80', '%F0%9F%99', '%C2x', '%E2%28%A1'].every(input => {
+          try { decodeURIComponent(input); return false; }
+          catch (error) { return error instanceof URIError; }
+        });
+    "#),
+        true.into()
+    );
+}
