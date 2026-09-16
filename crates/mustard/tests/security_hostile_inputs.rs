@@ -210,23 +210,36 @@ fn hostile_sources_fail_closed_without_host_leaks() {
 fn hostile_regex_patterns_do_not_pin_runtime() {
     if std::env::var_os(HOSTILE_REGEX_HELPER_ENV).is_some() {
         let source = compile("text.search(/^(a+)+$/);").expect("source should compile");
-        let result = mustard::runtime::execute(
-            &source,
-            ExecutionOptions {
-                inputs: IndexMap::from([(
-                    "text".to_string(),
-                    StructuredValue::String(format!("{}!", "a".repeat(256))),
-                )]),
-                capabilities: Vec::new(),
-                limits: RuntimeLimits {
-                    instruction_budget: 20,
-                    ..RuntimeLimits::default()
+        for budget in [20, 1000] {
+            let result = mustard::runtime::execute(
+                &source,
+                ExecutionOptions {
+                    inputs: IndexMap::from([(
+                        "text".to_string(),
+                        StructuredValue::String(format!("{}!", "a".repeat(256))),
+                    )]),
+                    capabilities: Vec::new(),
+                    limits: RuntimeLimits {
+                        instruction_budget: budget,
+                        ..RuntimeLimits::default()
+                    },
+                    cancellation_token: None,
                 },
-                cancellation_token: None,
-            },
-        )
-        .expect("hostile regex input should finish");
-        assert_eq!(result, StructuredValue::from(-1.0));
+            );
+            if budget == 20 {
+                assert!(
+                    result
+                        .expect_err("native regexp work must be charged")
+                        .to_string()
+                        .contains("instruction budget exhausted")
+                );
+            } else {
+                assert_eq!(
+                    result.expect("linear regexp should finish within budget"),
+                    StructuredValue::from(-1.0)
+                );
+            }
+        }
         return;
     }
 

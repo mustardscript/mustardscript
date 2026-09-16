@@ -16,7 +16,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 6. Array queue, copy, and copy-within methods
 - [x] 7. Object/Map grouping
 - [x] 8. Object/Array compatibility helpers
-- [ ] 9. RegExp character-class parity and match indices
+- [x] 9. RegExp character-class parity and match indices
 - [x] 10. URI encoding and decoding
 - [ ] 11. UTC-profile Date completion
 - [ ] 12. Deterministic, real en-US collation
@@ -146,3 +146,16 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm test` (Node suite, types and package
   smoke), `npm run lint`; focused tests compare Node, normalization/case data,
   UTF-16 pairs/indices, invalid construction, source/boundary rejection and limits.
+
+### Linear regexp classes, indices and native-call roots
+
+- Lowered classes structurally through regex-syntax for ASCII word/digit,
+  ECMAScript whitespace/dot and flag-sensitive case folding. The documented iu
+  word-boundary special case fails closed; engine/cache sizes and helper work
+  are bounded. Added d/hasIndices, canonical flags, prototype-less named groups,
+  shared named-pair identity, scalar offsets and correct empty-match/matchAll state.
+- Centralized native builtin receiver/argument GC roots, built matchAll results
+  incrementally, and corrected zero-argument Function.call slicing.
+- Passed: `cargo test --workspace`, `npm run build`, full Node suite and
+  `npm run lint`; focused parity/GC/snapshot tests and hostile-regex subprocess
+  checks verify both budget exhaustion and timely successful linear matching.

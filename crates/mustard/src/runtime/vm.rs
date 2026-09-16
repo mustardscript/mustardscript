@@ -1257,7 +1257,7 @@ impl Runtime {
             ));
         }
         let this_arg = args.first().cloned().unwrap_or(Value::Undefined);
-        self.call_callable(target, this_arg, &args[1..])
+        self.call_callable(target, this_arg, args.get(1..).unwrap_or_default())
     }
 
     fn call_function_apply(&mut self, target: Value, args: &[Value]) -> MustardResult<RunState> {

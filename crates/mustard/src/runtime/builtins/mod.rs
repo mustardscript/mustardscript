@@ -11,6 +11,7 @@ mod objects;
 mod primitives;
 mod promises;
 mod regexp;
+mod regexp_profile;
 mod strings;
 mod support;
 mod unicode;

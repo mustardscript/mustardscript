@@ -7,6 +7,19 @@ impl Runtime {
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
+        let mut roots = args.to_vec();
+        roots.push(this_value.clone());
+        self.with_temporary_roots(&roots, |runtime| {
+            runtime.call_builtin_rooted(function, this_value, args)
+        })
+    }
+
+    fn call_builtin_rooted(
+        &mut self,
+        function: BuiltinFunction,
+        this_value: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
         match function {
             BuiltinFunction::FunctionCtor => Err(MustardError::runtime(
                 "TypeError: Function constructor is unavailable in the supported surface",

@@ -77,6 +77,7 @@ pub(super) struct RegExpFlagsState {
     pub(super) dot_all: bool,
     pub(super) unicode: bool,
     pub(super) sticky: bool,
+    pub(super) has_indices: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +88,8 @@ pub(crate) struct RegExpMatchData {
     pub(crate) end_index: usize,
     pub(crate) captures: Vec<Option<String>>,
     pub(crate) named_groups: IndexMap<String, Option<String>>,
+    pub(crate) indices: Option<Vec<Option<(usize, usize)>>>,
+    pub(crate) named_indices: IndexMap<String, usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -593,6 +596,8 @@ pub(super) fn collect_ascii_literal_alternation_matches(
                     Vec::new()
                 },
                 named_groups: IndexMap::new(),
+                indices: None,
+                named_indices: IndexMap::new(),
             });
             if !all {
                 break;
@@ -619,6 +624,8 @@ pub(super) fn collect_literal_matches(value: &str, needle: &str) -> Vec<RegExpMa
                     end_index: index,
                     captures: Vec::new(),
                     named_groups: IndexMap::new(),
+                    indices: None,
+                    named_indices: IndexMap::new(),
                 }
             })
             .collect();
@@ -637,6 +644,8 @@ pub(super) fn collect_literal_matches(value: &str, needle: &str) -> Vec<RegExpMa
             end_index,
             captures: Vec::new(),
             named_groups: IndexMap::new(),
+            indices: None,
+            named_indices: IndexMap::new(),
         }
     }) {
         start_index = matched.end_index;

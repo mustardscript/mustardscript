@@ -874,6 +874,7 @@ impl Runtime {
                         "source"
                             | "flags"
                             | "global"
+                            | "hasIndices"
                             | "ignoreCase"
                             | "multiline"
                             | "dotAll"
@@ -1829,6 +1830,7 @@ impl Runtime {
                         "source" => Some(Value::String(regex.pattern.clone())),
                         "flags" => Some(Value::String(regex.flags.clone())),
                         "global" => Some(Value::Bool(regex.flags.contains('g'))),
+                        "hasIndices" => Some(Value::Bool(regex.flags.contains('d'))),
                         "ignoreCase" => Some(Value::Bool(regex.flags.contains('i'))),
                         "multiline" => Some(Value::Bool(regex.flags.contains('m'))),
                         "dotAll" => Some(Value::Bool(regex.flags.contains('s'))),

@@ -45,37 +45,89 @@ impl Runtime {
         input: &str,
         matched: &RegExpMatchData,
     ) -> MustardResult<Value> {
-        let mut groups = IndexMap::new();
-        for (name, value) in &matched.named_groups {
-            groups.insert(
-                name.clone(),
-                value.clone().map_or(Value::Undefined, Value::String),
-            );
-        }
-        let mut properties = IndexMap::from([
-            (
-                "index".to_string(),
-                Value::Number(matched.start_index as f64),
-            ),
-            ("input".to_string(), Value::String(input.to_string())),
-        ]);
-        if !groups.is_empty() {
-            properties.insert(
-                "groups".to_string(),
-                Value::Object(self.insert_object(groups, ObjectKind::Plain)?),
-            );
-        }
-        let mut elements = Vec::with_capacity(matched.captures.len() + 1);
-        elements.push(Value::String(
+        let mut elements = vec![Value::String(
             input[matched.start_byte..matched.end_byte].to_string(),
-        ));
+        )];
         elements.extend(
             matched
                 .captures
                 .iter()
                 .map(|value| value.clone().map_or(Value::Undefined, Value::String)),
         );
-        Ok(Value::Array(self.insert_array(elements, properties)?))
+        let properties = IndexMap::from([
+            ("index".into(), Value::Number(matched.start_index as f64)),
+            ("input".into(), Value::String(input.to_string())),
+            ("groups".into(), Value::Undefined),
+        ]);
+        let result = Value::Array(self.insert_array(elements, properties)?);
+        self.with_temporary_roots(std::slice::from_ref(&result), |runtime| {
+            if !matched.named_groups.is_empty() {
+                let groups = matched
+                    .named_groups
+                    .iter()
+                    .map(|(name, value)| {
+                        (
+                            name.clone(),
+                            value.clone().map_or(Value::Undefined, Value::String),
+                        )
+                    })
+                    .collect();
+                let groups =
+                    Value::Object(runtime.insert_object(groups, ObjectKind::NullPrototype)?);
+                runtime.with_temporary_roots(std::slice::from_ref(&groups), |runtime| {
+                    runtime.set_property_static(result.clone(), "groups", groups.clone())
+                })?;
+            }
+            if let Some(indices) = &matched.indices {
+                let indices_value = Value::Array(runtime.insert_array(
+                    Vec::new(),
+                    IndexMap::from([("groups".into(), Value::Undefined)]),
+                )?);
+                runtime.with_temporary_roots(std::slice::from_ref(&indices_value), |runtime| {
+                    let Value::Array(indices_array) = indices_value else {
+                        unreachable!();
+                    };
+                    for pair in indices {
+                        runtime.charge_native_helper_work(1)?;
+                        let value = match pair {
+                            Some((start, end)) => Value::Array(runtime.insert_array(
+                                vec![Value::Number(*start as f64), Value::Number(*end as f64)],
+                                IndexMap::new(),
+                            )?),
+                            None => Value::Undefined,
+                        };
+                        runtime.with_temporary_roots(std::slice::from_ref(&value), |runtime| {
+                            runtime.push_array_element(indices_array, Some(value.clone()))
+                        })?;
+                    }
+                    if !matched.named_indices.is_empty() {
+                        let mut groups = IndexMap::new();
+                        for (name, index) in &matched.named_indices {
+                            groups.insert(
+                                name.clone(),
+                                runtime.get_property_by_key(
+                                    indices_value.clone(),
+                                    &index.to_string(),
+                                    false,
+                                )?,
+                            );
+                        }
+                        let groups = Value::Object(
+                            runtime.insert_object(groups, ObjectKind::NullPrototype)?,
+                        );
+                        runtime.with_temporary_roots(std::slice::from_ref(&groups), |runtime| {
+                            runtime.set_property_static(
+                                indices_value.clone(),
+                                "groups",
+                                groups.clone(),
+                            )
+                        })?;
+                    }
+                    runtime.set_property_static(result.clone(), "indices", indices_value.clone())
+                })?;
+            }
+            Ok(result.clone())
+        })
     }
 
     pub(crate) fn call_regexp_exec(
@@ -111,6 +163,10 @@ impl Runtime {
         flags: String,
     ) -> MustardResult<Value> {
         self.compiled_regexp(&pattern, &flags)?;
+        let flags = "dgimsuy"
+            .chars()
+            .filter(|flag| flags.contains(*flag))
+            .collect();
         let object = self.insert_object(
             IndexMap::new(),
             ObjectKind::RegExp(RegExpObject {
@@ -130,6 +186,7 @@ impl Runtime {
             dot_all: false,
             unicode: false,
             sticky: false,
+            has_indices: false,
         };
         let mut seen = HashSet::new();
         for flag in flags.chars() {
@@ -139,6 +196,7 @@ impl Runtime {
                 )));
             }
             match flag {
+                'd' => state.has_indices = true,
                 'g' => state.global = true,
                 'i' => state.ignore_case = true,
                 'm' => state.multiline = true,
@@ -165,17 +223,27 @@ impl Runtime {
         if let Some(regex) = self.regex_cache.get(&cache_key) {
             return Ok((flags_state, regex.clone()));
         }
-        let mut builder = RegexBuilder::new(pattern);
-        builder.case_insensitive(flags_state.ignore_case);
+        let normalized = self.normalize_regexp_pattern(pattern, flags_state)?;
+        let mut builder = RegexBuilder::new(&normalized);
+        builder.case_insensitive(false);
         builder.multi_line(flags_state.multiline);
         builder.dot_matches_new_line(flags_state.dot_all);
         // The Rust engine operates over UTF-8 strings, so keep Unicode mode
         // enabled even without the JS `u` flag. This preserves the supported
         // text-regexp subset while avoiding non-UTF-8 byte classes.
         builder.unicode(true);
+        // The engine's own compiled-program and lazy-DFA allocations are bounded,
+        // independently of guest object allocation and the parser's temporary work.
+        let engine_budget = (self.limits.heap_limit_bytes / 16).clamp(1024, 10 * 1024 * 1024);
+        builder
+            .size_limit(engine_budget)
+            .dfa_size_limit(engine_budget);
         let regex = builder.build().map_err(|error| {
             MustardError::runtime(format!("SyntaxError: invalid regular expression: {error}"))
         })?;
+        if self.regex_cache.len() >= 4 {
+            self.regex_cache.clear();
+        }
         self.regex_cache.insert(cache_key, regex.clone());
         Ok((flags_state, regex))
     }
@@ -229,11 +297,23 @@ impl Runtime {
     }
 
     fn regexp_match_data_from_captures(
-        &self,
+        &mut self,
         compiled: &Regex,
         text: &str,
         captures: &Captures<'_>,
+        has_indices: bool,
     ) -> MustardResult<RegExpMatchData> {
+        self.charge_native_helper_work(captures.len().saturating_mul(text.len()))?;
+        let capture_bytes = captures
+            .iter()
+            .flatten()
+            .map(|capture| capture.len())
+            .sum::<usize>();
+        self.ensure_heap_capacity(
+            capture_bytes
+                .saturating_mul(2)
+                .saturating_add(captures.len().saturating_mul(96)),
+        )?;
         let matched = captures
             .get(0)
             .ok_or_else(|| MustardError::runtime("regex match missing full capture"))?;
@@ -265,17 +345,47 @@ impl Runtime {
                 })
                 .collect(),
             named_groups,
+            indices: has_indices.then(|| {
+                captures
+                    .iter()
+                    .map(|capture| {
+                        capture.map(|capture| {
+                            (
+                                byte_index_to_char_index(text, capture.start()),
+                                byte_index_to_char_index(text, capture.end()),
+                            )
+                        })
+                    })
+                    .collect()
+            }),
+            named_indices: compiled
+                .capture_names()
+                .enumerate()
+                .filter_map(|(index, name)| name.map(|name| (name.to_string(), index)))
+                .collect(),
         })
     }
 
     fn first_regexp_match_with_compiled(
-        &self,
+        &mut self,
         compiled: &Regex,
         flags: RegExpFlagsState,
         text: &str,
         start_index: usize,
     ) -> MustardResult<Option<RegExpMatchData>> {
-        self.check_cancellation()?;
+        self.charge_native_helper_work(text.len())?;
+        if flags.unicode
+            && flags.ignore_case
+            && text.contains(['ſ', 'K'])
+            && (compiled.as_str().contains(r"(?-u:\b)") || compiled.as_str().contains(r"(?-u:\B)"))
+        {
+            return Err(MustardError::runtime(
+                "TypeError: iu word boundaries on long-s or Kelvin-sign input are not supported by the linear regexp profile",
+            ));
+        }
+        if start_index > text.chars().count() {
+            return Ok(None);
+        }
         let start_byte = char_index_to_byte_index(text, start_index);
         if compiled.captures_len() == 1 {
             let Some(matched) = compiled.find_at(text, start_byte) else {
@@ -291,6 +401,13 @@ impl Runtime {
                 end_index: byte_index_to_char_index(text, matched.end()),
                 captures: Vec::new(),
                 named_groups: IndexMap::new(),
+                indices: flags.has_indices.then(|| {
+                    vec![Some((
+                        byte_index_to_char_index(text, matched.start()),
+                        byte_index_to_char_index(text, matched.end()),
+                    ))]
+                }),
+                named_indices: IndexMap::new(),
             }));
         }
         let Some(captures) = compiled.captures_at(text, start_byte) else {
@@ -302,7 +419,7 @@ impl Runtime {
         if flags.sticky && matched.start() != start_byte {
             return Ok(None);
         }
-        self.regexp_match_data_from_captures(compiled, text, &captures)
+        self.regexp_match_data_from_captures(compiled, text, &captures, flags.has_indices)
             .map(Some)
     }
 
@@ -316,7 +433,7 @@ impl Runtime {
         self.first_regexp_match_with_compiled(&compiled, flags, text, start_index)
     }
 
-    fn first_regexp_match(
+    pub(super) fn first_regexp_match(
         &mut self,
         regex_key: ObjectKey,
         text: &str,
@@ -330,13 +447,7 @@ impl Runtime {
         };
         let matched = self.first_regexp_match_from_state(&regex, text, start_index)?;
         if flags.global || flags.sticky {
-            let next_index = matched.as_ref().map_or(0, |matched| {
-                if matched.start_byte == matched.end_byte {
-                    advance_char_index(text, matched.start_index)
-                } else {
-                    matched.end_index
-                }
-            });
+            let next_index = matched.as_ref().map_or(0, |matched| matched.end_index);
             self.regexp_object_mut(regex_key)?.last_index = next_index;
         }
         Ok(matched)
@@ -348,9 +459,18 @@ impl Runtime {
         text: &str,
         all: bool,
     ) -> MustardResult<Vec<RegExpMatchData>> {
+        self.collect_regexp_matches_starting(regex, text, all, 0)
+    }
+
+    pub(super) fn collect_regexp_matches_starting(
+        &mut self,
+        regex: &RegExpObject,
+        text: &str,
+        all: bool,
+        mut start_index: usize,
+    ) -> MustardResult<Vec<RegExpMatchData>> {
         let (flags, compiled) = self.compiled_regexp(&regex.pattern, &regex.flags)?;
         let mut matches = Vec::new();
-        let mut start_index = 0usize;
         loop {
             let Some(matched) =
                 self.first_regexp_match_with_compiled(&compiled, flags, text, start_index)?
@@ -362,6 +482,12 @@ impl Runtime {
             } else {
                 matched.end_index
             };
+            self.ensure_heap_capacity(
+                matches
+                    .len()
+                    .saturating_add(1)
+                    .saturating_mul(std::mem::size_of::<RegExpMatchData>()),
+            )?;
             matches.push(matched);
             if !all {
                 break;

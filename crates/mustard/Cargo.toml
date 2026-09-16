@@ -24,6 +24,7 @@ serde_json.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true
 regex.workspace = true
+regex-syntax.workspace = true
 unicode-normalization.workspace = true
 rustc-hash.workspace = true
 sha2.workspace = true

@@ -54,3 +54,14 @@ The parser must not expose Oxc's internal lone-surrogate escape representation.
 NFC/NFD/NFKC/NFKD use the maintained
 [unicode-normalization implementation](https://docs.rs/unicode-normalization/latest/unicode_normalization/trait.UnicodeNormalization.html),
 with decomposition-buffer allocation and sorting work preflighted against limits.
+
+
+## Linear regexp profile and indices
+
+Keep the Rust regex engine; this milestone does not add a backtracking fallback.
+Lower character classes through regex-syntax into explicit scalar sets, preserving
+ASCII word/digit semantics and flag-sensitive case folding. The unrepresentable
+`iu` long-s/Kelvin-sign word-boundary case rejects on affected input. Match indices
+count scalars, matching existing string/regexp offsets, not the separate UTF-16
+numeric character view. Named indices share guest array identity and survive
+snapshots; no new host-boundary aliasing permission is introduced.

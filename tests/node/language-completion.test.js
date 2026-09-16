@@ -305,3 +305,55 @@ test('Unicode APIs match Node over well-formed strings and reject unsupported su
   assert.throws(() => runtime("'\ud800';"), /lone surrogates/);
   await assert.rejects(runtime('checkpoint();').run({capabilities: {checkpoint() { return '\ud800'; }}}), /lone surrogates/);
 });
+
+test('linear RegExp classes and d indices match Node over supported offsets', async () => {
+  const vm = require('node:vm');
+  const cases = [
+    String.raw`[/\w/.test('é'), /\d/.test('١'), /\babc\b/.test('éabcé'), /[\b]/.test('\b'), /\s/.test('\uFEFF'), /\s/.test('\u0085'), /./.test('\r'), /./.test('\u2028')];`,
+    String.raw`['', 'i', 'u', 'iu'].map(flags => ['s', 'k', '\\w', '[\\w]', '[\\W_]', '[^s\\W]', '[a-z]'].map(pattern => ['ſ', 'K', 'é', 's', 'S', 'K', '_', '1'].map(text => new RegExp(pattern, flags).test(text))));`,
+    String.raw`const m = /(?<word>\w+)(-(?<digits>\d+))?/d.exec('éabc!'); [m.index, m.indices, m.indices.groups.word === m.indices[1], m.indices.groups.digits, m.groups.constructor, Object.hasOwn(m, 'groups'), Object.hasOwn(m.indices, 'groups')];`,
+    String.raw`[... 'a12 b3'.matchAll(/(?<name>[a-z])(\d+)/dg)].map(m => [m.index, m.indices, m.groups.name, m.indices.groups.name.slice()]);`,
+    String.raw`const r = /(?<x>a)/dg; r.lastIndex = 2; const rows = [...'a a'.matchAll(r)].map(m => [m.index, m.indices[0]]); [rows, r.lastIndex];`,
+    String.raw`const r = new RegExp('x', 'ygdi'); const empty = /(?:)/dg; empty.exec('x'); const beyond = /(?:)/dg; beyond.lastIndex = 2; [r.flags, r.hasIndices, empty.lastIndex, beyond.exec('x'), beyond.lastIndex];`,
+  ];
+  for (const source of cases) {
+    assert.deepEqual(JSON.parse(JSON.stringify(await runtime(source).run())), JSON.parse(JSON.stringify(vm.runInNewContext(source))), source);
+  }
+  assert.deepEqual(await runtime(String.raw`const m = /(?<x>é)/dg.exec('🙂é'); [m.index, m.indices[0], m.indices.groups.x];`).run(), [1, [1,2], [1,2]]);
+  await assert.rejects(runtime(String.raw`/\b\w+\b/iu.test('ſ');`).run(), /iu word boundaries/);
+  await assert.rejects(runtime(String.raw`new RegExp('(?i)a');`).run(), /inline flags/);
+  await assert.rejects(runtime(String.raw`new RegExp('a', 'dd');`).run(), /duplicate regular expression flag/);
+});
+
+test('RegExp indices retain named-group pair identity across snapshots and GC', () => {
+  const capabilities = {checkpoint() {}};
+  const snapshotKey = Buffer.from('language-completion-test-key');
+  const first = runtime(String.raw`
+    const regex = /(?<x>a)(b)?/dg;
+    const match = regex.exec('za');
+    checkpoint();
+    for (let i = 0; i < 800; i++) { const garbage = {x: [i, i]}; }
+    [match.indices.groups.x === match.indices[1], match.indices[0], match.indices[2],
+      match.groups.constructor, regex.hasIndices, regex.lastIndex, regex.exec('za')];
+  `).start({capabilities, snapshotKey, limits: {heapLimitBytes: 128 * 1024}});
+  const restored = Progress.load(first.dump(), {capabilities, snapshotKey, limits: {}});
+  assert.deepEqual(restored.resume(undefined), [true, [1,2], undefined, undefined, true, 2, null]);
+});
+
+
+test('native receivers and intermediate regexp results survive GC-triggering work', async () => {
+  assert.equal(await runtime(String.raw`
+    let count = 0;
+    for (let i = 0; i < 350; i++) {
+      const garbage = {data: [i, i, i, i]};
+      const m = new RegExp('(?<x>a)(b)?', 'd').exec('a');
+      if (m.indices.groups.x === m.indices[1] && m[1] === 'a') count++;
+    }
+    count;
+  `).run({limits: {heapLimitBytes: 128 * 1024}}), 350);
+  assert.deepEqual(await runtime(String.raw`
+    for (let i = 0; i < 200; i++) { const garbage = [i, {x:i}]; }
+    [...'ab '.repeat(30).matchAll(/(?<x>a)(b)/dg)].map(m => [m[1], m.indices[0][0], m.indices.groups.x === m.indices[1]]);
+  `).run({limits: {heapLimitBytes: 128 * 1024}}), Array.from({length:30}, (_, i) => ['a', i * 3, true]));
+  assert.equal(await runtime('function f() { return this === undefined; } f.call();').run(), true);
+});

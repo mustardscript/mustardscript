@@ -702,13 +702,13 @@ fn regex_helpers_cover_patterns_callbacks_and_state() {
 
 #[test]
 fn regex_helpers_fail_closed_for_unsupported_flags_and_sync_host_replacements() {
-    let invalid_flags = compile(r#"new RegExp("a", "dg");"#).expect("source should compile");
+    let invalid_flags = compile(r#"new RegExp("a", "vg");"#).expect("source should compile");
     let error =
         execute(&invalid_flags, ExecutionOptions::default()).expect_err("execution should fail");
     assert!(
         error
             .to_string()
-            .contains("unsupported regular expression flag `d`")
+            .contains("unsupported regular expression flag `v`")
     );
 
     let replace_all = compile(r#""abc".replaceAll(/a/, "z");"#).expect("source should compile");

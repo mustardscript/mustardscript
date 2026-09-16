@@ -438,3 +438,27 @@ fn unicode_character_apis_expose_utf16_without_lone_surrogate_strings() {
         );
     }
 }
+
+#[test]
+fn regexp_classes_and_indices_follow_the_explicit_unicode_profile() {
+    assert_eq!(run(r#"
+        const match = /(?<word>\w+)(-(?<digits>\d+))?/d.exec('éabc!');
+        const scalar = /(?<x>é)/dg.exec('🙂é');
+        const empty = /(?:)/dg; empty.exec('x');
+        const beyond = /(?:)/dg; beyond.lastIndex = 2;
+        JSON.stringify([/\w/.test('é'), /\d/.test('١'), /\babc\b/.test('éabcé'),
+          /[\w]/i.test('ſ'), /[\w]/iu.test('ſ'), /[\W]/iu.test('ſ'),
+          /[\b]/.test('\b'), /\s/.test('\uFEFF'), /\s/.test('\u0085'),
+          /s/i.test('ſ'), /s/iu.test('ſ'), /k/i.test('K'), /k/iu.test('K'),
+          match.index, match.indices, match.indices.groups.word === match.indices[1],
+          match.indices.groups.digits === undefined, match.groups.constructor === undefined,
+          scalar.index, scalar.indices[0], empty.lastIndex, beyond.exec('x') === null,
+          new RegExp('x', 'ygdi').flags, /x/d.hasIndices]);
+    "#), r#"[false,false,true,false,true,false,true,true,false,false,true,false,true,1,[[1,4],[1,4],null,null],true,true,true,1,[1,2],0,true,"dgiy",true]"#.into());
+    let error = execute(
+        &compile(r#"/\b\w+\b/iu.test('ſ');"#).unwrap(),
+        ExecutionOptions::default(),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("iu word boundaries"));
+}

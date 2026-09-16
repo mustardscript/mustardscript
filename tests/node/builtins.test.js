@@ -725,10 +725,10 @@ test('regexp helpers preserve lastIndex and match state across snapshot round-tr
 
 test('RegExp helpers fail closed for unsupported flags, non-global replaceAll, and sync host replacements', async () => {
   await assert.rejects(
-    () => runtime('new RegExp("a", "dg");').run(),
+    () => runtime('new RegExp("a", "vg");').run(),
     isMustardError({
       kind: 'Runtime',
-      message: 'unsupported regular expression flag `d`',
+      message: 'unsupported regular expression flag `v`',
     }),
   );
 

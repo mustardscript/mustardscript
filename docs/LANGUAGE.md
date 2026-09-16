@@ -625,7 +625,7 @@ rejected.
   `$<name>` template expansion for `RegExp` matches
 - `String.prototype.replaceAll` requires a global `RegExp` when the search
   value is a `RegExp`
-- supported `RegExp` flags are `g`, `i`, `m`, `s`, `u`, and `y`; unsupported
+- supported `RegExp` flags are `d`, `g`, `i`, `m`, `s`, `u`, and `y`; unsupported
   flags fail closed with a runtime `SyntaxError`
 - `String.prototype.match` returns either `null`, a guest array of matched
   strings for global `RegExp` patterns, or the first-match array for
@@ -674,7 +674,7 @@ rejected.
   locales or options, and returning `Date` values across the structured host
   boundary all fail closed
 - real `RegExp` instances support `source`, `flags`, `global`, `ignoreCase`,
-  `multiline`, `dotAll`, `unicode`, `sticky`, `lastIndex`, `exec`, and `test`
+  `multiline`, `dotAll`, `unicode`, `sticky`, `hasIndices`, `lastIndex`, `exec`, and `test`
 - symbol-based match/replace protocol hooks and full ECMAScript `RegExp`
   parity remain deferred
 
@@ -756,3 +756,28 @@ to 0x10FFFF. Both reject lone-surrogate results with RangeError; fromCodePoint a
 rejects non-integers and out-of-range values. Lone-surrogate source literals,
 template fragments and property keys are validation errors, and lone-surrogate
 host strings/keys are boundary TypeErrors. They are never silently replaced.
+
+
+### Linear regexp character classes and match indices
+
+`\w`, `\d`, `\b` and their complements use ECMAScript ASCII word/digit
+semantics (including inside bracket classes). `\s` uses ECMAScript whitespace,
+and dot excludes all four ECMAScript line terminators unless `s` is set. The `iu`
+word class also includes long-s (ſ) and Kelvin sign (K); legacy `i` folding does
+not incorrectly fold those characters into ASCII. Character classes are lowered
+structurally through the Rust regex-syntax parser, not by text substitution.
+
+The linear engine cannot express the special `iu` word boundary for ſ/K.
+Matching a pattern containing `\b`/`\B` with `iu` against input containing
+those characters therefore throws TypeError instead of returning a wrong result.
+Lookaround/backreferences, inline engine flags and non-ECMAScript nested/POSIX or
+set-operation class syntax remain explicit rejections. Existing non-UTF-16 regexp
+semantics and other bounded engine differences are not a full ECMAScript engine.
+
+The `d` flag adds `indices`, an array of `[start, end]` pairs (undefined for an
+unmatched capture), plus `indices.groups` for named captures. Named pairs share
+identity with their indexed capture pair; group dictionaries have no prototype.
+Offsets use the runtime's existing **Unicode scalar** contract. `matchAll` starts
+at a regexp's lastIndex without mutating it; empty exec matches leave lastIndex at
+the match end. Flags are exposed in canonical order. Compilation, matching and
+index construction are budgeted, and the native regexp cache/engine sizes are bounded.
