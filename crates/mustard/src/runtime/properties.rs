@@ -12,6 +12,7 @@ impl Runtime {
             "concat" => BuiltinFunction::ArrayConcat,
             "at" => BuiltinFunction::ArrayAt,
             "join" => BuiltinFunction::ArrayJoin,
+            "toString" => BuiltinFunction::ArrayToString,
             "includes" => BuiltinFunction::ArrayIncludes,
             "indexOf" => BuiltinFunction::ArrayIndexOf,
             "lastIndexOf" => BuiltinFunction::ArrayLastIndexOf,
@@ -338,6 +339,9 @@ impl Runtime {
             BuiltinFunction::ObjectValues => "values",
             BuiltinFunction::ObjectEntries => "entries",
             BuiltinFunction::ObjectHasOwn => "hasOwn",
+            BuiltinFunction::ObjectIs => "is",
+            BuiltinFunction::ObjectHasOwnProperty => "hasOwnProperty",
+            BuiltinFunction::ObjectToString | BuiltinFunction::ArrayToString => "toString",
             BuiltinFunction::MapCtor => "Map",
             BuiltinFunction::MapGet => "get",
             BuiltinFunction::MapSet => "set",
@@ -525,6 +529,9 @@ impl Runtime {
             BuiltinFunction::ObjectValues => 1,
             BuiltinFunction::ObjectEntries => 1,
             BuiltinFunction::ObjectHasOwn => 2,
+            BuiltinFunction::ObjectIs => 2,
+            BuiltinFunction::ObjectHasOwnProperty => 1,
+            BuiltinFunction::ObjectToString | BuiltinFunction::ArrayToString => 0,
             BuiltinFunction::MapCtor => 0,
             BuiltinFunction::MapGet => 1,
             BuiltinFunction::MapSet => 2,
@@ -701,6 +708,7 @@ impl Runtime {
                     "values" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectValues)),
                     "entries" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectEntries)),
                     "hasOwn" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectHasOwn)),
+                    "is" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectIs)),
                     _ => None,
                 },
                 BuiltinFunction::DateCtor if key == "now" => {
@@ -749,6 +757,21 @@ impl Runtime {
         property: Value,
     ) -> MustardResult<bool> {
         let key = self.to_property_key(property)?;
+        if Self::object_prototype_method(&key).is_some()
+            && !matches!(
+                object,
+                Value::Null
+                    | Value::Undefined
+                    | Value::Bool(_)
+                    | Value::Number(_)
+                    | Value::String(_)
+                    | Value::BigInt(_)
+            )
+            && !matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::NullPrototype)))
+            && (key != "toString" || !self.is_callable_value(&object)?)
+        {
+            return Ok(true);
+        }
         match object {
             Value::Object(object) => {
                 let object = self
@@ -1484,7 +1507,7 @@ impl Runtime {
         key: &str,
         site: Option<(usize, usize)>,
     ) -> MustardResult<Option<Value>> {
-        if key == "constructor" {
+        if matches!(key, "constructor" | "hasOwnProperty" | "toString") {
             return Ok(None);
         }
 
@@ -1603,7 +1626,41 @@ impl Runtime {
         self.get_property_by_key(object, key, optional)
     }
 
+    pub(super) fn object_prototype_method(key: &str) -> Option<BuiltinFunction> {
+        match key {
+            "hasOwnProperty" => Some(BuiltinFunction::ObjectHasOwnProperty),
+            "toString" => Some(BuiltinFunction::ObjectToString),
+            _ => None,
+        }
+    }
+
     pub(super) fn get_property_by_key(
+        &self,
+        object: Value,
+        key: &str,
+        optional: bool,
+    ) -> MustardResult<Value> {
+        let value = self.get_property_by_key_surface(object.clone(), key, optional)?;
+        if !matches!(value, Value::Undefined)
+            || matches!(object, Value::Null | Value::Undefined)
+            || matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::NullPrototype)))
+            || (key == "toString"
+                && (self.is_callable_value(&object)? || matches!(object, Value::BigInt(_))))
+        {
+            return Ok(value);
+        }
+        if let Some(method) = Self::object_prototype_method(key)
+            && matches!(
+                self.call_object_has_own(&[object, Value::String(key.to_string())])?,
+                Value::Bool(false)
+            )
+        {
+            return Ok(Value::BuiltinFunction(method));
+        }
+        Ok(value)
+    }
+
+    fn get_property_by_key_surface(
         &self,
         object: Value,
         key: &str,
@@ -1869,6 +1926,13 @@ impl Runtime {
                     return Ok(value.clone());
                 }
                 if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
+                    if matches!(
+                        constructor,
+                        Value::BuiltinFunction(BuiltinFunction::ObjectCtor)
+                    ) && let Some(method) = Self::object_prototype_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
+                    }
                     if matches!(
                         constructor,
                         Value::BuiltinFunction(BuiltinFunction::ArrayCtor)

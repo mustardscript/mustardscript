@@ -78,6 +78,15 @@ impl Runtime {
     }
 
     pub(in crate::runtime) fn to_string(&self, value: Value) -> MustardResult<String> {
+        self.to_string_guarded(value, &mut Vec::new(), &mut 0)
+    }
+
+    fn to_string_guarded(
+        &self,
+        value: Value,
+        active: &mut Vec<ArrayKey>,
+        work: &mut usize,
+    ) -> MustardResult<String> {
         Ok(match value {
             Value::Undefined => "undefined".to_string(),
             Value::Null => "null".to_string(),
@@ -91,20 +100,7 @@ impl Runtime {
             }
             Value::BigInt(value) => value.to_string(),
             Value::String(value) => value,
-            Value::Array(array) => {
-                let array = self
-                    .arrays
-                    .get(array)
-                    .ok_or_else(|| MustardError::runtime("array missing"))?;
-                let mut parts = Vec::new();
-                for value in &array.elements {
-                    parts.push(match value {
-                        None | Some(Value::Undefined) | Some(Value::Null) => String::new(),
-                        Some(value) => self.to_string(value.clone())?,
-                    });
-                }
-                parts.join(",")
-            }
+            Value::Array(array) => self.stringify_array(array, ",", active, work)?,
             Value::Map(_) => "[object Map]".to_string(),
             Value::Set(_) => "[object Set]".to_string(),
             Value::Object(object) => match &self
@@ -142,6 +138,51 @@ impl Runtime {
                 self.callable_display_string(&callable)?
             }
         })
+    }
+
+    pub(in crate::runtime) fn stringify_array(
+        &self,
+        array: ArrayKey,
+        separator: &str,
+        active: &mut Vec<ArrayKey>,
+        work: &mut usize,
+    ) -> MustardResult<String> {
+        if active.contains(&array) {
+            return Ok(String::new());
+        }
+        if active.len() >= 128 {
+            return Err(MustardError::runtime(
+                "RangeError: array string conversion nesting limit exceeded",
+            ));
+        }
+        active.push(array);
+        let array = self
+            .arrays
+            .get(array)
+            .ok_or_else(|| MustardError::runtime("array missing"))?;
+        let mut result = String::new();
+        for (index, value) in array.elements.iter().enumerate() {
+            *work = work.saturating_add(1);
+            if *work > self.limits.instruction_budget {
+                return Err(limit_error("instruction budget exceeded"));
+            }
+            let text = match value {
+                None | Some(Value::Null | Value::Undefined) => String::new(),
+                Some(value) => self.to_string_guarded(value.clone(), active, work)?,
+            };
+            let separator = if index == 0 { "" } else { separator };
+            let length = result
+                .len()
+                .saturating_add(separator.len())
+                .saturating_add(text.len());
+            if length > self.limits.heap_limit_bytes {
+                return Err(limit_error("heap limit exceeded"));
+            }
+            result.push_str(separator);
+            result.push_str(&text);
+        }
+        active.pop();
+        Ok(result)
     }
 
     pub(in crate::runtime) fn to_property_key(&self, value: Value) -> MustardResult<String> {

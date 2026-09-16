@@ -375,6 +375,11 @@ impl Runtime {
 
     pub(crate) fn call_object_has_own(&self, args: &[Value]) -> MustardResult<Value> {
         let target = args.first().cloned().unwrap_or(Value::Undefined);
+        if matches!(target, Value::Null | Value::Undefined) {
+            return Err(MustardError::runtime(
+                "TypeError: cannot convert nullish value to object",
+            ));
+        }
         let key = self.to_property_key(args.get(1).cloned().unwrap_or(Value::Undefined))?;
         let has_key = match target {
             Value::Object(object) => {
@@ -383,6 +388,7 @@ impl Runtime {
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
                 object.properties.contains_key(&key)
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::ObjectCtor)) if Self::object_prototype_method(&key).is_some())
                     || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::ArrayCtor)) if Self::array_prototype_method(&key).is_some())
                     || matches!(&object.kind, ObjectKind::FunctionPrototype(_) if key == "constructor")
                     || matches!(&object.kind, ObjectKind::StringObject(_) if key == "length")
@@ -412,8 +418,50 @@ impl Runtime {
                     .is_some()
                     || matches!(key.as_str(), "name" | "length")
             }
-            _ => return Err(Self::object_helper_type_error()),
+            Value::String(value) => {
+                key == "length"
+                    || array_index_from_property_key(&key)
+                        .is_some_and(|index| value.chars().nth(index).is_some())
+            }
+            _ => false,
         };
         Ok(Value::Bool(has_key))
+    }
+
+    pub(crate) fn call_object_to_string(&self, value: Value) -> MustardResult<Value> {
+        let tag = match value {
+            Value::Undefined => "Undefined",
+            Value::Null => "Null",
+            Value::Bool(_) => "Boolean",
+            Value::Number(_) => "Number",
+            Value::BigInt(_) => "BigInt",
+            Value::String(_) => "String",
+            Value::Array(_) => "Array",
+            Value::Map(_) => "Map",
+            Value::Set(_) => "Set",
+            Value::Iterator(_) => "Iterator",
+            Value::Promise(_) => "Promise",
+            Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => "Function",
+            Value::Object(id) => match &self
+                .objects
+                .get(id)
+                .ok_or_else(|| MustardError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::Date(_) => "Date",
+                ObjectKind::RegExp(_) => "RegExp",
+                ObjectKind::Error(_) => "Error",
+                ObjectKind::NumberObject(_) => "Number",
+                ObjectKind::StringObject(_) => "String",
+                ObjectKind::BooleanObject(_) => "Boolean",
+                ObjectKind::BoundFunction(_) => "Function",
+                ObjectKind::Math => "Math",
+                ObjectKind::Json => "JSON",
+                ObjectKind::IntlDateTimeFormat(_) => "Intl.DateTimeFormat",
+                ObjectKind::IntlNumberFormat(_) => "Intl.NumberFormat",
+                _ => "Object",
+            },
+        };
+        Ok(Value::String(format!("[object {tag}]")))
     }
 }

@@ -611,6 +611,10 @@ pub(super) enum BuiltinFunction {
     ArrayCopyWithin,
     ObjectGroupBy,
     MapGroupBy,
+    ObjectIs,
+    ObjectHasOwnProperty,
+    ObjectToString,
+    ArrayToString,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

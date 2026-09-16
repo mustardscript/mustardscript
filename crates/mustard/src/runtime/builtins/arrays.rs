@@ -474,6 +474,27 @@ impl Runtime {
         Ok(Value::Array(self.insert_array(flattened, IndexMap::new())?))
     }
 
+    pub(crate) fn call_array_to_string(&mut self, this_value: Value) -> MustardResult<Value> {
+        if matches!(this_value, Value::Null | Value::Undefined) {
+            return Err(MustardError::runtime(
+                "TypeError: Array.toString requires a non-nullish receiver",
+            ));
+        }
+        self.with_temporary_roots(std::slice::from_ref(&this_value), |runtime| {
+            let join = runtime.get_property_by_key(this_value.clone(), "join", false)?;
+            if !runtime.is_callable_value(&join)? {
+                return runtime.call_object_to_string(this_value.clone());
+            }
+            runtime.call_callback(join, this_value.clone(), &[], CallbackCallOptions {
+                non_callable_message: "TypeError: join is not callable",
+                host_suspension_message: "TypeError: Array.toString does not support synchronous host suspensions",
+                unsettled_message: "synchronous Array.toString callback did not settle",
+                allow_host_suspension: false,
+                allow_pending_promise_result: true,
+            })
+        })
+    }
+
     pub(crate) fn call_array_join(
         &mut self,
         this_value: Value,
@@ -481,32 +502,13 @@ impl Runtime {
     ) -> MustardResult<Value> {
         let array = self.array_receiver(this_value, "join")?;
         let separator = match args.first() {
+            None | Some(Value::Undefined) => ",".to_string(),
             Some(value) => self.to_string(value.clone())?,
-            None => ",".to_string(),
         };
-        let element_count = self
-            .arrays
-            .get(array)
-            .ok_or_else(|| MustardError::runtime("array missing"))?
-            .elements
-            .len();
-        let mut parts = Vec::with_capacity(element_count);
-        for index in 0..element_count {
-            self.charge_native_helper_work(1)?;
-            let value = self
-                .arrays
-                .get(array)
-                .ok_or_else(|| MustardError::runtime("array missing"))?
-                .elements
-                .get(index)
-                .cloned()
-                .flatten();
-            parts.push(match value {
-                None | Some(Value::Undefined) | Some(Value::Null) => String::new(),
-                Some(other) => self.to_string(other)?,
-            });
-        }
-        Ok(Value::String(parts.join(&separator)))
+        let mut work = 0;
+        let result = self.stringify_array(array, &separator, &mut Vec::new(), &mut work)?;
+        self.charge_native_helper_work(work)?;
+        Ok(Value::String(result))
     }
 
     pub(crate) fn call_array_includes(

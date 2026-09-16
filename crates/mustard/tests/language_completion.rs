@@ -342,3 +342,43 @@ fn grouping_preserves_order_key_identity_and_null_prototype_absence() {
         );
     }
 }
+
+#[test]
+fn object_compatibility_and_array_stringification_preserve_identity_and_absence() {
+    assert_eq!(run(r#"
+        const own = Object.prototype.hasOwnProperty;
+        const tag = Object.prototype.toString;
+        const a = [1, , null, [2, 3]]; a.push(a);
+        const o = {x: 1};
+        function read() { return o.hasOwnProperty('x'); }
+        for (let i = 0; i < 40; i++) read();
+        const inherited = read();
+        o.hasOwnProperty = undefined;
+        const same = {};
+        JSON.stringify([Object.is(NaN, NaN), Object.is(0, -0), Object.is(same, same),
+          Object.is({}, {}), inherited, o.hasOwnProperty === undefined,
+          own.call(o, 'x'), own.call(o, 'toString'), own.call('abc', '1'),
+          Object.hasOwn('abc', 'length'), own.call(new Map(), 'size'),
+          own.call(Object.prototype, 'hasOwnProperty'), own.call(Array.prototype, 'toString'),
+          own.call(Array.prototype, 'hasOwnProperty'), tag.call(null), tag.call(undefined),
+          tag.call(a), tag.call(new Map()), tag.call(new Error('x')),
+          a.toString(), a.join(undefined), ({x: 1}).toString(),
+          'hasOwnProperty' in [], 'toString' in {},
+          Array.prototype.toString.call({join() { return this.x; }, x: 42}),
+          Array.prototype.toString.call({join: 0})]);
+    "#), r#"[true,false,true,false,true,true,true,false,true,true,false,true,true,false,"[object Null]","[object Undefined]","[object Array]","[object Map]","[object Error]","1,,,2,3,","1,,,2,3,","[object Object]",true,true,42,"[object Object]"]"#.into());
+    for source in [
+        "Object.hasOwn(null, 'x');",
+        "Object.prototype.hasOwnProperty.call(undefined, 'x');",
+        "Array.prototype.toString.call(null);",
+    ] {
+        let error = execute(&compile(source).unwrap(), ExecutionOptions::default()).unwrap_err();
+        assert!(error.to_string().contains("TypeError"), "{source}: {error}");
+    }
+    let error = execute(
+        &compile("let a = []; for (let i = 0; i < 140; i++) a = [a]; a.toString();").unwrap(),
+        ExecutionOptions::default(),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("nesting limit"));
+}

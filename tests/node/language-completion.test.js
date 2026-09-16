@@ -240,3 +240,23 @@ test('grouping protects keys and values under GC pressure and snapshots', async 
   const restored=Progress.load(first.dump(), {snapshotKey, capabilities, limits:{}});
   assert.deepEqual(restored.resume(undefined), [2,['0','1'],true,false]);
 });
+
+test('Object compatibility helpers and explicit array stringification match Node', async () => {
+  const vm = require('node:vm');
+  const cases = [
+    `const same = {}; [Object.is(NaN, NaN), Object.is(-0, 0), Object.is(-0, -0), Object.is(same, same), Object.is({}, {}), Object.is(1n, 1n), Object.is()];`,
+    `const o = { x: undefined }; const own = Object.prototype.hasOwnProperty; [o.hasOwnProperty('x'), o.hasOwnProperty('toString'), Object.hasOwn('abc', '1'), own.call(1, 'x'), own.call(new Map(), 'size'), own.call(Object.prototype, 'hasOwnProperty'), own.call(Array.prototype, 'toString'), own.call(Array.prototype, 'hasOwnProperty')];`,
+    `const tag = Object.prototype.toString; [undefined, null, 1, true, 1n, 'x', [], {}, new Map(), new Set(), new Date(0), /x/, new TypeError('x'), Math, JSON, Promise.resolve(1)].map(x => tag.call(x));`,
+    `const a = [1, , undefined, null, [2,3]]; a.push(a); [a.toString(), a.join(undefined), String(a), Array.prototype.toString.call({join() { return this.x; }, x: 42}), Array.prototype.toString.call({join: 2})];`,
+    `const o = {x: 1}; function read() { return o.hasOwnProperty('x'); } let n = 0; for (let i = 0; i < 80; i++) n += read(); o.hasOwnProperty = undefined; [n, o.hasOwnProperty, ({}).toString(), 'hasOwnProperty' in [], 'toString' in {}];`,
+    `const grouped = Object.groupBy([1], () => 'x'); [grouped.hasOwnProperty, grouped.toString, Object.prototype.hasOwnProperty.call(grouped, 'x'), Object.prototype.toString.call(grouped)];`,
+  ];
+  for (const source of cases) {
+    const expected = vm.runInNewContext(source);
+    assert.deepEqual(JSON.parse(JSON.stringify(await runtime(source).run())), JSON.parse(JSON.stringify(expected)), source);
+  }
+  for (const source of ['Object.hasOwn(null, "x");', 'Object.prototype.hasOwnProperty.call(undefined, "x");', 'Array.prototype.toString.call(null);']) {
+    await assert.rejects(runtime(source).run(), /TypeError/);
+  }
+  await assert.rejects(runtime('let a = []; for (let i = 0; i < 140; i++) a = [a]; a.toString();').run(), /nesting limit/);
+});

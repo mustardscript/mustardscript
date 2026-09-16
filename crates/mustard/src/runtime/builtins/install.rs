@@ -63,6 +63,22 @@ impl Runtime {
             BuiltinFunction::ObjectValues => self.call_object_values(args),
             BuiltinFunction::ObjectEntries => self.call_object_entries(args),
             BuiltinFunction::ObjectHasOwn => self.call_object_has_own(args),
+            BuiltinFunction::ObjectHasOwnProperty => self.call_object_has_own(&[
+                this_value,
+                args.first().cloned().unwrap_or(Value::Undefined),
+            ]),
+            BuiltinFunction::ObjectIs => {
+                let left = args.first().cloned().unwrap_or(Value::Undefined);
+                let right = args.get(1).cloned().unwrap_or(Value::Undefined);
+                Ok(Value::Bool(match (&left, &right) {
+                    (Value::Number(a), Value::Number(b)) if *a == 0.0 && *b == 0.0 => {
+                        a.is_sign_negative() == b.is_sign_negative()
+                    }
+                    _ => same_value_zero(&left, &right),
+                }))
+            }
+            BuiltinFunction::ObjectToString => self.call_object_to_string(this_value),
+            BuiltinFunction::ArrayToString => self.call_array_to_string(this_value),
             BuiltinFunction::MapCtor => Err(MustardError::runtime(
                 "TypeError: Map constructor must be called with new",
             )),

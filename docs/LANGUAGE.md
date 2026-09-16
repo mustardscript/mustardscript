@@ -708,3 +708,19 @@ carries their own data, not guest prototype metadata. Full prototype manipulatio
 remains deferred. Map grouping preserves key identity and SameValueZero semantics,
 including NaN and canonical positive-zero keys. Bucket values retain input order;
 Map keys retain first occurrence order, and Object keys follow own-key ordering.
+
+### Object compatibility and explicit string conversion
+
+`Object.is` uses SameValue equality (NaN equals itself; positive and negative zero
+are distinct). `Object.hasOwn` and `Object.prototype.hasOwnProperty` accept
+non-nullish primitives as well as supported objects. String indices/length are own
+properties; inherited methods and Map/Set size are not. Plain objects inherit
+`hasOwnProperty` and `toString`; prototype-less grouping results do not. Own values,
+including an explicit `undefined`, shadow these methods.
+
+`Object.prototype.toString.call(value)` returns the supported built-in type tag.
+`Array.prototype.toString` calls the receiver's callable `join`, or falls back to
+Object's type tag. Ordinary arrays join with commas; nullish values, holes, and
+cyclic references contribute empty strings. Array string conversion is bounded by
+work/output limits and a 128-array nesting limit (RangeError). User-defined coercion
+hooks on nested elements and arbitrary prototype-chain mutation remain unsupported.

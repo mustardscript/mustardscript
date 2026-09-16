@@ -15,7 +15,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 5. `Array.from` array-like inputs
 - [x] 6. Array queue, copy, and copy-within methods
 - [x] 7. Object/Map grouping
-- [ ] 8. Object/Array compatibility helpers
+- [x] 8. Object/Array compatibility helpers
 - [ ] 9. RegExp character-class parity and match indices
 - [ ] 10. URI encoding and decoding
 - [ ] 11. UTC-profile Date completion
@@ -115,3 +115,13 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm run lint`, `npm run build`, full Node
   suite; focused tests cover sparse inputs, key identity, prototype absence,
   invalid callbacks/inputs, GC pressure and snapshot restoration.
+
+### Object/Array compatibility helpers
+
+- Added SameValue Object.is, inherited/borrowed hasOwnProperty, primitive hasOwn,
+  built-in object tags and explicit array toString (including custom join).
+  Own undefined values shadow inherited helpers and shaped lookup caches remain
+  correct. Array string conversion handles cycles and bounds nesting/output/work.
+- Passed: `cargo test --workspace`, `npm run build`, full Node suite and
+  `npm run lint`; focused tests compare Node, signed zeros/identity, shadowing,
+  prototype-less objects, sparse/cyclic arrays and nullish/deep-nesting failures.
