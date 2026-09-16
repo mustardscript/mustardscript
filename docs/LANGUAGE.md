@@ -648,8 +648,8 @@ rejected.
   documented numeric / two-digit date-time fields, formats hour-bearing output
   with the default `en-US` 12-hour clock plus `AM` / `PM`, and rejects any
   other option keys explicitly; `NumberFormat` currently supports only
-  `decimal`, `percent`, and `currency` formatting with `USD` as the only
-  supported currency code and rejects any other option keys explicitly
+  `decimal`, `percent`, and `currency` formatting with pinned CLDR currency
+  data and rejects other option keys explicitly (see number formatting below)
 - `Math.PI`, `E`, `LN2`, `LN10`, `LOG2E`, `LOG10E`, `SQRT2`, and `SQRT1_2`
   are available as numeric constants on `Math`
 - `Math.exp`, `log2`, `log10`, `sin`, `cos`, `atan2`, `hypot`, and `cbrt`
@@ -897,3 +897,26 @@ those tags are accepted; all present list entries are validated. Other locales,
 extensions, non-string list entries and null options reject. These locale-list
 rules also apply to the other Intl constructors. Comparison buffers and work,
 including long combining runs, are preflighted against runtime limits.
+
+### Number and currency formatting
+
+`Number.prototype.toLocaleString(locales?, options?)` formats primitive or boxed
+Numbers using the same en-US profile as `Intl.NumberFormat`. Decimal, percent
+and currency styles support boolean `useGrouping` and minimum/maximum fraction
+digits from 0 through 100. Defaults follow the currency minor unit (otherwise
+0–3 decimal digits, or 0 percent digits); a single explicit digit bound adjusts
+the other default. Rounding is decimal half-expand, including signed zero,
+large finite values, subnormals, and decimal percent scaling without overflow.
+NaN and infinities retain the appropriate style affixes.
+
+Currency codes must be three ASCII letters (canonicalized to uppercase), and
+currency style requires one. Pinned Unicode CLDR 48.2.1 supplies standard en-US
+symbols, spacing and fraction digits; unfamiliar well-formed codes use the code
+and two fraction digits. Cash rounding is not applied. Options such as
+`currencyDisplay`, `currencySign`, significant digits, notation, alternative
+rounding modes, units and numbering systems remain unsupported and reject.
+Intl.format retains its Number-coercion input profile (not arbitrary-precision
+string/BigInt formatting); `Number.toLocaleString` requires a Number receiver.
+Null options, non-en-US locales and inconsistent/out-of-range digit bounds
+reject. Formatting work/buffers are bounded, and restored formatter settings
+are validated before they can allocate buffers.

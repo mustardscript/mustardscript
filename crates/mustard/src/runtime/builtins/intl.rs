@@ -1,4 +1,6 @@
+use super::currencies::{currency_digits, currency_symbol};
 use super::*;
+use oxc_syntax::number::ToJsString;
 
 impl Runtime {
     fn normalize_intl_locale(&mut self, value: Option<Value>) -> MustardResult<String> {
@@ -110,17 +112,17 @@ impl Runtime {
     }
 
     fn intl_option_digits(
-        &self,
+        &mut self,
         object: Option<ObjectKey>,
         key: &str,
     ) -> MustardResult<Option<usize>> {
         match self.intl_option_value(object, key)? {
             Value::Undefined => Ok(None),
             value => {
-                let digits = self.to_integer(value)?;
-                if !(0..=20).contains(&digits) {
+                let digits = self.coerce_number(value)?;
+                if !digits.is_finite() || !(0.0..=100.0).contains(&digits) {
                     return Err(MustardError::runtime(format!(
-                        "RangeError: Intl `{key}` must be between 0 and 20",
+                        "RangeError: Intl `{key}` must be between 0 and 100",
                     )));
                 }
                 Ok(Some(digits as usize))
@@ -233,24 +235,34 @@ impl Runtime {
             }
         };
         let currency = self.intl_option_string(options, "currency")?;
-        if style == IntlNumberStyle::Currency && currency.as_deref() != Some("USD") {
+        if let Some(currency) = &currency {
+            self.charge_native_helper_work(currency.len())?;
+            if currency.len() != 3 || !currency.bytes().all(|b| b.is_ascii_alphabetic()) {
+                return Err(MustardError::runtime(
+                    "RangeError: Intl.NumberFormat currency must be a three-letter code",
+                ));
+            }
+        }
+        if style == IntlNumberStyle::Currency && currency.is_none() {
             return Err(MustardError::runtime(
-                "TypeError: Intl.NumberFormat currency style currently supports only `USD`",
+                "TypeError: Intl.NumberFormat currency style requires currency",
             ));
         }
-        let minimum_fraction_digits = self
-            .intl_option_digits(options, "minimumFractionDigits")?
-            .unwrap_or(match style {
-                IntlNumberStyle::Currency => 2,
-                _ => 0,
-            });
-        let maximum_fraction_digits = self
-            .intl_option_digits(options, "maximumFractionDigits")?
-            .unwrap_or(match style {
-                IntlNumberStyle::Currency => 2,
-                IntlNumberStyle::Percent => 0,
-                IntlNumberStyle::Decimal => 3,
-            });
+        let currency = if style == IntlNumberStyle::Currency {
+            currency.map(|c| c.to_ascii_uppercase())
+        } else {
+            None
+        };
+        let default_min = currency.as_deref().map(currency_digits).unwrap_or(0);
+        let default_max = match style {
+            IntlNumberStyle::Currency => default_min,
+            IntlNumberStyle::Percent => 0,
+            IntlNumberStyle::Decimal => 3,
+        };
+        let minimum = self.intl_option_digits(options, "minimumFractionDigits")?;
+        let maximum = self.intl_option_digits(options, "maximumFractionDigits")?;
+        let minimum_fraction_digits = minimum.unwrap_or(default_min.min(maximum.unwrap_or(100)));
+        let maximum_fraction_digits = maximum.unwrap_or(default_max.max(minimum_fraction_digits));
         if minimum_fraction_digits > maximum_fraction_digits {
             return Err(MustardError::runtime(
                 "RangeError: Intl.NumberFormat minimumFractionDigits cannot exceed maximumFractionDigits",
@@ -480,64 +492,72 @@ impl Runtime {
         ))
     }
 
-    fn format_intl_number(&self, formatter: &IntlNumberFormatObject, number: f64) -> String {
-        let value = match formatter.style {
-            IntlNumberStyle::Percent => number * 100.0,
-            _ => number,
-        };
-        if !value.is_finite() {
-            return value.to_string();
+    fn format_intl_number(
+        &mut self,
+        formatter: &IntlNumberFormatObject,
+        number: f64,
+    ) -> MustardResult<String> {
+        if formatter.maximum_fraction_digits > 100
+            || formatter.minimum_fraction_digits > formatter.maximum_fraction_digits
+        {
+            return Err(MustardError::runtime(
+                "RangeError: invalid Intl.NumberFormat fraction digits",
+            ));
         }
-        let rounded = format!("{:.*}", formatter.maximum_fraction_digits, value.abs());
-        let mut parts = rounded.split('.').collect::<Vec<_>>();
-        let mut integer = parts.remove(0).to_string();
-        let mut fraction = parts.first().copied().unwrap_or("").to_string();
-        while fraction.len() > formatter.minimum_fraction_digits && fraction.ends_with('0') {
-            fraction.pop();
-        }
-        if formatter.use_grouping {
-            integer = format_en_us_number_grouped(&integer);
-        }
-        let rendered = if fraction.is_empty() {
-            integer
+        // A finite binary64 needs at most 309 integer digits (+2 for percent),
+        // plus 100 fraction digits. Account for all temporary decimal buffers.
+        self.charge_native_helper_work(512)?;
+        self.ensure_heap_capacity(8192)?;
+        let rendered = if number.is_nan() {
+            "NaN".to_string()
+        } else if number.is_infinite() {
+            "∞".to_string()
         } else {
-            format!("{integer}.{fraction}")
+            format_decimal_half_expand(number.abs(), formatter)
         };
-        match formatter.style {
-            IntlNumberStyle::Decimal => {
-                if value.is_sign_negative() {
-                    format!("-{rendered}")
-                } else {
-                    rendered
-                }
-            }
-            IntlNumberStyle::Percent => {
-                let mut rendered = if value.is_sign_negative() {
-                    format!("-{rendered}")
-                } else {
-                    rendered
-                };
-                rendered.push('%');
-                rendered
-            }
+        let sign = if !number.is_nan() && number.is_sign_negative() {
+            "-"
+        } else {
+            ""
+        };
+        Ok(match formatter.style {
+            IntlNumberStyle::Decimal => format!("{sign}{rendered}"),
+            IntlNumberStyle::Percent => format!("{sign}{rendered}%"),
             IntlNumberStyle::Currency => {
-                if value.is_sign_negative() {
-                    format!("-${rendered}")
+                let (symbol, spacing) =
+                    currency_symbol(formatter.currency.as_deref().unwrap_or("USD"));
+                let space = if spacing && number.is_finite() {
+                    "\u{a0}"
                 } else {
-                    format!("${rendered}")
-                }
+                    ""
+                };
+                format!("{sign}{symbol}{space}{rendered}")
             }
-        }
+        })
     }
 
     pub(crate) fn call_intl_number_format_format(
-        &self,
+        &mut self,
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
-        let formatter = self.intl_number_format_receiver(this_value, "format")?;
-        let number = self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?;
-        Ok(Value::String(self.format_intl_number(formatter, number)))
+        let formatter = self
+            .intl_number_format_receiver(this_value, "format")?
+            .clone();
+        let number = self.coerce_number(args.first().cloned().unwrap_or(Value::Undefined))?;
+        Ok(Value::String(self.format_intl_number(&formatter, number)?))
+    }
+
+    pub(crate) fn call_number_to_locale_string(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
+        let number = self.number_receiver(this_value, "toLocaleString")?;
+        let formatter = self.construct_intl_number_format(args)?;
+        self.with_temporary_roots(std::slice::from_ref(&formatter), |runtime| {
+            runtime.call_intl_number_format_format(formatter.clone(), &[Value::Number(number)])
+        })
     }
 
     pub(crate) fn call_intl_number_format_resolved_options(
@@ -772,4 +792,74 @@ impl Runtime {
             std::cmp::Ordering::Greater => 1.0,
         }))
     }
+}
+
+// ECMA-402 rounds the shortest decimal representation, not the binary fraction
+// used by Number.toFixed. Shift percent in decimal to avoid overflow/double rounding.
+fn format_decimal_half_expand(number: f64, formatter: &IntlNumberFormatObject) -> String {
+    let decimal = number.to_js_string();
+    let (mantissa, exponent) = decimal
+        .split_once('e')
+        .map_or((decimal.as_str(), 0), |(m, e)| {
+            (m, e.parse::<i32>().expect("binary64 decimal exponent"))
+        });
+    let point = mantissa.find('.').unwrap_or(mantissa.len()) as i32
+        + exponent
+        + if formatter.style == IntlNumberStyle::Percent {
+            2
+        } else {
+            0
+        };
+    let digits: Vec<u8> = mantissa.bytes().filter(|b| *b != b'.').collect();
+    let precision = formatter.maximum_fraction_digits;
+    let keep = point + precision as i32;
+    let mut rounded = if keep <= 0 {
+        vec![b'0']
+    } else {
+        let mut result = digits[..digits.len().min(keep as usize)].to_vec();
+        result.resize(keep as usize, b'0');
+        result
+    };
+    if keep >= 0 && digits.get(keep as usize).is_some_and(|b| *b >= b'5') {
+        let mut carry = true;
+        for digit in rounded.iter_mut().rev() {
+            if *digit == b'9' {
+                *digit = b'0';
+            } else {
+                *digit += 1;
+                carry = false;
+                break;
+            }
+        }
+        if carry {
+            rounded.insert(0, b'1');
+        }
+    }
+    if rounded.len() <= precision {
+        let mut padded = vec![b'0'; precision + 1 - rounded.len()];
+        padded.extend(rounded);
+        rounded = padded;
+    }
+    let split = rounded.len() - precision;
+    let integer = std::str::from_utf8(&rounded[..split])
+        .expect("decimal digits")
+        .trim_start_matches('0');
+    let integer = if integer.is_empty() { "0" } else { integer };
+    let mut output = if formatter.use_grouping {
+        format_en_us_number_grouped(integer)
+    } else {
+        integer.to_string()
+    };
+    let mut fraction_end = rounded.len();
+    while fraction_end > split + formatter.minimum_fraction_digits
+        && rounded[fraction_end - 1] == b'0'
+    {
+        fraction_end -= 1;
+    }
+    if fraction_end > split {
+        output.push('.');
+        output
+            .push_str(std::str::from_utf8(&rounded[split..fraction_end]).expect("decimal digits"));
+    }
+    output
 }

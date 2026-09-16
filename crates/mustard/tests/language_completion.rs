@@ -701,3 +701,34 @@ fn locale_comparison_uses_real_en_us_collation_and_explicit_options() {
         );
     }
 }
+
+#[test]
+fn localized_numbers_use_decimal_rounding_currency_digits_and_symbols() {
+    assert_eq!(run(r#"JSON.stringify([
+        (1234.567).toLocaleString(), (-0).toLocaleString(),
+        (1.005).toLocaleString('en-US', {style:'currency',currency:'eur'}),
+        (1234.567).toLocaleString('en-US', {style:'currency',currency:'JPY'}),
+        (1234.5678).toLocaleString('en-US', {style:'currency',currency:'BHD'}),
+        (1234.56789).toLocaleString('en-US', {style:'currency',currency:'CLF'}),
+        (1234.5).toLocaleString('en-US', {style:'currency',currency:'XYZ'}),
+        (Infinity).toLocaleString('en-US', {style:'currency',currency:'CAD'}),
+        (NaN).toLocaleString('en-US', {style:'percent'}),
+        Number.prototype.toLocaleString(), new Number(42).toLocaleString(),
+        Number.prototype.hasOwnProperty('toLocaleString'), 'toLocaleString' in new Number(1),
+        (0).toLocaleString.name, (0).toLocaleString.length
+    ]);"#), "[\"1,234.567\",\"-0\",\"€1.01\",\"¥1,235\",\"BHD 1,234.568\",\"CLF 1,234.5679\",\"XYZ 1,234.50\",\"CA$∞\",\"NaN%\",\"0\",\"42\",true,true,\"toLocaleString\",0]".into());
+    for source in [
+        "(1).toLocaleString('en-US', {style:'currency'});",
+        "(1).toLocaleString('en-US', {currency:'EU'});",
+        "(1).toLocaleString('en-US', {maximumFractionDigits:NaN});",
+        "(1).toLocaleString('en-US', {maximumFractionDigits:101});",
+        "(1).toLocaleString('en-US', {minimumFractionDigits:3, maximumFractionDigits:2});",
+        "Number.prototype.toLocaleString.call('1');",
+        "(1).toLocaleString('en-US', {currencyDisplay:'code'});",
+    ] {
+        assert!(
+            execute(&compile(source).unwrap(), ExecutionOptions::default()).is_err(),
+            "{source}"
+        );
+    }
+}

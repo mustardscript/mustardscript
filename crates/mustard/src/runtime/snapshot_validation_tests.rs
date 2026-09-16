@@ -263,3 +263,30 @@ fn rejects_invalid_async_array_driver_and_reaction_state() {
         assert!(error.to_string().contains("Array.fromAsync"), "{error}");
     }
 }
+
+#[test]
+fn rejects_invalid_number_format_configuration_before_allocation() {
+    for invalid in 0..3 {
+        let mut suspension = suspend_async_host_wait(
+            "const f = Intl.NumberFormat('en-US', {style:'currency',currency:'USD'}); await fetch_data(); f.format(1);",
+        );
+        let formatter = suspension
+            .snapshot
+            .runtime
+            .objects
+            .values_mut()
+            .find_map(|object| match &mut object.kind {
+                ObjectKind::IntlNumberFormat(formatter) => Some(formatter),
+                _ => None,
+            })
+            .expect("number formatter");
+        match invalid {
+            0 => formatter.maximum_fraction_digits = usize::MAX,
+            1 => formatter.minimum_fraction_digits = 3,
+            _ => formatter.currency = None,
+        }
+        let bytes = dump_snapshot(&suspension.snapshot).expect("serialize invalid formatter");
+        let error = load_snapshot(&bytes).expect_err("invalid formatter must reject");
+        assert!(error.to_string().contains("Intl.NumberFormat"), "{error}");
+    }
+}

@@ -5,6 +5,7 @@ use indexmap::IndexMap;
 mod arrays;
 mod bigint;
 mod collections;
+mod currencies;
 mod dates;
 mod from_async;
 mod install;

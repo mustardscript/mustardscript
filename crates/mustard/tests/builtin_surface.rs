@@ -1693,8 +1693,8 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
             "normalization form must be NFC, NFD, NFKC, or NFKD",
         ),
         (
-            "(1).toLocaleString();",
-            "Number.prototype.toLocaleString is not supported",
+            "(1).toLocaleString(\"fr-FR\");",
+            "Intl currently supports only the `en-US` locale",
         ),
         ("[].groupBy();", "Array.prototype.groupBy is not supported"),
         (

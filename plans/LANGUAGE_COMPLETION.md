@@ -20,7 +20,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 10. URI encoding and decoding
 - [x] 11. UTC-profile Date completion
 - [x] 12. Deterministic, real en-US collation
-- [ ] 13. Number and multi-currency formatting
+- [x] 13. Number and multi-currency formatting
 - [x] 14. Unicode normalization and character APIs with an explicit string contract
 - [x] 15. Bitwise/shift operators and assignments
 - [x] 16. BigInt conversion
@@ -31,9 +31,10 @@ language docs, tests, and comparative runtime probes before implementation.
 
 ## Verification and delivery
 
-- [ ] `cargo test --workspace`
-- [ ] `npm test`
-- [ ] `npm run lint`
+- [x] `cargo test --workspace`
+- [x] `npm test`
+- [x] `npm run lint`
+- [ ] Hardening smoke (`scripts/run-hardening.sh`)
 - [ ] PR opened; CI green on the final head commit
 
 ## Starting state
@@ -246,3 +247,14 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm run build`, full Node suite and
   `npm run lint`. Differential matrices cover accents/case/digits/scripts,
   canonical equivalence, coercions, metadata, resource limits and snapshots.
+
+### Number and currency formatting
+
+- Added Number.toLocaleString, CLDR 48.2.1 currency symbols/spacing/minor units,
+  decimal half-expand rounding, percent scaling, signed zero/nonfinite affixes,
+  fraction bounds through 100 and snapshot configuration validation. Unicode
+  notices ship in Rust, root npm and native binding packages.
+- Passed: `cargo test --workspace`, `npm test` (full Node suite, types and package
+  smoke), `npm run lint`, and `cargo check -p mustard-wasm --target
+  wasm32-unknown-unknown`. Tests compare all non-default minor units/symbols,
+  full-range binary64 formatting, default/explicit options, failures and snapshots.

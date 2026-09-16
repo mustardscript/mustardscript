@@ -692,6 +692,7 @@ pub(super) enum BuiltinFunction {
     DateToLocaleDateString,
     DateToLocaleTimeString,
     StringLocaleCompare,
+    NumberToLocaleString,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

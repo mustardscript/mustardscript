@@ -51,7 +51,7 @@ function bindingManifest(rootPackage, target) {
     version: rootPackage.version,
     cpu: target.cpu,
     main: target.localFile,
-    files: [target.localFile],
+    files: [target.localFile, 'UNICODE-LICENSE'],
     description: rootPackage.description,
     keywords: rootPackage.keywords,
     author: rootPackage.author,
@@ -77,6 +77,7 @@ function writeBindingPackage(options, rootPackage, target) {
     path.join(packageDir, 'package.json'),
     `${JSON.stringify(bindingManifest(rootPackage, target), null, 2)}\n`,
   );
+  fs.copyFileSync(path.join(repoRoot, 'UNICODE-LICENSE'), path.join(packageDir, 'UNICODE-LICENSE'));
   fs.writeFileSync(
     path.join(packageDir, 'README.md'),
     bindingReadme(rootPackage.name, target),

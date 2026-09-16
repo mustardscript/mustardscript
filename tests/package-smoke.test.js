@@ -81,7 +81,7 @@ function readInstalledPackageManifest(consumerRoot) {
 
 function assertInstalledReleaseFiles(consumerRoot) {
   const packageRoot = installedPackageRoot(consumerRoot);
-  for (const file of ['LICENSE', 'README.md', 'SECURITY.md']) {
+  for (const file of ['LICENSE', 'UNICODE-LICENSE', 'README.md', 'SECURITY.md']) {
     assert.ok(fs.existsSync(path.join(packageRoot, file)), `${file} should be shipped`);
   }
 }
@@ -137,7 +137,8 @@ function verifyPrebuiltPackageMetadata(stagingRoot) {
     assert.equal(manifest.name, target.packageName);
     assert.equal(manifest.version, packageInfo.version);
     assert.equal(manifest.main, target.localFile);
-    assert.deepEqual(manifest.files, [target.localFile]);
+    assert.deepEqual(manifest.files, [target.localFile, 'UNICODE-LICENSE']);
+    assert.match(fs.readFileSync(path.join(packageRoot, 'UNICODE-LICENSE'), 'utf8'), /UNICODE LICENSE V3/);
     assert.deepEqual(manifest.os, target.os);
     assert.deepEqual(manifest.cpu, target.cpu);
     if (target.libc) {

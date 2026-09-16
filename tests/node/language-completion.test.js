@@ -666,3 +666,58 @@ test('collation rejects unsupported profiles, bounds work/space and survives sna
   const first = runtime(`const compare = String.prototype.localeCompare; checkpoint(); compare.call('2','10','en-US',{numeric:true});`).start({capabilities,snapshotKey});
   assert.equal(Progress.load(first.dump(), {capabilities,snapshotKey,limits:{}}).resume(undefined), -1);
 });
+
+test('number locale formatting matches decimal half-expand rounding and currency defaults', async () => {
+  const numbers = [NaN, Infinity, -Infinity, 0, -0, 1, -1, 1.005, -1.005, 2.675, 9.995, 99.95,
+    .00005, -.00005, 0.1 + 0.2, 1e-7, 5e-324, 1e20, 1e21, 1000000000000000128,
+    Number.MAX_VALUE, -Number.MAX_VALUE, 1234.56789, 0.9999999999999999];
+  const profiles = [{}, {useGrouping:false}, {minimumFractionDigits:5}, {maximumFractionDigits:0},
+    {maximumFractionDigits:2}, {minimumFractionDigits:20}, {maximumFractionDigits:100},
+    {minimumFractionDigits:100}, {style:'percent'}, {style:'percent',maximumFractionDigits:2},
+    {style:'percent',minimumFractionDigits:5}, {style:'currency',currency:'usd'},
+    {style:'currency',currency:'EUR',minimumFractionDigits:4},
+    {style:'currency',currency:'BHD',maximumFractionDigits:1},
+    {style:'currency',currency:'JPY',minimumFractionDigits:2}, {currency:'EUR'}];
+  for (const options of profiles) {
+    assert.deepEqual(await runtime(`numbers.map(n=>n.toLocaleString('en-US', options));`).run({inputs:{numbers,options}}), numbers.map(n=>n.toLocaleString('en-US',options)), JSON.stringify(options));
+  }
+  // All non-default CLDR minor units and all non-code en-US symbols, plus fallback.
+  const currencies = ['USD','EUR','GBP','CAD','AUD','CNY','BRL','HKD','ILS','INR','MXN','NZD','PHP','TWD',
+    'XCD','XCG','XXX','XYZ','ADP','AFN','ALL','BHD','BIF','BYR','CLF','CLP','DJF','ESP','GNF','IQD','IRR',
+    'ISK','ITL','JOD','JPY','KMF','KPW','KRW','KWD','LAK','LBP','LUF','LYD','MGA','MGF','MMK','MRO','OMR',
+    'PYG','RSD','RWF','SLL','SOS','STD','SYP','TMM','TND','TRL','UGX','UYI','UYW','VND','VUV','XAF','XOF',
+    'XPF','YER','ZMK','ZWD','COP','HUF','IDR','PKR'];
+  for (const currency of currencies) {
+    const formatter = new Intl.NumberFormat('en-US',{style:'currency',currency});
+    const result = await runtime(`const f = new Intl.NumberFormat('en-US',{style:'currency',currency});
+      [f.resolvedOptions().minimumFractionDigits, f.resolvedOptions().maximumFractionDigits, numbers.map(n=>f.format(n))];`).run({inputs:{currency,numbers}});
+    assert.deepEqual(result, [formatter.resolvedOptions().minimumFractionDigits, formatter.resolvedOptions().maximumFractionDigits, numbers.map(n=>formatter.format(n))],currency);
+  }
+  const source = `JSON.stringify([new Number(42).toLocaleString(), Number.prototype.toLocaleString(),
+    Number.prototype.toLocaleString.call(-0), (1).toLocaleString.name, (1).toLocaleString.length,
+    Number.prototype.hasOwnProperty('toLocaleString'), 'toLocaleString' in new Number(0),
+    (1).toLocaleString('en-US', {minimumFractionDigits:2.9}),
+    (1).toLocaleString('en-US', {maximumFractionDigits:'4'})]);`;
+  assert.equal(await runtime(source).run(),require('node:vm').runInNewContext(source));
+});
+
+test('number formatting rejects unsupported profiles, budgets coercion and restores snapshots', async () => {
+  for (const source of [
+    `Number.prototype.toLocaleString.call('42');`, `Number.prototype.toLocaleString.call(42n);`,
+    `(1).toLocaleString('fr-FR');`, `(1).toLocaleString('en-US', null);`,
+    `(1).toLocaleString('en-US', {style:'currency'});`, `(1).toLocaleString('en-US', {currency:'€UR'});`,
+    `(1).toLocaleString('en-US', {maximumFractionDigits:NaN});`,
+    `(1).toLocaleString('en-US', {maximumFractionDigits:101});`,
+    `(1).toLocaleString('en-US', {minimumFractionDigits:-1});`,
+    `(1).toLocaleString('en-US', {minimumFractionDigits:3,maximumFractionDigits:2});`,
+    `(1).toLocaleString('en-US', {currencyDisplay:'name'});`,
+    `Intl.NumberFormat().format(1n);`,
+  ]) await assert.rejects(runtime(source).run(),/TypeError|RangeError/,source);
+  await assert.rejects(runtime(`Intl.NumberFormat().format(text);`).run({inputs:{text:'0'.repeat(10000)},limits:{instructionBudget:1000}}), /instruction budget/);
+  const capabilities = {checkpoint() {}};
+  const snapshotKey = Buffer.from('language-completion-number-format');
+  const first = runtime(`const f=Intl.NumberFormat('en-US',{style:'currency',currency:'CLF'});
+    const locale=Number.prototype.toLocaleString; checkpoint();
+    [f.format(1.23456), locale.call(-1.005,'en-US',{style:'currency',currency:'EUR'})];`).start({capabilities,snapshotKey});
+  assert.deepEqual(Progress.load(first.dump(),{capabilities,snapshotKey,limits:{}}).resume(undefined), ['CLF 1.2346','-€1.01']);
+});

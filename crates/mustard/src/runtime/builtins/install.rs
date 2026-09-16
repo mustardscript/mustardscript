@@ -301,6 +301,9 @@ impl Runtime {
             BuiltinFunction::BooleanToString => self.call_boolean_to_string(this_value),
             BuiltinFunction::BooleanValueOf => self.call_boolean_value_of(this_value),
             BuiltinFunction::NumberToString => self.call_number_to_string(this_value, args),
+            BuiltinFunction::NumberToLocaleString => {
+                self.call_number_to_locale_string(this_value, args)
+            }
             BuiltinFunction::NumberValueOf => self.call_number_value_of(this_value),
             BuiltinFunction::NumberToFixed => self.call_number_to_fixed(this_value, args),
             BuiltinFunction::NumberToExponential => {

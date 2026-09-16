@@ -586,6 +586,7 @@ impl Runtime {
             BuiltinFunction::BooleanCtor => "Boolean",
             BuiltinFunction::BooleanToString => "toString",
             BuiltinFunction::BooleanValueOf => "valueOf",
+            BuiltinFunction::NumberToLocaleString => "toLocaleString",
             BuiltinFunction::NumberToString => "toString",
             BuiltinFunction::NumberValueOf => "valueOf",
             BuiltinFunction::NumberToFixed => "toFixed",
@@ -856,6 +857,7 @@ impl Runtime {
             BuiltinFunction::BooleanCtor => 1,
             BuiltinFunction::BooleanToString => 0,
             BuiltinFunction::BooleanValueOf => 0,
+            BuiltinFunction::NumberToLocaleString => 0,
             BuiltinFunction::NumberToString => 0,
             BuiltinFunction::NumberValueOf => 0,
             BuiltinFunction::NumberToFixed => 1,
@@ -1005,6 +1007,11 @@ impl Runtime {
         property: Value,
     ) -> MustardResult<bool> {
         let key = self.to_property_key(property)?;
+        if key == "toLocaleString"
+            && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::NumberCtor)))))
+        {
+            return Ok(true);
+        }
         if Self::date_prototype_method(&key).is_some()
             && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::DateCtor)))))
         {
@@ -1077,6 +1084,7 @@ impl Runtime {
                                         | "toFixed"
                                         | "toExponential"
                                         | "toPrecision"
+                                        | "toLocaleString"
                                 )
                             )
                     }
@@ -1156,6 +1164,7 @@ impl Runtime {
                                 | "toFixed"
                                 | "toExponential"
                                 | "toPrecision"
+                                | "toLocaleString"
                         )
                     }
                     ObjectKind::BooleanObject(_) => {
@@ -2113,6 +2122,11 @@ impl Runtime {
                                 BuiltinFunction::NumberToExponential,
                             ));
                         }
+                        "toLocaleString" => {
+                            return Ok(Value::BuiltinFunction(
+                                BuiltinFunction::NumberToLocaleString,
+                            ));
+                        }
                         "toPrecision" => {
                             return Ok(Value::BuiltinFunction(BuiltinFunction::NumberToPrecision));
                         }
@@ -2245,6 +2259,11 @@ impl Runtime {
                             "toExponential" => {
                                 return Ok(Value::BuiltinFunction(
                                     BuiltinFunction::NumberToExponential,
+                                ));
+                            }
+                            "toLocaleString" => {
+                                return Ok(Value::BuiltinFunction(
+                                    BuiltinFunction::NumberToLocaleString,
                                 ));
                             }
                             "toPrecision" => {
@@ -2449,6 +2468,9 @@ impl Runtime {
                 "valueOf" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberValueOf)),
                 "toFixed" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToFixed)),
                 "toExponential" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToExponential)),
+                "toLocaleString" => Ok(Value::BuiltinFunction(
+                    BuiltinFunction::NumberToLocaleString,
+                )),
                 "toPrecision" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToPrecision)),
                 _ => Ok(Value::Undefined),
             },

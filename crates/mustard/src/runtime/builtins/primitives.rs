@@ -22,7 +22,11 @@ fn math_random_f64() -> f64 {
 }
 
 impl Runtime {
-    fn number_receiver(&self, value: Value, method: &str) -> MustardResult<f64> {
+    pub(in crate::runtime) fn number_receiver(
+        &self,
+        value: Value,
+        method: &str,
+    ) -> MustardResult<f64> {
         match value {
             Value::Number(value) => Ok(value),
             Value::Object(object) => match &self
@@ -32,6 +36,9 @@ impl Runtime {
                 .kind
             {
                 ObjectKind::NumberObject(value) => Ok(*value),
+                ObjectKind::FunctionPrototype(Value::BuiltinFunction(
+                    BuiltinFunction::NumberCtor,
+                )) => Ok(0.0),
                 _ => Err(MustardError::runtime(format!(
                     "TypeError: Number.prototype.{method} called on incompatible receiver",
                 ))),

@@ -553,7 +553,7 @@ test('Number prototype formatting helpers fail closed for invalid receivers and 
 test('unsupported static and prototype member calls report the missing supported surface', async () => {
   for (const [source, message] of [
     ['"x".normalize("unsupported");', 'RangeError: normalization form must be NFC, NFD, NFKC, or NFKD'],
-    ['(1).toLocaleString();', 'TypeError: Number.prototype.toLocaleString is not supported'],
+    ['(1).toLocaleString("fr-FR");', 'TypeError: Intl currently supports only the `en-US` locale'],
     ['[].groupBy();', 'TypeError: Array.prototype.groupBy is not supported'],
     ['new Date(0).toLocaleString("fr-FR");', 'TypeError: Intl currently supports only the `en-US` locale'],
     ['Array.fromAsync([], 1);', 'TypeError: Array.fromAsync expects a callable map function'],
@@ -1618,10 +1618,10 @@ test('Intl and new helper additions fail closed for unsupported options and inva
   );
 
   await assert.rejects(
-    () => runtime('Intl.NumberFormat("en-US", { style: "currency", currency: "EUR" });').run(),
+    () => runtime('Intl.NumberFormat("en-US", { style: "currency", currency: "EU" });').run(),
     isMustardError({
       kind: 'Runtime',
-      message: 'Intl.NumberFormat currency style currently supports only `USD`',
+      message: 'Intl.NumberFormat currency must be a three-letter code',
       guestSafe: true,
     }),
   );

@@ -19,6 +19,7 @@ pub(in crate::runtime) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> Mus
         ));
     }
 
+    validate_intl_number_formats(runtime)?;
     validate_envs(runtime)?;
     validate_closures(runtime)?;
     validate_builtin_function_objects(runtime)?;
@@ -586,4 +587,24 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> MustardResult<()>
         )),
         _ => Ok(()),
     }
+}
+
+fn validate_intl_number_formats(runtime: &Runtime) -> MustardResult<()> {
+    for object in runtime.objects.values() {
+        if let ObjectKind::IntlNumberFormat(formatter) = &object.kind {
+            let currency_valid = formatter
+                .currency
+                .as_ref()
+                .is_none_or(|code| code.len() == 3 && code.bytes().all(|b| b.is_ascii_uppercase()));
+            if formatter.locale != "en-US"
+                || formatter.maximum_fraction_digits > 100
+                || formatter.minimum_fraction_digits > formatter.maximum_fraction_digits
+                || !currency_valid
+                || (formatter.style == IntlNumberStyle::Currency && formatter.currency.is_none())
+            {
+                return Err(snapshot_error("invalid Intl.NumberFormat configuration"));
+            }
+        }
+    }
+    Ok(())
 }

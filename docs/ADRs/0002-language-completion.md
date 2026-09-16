@@ -95,3 +95,21 @@ Sensitivity maps to ICU strength/case-level as documented by
 The supported options implement the sorting portion of
 [ECMA-402 localeCompare](https://tc39.es/ecma402/#sec-string.prototype.localecompare);
 unsupported locale/search profiles reject rather than silently approximate.
+
+## Number formatting and currency data
+
+Use compact tables derived from Unicode CLDR 48.2.1, pinned at commit
+`26a79cb42bfcc90def764102aa2af126d9ef3108`, with Unicode-3.0 notices included in
+Rust and npm distributions. Sources are the standard (not cash) fraction digits
+in [currencyData.json](https://github.com/unicode-org/cldr-json/blob/26a79cb42bfcc90def764102aa2af126d9ef3108/cldr-json/cldr-core/supplemental/currencyData.json)
+and default English symbols in [currencies.json](https://github.com/unicode-org/cldr-json/blob/26a79cb42bfcc90def764102aa2af126d9ef3108/cldr-json/cldr-numbers-full/main/en/currencies.json).
+Do not derive precision from a currency symbol or silently assume every currency
+has two decimals. Well-formed unknown codes retain the ECMA-402 two-digit fallback.
+
+The bounded binary64 formatter rounds its shortest decimal representation with
+half-expand and shifts percent in decimal, avoiding Rust's binary half-even
+formatting and intermediate percent overflow. This follows the supported Number
+portion of [ECMA-402 number formatting](https://tc39.es/ecma402/#sec-formatnumeric).
+It intentionally does not add arbitrary-precision Intl string/BigInt inputs or
+new Intl option families. Formatter fields keep their serialized layout, while
+snapshot validation now bounds digit counts and checks currency configuration.
