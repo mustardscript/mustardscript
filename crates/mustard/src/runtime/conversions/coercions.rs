@@ -57,11 +57,26 @@ impl Runtime {
         })
     }
 
+    pub(in crate::runtime) fn coerce_number(&mut self, value: Value) -> MustardResult<f64> {
+        let work = match &value {
+            Value::String(text) => text.len(),
+            Value::Object(id) => match &self
+                .objects
+                .get(*id)
+                .ok_or_else(|| MustardError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::StringObject(text) => text.len(),
+                _ => 0,
+            },
+            _ => 0,
+        };
+        self.charge_native_helper_work(work)?;
+        self.to_number(value)
+    }
+
     pub(in crate::runtime) fn coerce_uint32(&mut self, value: Value) -> MustardResult<u32> {
-        if let Value::String(text) = &value {
-            self.charge_native_helper_work(text.len())?;
-        }
-        let value = self.to_number(value)?;
+        let value = self.coerce_number(value)?;
         Ok(if !value.is_finite() || value == 0.0 {
             0
         } else {

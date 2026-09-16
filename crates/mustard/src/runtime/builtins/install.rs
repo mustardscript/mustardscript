@@ -270,6 +270,21 @@ impl Runtime {
             BuiltinFunction::MathHypot => self.call_math_hypot(args),
             BuiltinFunction::MathCbrt => self.call_math_cbrt(args),
             BuiltinFunction::MathRandom => Ok(self.call_math_random()),
+            BuiltinFunction::MathTan
+            | BuiltinFunction::MathAsin
+            | BuiltinFunction::MathAcos
+            | BuiltinFunction::MathAtan
+            | BuiltinFunction::MathSinh
+            | BuiltinFunction::MathCosh
+            | BuiltinFunction::MathTanh
+            | BuiltinFunction::MathAsinh
+            | BuiltinFunction::MathAcosh
+            | BuiltinFunction::MathAtanh
+            | BuiltinFunction::MathClz32
+            | BuiltinFunction::MathImul
+            | BuiltinFunction::MathFround
+            | BuiltinFunction::MathLog1p
+            | BuiltinFunction::MathExpm1 => self.call_math_completion(function, args),
             BuiltinFunction::JsonStringify => self.call_json_stringify(args),
             BuiltinFunction::JsonParse => self.call_json_parse(args),
             BuiltinFunction::EncodeURI => self.call_uri_codec(args, true, false),
@@ -475,6 +490,66 @@ impl Runtime {
 
         let math = self.insert_object(
             IndexMap::from([
+                (
+                    "tan".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathTan),
+                ),
+                (
+                    "asin".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAsin),
+                ),
+                (
+                    "acos".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAcos),
+                ),
+                (
+                    "atan".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAtan),
+                ),
+                (
+                    "sinh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathSinh),
+                ),
+                (
+                    "cosh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathCosh),
+                ),
+                (
+                    "tanh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathTanh),
+                ),
+                (
+                    "asinh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAsinh),
+                ),
+                (
+                    "acosh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAcosh),
+                ),
+                (
+                    "atanh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAtanh),
+                ),
+                (
+                    "clz32".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathClz32),
+                ),
+                (
+                    "imul".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathImul),
+                ),
+                (
+                    "fround".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathFround),
+                ),
+                (
+                    "log1p".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathLog1p),
+                ),
+                (
+                    "expm1".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathExpm1),
+                ),
                 ("E".to_string(), Value::Number(std::f64::consts::E)),
                 ("LN2".to_string(), Value::Number(std::f64::consts::LN_2)),
                 ("LN10".to_string(), Value::Number(std::f64::consts::LN_10)),

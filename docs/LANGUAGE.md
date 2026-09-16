@@ -803,3 +803,14 @@ TypeError. Conversion work and temporary allocation are bounded.
 receiver's guest BigInt. BigInts remain guest-internal: `Number(1n)`, JSON encoding,
 Object boxing and the structured host boundary retain their explicit rejections.
 Convert an integer to a string before returning it to a host capability or caller.
+
+### Additional Math helpers
+
+The Math surface includes `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`,
+`asinh`, `acosh`, `atanh`, `clz32`, `imul`, `fround`, `log1p`, and `expm1`.
+`imul` wraps a 32-bit product; `clz32` counts leading zero bits after ToUint32;
+`fround` rounds through IEEE-754 binary32 while preserving signed zero and
+infinities. The near-zero functions use dedicated numerical operations, not
+`log(1 + x)`/`exp(x) - 1`. Domain errors return NaN/infinity as appropriate, and
+BigInt operands throw TypeError. Transcendental results retain the existing native
+floating-point accuracy profile; string numeric coercion is metered.

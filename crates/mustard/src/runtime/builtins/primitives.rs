@@ -565,6 +565,54 @@ impl Runtime {
         ))
     }
 
+    pub(crate) fn call_math_completion(
+        &mut self,
+        function: BuiltinFunction,
+        args: &[Value],
+    ) -> MustardResult<Value> {
+        let first = args.first().cloned().unwrap_or(Value::Undefined);
+        if function == BuiltinFunction::MathClz32 {
+            return Ok(Value::Number(
+                self.coerce_uint32(first)?.leading_zeros() as f64
+            ));
+        }
+        if function == BuiltinFunction::MathImul {
+            let left = self.coerce_uint32(first)?;
+            let right = self.coerce_uint32(args.get(1).cloned().unwrap_or(Value::Undefined))?;
+            return Ok(Value::Number(left.wrapping_mul(right) as i32 as f64));
+        }
+        let value = self.coerce_number(first)?;
+        Ok(Value::Number(match function {
+            BuiltinFunction::MathTan => value.tan(),
+            BuiltinFunction::MathAsin => value.asin(),
+            BuiltinFunction::MathAcos => value.acos(),
+            BuiltinFunction::MathAtan => value.atan(),
+            BuiltinFunction::MathSinh => value.sinh(),
+            BuiltinFunction::MathCosh => value.cosh(),
+            BuiltinFunction::MathTanh => value.tanh(),
+            // Some platform libm implementations overflow their intermediate
+            // 2*x for finite inputs near MAX_VALUE. Above 2^28 the correction
+            // to ln(2*x) is below one ulp; this form cannot overflow.
+            BuiltinFunction::MathAsinh if value.abs() > 268_435_456.0 => {
+                (value.abs().ln() + std::f64::consts::LN_2).copysign(value)
+            }
+            BuiltinFunction::MathAcosh if value > 268_435_456.0 => {
+                value.ln() + std::f64::consts::LN_2
+            }
+            BuiltinFunction::MathAcosh if (1.0..=2.0).contains(&value) => {
+                let delta = value - 1.0;
+                (delta + (delta * delta + 2.0 * delta).sqrt()).ln_1p()
+            }
+            BuiltinFunction::MathAsinh => value.asinh(),
+            BuiltinFunction::MathAcosh => value.acosh(),
+            BuiltinFunction::MathAtanh => value.atanh(),
+            BuiltinFunction::MathFround => (value as f32) as f64,
+            BuiltinFunction::MathLog1p => value.ln_1p(),
+            BuiltinFunction::MathExpm1 => value.exp_m1(),
+            _ => return Err(MustardError::runtime("invalid internal Math helper")),
+        }))
+    }
+
     pub(crate) fn call_math_sin(&self, args: &[Value]) -> MustardResult<Value> {
         Ok(Value::Number(
             self.to_number(args.first().cloned().unwrap_or(Value::Undefined))?

@@ -628,6 +628,21 @@ pub(super) enum BuiltinFunction {
     BigIntCtor,
     BigIntToString,
     BigIntValueOf,
+    MathTan,
+    MathAsin,
+    MathAcos,
+    MathAtan,
+    MathSinh,
+    MathCosh,
+    MathTanh,
+    MathAsinh,
+    MathAcosh,
+    MathAtanh,
+    MathClz32,
+    MathImul,
+    MathFround,
+    MathLog1p,
+    MathExpm1,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

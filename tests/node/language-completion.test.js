@@ -419,3 +419,26 @@ test('converted BigInts retain exact value across snapshots', () => {
   const restored = Progress.load(first.dump(), {capabilities, snapshotKey, limits: {}});
   assert.equal(restored.resume(undefined), '10000000000000000000000000000000000000001');
 });
+
+test('remaining Math helpers preserve special values and numerical accuracy', async () => {
+  const names = ['tan', 'asin', 'acos', 'atan', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'fround', 'clz32', 'log1p', 'expm1'];
+  const values = [undefined, null, false, true, 0, -0, 1, -1, 0.5, -0.5, 1 + Number.EPSILON,
+    1e-20, -1e-20, 1e-100, -1e-100, 1e200, -1e200, 1000, -1000, Number.MAX_VALUE,
+    Number.MIN_VALUE, NaN, Infinity, -Infinity, '0x10', '  ', 'bad', 16777217, 4294967295];
+  const actual = await runtime('names.map(name => values.map(value => Math[name](value)));').run({inputs: {names, values}});
+  for (let row = 0; row < names.length; row++) {
+    for (let col = 0; col < values.length; col++) {
+      const expected = Math[names[row]](values[col]);
+      const value = actual[row][col];
+      const label = `${names[row]}(${String(values[col])})`;
+      if (Number.isNaN(expected)) assert.ok(Number.isNaN(value), label);
+      else if (!Number.isFinite(expected) || expected === 0 || ['fround', 'clz32'].includes(names[row])) assert.ok(Object.is(value, expected), label);
+      else assert.ok(Math.abs(value - expected) <= Math.max(4 * Number.MIN_VALUE, Math.abs(expected) * 32 * Number.EPSILON), `${label}: ${value} vs ${expected}`);
+    }
+  }
+  const pairs = [0, -1, 1, 0xffffffff, 0x80000000, 2 ** 32 + 1, Infinity, 1.9, '0xff'];
+  assert.deepEqual(await runtime('values.flatMap(a => values.map(b => Math.imul(a,b)));').run({inputs: {values:pairs}}), pairs.flatMap(a => pairs.map(b => Math.imul(a,b))));
+  assert.equal(await runtime(`let hash = 0x811c9dc5; const text = 'hello'; for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619); hash >>> 0;`).run(), 1335831723);
+  for (const source of ['Math.imul(1n,1);', 'Math.clz32(0n);', 'Math.fround(1n);', 'Math.acos(0n);']) await assert.rejects(runtime(source).run(), /TypeError/);
+  await assert.rejects(runtime('Math.fround(text);').run({inputs: {text: '0'.repeat(10000)}, limits: {instructionBudget: 200}}), /instruction budget/);
+});

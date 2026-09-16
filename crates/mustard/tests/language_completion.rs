@@ -522,3 +522,30 @@ fn bigint_conversion_is_exact_budgeted_and_guest_internal() {
         assert!(error.to_string().contains(name), "{source}: {error}");
     }
 }
+
+#[test]
+fn remaining_math_helpers_handle_precision_domains_and_integer_wraparound() {
+    assert_eq!(
+        run(r#"
+        let hash = 0x811c9dc5; const text = 'hello';
+        for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+        JSON.stringify([Math.clz32(0), Math.clz32(1), Math.clz32(-1), Math.clz32('0x10'),
+          Math.imul(0xffffffff, 5), Math.imul(0xffffffff, 0xffffffff), Math.imul(),
+          Math.fround(16777217), Object.is(Math.fround(-1e-100), -0),
+          Math.log1p(1e-20) / 1e-20, Math.expm1(1e-20) / 1e-20,
+          Number.isNaN(Math.asin(2)), Number.isNaN(Math.acosh(0)),
+          Math.sinh(0), Math.cosh(0), Math.tanh(Infinity), Math.atanh(1) === Infinity,
+          Object.is(Math.tan(-0), -0), Object.is(Math.asinh(-0), -0), hash >>> 0]);
+    "#),
+        r#"[32,31,0,27,-5,1,0,16777216,true,1,1,true,true,0,1,1,true,true,true,1335831723]"#.into()
+    );
+    for source in [
+        "Math.imul(1n, 1);",
+        "Math.clz32(0n);",
+        "Math.fround(1n);",
+        "Math.acos(0n);",
+    ] {
+        let error = execute(&compile(source).unwrap(), ExecutionOptions::default()).unwrap_err();
+        assert!(error.to_string().contains("TypeError"));
+    }
+}

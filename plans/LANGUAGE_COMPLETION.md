@@ -25,7 +25,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 15. Bitwise/shift operators and assignments
 - [x] 16. BigInt conversion
 - [ ] 17. Set algebra
-- [ ] 18. Remaining Math helpers
+- [x] 18. Remaining Math helpers
 - [ ] 19. Labeled break and continue
 - [ ] 20. Promise.withResolvers and Array.fromAsync
 
@@ -183,3 +183,12 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm run build`, full Node suite and
   `npm run lint`; tests compare Node for exact large values and all supported
   radices, cover prototype receiver errors, limits, host rejection and snapshots.
+
+### Remaining Math helpers
+
+- Added inverse/hyperbolic trigonometry, clz32, imul, fround, log1p and expm1.
+  Guarded platform inverse-hyperbolic overflow and cancellation near acosh(1),
+  and metered primitive/boxed string numeric coercion.
+- Passed: `cargo test --workspace`, `npm run build`, full Node suite and
+  `npm run lint`. Tests compare Node across subnormals, signed zeros, NaN,
+  infinities, rounding boundaries, maximal finite values and integer wraparound.
