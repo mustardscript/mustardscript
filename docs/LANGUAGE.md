@@ -279,6 +279,22 @@ rejected.
   / `for...in` skip missing indices, array iteration treats holes as
   `undefined`, and `JSON.stringify` renders holes as `null`.
 - Non-index array properties are ignored by `JSON.stringify`.
+- `JSON.stringify(value, replacer, space)` supports callable replacers, ordered
+  string/number property lists (including boxed values), and numeric/string
+  indentation capped at ten characters. It invokes supported `toJSON` methods
+  before the replacer and unboxes primitive wrappers afterwards. Replacer calls
+  receive `(key, value)` with the containing object as `this`, including the root
+  holder under key `""`. Keys/array length are snapshotted, but values are read
+  live so callback mutations are observable.
+- `JSON.parse(text, reviver)` invokes callable revivers in postorder with the
+  containing object as `this`. Returning `undefined` removes a property or leaves
+  an array hole; the root result can be replaced or removed. Invalid JSON throws
+  guest `SyntaxError`. Non-callable revivers follow ECMAScript's ignore rule.
+- JSON callbacks propagate guest exceptions and reject synchronous host
+  suspension. Traversals meter work, protect live values from GC during callbacks,
+  and reject nesting deeper than 128. The existing Unicode-scalar string contract
+  also applies to indentation-string truncation; arbitrary UTF-16 strings are not
+  silently approximated.
 - `JSON.stringify` omits object properties whose values are `undefined` or
   callable, serializes those values as `null` inside arrays, returns
   `undefined` for top-level `undefined` or callable inputs, serializes

@@ -1471,6 +1471,8 @@ pub(super) struct Runtime {
     #[serde(skip, default)]
     pub(super) pending_sync_callback_result: Option<Value>,
     #[serde(skip, default)]
+    pub(super) native_callback_host_suspension_message: Option<String>,
+    #[serde(skip, default)]
     pub(super) snapshot_policy_required: bool,
     pub(super) pending_resume_behavior: ResumeBehavior,
 }

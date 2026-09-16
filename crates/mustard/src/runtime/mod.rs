@@ -145,6 +145,7 @@ impl Runtime {
             regex_cache: HashMap::new(),
             pending_internal_exception: None,
             pending_sync_callback_result: None,
+            native_callback_host_suspension_message: None,
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         }
@@ -197,6 +198,7 @@ impl Runtime {
             regex_cache: HashMap::new(),
             pending_internal_exception: None,
             pending_sync_callback_result: None,
+            native_callback_host_suspension_message: None,
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         }

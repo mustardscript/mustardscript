@@ -945,6 +945,19 @@ impl Runtime {
         target_depth: usize,
         host_suspension_message: &str,
     ) -> MustardResult<()> {
+        let previous = self
+            .native_callback_host_suspension_message
+            .replace(host_suspension_message.to_string());
+        let result = self.run_until_frame_depth_inner(target_depth, host_suspension_message);
+        self.native_callback_host_suspension_message = previous;
+        result
+    }
+
+    fn run_until_frame_depth_inner(
+        &mut self,
+        target_depth: usize,
+        host_suspension_message: &str,
+    ) -> MustardResult<()> {
         let program = Arc::clone(&self.program);
         while self.frames.len() > target_depth {
             self.check_cancellation()?;
@@ -1098,6 +1111,13 @@ impl Runtime {
                 self.call_callable(bound.target, bound.this_value, &combined)
             }
             Value::HostFunction(capability) => {
+                // A synchronous native callback cannot serialize the Rust
+                // traversal stack. Reject before suspension takes the VM state.
+                if self.current_async_boundary_index().is_none()
+                    && let Some(message) = &self.native_callback_host_suspension_message
+                {
+                    return Err(MustardError::runtime(message.clone()));
+                }
                 let resume_behavior = resume_behavior_for_capability(&capability);
                 let args = args
                     .iter()
@@ -1273,7 +1293,7 @@ impl Runtime {
         )?))
     }
 
-    fn is_callable_value(&self, value: &Value) -> MustardResult<bool> {
+    pub(super) fn is_callable_value(&self, value: &Value) -> MustardResult<bool> {
         Ok(match value {
             Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => true,
             Value::Object(object) => matches!(

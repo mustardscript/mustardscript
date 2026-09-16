@@ -6,6 +6,7 @@ mod arrays;
 mod collections;
 mod install;
 mod intl;
+mod json;
 mod objects;
 mod primitives;
 mod promises;

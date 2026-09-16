@@ -82,3 +82,89 @@ fn deletion_evaluates_references_once_and_preserves_strict_failures() {
         assert!(error.to_string().contains("TypeError"), "{source}: {error}");
     }
 }
+
+#[test]
+fn json_options_transform_values_in_specified_traversal_order() {
+    assert_eq!(
+        run(r#"JSON.stringify({b: [1, {a: 2}], a: 3}, ["a", "b", "a"], 2);"#),
+        "{\n  \"a\": 3,\n  \"b\": [\n    1,\n    {\n      \"a\": 2\n    }\n  ]\n}".into()
+    );
+    assert_eq!(
+        run(r#"
+        const seen = [];
+        const object = { a: 1, b: 2, c: 3 };
+        const text = JSON.stringify(object, function(key, value) {
+            seen.push(key);
+            if (key === "a") { delete this.b; this.c = 4; }
+            if (typeof value === "number") return value * 2;
+            return value;
+        });
+        JSON.stringify([text, seen]);
+    "#),
+        r#"["{\"a\":2,\"c\":8}",["","a","b","c"]]"#.into()
+    );
+    assert_eq!(
+        run(r#"
+        const seen = [];
+        const value = JSON.parse('{"a":[1,2],"b":3}', function(key, value) {
+            seen.push(key);
+            if (key === "0" || key === "b") return undefined;
+            return typeof value === "number" ? value * 3 : value;
+        });
+        JSON.stringify([value, seen, 0 in value.a, Object.keys(value)]);
+    "#),
+        r#"[{"a":[null,6]},["0","1","a","b",""],false,["a"]]"#.into()
+    );
+    assert_eq!(
+        run("JSON.parse('1', () => undefined);"),
+        StructuredValue::Undefined
+    );
+    assert_eq!(
+        run(
+            "(() => { try { JSON.parse('{'); } catch (error) { return error instanceof SyntaxError; } })()"
+        ),
+        true.into()
+    );
+}
+
+#[test]
+fn json_preserves_unicode_chunks_to_json_and_boxed_primitives() {
+    assert_eq!(
+        run(r#"
+        const text = "🙂a".repeat(200);
+        JSON.parse(JSON.stringify(text)) === text;
+    "#),
+        true.into()
+    );
+    assert_eq!(
+        run(r#"
+        JSON.stringify({a: {toJSON(key) { return key; }}, b: new Number(2), c: new String("x"), d: new Boolean(false)});
+    "#),
+        r#"{"a":"a","b":2,"c":"x","d":false}"#.into()
+    );
+    let error = execute(&compile("let value = {}; for (let i = 0; i < 150; i++) value = {value}; JSON.stringify(value, null, 2);").unwrap(), ExecutionOptions::default()).unwrap_err();
+    assert!(error.to_string().contains("nesting depth limit"));
+}
+
+#[test]
+fn json_callback_host_suspensions_fail_before_transferring_vm_state() {
+    for source in [
+        "JSON.stringify({x:1}, () => checkpoint());",
+        "JSON.parse('1', () => checkpoint());",
+    ] {
+        let error = execute(
+            &compile(source).unwrap(),
+            ExecutionOptions {
+                capabilities: vec!["checkpoint".into()],
+                ..ExecutionOptions::default()
+            },
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("JSON callbacks do not support synchronous host suspensions"),
+            "{error}"
+        );
+    }
+}

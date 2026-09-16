@@ -8,7 +8,7 @@ language docs, tests, and comparative runtime probes before implementation.
 
 ## Verified milestones
 
-- [ ] 1. JSON replacer, reviver, and indentation
+- [x] 1. JSON replacer, reviver, and indentation
 - [x] 2. Object and array property deletion
 - [x] 3. `typeof` unresolvable identifiers, preserving TDZ and ambient policy
 - [ ] 4. Error constructors, parse-error types, and guest-safe stack properties
@@ -70,3 +70,15 @@ language docs, tests, and comparative runtime probes before implementation.
   mutation-guard tests (7 tests).
 - Updated stale hardening assumptions: default parameters already work, and
   snapshot load requires policy and claims single-use before resume.
+
+### JSON options and callback safety
+
+- Rust JSON module implements replacer functions/property lists, indentation,
+  toJSON, boxed primitives, postorder revivers with true deletion, SyntaxError,
+  live callback mutations, GC roots, depth/IO/work budgets and UTF-8-safe chunking.
+- Fixed the shared synchronous callback runner to reject host suspension before
+  the VM state can be transferred into a snapshot. Callback diagnostics survive.
+- Passed: `cargo test --workspace`, `npm test` (672 Node tests passed, 1 skipped;
+  type checks and 2 package-smoke tests passed), `npm run lint`. Focused tests
+  include Node comparisons, callback exceptions, suspension rejection, GC pressure,
+  instruction limits, Unicode IO, cycles and nesting limits.
