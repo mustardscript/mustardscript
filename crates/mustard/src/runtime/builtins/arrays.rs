@@ -44,6 +44,7 @@ impl Runtime {
                 return Err(MustardError::runtime("RangeError: Invalid array length"));
             }
             let length = length as usize;
+            self.ensure_array_slot_capacity(length)?;
             return Ok(Value::Array(
                 self.insert_sparse_array(vec![None; length], IndexMap::new())?,
             ));
@@ -112,6 +113,11 @@ impl Runtime {
             requested as usize
         };
 
+        let old_length = self.array_length(array)?;
+        if new_length > old_length {
+            self.ensure_array_slot_capacity(new_length - old_length)?;
+        }
+        self.charge_native_helper_work(old_length.abs_diff(new_length))?;
         let empty_slot_bytes = Self::array_slot_bytes(None);
         let (old_component_bytes, new_component_bytes) = {
             let array_ref = self
@@ -159,11 +165,14 @@ impl Runtime {
     }
 
     pub(crate) fn call_array_from(&mut self, args: &[Value]) -> MustardResult<Value> {
-        let iterable = args.first().cloned().unwrap_or(Value::Undefined);
-        let length_hint = self.iterable_length_hint(&iterable)?;
+        self.with_temporary_roots(args, |runtime| runtime.array_from_inner(args))
+    }
+
+    fn array_from_inner(&mut self, args: &[Value]) -> MustardResult<Value> {
+        let source = args.first().cloned().unwrap_or(Value::Undefined);
         let map_fn = match args.get(1).cloned() {
             Some(Value::Undefined) | None => None,
-            Some(value) if is_callable(&value) => Some(value),
+            Some(value) if self.is_callable_value(&value)? => Some(value),
             Some(_) => {
                 return Err(MustardError::runtime(
                     "TypeError: Array.from expects a callable map function",
@@ -171,76 +180,86 @@ impl Runtime {
             }
         };
         let this_arg = args.get(2).cloned().unwrap_or(Value::Undefined);
-        let iterator = self.create_iterator(iterable.clone())?;
-        let result = match length_hint {
-            Some(length) => self.insert_sparse_array(vec![None; length], IndexMap::new())?,
-            None => self.insert_array(Vec::new(), IndexMap::new())?,
-        };
-        let mut roots = vec![iterable, iterator.clone(), Value::Array(result)];
-        if let Some(map_fn) = &map_fn {
-            roots.push(map_fn.clone());
-            roots.push(this_arg.clone());
-        }
-        self.with_temporary_roots(&roots, |runtime| {
-            let mut index = 0usize;
-            loop {
-                runtime.charge_native_helper_work(1)?;
-                let (value, done) = runtime.iterator_next(iterator.clone())?;
-                if done {
-                    break;
-                }
-                let mapped = if let Some(map_fn) = &map_fn {
-                    runtime.with_temporary_roots(
-                        &[
-                            iterator.clone(),
-                            Value::Array(result),
-                            map_fn.clone(),
-                            this_arg.clone(),
-                            value.clone(),
-                        ],
-                        |runtime| {
-                            runtime.call_callback(
-                                map_fn.clone(),
-                                this_arg.clone(),
-                                &[value.clone(), Value::Number(index as f64)],
-                                CallbackCallOptions {
-                                    non_callable_message:
-                                        "TypeError: Array.from expects a callable map function",
-                                    host_suspension_message:
-                                        "TypeError: Array.from mapping does not support host suspensions",
-                                    unsettled_message:
-                                        "synchronous Array.from mapping did not settle",
-                                    allow_host_suspension: false,
-                                    allow_pending_promise_result: true,
-                                },
-                            )
-                        },
-                    )?
-                } else {
-                    value
-                };
-                if length_hint.is_some()
-                    && index
-                        < runtime
-                            .arrays
-                            .get(result)
-                            .ok_or_else(|| MustardError::runtime("array missing"))?
-                            .elements
-                            .len()
-                {
-                    runtime.set_array_element_at(result, index, mapped)?;
-                } else {
-                    runtime.push_array_element(result, Some(mapped))?;
-                }
-                index += 1;
-            }
-            if let Some(expected_length) = length_hint
-                && index != expected_length
+        let iterable = match &source {
+            Value::Array(_)
+            | Value::String(_)
+            | Value::Map(_)
+            | Value::Set(_)
+            | Value::Iterator(_) => Some(source.clone()),
+            Value::Object(object) => match &self
+                .objects
+                .get(*object)
+                .ok_or_else(|| MustardError::runtime("object missing"))?
+                .kind
             {
-                runtime.set_array_length(result, Value::Number(index as f64))?;
-            }
-            Ok(Value::Array(result))
+                ObjectKind::StringObject(string) => Some(Value::String(string.clone())),
+                _ => None,
+            },
+            _ => None,
+        };
+        let (iterator, length_hint) = if let Some(iterable) = iterable {
+            let length = self.iterable_length_hint(&iterable)?;
+            (Some(self.create_iterator(iterable)?), length)
+        } else {
+            let length = self.array_like_length(source.clone())?;
+            (None, Some(length))
+        };
+        let roots = iterator.iter().cloned().collect::<Vec<_>>();
+        self.with_temporary_roots(&roots, |runtime| {
+            if let Some(length) = length_hint { runtime.ensure_array_slot_capacity(length)?; }
+            let result = runtime.insert_array(Vec::new(), IndexMap::new())?;
+            runtime.with_temporary_roots(&[Value::Array(result)], |runtime| {
+                let mut index = 0usize;
+                loop {
+                    runtime.charge_native_helper_work(1)?;
+                    let value = if let Some(iterator) = &iterator {
+                        let (value, done) = runtime.iterator_next(iterator.clone())?;
+                        if done { break; }
+                        value
+                    } else {
+                        if index >= length_hint.expect("array-like length") { break; }
+                        runtime.get_property_by_key(source.clone(), &index.to_string(), false)?
+                    };
+                    let mapped = if let Some(map_fn) = &map_fn {
+                        runtime.with_temporary_roots(std::slice::from_ref(&value), |runtime| runtime.call_callback(
+                            map_fn.clone(), this_arg.clone(), &[value.clone(), Value::Number(index as f64)],
+                            CallbackCallOptions {
+                                non_callable_message: "TypeError: Array.from expects a callable map function",
+                                host_suspension_message: "TypeError: Array.from mapping does not support host suspensions",
+                                unsettled_message: "synchronous Array.from mapping did not settle",
+                                allow_host_suspension: false,
+                                allow_pending_promise_result: true,
+                            },
+                        ))?
+                    } else { value };
+                    runtime.push_array_element(result, Some(mapped))?;
+                    index += 1;
+                }
+                Ok(Value::Array(result))
+            })
         })
+    }
+
+    pub(in crate::runtime) fn array_like_length(&self, value: Value) -> MustardResult<usize> {
+        let length = self.get_property_by_key(value, "length", false)?;
+        let length = self.to_integer(length)?.max(0) as u64;
+        if length > u32::MAX as u64 {
+            return Err(MustardError::runtime("RangeError: Invalid array length"));
+        }
+        Ok(length as usize)
+    }
+
+    pub(in crate::runtime) fn ensure_array_slot_capacity(
+        &mut self,
+        length: usize,
+    ) -> MustardResult<()> {
+        if length > u32::MAX as usize {
+            return Err(MustardError::runtime("RangeError: Invalid array length"));
+        }
+        let bytes = length
+            .checked_mul(Self::array_slot_bytes(None))
+            .ok_or_else(|| limit_error("heap limit exceeded"))?;
+        self.ensure_heap_capacity(bytes)
     }
 
     pub(crate) fn call_array_push(
@@ -295,6 +314,14 @@ impl Runtime {
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
+        let mut roots = args.to_vec();
+        roots.push(this_value.clone());
+        self.with_temporary_roots(&roots, |runtime| {
+            runtime.array_splice_inner(this_value, args)
+        })
+    }
+
+    fn array_splice_inner(&mut self, this_value: Value, args: &[Value]) -> MustardResult<Value> {
         let array = self.array_receiver(this_value, "splice")?;
         if args.is_empty() {
             return Ok(Value::Array(
@@ -317,7 +344,19 @@ impl Runtime {
         } else {
             clamp_index(self.to_integer(args[1].clone())?, length - start)
         };
-        let inserted_bytes = args[2..]
+        let inserted = args.get(2..).unwrap_or(&[]);
+        let new_length = length
+            .checked_sub(delete_count)
+            .and_then(|length| length.checked_add(inserted.len()))
+            .ok_or_else(|| limit_error("heap limit exceeded"))?;
+        if new_length > u32::MAX as usize {
+            return Err(MustardError::runtime("RangeError: Invalid array length"));
+        }
+        if new_length > length {
+            self.ensure_array_slot_capacity(new_length - length)?;
+        }
+        self.charge_native_helper_work(length.saturating_add(inserted.len()))?;
+        let inserted_bytes = inserted
             .iter()
             .map(|value| Self::array_slot_bytes(Some(value)))
             .sum::<usize>();
@@ -330,7 +369,7 @@ impl Runtime {
                 .elements
                 .splice(
                     start..start + delete_count,
-                    args[2..].iter().cloned().map(Some),
+                    inserted.iter().cloned().map(Some),
                 )
                 .collect::<Vec<Option<Value>>>();
             let removed_bytes = removed
@@ -339,12 +378,15 @@ impl Runtime {
                 .sum::<usize>();
             (removed, removed_bytes)
         };
-        if removed_bytes != inserted_bytes {
-            self.apply_array_component_delta(array, removed_bytes, inserted_bytes)?;
-        }
-        Ok(Value::Array(
-            self.insert_sparse_array(removed, IndexMap::new())?,
-        ))
+        let removed_roots = removed.iter().flatten().cloned().collect::<Vec<_>>();
+        self.with_temporary_roots(&removed_roots, |runtime| {
+            if removed_bytes != inserted_bytes {
+                runtime.apply_array_component_delta(array, removed_bytes, inserted_bytes)?;
+            }
+            Ok(Value::Array(
+                runtime.insert_sparse_array(removed, IndexMap::new())?,
+            ))
+        })
     }
 
     pub(crate) fn call_array_concat(
@@ -630,6 +672,13 @@ impl Runtime {
         right: Value,
     ) -> MustardResult<Ordering> {
         self.charge_native_helper_work(1)?;
+        if matches!(left, Value::Undefined) || matches!(right, Value::Undefined) {
+            return Ok(match (left, right) {
+                (Value::Undefined, Value::Undefined) => Ordering::Equal,
+                (Value::Undefined, _) => Ordering::Greater,
+                _ => Ordering::Less,
+            });
+        }
         match comparator {
             Some(comparator) => {
                 let result = self.with_temporary_roots(
@@ -673,7 +722,7 @@ impl Runtime {
         let array = self.array_receiver(this_value, "sort")?;
         let comparator = match args.first().cloned() {
             Some(Value::Undefined) | None => None,
-            Some(value) if is_callable(&value) => Some(value),
+            Some(value) if self.is_callable_value(&value)? => Some(value),
             Some(_) => {
                 return Err(MustardError::runtime(
                     "TypeError: Array.prototype.sort expects a callable comparator",
@@ -688,35 +737,40 @@ impl Runtime {
             roots.push(comparator.clone());
         }
         self.with_temporary_roots(&roots, |runtime| {
-            let elements = runtime.array_slots(array)?;
-            let mut present = elements.into_iter().flatten().collect::<Vec<_>>();
-            for index in 1..present.len() {
-                runtime.charge_native_helper_work(1)?;
-                let current = present[index].clone();
-                let mut position = index;
-                while position > 0
-                    && runtime.sort_compare(
-                        comparator.clone(),
-                        current.clone(),
-                        present[position - 1].clone(),
-                    )? == Ordering::Less
-                {
-                    present[position] = present[position - 1].clone();
-                    position -= 1;
-                }
-                present[position] = current;
-            }
-            let holes = runtime.array_length(array)?.saturating_sub(present.len());
-            runtime
-                .arrays
-                .get_mut(array)
-                .ok_or_else(|| MustardError::runtime("array missing"))?
-                .elements = present
+            let length = runtime.array_length(array)?;
+            let present_roots = runtime
+                .array_slots(array)?
                 .into_iter()
-                .map(Some)
-                .chain(std::iter::repeat_with(|| None).take(holes))
-                .collect();
-            Ok(Value::Array(array))
+                .flatten()
+                .collect::<Vec<_>>();
+            runtime.with_temporary_roots(&present_roots, |runtime| {
+                let mut present = present_roots.clone();
+                for index in 1..present.len() {
+                    runtime.charge_native_helper_work(1)?;
+                    let current = present[index].clone();
+                    let mut position = index;
+                    while position > 0
+                        && runtime.sort_compare(
+                            comparator.clone(),
+                            current.clone(),
+                            present[position - 1].clone(),
+                        )? == Ordering::Less
+                    {
+                        present[position] = present[position - 1].clone();
+                        position -= 1;
+                    }
+                    present[position] = current;
+                }
+                for (index, value) in present.iter().enumerate() {
+                    runtime.charge_native_helper_work(1)?;
+                    runtime.set_array_element_at(array, index, value.clone())?;
+                }
+                for index in present.len()..length {
+                    runtime.charge_native_helper_work(1)?;
+                    runtime.delete_property_by_key(Value::Array(array), &index.to_string())?;
+                }
+                Ok(Value::Array(array))
+            })
         })
     }
 
@@ -1298,5 +1352,143 @@ impl Runtime {
             }
         }
         Ok(Value::Number(-1.0))
+    }
+}
+
+impl Runtime {
+    pub(crate) fn call_array_shift(&mut self, receiver: Value) -> MustardResult<Value> {
+        let array = self.array_receiver(receiver.clone(), "shift")?;
+        if self.array_length(array)? == 0 {
+            return Ok(Value::Undefined);
+        }
+        self.with_temporary_roots(std::slice::from_ref(&receiver), |runtime| {
+            let removed = runtime
+                .call_array_splice(receiver.clone(), &[Value::Number(0.0), Value::Number(1.0)])?;
+            let Value::Array(removed) = removed else {
+                unreachable!()
+            };
+            runtime.array_value_at(removed, 0)
+        })
+    }
+
+    pub(crate) fn call_array_unshift(
+        &mut self,
+        receiver: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
+        let array = self.array_receiver(receiver.clone(), "unshift")?;
+        if args.is_empty() {
+            return Ok(Value::Number(self.array_length(array)? as f64));
+        }
+        let mut roots = args.to_vec();
+        roots.push(receiver.clone());
+        self.with_temporary_roots(&roots, |runtime| {
+            let mut splice_args = vec![Value::Number(0.0), Value::Number(0.0)];
+            splice_args.extend_from_slice(args);
+            runtime.call_array_splice(receiver.clone(), &splice_args)?;
+            Ok(Value::Number(runtime.array_length(array)? as f64))
+        })
+    }
+
+    pub(crate) fn call_array_copy(
+        &mut self,
+        receiver: Value,
+        args: &[Value],
+        method: BuiltinFunction,
+    ) -> MustardResult<Value> {
+        let name = match method {
+            BuiltinFunction::ArrayToSorted => "toSorted",
+            BuiltinFunction::ArrayToReversed => "toReversed",
+            BuiltinFunction::ArrayToSpliced => "toSpliced",
+            BuiltinFunction::ArrayWith => "with",
+            _ => unreachable!(),
+        };
+        let array = self.array_receiver(receiver.clone(), name)?;
+        let mut roots = args.to_vec();
+        roots.push(receiver);
+        self.with_temporary_roots(&roots, |runtime| {
+            let length = runtime.array_length(array)?;
+            runtime.ensure_array_slot_capacity(length)?;
+            runtime.charge_native_helper_work(length)?;
+            let elements = runtime
+                .array_slots(array)?
+                .into_iter()
+                .map(|value| value.unwrap_or(Value::Undefined))
+                .collect();
+            let result = runtime.insert_array(elements, IndexMap::new())?;
+            runtime.with_temporary_roots(&[Value::Array(result)], |runtime| {
+                match method {
+                    BuiltinFunction::ArrayToReversed => {
+                        runtime.call_array_reverse(Value::Array(result))?;
+                    }
+                    BuiltinFunction::ArrayToSorted => {
+                        runtime.call_array_sort(Value::Array(result), args)?;
+                    }
+                    BuiltinFunction::ArrayToSpliced => {
+                        runtime.call_array_splice(Value::Array(result), args)?;
+                    }
+                    BuiltinFunction::ArrayWith => {
+                        let index = runtime
+                            .to_integer(args.first().cloned().unwrap_or(Value::Undefined))?;
+                        let index = if index < 0 {
+                            (length as i64).saturating_add(index)
+                        } else {
+                            index
+                        };
+                        if index < 0 || index >= length as i64 {
+                            return Err(MustardError::runtime(
+                                "RangeError: Array.prototype.with index out of range",
+                            ));
+                        }
+                        runtime.set_array_element_at(
+                            result,
+                            index as usize,
+                            args.get(1).cloned().unwrap_or(Value::Undefined),
+                        )?;
+                    }
+                    _ => unreachable!(),
+                }
+                Ok(Value::Array(result))
+            })
+        })
+    }
+
+    pub(crate) fn call_array_copy_within(
+        &mut self,
+        receiver: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
+        let array = self.array_receiver(receiver.clone(), "copyWithin")?;
+        let length = self.array_length(array)?;
+        let target = normalize_relative_bound(
+            self.to_integer(args.first().cloned().unwrap_or(Value::Undefined))?,
+            length,
+        );
+        let start = normalize_relative_bound(
+            self.to_integer(args.get(1).cloned().unwrap_or(Value::Undefined))?,
+            length,
+        );
+        let end = match args.get(2) {
+            None | Some(Value::Undefined) => length,
+            Some(value) => normalize_relative_bound(self.to_integer(value.clone())?, length),
+        };
+        let count = end.saturating_sub(start).min(length - target);
+        self.charge_native_helper_work(count)?;
+        self.with_temporary_roots(std::slice::from_ref(&receiver), |runtime| {
+            let backward = target > start && target < start + count;
+            for offset in 0..count {
+                let offset = if backward { count - offset - 1 } else { offset };
+                if runtime.array_has_index(array, start + offset)? {
+                    let value = runtime.array_value_at(array, start + offset)?;
+                    runtime.set_array_element_at(array, target + offset, value)?;
+                } else {
+                    runtime.delete_property_by_key(
+                        Value::Array(array),
+                        &(target + offset).to_string(),
+                    )?;
+                }
+            }
+            Ok(receiver.clone())
+        })
     }
 }

@@ -602,6 +602,13 @@ pub(super) enum BuiltinFunction {
     URIErrorCtor,
     AggregateErrorCtor,
     ErrorToString,
+    ArrayShift,
+    ArrayUnshift,
+    ArrayToSorted,
+    ArrayToReversed,
+    ArrayToSpliced,
+    ArrayWith,
+    ArrayCopyWithin,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

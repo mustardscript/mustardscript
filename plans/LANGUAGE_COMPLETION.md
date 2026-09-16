@@ -12,8 +12,8 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 2. Object and array property deletion
 - [x] 3. `typeof` unresolvable identifiers, preserving TDZ and ambient policy
 - [x] 4. Error constructors, parse-error types, and guest-safe stack properties
-- [ ] 5. `Array.from` array-like inputs
-- [ ] 6. Array queue, copy, and copy-within methods
+- [x] 5. `Array.from` array-like inputs
+- [x] 6. Array queue, copy, and copy-within methods
 - [ ] 7. Object/Map grouping
 - [ ] 8. Object/Array compatibility helpers
 - [ ] 9. RegExp character-class parity and match indices
@@ -92,3 +92,17 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm run lint`, `npm run build`, and the full
   Node suite (`node --test --test-reporter=dot tests/node/**/*.test.js`). Added
   constructor/Node parity, Promise.any identity, snapshot, and no-frame GC tests.
+
+### Array-like construction and array completion
+
+- Array.from accepts array-likes/boxed strings, captures length, reads live values,
+  supports bound mapping callbacks and preflights backing-store capacity.
+- Implemented shift/unshift/toSorted/toReversed/toSpliced/with/copyWithin with
+  sparse/dense semantics, method metadata and prototype lookup. Sorting preserves
+  stable identity, skips undefined comparator operands and handles callback mutation.
+- Corrected one-argument splice; array allocation/sparse expansion is preflighted,
+  and new array payloads are GC-rooted during allocation.
+- Passed: `cargo test --workspace`, `npm run lint`, `npm run build`, full Node
+  suite; 122 focused Node cases include direct Node comparisons, errors, snapshots
+  and billion-element capacity rejection. Updated the superseded array-like
+  rejection in builtin_surface to retain nullish-input rejection coverage.

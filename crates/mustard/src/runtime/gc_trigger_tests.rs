@@ -1155,3 +1155,32 @@ fn native_temporary_roots_protect_microtask_values_without_an_active_frame() {
     runtime.collect_garbage().unwrap();
     assert!(!runtime.objects.contains_key(object));
 }
+
+#[test]
+fn copying_and_sorting_mutations_keep_array_heap_accounting_consistent() {
+    let mut runtime = test_runtime();
+    let array = runtime
+        .insert_sparse_array(
+            vec![
+                None,
+                Some(Value::String("large".repeat(100))),
+                Some(Value::String("small".into())),
+            ],
+            IndexMap::new(),
+        )
+        .unwrap();
+    runtime
+        .with_temporary_roots(&[Value::Array(array)], |runtime| {
+            runtime.call_array_copy_within(
+                Value::Array(array),
+                &[Value::Number(0.0), Value::Number(1.0)],
+            )?;
+            runtime.call_array_shift(Value::Array(array))?;
+            runtime.call_array_unshift(Value::Array(array), &[Value::Number(1.0)])?;
+            runtime.call_array_sort(Value::Array(array), &[])?;
+            #[cfg(debug_assertions)]
+            runtime.debug_assert_cached_accounting_matches_full_walk();
+            Ok(())
+        })
+        .unwrap();
+}

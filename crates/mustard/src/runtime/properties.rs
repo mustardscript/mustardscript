@@ -3,6 +3,48 @@ use super::*;
 const GET_PROP_STATIC_INLINE_CACHE_POLYMORPHIC_LIMIT: usize = 4;
 
 impl Runtime {
+    pub(super) fn array_prototype_method(key: &str) -> Option<BuiltinFunction> {
+        Some(match key {
+            "push" => BuiltinFunction::ArrayPush,
+            "pop" => BuiltinFunction::ArrayPop,
+            "slice" => BuiltinFunction::ArraySlice,
+            "splice" => BuiltinFunction::ArraySplice,
+            "concat" => BuiltinFunction::ArrayConcat,
+            "at" => BuiltinFunction::ArrayAt,
+            "join" => BuiltinFunction::ArrayJoin,
+            "includes" => BuiltinFunction::ArrayIncludes,
+            "indexOf" => BuiltinFunction::ArrayIndexOf,
+            "lastIndexOf" => BuiltinFunction::ArrayLastIndexOf,
+            "reverse" => BuiltinFunction::ArrayReverse,
+            "fill" => BuiltinFunction::ArrayFill,
+            "sort" => BuiltinFunction::ArraySort,
+            "values" => BuiltinFunction::ArrayValues,
+            "keys" => BuiltinFunction::ArrayKeys,
+            "entries" => BuiltinFunction::ArrayEntries,
+            "forEach" => BuiltinFunction::ArrayForEach,
+            "map" => BuiltinFunction::ArrayMap,
+            "filter" => BuiltinFunction::ArrayFilter,
+            "find" => BuiltinFunction::ArrayFind,
+            "findIndex" => BuiltinFunction::ArrayFindIndex,
+            "some" => BuiltinFunction::ArraySome,
+            "every" => BuiltinFunction::ArrayEvery,
+            "flat" => BuiltinFunction::ArrayFlat,
+            "flatMap" => BuiltinFunction::ArrayFlatMap,
+            "reduce" => BuiltinFunction::ArrayReduce,
+            "reduceRight" => BuiltinFunction::ArrayReduceRight,
+            "findLast" => BuiltinFunction::ArrayFindLast,
+            "findLastIndex" => BuiltinFunction::ArrayFindLastIndex,
+            "shift" => BuiltinFunction::ArrayShift,
+            "unshift" => BuiltinFunction::ArrayUnshift,
+            "toSorted" => BuiltinFunction::ArrayToSorted,
+            "toReversed" => BuiltinFunction::ArrayToReversed,
+            "toSpliced" => BuiltinFunction::ArrayToSpliced,
+            "with" => BuiltinFunction::ArrayWith,
+            "copyWithin" => BuiltinFunction::ArrayCopyWithin,
+            _ => return None,
+        })
+    }
+
     fn function_helper_method(key: &str) -> Option<Value> {
         match key {
             "call" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionCall)),
@@ -340,6 +382,14 @@ impl Runtime {
             BuiltinFunction::URIErrorCtor => "URIError",
             BuiltinFunction::AggregateErrorCtor => "AggregateError",
             BuiltinFunction::ErrorToString => "toString",
+            BuiltinFunction::ArrayShift => "shift",
+            BuiltinFunction::ArrayUnshift => "unshift",
+            BuiltinFunction::ArrayToSorted => "toSorted",
+            BuiltinFunction::ArrayToReversed => "toReversed",
+            BuiltinFunction::ArrayToSpliced => "toSpliced",
+            BuiltinFunction::ArrayWith => "with",
+            BuiltinFunction::ArrayCopyWithin => "copyWithin",
+
             BuiltinFunction::NumberCtor => "Number",
             BuiltinFunction::NumberParseInt => "parseInt",
             BuiltinFunction::NumberParseFloat => "parseFloat",
@@ -518,6 +568,14 @@ impl Runtime {
             BuiltinFunction::URIErrorCtor => 1,
             BuiltinFunction::AggregateErrorCtor => 2,
             BuiltinFunction::ErrorToString => 0,
+            BuiltinFunction::ArrayShift => 0,
+            BuiltinFunction::ArrayUnshift => 1,
+            BuiltinFunction::ArrayToSorted => 1,
+            BuiltinFunction::ArrayToReversed => 0,
+            BuiltinFunction::ArrayToSpliced => 2,
+            BuiltinFunction::ArrayWith => 2,
+            BuiltinFunction::ArrayCopyWithin => 2,
+
             BuiltinFunction::NumberCtor => 1,
             BuiltinFunction::NumberParseInt => 2,
             BuiltinFunction::NumberParseFloat => 1,
@@ -697,6 +755,10 @@ impl Runtime {
                 Ok(match &object.kind {
                     ObjectKind::FunctionPrototype(constructor) => {
                         key == "constructor"
+                            || (matches!(
+                                constructor,
+                                Value::BuiltinFunction(BuiltinFunction::ArrayCtor)
+                            ) && Self::array_prototype_method(&key).is_some())
                             || matches!(
                                 (constructor, key.as_str()),
                                 (
@@ -824,7 +886,8 @@ impl Runtime {
                     .arrays
                     .get(array)
                     .ok_or_else(|| MustardError::runtime("array missing"))?;
-                Ok(key == "length"
+                Ok(Self::array_prototype_method(&key).is_some()
+                    || key == "length"
                     || key.parse::<usize>().ok().is_some_and(|index| {
                         array.elements.get(index).is_some_and(Option::is_some)
                     })
@@ -1792,6 +1855,13 @@ impl Runtime {
                     return Ok(value.clone());
                 }
                 if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
+                    if matches!(
+                        constructor,
+                        Value::BuiltinFunction(BuiltinFunction::ArrayCtor)
+                    ) && let Some(method) = Self::array_prototype_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
+                    }
                     if key == "constructor" {
                         return Ok(constructor.clone());
                     }
@@ -1939,44 +2009,9 @@ impl Runtime {
                 } else if let Some(value) = array.properties.get(key) {
                     Ok(value.clone())
                 } else {
-                    match key {
-                        "sort" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySort)),
-                        "push" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPush)),
-                        "pop" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPop)),
-                        "slice" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySlice)),
-                        "splice" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySplice)),
-                        "concat" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayConcat)),
-                        "at" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayAt)),
-                        "join" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayJoin)),
-                        "includes" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIncludes)),
-                        "indexOf" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIndexOf)),
-                        "lastIndexOf" => {
-                            Ok(Value::BuiltinFunction(BuiltinFunction::ArrayLastIndexOf))
-                        }
-                        "reverse" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayReverse)),
-                        "fill" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFill)),
-                        "values" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayValues)),
-                        "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayKeys)),
-                        "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayEntries)),
-                        "forEach" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayForEach)),
-                        "map" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayMap)),
-                        "filter" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFilter)),
-                        "find" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFind)),
-                        "findIndex" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFindIndex)),
-                        "some" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySome)),
-                        "every" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayEvery)),
-                        "flat" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFlat)),
-                        "flatMap" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFlatMap)),
-                        "reduce" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayReduce)),
-                        "reduceRight" => {
-                            Ok(Value::BuiltinFunction(BuiltinFunction::ArrayReduceRight))
-                        }
-                        "findLast" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFindLast)),
-                        "findLastIndex" => {
-                            Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFindLastIndex))
-                        }
-                        _ => Ok(Value::Undefined),
-                    }
+                    Ok(Self::array_prototype_method(key)
+                        .map(Value::BuiltinFunction)
+                        .unwrap_or(Value::Undefined))
                 }
             }
             Value::Map(map) => {

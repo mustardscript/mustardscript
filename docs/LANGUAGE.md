@@ -352,6 +352,13 @@ rejected.
 - `Array.of`
 - `Array.prototype.push`
 - `Array.prototype.pop`
+- `Array.prototype.shift`
+- `Array.prototype.unshift`
+- `Array.prototype.toSorted`
+- `Array.prototype.toReversed`
+- `Array.prototype.toSpliced`
+- `Array.prototype.with`
+- `Array.prototype.copyWithin`
 - `Array.prototype.slice`
 - `Array.prototype.splice`
 - `Array.prototype.concat`
@@ -505,9 +512,13 @@ rejected.
   and promise-valued callback results reached from an async guest boundary
 - synchronous host suspensions from array callback helpers fail closed with a
   runtime `TypeError`
-- `Array.from` accepts the supported iterable surface and an optional
-  synchronous map function plus `thisArg`; inside async guest flows, guest map
-  callbacks may yield promise values for downstream helpers such as `Promise.all`
+- `Array.from` accepts supported iterables, boxed strings, and array-like inputs.
+  Array-like length is captured once and truncated/clamped; indexed values are
+  read live, and absent positions become own `undefined` elements. The optional
+  synchronous mapper accepts `thisArg` and bound callbacks. Inside async guest
+  flows, guest map callbacks may yield promises for helpers such as `Promise.all`.
+  Nullish sources, invalid mappers, lengths beyond the array range, and lengths
+  exceeding heap headroom fail explicitly before oversized backing allocations.
 - `Array.of` always creates a fresh guest array from its arguments and does not
   expose the special single-length constructor behavior from full JavaScript
 - `Array(...)` and `new Array(...)` follow JavaScript's single-length
@@ -523,6 +534,15 @@ rejected.
   positions, and returns the same array value
 - `Array.prototype.fill` mutates the original array in place over the requested
   start/end range and preserves holes outside that range
+- `shift`/`unshift` mutate queue ends and preserve shifted holes. `toSorted`,
+  `toReversed`, `toSpliced`, and `with` return fresh dense arrays (holes become
+  `undefined`) without copying extra properties. `with` supports negative indices
+  and throws `RangeError` out of range. `copyWithin` mutates with overlap-safe
+  copying, preserving source holes and array length. These prototype helpers,
+  like the existing array methods, require actual arrays as their receivers.
+- Sorting is stable, places `undefined` after defined values without passing it
+  to comparators, preserves collected values through comparator mutations/GC,
+  and respects the snapshotted range. Work and heap growth remain budgeted.
 - `Array.prototype.splice` mutates the original array in place, returns a fresh
   guest array of removed elements, and preserves non-index array properties on
   the mutated receiver

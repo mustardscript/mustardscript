@@ -220,3 +220,81 @@ fn error_family_has_correct_constructors_metadata_and_guest_stacks() {
         .contains("not iterable")
     );
 }
+
+#[test]
+fn array_from_supports_array_likes_and_live_mappers() {
+    assert_eq!(
+        run(r#"JSON.stringify(Array.from({length: 4}, (_, index) => index * 2));"#),
+        "[0,2,4,6]".into()
+    );
+    assert_eq!(
+        run(r#"
+        const source = {0: 1, 2: 3, length: 3.9};
+        const result = Array.from(source, function(value, index) {
+            if (index === 0) { source[1] = 4; source.length = 1; }
+            return (value ?? 0) + this.offset;
+        }, {offset: 10});
+        JSON.stringify(result);
+    "#),
+        "[11,14,13]".into()
+    );
+    assert_eq!(
+        run(
+            r#"JSON.stringify([Array.from({length:-3}), Array.from(1), Array.from({length:2}), Array.from(new String("ab"))]);"#
+        ),
+        r#"[[],[],[null,null],["a","b"]]"#.into()
+    );
+    for source in [
+        "Array.from({length:1e9})",
+        "new Array(1e9)",
+        "const a=[]; a.length=1e9",
+        "const a=[]; a[1e9]=1",
+    ] {
+        let error = execute(&compile(source).unwrap(), ExecutionOptions::default()).unwrap_err();
+        assert!(
+            error.to_string().contains("heap limit exceeded"),
+            "{source}: {error}"
+        );
+    }
+}
+
+#[test]
+fn array_queue_copy_and_overlap_operations_preserve_presence() {
+    assert_eq!(run(r#"
+        const a = [, 2, 3];
+        const shifted = a.shift(); const length = a.unshift(0, 1);
+        const b = [, undefined, 3, 1];
+        const sorted = b.toSorted((a,b) => a-b);
+        const reversed = b.toReversed(); const spliced = b.toSpliced(1);
+        const replaced = b.with(-1, 4);
+        b.copyWithin(1, 0, 3);
+        JSON.stringify([shifted, length, a, sorted, Object.keys(sorted), reversed, spliced, Object.keys(spliced), replaced, b, Object.keys(b)]);
+    "#), r#"[null,4,[0,1,2,3],[1,3,null,null],["0","1","2","3"],[1,3,null,null],[null],["0"],[null,null,3,4],[null,null,null,3],["2","3"]]"#.into());
+    assert_eq!(
+        run(r#"
+        const values = [{n:2}, {n:1}, {n:1}];
+        const sorted = values.toSorted((a,b) => a.n-b.n);
+        sorted[0] === values[1] && sorted[1] === values[2] && sorted[2] === values[0];
+    "#),
+        true.into()
+    );
+    assert_eq!(
+        run(
+            r#"const a=[3,1,2]; let done=false; a.sort((a,b)=> { if (!done) { done=true; } return a-b; }); JSON.stringify(a);"#
+        ),
+        "[1,2,3]".into()
+    );
+    assert_eq!(
+        run(r#"const a=[1,2,3]; JSON.stringify([a.splice(1),a]);"#),
+        "[[2,3],[1]]".into()
+    );
+    assert!(
+        execute(
+            &compile("[1].with(1, 2)").unwrap(),
+            ExecutionOptions::default()
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("RangeError")
+    );
+}

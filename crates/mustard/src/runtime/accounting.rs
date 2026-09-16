@@ -887,6 +887,14 @@ impl Runtime {
         index: usize,
         value: Value,
     ) -> MustardResult<()> {
+        let old_length = self.array_length(key)?;
+        if index >= old_length {
+            let added = index
+                .checked_add(1)
+                .and_then(|end| end.checked_sub(old_length))
+                .ok_or_else(|| limit_error("heap limit exceeded"))?;
+            self.ensure_array_slot_capacity(added)?;
+        }
         let empty_slot_bytes = Self::array_slot_bytes(None);
         let new_slot_bytes = Self::array_slot_bytes(Some(&value));
         let (old_component_bytes, new_component_bytes) = {
@@ -1018,8 +1026,17 @@ impl Runtime {
             accounted_bytes: 0,
         };
         array.accounted_bytes = measure_array_bytes(&array);
-        self.account_new_allocation(array.accounted_bytes)?;
-        Ok(self.arrays.insert(array))
+        let roots = array
+            .elements
+            .iter()
+            .flatten()
+            .chain(array.properties.values())
+            .cloned()
+            .collect::<Vec<_>>();
+        self.with_temporary_roots(&roots, |runtime| {
+            runtime.account_new_allocation(array.accounted_bytes)?;
+            Ok(runtime.arrays.insert(array))
+        })
     }
 
     pub(super) fn insert_map(&mut self, entries: Vec<MapEntry>) -> MustardResult<MapKey> {

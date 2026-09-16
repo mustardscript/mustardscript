@@ -1593,13 +1593,13 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
             .contains("Object helpers currently only support plain objects and arrays")
     );
 
-    let array_from = compile("Array.from({ length: 1, 0: 'a' });").expect("source should compile");
+    let array_from = compile("Array.from(null);").expect("source should compile");
     let error =
-        execute(&array_from, ExecutionOptions::default()).expect_err("execution should fail");
+        execute(&array_from, ExecutionOptions::default()).expect_err("nullish source should fail");
     assert!(
         error
             .to_string()
-            .contains("value is not iterable in the supported surface")
+            .contains("cannot read properties of nullish value")
     );
 
     let from_entries = compile("Object.fromEntries([1]);").expect("source should compile");

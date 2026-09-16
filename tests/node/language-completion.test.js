@@ -144,3 +144,52 @@ test('error stacks and nested causes survive snapshot restore', () => {
   const restored = Progress.load(first.dump(), { snapshotKey, capabilities, limits: {} });
   assert.deepEqual(restored.resume(undefined), [true, true, 'cause', true, true]);
 });
+
+test('array-like construction and queue/copy helpers match Node', async () => {
+  const cases = [
+    'JSON.stringify(Array.from({length: 5}, (_, i) => i));',
+    'JSON.stringify(Array.from({0: "a", 2: "c", length: 3.9}));',
+    'JSON.stringify([Array.from(1), Array.from({}), Array.from({length: -1})]);',
+    'JSON.stringify(Array.from(new String("ab")));',
+    'JSON.stringify(Array.from({length: 3}, function(v,i) { return i + this.x; }.bind({x: 4})));',
+    `const a={0:1,1:2,length:3}; JSON.stringify(Array.from(a, function(v,i) { if (i===0) { a[1]=4; a.length=1; } return v; }));`,
+    'const a=[,2,3]; JSON.stringify([a.shift(),a.unshift(0,1),a,Object.keys(a)]);',
+    'const a=[]; JSON.stringify([a.shift(), a.unshift(), a.unshift(1,2), a]);',
+    'const a=[,undefined,3,1]; JSON.stringify([a.toSorted(),a,Object.keys(a.toSorted())]);',
+    'const a=[,undefined,3,1]; JSON.stringify(a.toSorted((a,b) => a-b));',
+    'JSON.stringify([,1,2].toReversed());',
+    'JSON.stringify([,1,2].toSpliced(1));',
+    'JSON.stringify([,1,2].toSpliced());',
+    'JSON.stringify([,1,2].toSpliced(-2, 1, 4, 5));',
+    'JSON.stringify([,1,2].toSpliced(0, Infinity));',
+    'JSON.stringify([,1,2].with(-1,4));',
+    'const a=[,undefined,3,1]; a.copyWithin(1,0,3); JSON.stringify([a,Object.keys(a)]);',
+    'const a=[1,2,3,4]; a.copyWithin(0,1); JSON.stringify(a);',
+    'const a=[1,2,3,4]; a.copyWithin(-2,0,2); JSON.stringify(a);',
+    'JSON.stringify(Array.prototype.toSorted.call([3,1,2]));',
+    'const a=[1,2,3]; JSON.stringify([a.splice(1),a]);',
+    `const a=[3,1,2]; let once=false; const b=a.toSorted((x,y)=> { if (!once) { a[0]=9; once=true; } return x-y; }); JSON.stringify([a,b]);`,
+    `const a=[3,1,2]; let once=false; a.sort((x,y)=> { if (!once) { a.length=0; once=true; } return x-y; }); JSON.stringify(a);`,
+    `const a=[undefined,3,undefined,1]; let ok=true; a.sort((x,y)=> { if (x===undefined || y===undefined) ok=false; return x-y; }); JSON.stringify([a,ok]);`,
+  ];
+  for (const source of cases) assert.equal(await runtime(source).run(), require('node:vm').runInNewContext(source), source);
+  for (const source of ['Array.from(null)', 'Array.from({}, 3)', 'Array.prototype.shift.call({})', '[].with(0)', '[1].with(Infinity)']) {
+    await assert.rejects(runtime(source).run(), /TypeError|RangeError/);
+  }
+  for (const source of ['Array.from({length:1e9})', 'new Array(1e9)', 'const a=[]; a[1e9]=1', 'const a=[]; a.length=1e9']) {
+    await assert.rejects(runtime(source).run(), /heap limit exceeded/);
+  }
+});
+
+test('array helpers and their builtin identities survive snapshots', () => {
+  const snapshotKey = Buffer.from('language-array-test');
+  const capabilities = { checkpoint() {} };
+  const first = runtime(`
+    const source = [,3,1]; const copy = source.toSorted();
+    const method = Array.prototype.toSpliced;
+    checkpoint();
+    [copy, Object.keys(copy), method.call(source,1,1,4), source.shift(), source.unshift(2), source];
+  `).start({snapshotKey, capabilities});
+  const restored = Progress.load(first.dump(), {snapshotKey, capabilities, limits: {}});
+  assert.deepEqual(restored.resume(undefined), [[1,3,undefined], ['0','1','2'], [undefined,4,1], undefined, 3, [2,3,1]]);
+});

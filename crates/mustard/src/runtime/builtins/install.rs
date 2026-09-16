@@ -234,6 +234,13 @@ impl Runtime {
             BuiltinFunction::MathRandom => Ok(self.call_math_random()),
             BuiltinFunction::JsonStringify => self.call_json_stringify(args),
             BuiltinFunction::JsonParse => self.call_json_parse(args),
+            BuiltinFunction::ArrayShift => self.call_array_shift(this_value),
+            BuiltinFunction::ArrayUnshift => self.call_array_unshift(this_value, args),
+            BuiltinFunction::ArrayToSorted
+            | BuiltinFunction::ArrayToReversed
+            | BuiltinFunction::ArrayToSpliced
+            | BuiltinFunction::ArrayWith => self.call_array_copy(this_value, args, function),
+            BuiltinFunction::ArrayCopyWithin => self.call_array_copy_within(this_value, args),
         }
     }
 
