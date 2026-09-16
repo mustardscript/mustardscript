@@ -65,3 +65,16 @@ ASCII word/digit semantics and flag-sensitive case folding. The unrepresentable
 count scalars, matching existing string/regexp offsets, not the separate UTF-16
 numeric character view. Named indices share guest array identity and survive
 snapshots; no new host-boundary aliasing permission is introduced.
+
+
+## Fixed UTC local Date semantics
+
+Declare UTC as the guest runtime's local time zone. This supersedes the earlier
+local Date API deferral without adding host-zone dependencies or time-zone data.
+Zone-less ISO input uses UTC; local and UTC component constructors/getters/setters
+therefore agree. Pure checked calendar arithmetic extends the existing proleptic
+Gregorian/time-clip implementation. Numeric-field locale rendering reuses the
+existing en-US/UTC Intl policy. Display strings use fixed English names and UTC.
+This does **not** make the clock deterministic: Date.now and zero-argument Date
+continue to consume the existing host clock. Host-boundary Date rejection stays.
+See [Date algorithms](https://tc39.es/ecma262/multipage/numbers-and-dates.html#sec-date-objects).

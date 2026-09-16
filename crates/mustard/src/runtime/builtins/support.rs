@@ -133,7 +133,9 @@ pub(super) fn current_time_millis() -> f64 {
 }
 
 pub(super) fn parse_date_timestamp_ms(value: &str) -> f64 {
-    parse_iso_date_timestamp_ms(value).unwrap_or(f64::NAN)
+    parse_iso_date_timestamp_ms(value)
+        .or_else(|| parse_utc_display_timestamp_ms(value))
+        .unwrap_or(f64::NAN)
 }
 
 pub(super) fn time_clip(timestamp_ms: f64) -> f64 {
@@ -147,31 +149,42 @@ pub(super) fn time_clip(timestamp_ms: f64) -> f64 {
 
 fn parse_iso_date_timestamp_ms(value: &str) -> Option<f64> {
     let (year, mut index) = parse_iso_year(value)?;
-    index += 1;
-    let month = parse_two_digits(value, &mut index)?;
-    require_byte(value, &mut index, b'-')?;
-    let day = parse_two_digits(value, &mut index)?;
+    let mut month = 1;
+    let mut day = 1;
+    if index < value.len() {
+        require_byte(value, &mut index, b'-')?;
+        month = parse_two_digits(value, &mut index)?;
+        if index < value.len() {
+            require_byte(value, &mut index, b'-')?;
+            day = parse_two_digits(value, &mut index)?;
+        }
+    }
     if !is_valid_date(year, month, day) {
         return None;
     }
-
     let days = days_from_civil(year, month, day);
     if index == value.len() {
         return Some(days as f64 * MS_PER_DAY as f64);
     }
-
     require_byte(value, &mut index, b'T')?;
     let hour = parse_two_digits(value, &mut index)?;
     require_byte(value, &mut index, b':')?;
     let minute = parse_two_digits(value, &mut index)?;
-    require_byte(value, &mut index, b':')?;
-    let second = parse_two_digits(value, &mut index)?;
-    if hour > 23 || minute > 59 || second > 59 {
+    let has_seconds = value.as_bytes().get(index) == Some(&b':');
+    let second = if has_seconds {
+        index += 1;
+        parse_two_digits(value, &mut index)?
+    } else {
+        0
+    };
+    if hour > 24 || minute > 59 || second > 59 {
         return None;
     }
-
     let mut millisecond = 0i64;
-    if matches!(value.as_bytes().get(index), Some(b'.')) {
+    if value.as_bytes().get(index) == Some(&b'.') {
+        if !has_seconds {
+            return None;
+        }
         index += 1;
         let start = index;
         while value.as_bytes().get(index).is_some_and(u8::is_ascii_digit) {
@@ -181,43 +194,99 @@ fn parse_iso_date_timestamp_ms(value: &str) -> Option<f64> {
             return None;
         }
         let digits = &value.as_bytes()[start..index];
-        let mut parsed = 0i64;
         for digit in digits.iter().take(3) {
-            parsed = parsed * 10 + i64::from(digit - b'0');
+            millisecond = millisecond * 10 + i64::from(digit - b'0');
         }
         for _ in digits.len().min(3)..3 {
-            parsed *= 10;
+            millisecond *= 10;
         }
-        millisecond = parsed;
+        if hour == 24 && digits.iter().any(|digit| *digit != b'0') {
+            return None;
+        }
     }
-
+    if hour == 24 && (minute != 0 || second != 0 || millisecond != 0) {
+        return None;
+    }
     let offset_ms = match value.as_bytes().get(index).copied() {
-        Some(b'Z') if index + 1 == value.len() => 0i64,
+        None => 0,
+        Some(b'Z') if index + 1 == value.len() => 0,
         Some(sign @ (b'+' | b'-')) => {
             index += 1;
-            let offset_hours = parse_two_digits(value, &mut index)?;
+            let hours = parse_two_digits(value, &mut index)?;
             require_byte(value, &mut index, b':')?;
-            let offset_minutes = parse_two_digits(value, &mut index)?;
-            if offset_hours > 23 || offset_minutes > 59 || index != value.len() {
+            let minutes = parse_two_digits(value, &mut index)?;
+            if hours > 23 || minutes > 59 || index != value.len() {
                 return None;
             }
-            let magnitude =
-                i64::from(offset_hours) * MS_PER_HOUR + i64::from(offset_minutes) * MS_PER_MINUTE;
+            let magnitude = i64::from(hours) * MS_PER_HOUR + i64::from(minutes) * MS_PER_MINUTE;
             if sign == b'+' { magnitude } else { -magnitude }
         }
         _ => return None,
     };
+    Some(
+        (i128::from(days) * i128::from(MS_PER_DAY)
+            + i128::from(hour) * i128::from(MS_PER_HOUR)
+            + i128::from(minute) * i128::from(MS_PER_MINUTE)
+            + i128::from(second) * i128::from(MS_PER_SECOND)
+            + i128::from(millisecond)
+            - i128::from(offset_ms)) as f64,
+    )
+}
 
-    let time_ms = i64::from(hour) * MS_PER_HOUR
-        + i64::from(minute) * MS_PER_MINUTE
-        + i64::from(second) * MS_PER_SECOND
-        + millisecond;
-    let timestamp_ms =
-        i128::from(days) * i128::from(MS_PER_DAY) + i128::from(time_ms) - i128::from(offset_ms);
-    if !(i128::from(i64::MIN)..=i128::from(i64::MAX)).contains(&timestamp_ms) {
+fn parse_utc_display_timestamp_ms(value: &str) -> Option<f64> {
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    let (text, utc) = if let Some(text) = value.strip_suffix(" GMT") {
+        (text, true)
+    } else {
+        (
+            value.strip_suffix(" GMT+0000 (Coordinated Universal Time)")?,
+            false,
+        )
+    };
+    let mut parts = text.split(' ');
+    let weekday = parts.next()?.trim_end_matches(',');
+    if !DAYS.contains(&weekday) {
         return None;
     }
-    Some(timestamp_ms as f64)
+    let first = parts.next()?;
+    let second = parts.next()?;
+    let (day, month) = if utc {
+        (first, second)
+    } else {
+        (second, first)
+    };
+    let day = day.parse::<u8>().ok()?;
+    let month = MONTHS.iter().position(|name| *name == month)? as u8 + 1;
+    let year_text = parts.next()?;
+    if year_text.len() > 7 {
+        return None;
+    }
+    let year = year_text.parse::<i64>().ok()?;
+    if !is_valid_date(year, month, day) {
+        return None;
+    }
+    let time = parts.next()?;
+    if parts.next().is_some() || time.len() != 8 {
+        return None;
+    }
+    let mut index = 0;
+    let hour = parse_two_digits(time, &mut index)?;
+    require_byte(time, &mut index, b':')?;
+    let minute = parse_two_digits(time, &mut index)?;
+    require_byte(time, &mut index, b':')?;
+    let second = parse_two_digits(time, &mut index)?;
+    if hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    Some(
+        (days_from_civil(year, month, day) * MS_PER_DAY
+            + i64::from(hour) * MS_PER_HOUR
+            + i64::from(minute) * MS_PER_MINUTE
+            + i64::from(second) * MS_PER_SECOND) as f64,
+    )
 }
 
 pub(super) fn date_time_fields_from_timestamp_ms(timestamp_ms: f64) -> Option<DateTimeFields> {
@@ -276,10 +345,13 @@ fn parse_iso_year(value: &str) -> Option<(i64, usize)> {
     } else {
         index
     };
-    if digits == 0 || bytes.get(index) != Some(&b'-') {
+    if digits == 0 || (index != value.len() && bytes.get(index) != Some(&b'-')) {
         return None;
     }
     if (!signed && digits != 4) || (signed && digits != 6) {
+        return None;
+    }
+    if &value[..index] == "-000000" {
         return None;
     }
     Some((value[..index].parse::<i64>().ok()?, index))

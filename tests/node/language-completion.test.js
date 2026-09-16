@@ -581,3 +581,47 @@ test('async drivers and extracted resolvers retain GC roots', async () => {
   const first=runtime('const r=Promise.withResolvers(); const resolve=r.resolve; checkpoint(); resolve(7); resolve(8); r.promise;').start({capabilities,snapshotKey});
   assert.equal(Progress.load(first.dump(),{capabilities,snapshotKey,limits:{}}).resume(undefined),7);
 });
+
+test('UTC Date construction, getters, setters and rendering match Node in UTC', async () => {
+  const vm = require('node:vm');
+  const priorTZ = process.env.TZ;
+  process.env.TZ = 'UTC';
+  try {
+    const dates=[0,-1,951782400123,1583020799999,-62167219200000,-62198755200000,253402300800000,8640000000000000,-8640000000000000,NaN];
+    const getters=['getTime','getFullYear','getMonth','getDate','getDay','getHours','getMinutes','getSeconds','getMilliseconds','getTimezoneOffset','getUTCFullYear','getUTCMonth','getUTCDate','getUTCDay','getUTCHours','getUTCMinutes','getUTCSeconds','getUTCMilliseconds','getYear'];
+    const read='dates.map(t=>{const d=new Date(t);return getters.map(m=>d[m]());});';
+    assert.deepEqual(await runtime(read).run({inputs:{dates,getters}}), Array.from(vm.runInNewContext(read,{dates,getters}), row=>Array.from(row)));
+    const components=[[],[0],[null],[true],[false],[undefined],[2020,1,29],[2020,1,30],[2020,-1,0,25,61,61,1001],[99,11,31],[0.9,0],[-1,0,1],[275760,8,13],[-271821,3,20],[1e20,0],[2020,0,1,Infinity],[2020,0,1,0,0,0,-1]];
+    const construct='components.map(parts=>[new Date(...parts).getTime(),Date.UTC(...parts)]);';
+    // Zero-argument new Date uses a live clock; compare all deterministic cases.
+    const noClock=components.slice(1);
+    assert.deepEqual(await runtime(construct).run({inputs:{components:noClock}}), Array.from(vm.runInNewContext(construct,{components:noClock}), row=>Array.from(row)));
+    const setters=['setFullYear','setMonth','setDate','setHours','setMinutes','setSeconds','setMilliseconds','setUTCFullYear','setUTCMonth','setUTCDate','setUTCHours','setUTCMinutes','setUTCSeconds','setUTCMilliseconds','setTime','setYear'];
+    const args=[[],[0],[undefined],[NaN],[Infinity],[2021],[2021,13,32,25],[-1,-1,-1,-1],[1.9,null,false,'2']];
+    const change='dates.flatMap(t=>setters.flatMap(name=>args.map(a=>{const d=new Date(t);const result=d[name](...a);return [result,d.getTime()];})));';
+    assert.deepEqual(await runtime(change).run({inputs:{dates,setters,args}}), Array.from(vm.runInNewContext(change,{dates,setters,args}), row=>Array.from(row)));
+    const strings='dates.map(t=>{const d=new Date(t);return [d.toString(),d.toDateString(),d.toTimeString(),d.toUTCString(),d.toLocaleDateString(),d.toLocaleTimeString(),d.toLocaleString(),String(d)];});';
+    assert.deepEqual(await runtime(strings).run({inputs:{dates}}), Array.from(vm.runInNewContext(strings,{dates}), row=>Array.from(row)));
+    const options=[{}, {year:'numeric'}, {year:'2-digit',month:'2-digit',day:'2-digit'}, {hour:'numeric',minute:'numeric',second:'numeric'}, {minute:'2-digit'}, {second:'numeric'}];
+    const locales='options.map(o=>{const d=new Date(1583020799999);return [d.toLocaleDateString("en-US",o),d.toLocaleTimeString("en-US",o),d.toLocaleString("en-US",o)];});';
+    assert.deepEqual(await runtime(locales).run({inputs:{options}}), Array.from(vm.runInNewContext(locales,{options}), row=>Array.from(row)));
+    assert.deepEqual(await runtime('[Date.UTC(), Date.UTC(2000), Date.prototype.toGMTString === Date.prototype.toUTCString, Object.hasOwn(Date.prototype,"setFullYear"), "getDay" in new Date(0)];').run(), [NaN,946684800000,true,true,true]);
+  } finally {
+    if(priorTZ===undefined) delete process.env.TZ; else process.env.TZ=priorTZ;
+  }
+});
+
+test('UTC Date parsing, errors, budgeting and snapshots preserve the declared profile', async () => {
+  const texts=['1970','1970-01','1970-01-01','2020-02-29T12:34','2020-02-29T12:34:56','2020-02-29T12:34:56.123456','2020-02-29T24:00:00.000Z','2000-01-01T00:00:00+05:30','+010000-01-01T00:00Z','-000001-01-01T00:00:00Z','-000000-01-01T00:00Z','2020-13-01','2020-01-01T24:00:00.1Z','bad'];
+  const priorTZ=process.env.TZ; process.env.TZ='UTC';
+  try { assert.deepEqual(await runtime('texts.map(text=>Date.parse(text));').run({inputs:{texts}}),texts.map(Date.parse)); }
+  finally { if(priorTZ===undefined)delete process.env.TZ;else process.env.TZ=priorTZ; }
+  assert.deepEqual(await runtime('[-8640000000000000,-62198755200000,0,8640000000000000].map(t=>{const d=new Date(t);return [Date.parse(d.toString())===t,Date.parse(d.toUTCString())===t];});').run(),[[true,true],[true,true],[true,true],[true,true]]);
+  assert.equal(await runtime('typeof Date(1,2,3);').run(),'string');
+  for(const source of ['Date.prototype.getDay();','Date.prototype.setTime.call({},1);','new Date(0).setMonth(1n);','Date.UTC(1n);','new Date(0).toLocaleString("fr-FR");','new Date(0).toLocaleString("en-US",{timeZone:"America/Los_Angeles"});','new Date(0).toLocaleString("en-US",null);']) await assert.rejects(runtime(source).run(),/TypeError/);
+  assert.equal(await runtime('new Date(NaN).toLocaleDateString("unsupported");').run(),'Invalid Date');
+  await assert.rejects(runtime('Date.parse(text);').run({inputs:{text:'0'.repeat(10000)},limits:{instructionBudget:100}}),/instruction budget/);
+  const capabilities={checkpoint(){}};const snapshotKey=Buffer.from('language-completion-test-key');
+  const first=runtime('const d=new Date(2000,1,29); const setter=d.setFullYear; checkpoint(); setter.call(d,2001); [d.toISOString(),d.getTimezoneOffset()];').start({capabilities,snapshotKey});
+  assert.deepEqual(Progress.load(first.dump(),{capabilities,snapshotKey,limits:{}}).resume(undefined),['2001-03-01T00:00:00.000Z',0]);
+});

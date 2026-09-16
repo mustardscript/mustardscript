@@ -194,9 +194,48 @@ impl Runtime {
             BuiltinFunction::NumberIsFinite => Ok(self.call_number_is_finite(args)),
             BuiltinFunction::NumberIsInteger => Ok(self.call_number_is_integer(args)),
             BuiltinFunction::NumberIsSafeInteger => Ok(self.call_number_is_safe_integer(args)),
-            BuiltinFunction::DateCtor => Err(MustardError::runtime(
-                "TypeError: Date constructor must be called with new",
-            )),
+            BuiltinFunction::DateCtor => Ok(Value::String(Self::date_default_string(
+                current_time_millis(),
+            ))),
+            BuiltinFunction::DateUTC
+            | BuiltinFunction::DateParse
+            | BuiltinFunction::DateGetFullYear
+            | BuiltinFunction::DateGetMonth
+            | BuiltinFunction::DateGetDate
+            | BuiltinFunction::DateGetDay
+            | BuiltinFunction::DateGetHours
+            | BuiltinFunction::DateGetMinutes
+            | BuiltinFunction::DateGetSeconds
+            | BuiltinFunction::DateGetMilliseconds
+            | BuiltinFunction::DateGetUTCDay
+            | BuiltinFunction::DateGetUTCMilliseconds
+            | BuiltinFunction::DateGetTimezoneOffset
+            | BuiltinFunction::DateGetYear
+            | BuiltinFunction::DateSetFullYear
+            | BuiltinFunction::DateSetMonth
+            | BuiltinFunction::DateSetDate
+            | BuiltinFunction::DateSetHours
+            | BuiltinFunction::DateSetMinutes
+            | BuiltinFunction::DateSetSeconds
+            | BuiltinFunction::DateSetMilliseconds
+            | BuiltinFunction::DateSetUTCFullYear
+            | BuiltinFunction::DateSetUTCMonth
+            | BuiltinFunction::DateSetUTCDate
+            | BuiltinFunction::DateSetUTCHours
+            | BuiltinFunction::DateSetUTCMinutes
+            | BuiltinFunction::DateSetUTCSeconds
+            | BuiltinFunction::DateSetUTCMilliseconds
+            | BuiltinFunction::DateSetTime
+            | BuiltinFunction::DateSetYear
+            | BuiltinFunction::DateToString
+            | BuiltinFunction::DateToDateString
+            | BuiltinFunction::DateToTimeString
+            | BuiltinFunction::DateToUTCString
+            | BuiltinFunction::DateToLocaleString
+            | BuiltinFunction::DateToLocaleDateString
+            | BuiltinFunction::DateToLocaleTimeString => {
+                self.call_date_completion(function, this_value, args)
+            }
             BuiltinFunction::DateNow => Ok(Value::Number(current_time_millis())),
             BuiltinFunction::DateGetTime => self.call_date_get_time(this_value),
             BuiltinFunction::DateValueOf => self.call_date_value_of(this_value),

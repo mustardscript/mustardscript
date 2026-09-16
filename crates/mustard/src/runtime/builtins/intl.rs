@@ -312,11 +312,13 @@ impl Runtime {
     }
 
     pub(crate) fn call_intl_date_time_format_format(
-        &self,
+        &mut self,
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
-        let formatter = self.intl_date_time_format_receiver(this_value, "format")?;
+        let formatter = self
+            .intl_date_time_format_receiver(this_value, "format")?
+            .clone();
         let timestamp_ms = match args.first().cloned().unwrap_or(Value::Undefined) {
             Value::Undefined => current_time_millis(),
             value => self.date_timestamp_ms_from_value(value)?,
@@ -333,8 +335,21 @@ impl Runtime {
         }
         if let Some(year) = formatter.year {
             date_parts.push(match year {
-                IntlFieldStyle::Numeric => datetime.year.to_string(),
-                IntlFieldStyle::TwoDigit => format!("{:02}", datetime.year.rem_euclid(100)),
+                IntlFieldStyle::Numeric => if datetime.year <= 0 {
+                    1 - datetime.year
+                } else {
+                    datetime.year
+                }
+                .to_string(),
+                IntlFieldStyle::TwoDigit => format!(
+                    "{:02}",
+                    (if datetime.year <= 0 {
+                        1 - datetime.year
+                    } else {
+                        datetime.year
+                    })
+                    .rem_euclid(100)
+                ),
             });
         }
         let mut rendered = if date_parts.is_empty() {
@@ -354,11 +369,11 @@ impl Runtime {
                 IntlFieldStyle::Numeric => hour_12.to_string(),
                 IntlFieldStyle::TwoDigit => format!("{hour_12:02}"),
             }];
-            if let Some(minute) = formatter.minute {
-                time_parts.push(Self::format_intl_field(datetime.minute, minute));
+            if formatter.minute.is_some() {
+                time_parts.push(format!("{:02}", datetime.minute));
             }
-            if let Some(second) = formatter.second {
-                time_parts.push(Self::format_intl_field(datetime.second, second));
+            if formatter.second.is_some() {
+                time_parts.push(format!("{:02}", datetime.second));
             }
             rendered_time = Some(format!("{} {meridiem}", time_parts.join(":")));
         } else {
@@ -546,5 +561,76 @@ impl Runtime {
         Ok(Value::Object(
             self.insert_object(properties, ObjectKind::Plain)?,
         ))
+    }
+}
+
+impl Runtime {
+    pub(crate) fn call_date_locale(
+        &mut self,
+        method: BuiltinFunction,
+        timestamp: f64,
+        args: &[Value],
+    ) -> MustardResult<Value> {
+        if !timestamp.is_finite() {
+            return Ok(Value::String("Invalid Date".to_string()));
+        }
+        if matches!(args.get(1), Some(Value::Null)) {
+            return Err(MustardError::runtime(
+                "TypeError: Date locale options must not be null",
+            ));
+        }
+        let options = self.intl_options_object(args.get(1).cloned())?;
+        let mut properties = if let Some(object) = options {
+            self.objects
+                .get(object)
+                .ok_or_else(|| MustardError::runtime("options missing"))?
+                .properties
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect::<IndexMap<_, _>>()
+        } else {
+            IndexMap::new()
+        };
+        let has_date = ["year", "month", "day"].iter().any(|key| {
+            properties
+                .get(*key)
+                .is_some_and(|v| !matches!(v, Value::Undefined))
+        });
+        let has_time = ["hour", "minute", "second"].iter().any(|key| {
+            properties
+                .get(*key)
+                .is_some_and(|v| !matches!(v, Value::Undefined))
+        });
+        let need_defaults = match method {
+            BuiltinFunction::DateToLocaleDateString => !has_date,
+            BuiltinFunction::DateToLocaleTimeString => !has_time,
+            _ => !has_date && !has_time,
+        };
+        if need_defaults {
+            if method != BuiltinFunction::DateToLocaleTimeString {
+                for key in ["year", "month", "day"] {
+                    properties.insert(key.to_string(), Value::String("numeric".to_string()));
+                }
+            }
+            if method != BuiltinFunction::DateToLocaleDateString {
+                properties.insert("hour".to_string(), Value::String("numeric".to_string()));
+                for key in ["minute", "second"] {
+                    properties.insert(key.to_string(), Value::String("2-digit".to_string()));
+                }
+            }
+        }
+        let options = self.insert_object(properties, ObjectKind::Plain)?;
+        self.with_temporary_roots(&[Value::Object(options)], |runtime| {
+            let formatter = runtime.construct_intl_date_time_format(&[
+                args.first().cloned().unwrap_or(Value::Undefined),
+                Value::Object(options),
+            ])?;
+            runtime.with_temporary_roots(std::slice::from_ref(&formatter), |runtime| {
+                runtime.call_intl_date_time_format_format(
+                    formatter.clone(),
+                    &[Value::Number(timestamp)],
+                )
+            })
+        })
     }
 }

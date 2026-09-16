@@ -18,7 +18,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 8. Object/Array compatibility helpers
 - [x] 9. RegExp character-class parity and match indices
 - [x] 10. URI encoding and decoding
-- [ ] 11. UTC-profile Date completion
+- [x] 11. UTC-profile Date completion
 - [ ] 12. Deterministic, real en-US collation
 - [ ] 13. Number and multi-currency formatting
 - [x] 14. Unicode normalization and character APIs with an explicit string contract
@@ -226,3 +226,13 @@ language docs, tests, and comparative runtime probes before implementation.
   mapper call at a time across authenticated snapshots, extracted resolver GC
   roots, rejection/resource-limit paths and malformed driver/reaction rejection.
   Updated the obsolete Array.fromAsync rejection tests to reject invalid mappers.
+
+### UTC Date completion
+
+- Added fixed-UTC local getters/setters, normalized component construction,
+  UTC/parse, clipped timestamps, English display/round-trip parsing and narrow
+  locale wrappers. Invalid dates and full time-clip boundaries are explicit;
+  host time zones never affect local calendar operations.
+- Passed: `cargo test --workspace`, `npm run build`, full Node suite and
+  `npm run lint`. Node matrices cover setters/optional arguments, extended years,
+  invalid dates, ISO offsets, formatting, receiver failures, limits and snapshots.

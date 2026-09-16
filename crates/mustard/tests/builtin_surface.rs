@@ -1698,8 +1698,8 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
         ),
         ("[].groupBy();", "Array.prototype.groupBy is not supported"),
         (
-            "new Date(0).toLocaleString();",
-            "Date.prototype.toLocaleString is not supported",
+            "new Date(0).toLocaleString(\"fr-FR\");",
+            "Intl currently supports only the `en-US` locale",
         ),
         (
             "Array.fromAsync([], 1);",
@@ -1778,13 +1778,10 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
             .contains("String.prototype.matchAll requires a global RegExp")
     );
 
-    let date_call = compile("Date();").expect("source should compile");
-    let error =
-        execute(&date_call, ExecutionOptions::default()).expect_err("execution should fail");
-    assert!(
-        error
-            .to_string()
-            .contains("Date constructor must be called with new")
+    let date_call = compile("typeof Date();").expect("source should compile");
+    assert_eq!(
+        execute(&date_call, ExecutionOptions::default()).unwrap(),
+        StructuredValue::String("string".to_string())
     );
 
     let date_result = compile("new Date(0);").expect("source should compile");

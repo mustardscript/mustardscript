@@ -628,16 +628,10 @@ rejected.
   strings for global `RegExp` patterns, or the first-match array for
   non-global patterns, with guest-visible `index`, `input`, and optional
   `groups` properties on that result array
-- `Date.now()` reads the host wall clock as integral epoch milliseconds,
-  `new Date(value)` currently supports zero arguments or exactly one numeric,
-  string, or existing `Date` value, supported string inputs are currently
-  `YYYY-MM-DD` plus RFC3339 timestamps with `Z` or explicit numeric UTC
-  offsets, `Date.prototype.getTime()` returns the stored integral epoch
-  milliseconds, `toISOString()` and `toJSON()` render UTC RFC3339 timestamps
-  across the full ECMAScript time-clip range with signed six-digit years when
-  required, and the documented `getUTC*` accessors expose UTC
-  year/month/day/hour/minute/second fields while returning `NaN` for invalid
-  dates
+- Date uses a fixed UTC local-time profile: local and UTC getters/setters agree,
+  `getTimezoneOffset()` is zero for valid dates, and zone-less ISO timestamps
+  parse as UTC. `Date.now()` and zero-argument construction still read the host
+  wall clock. See UTC Date completion below for supported parsing and methods.
 - `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`,
   `Number.isFinite`, `Number.isInteger`, and `Number.isSafeInteger` are
   available as conservative static helpers on `Number`; the corresponding
@@ -666,10 +660,9 @@ rejected.
   cryptographically strong API contract
 - structured host arrays may be sparse; hole positions are preserved across the
   boundary in both directions up to 1,000,000 elements
-- direct `Date()` calls, multi-argument `new Date(...)`, locale-specific date
-  strings outside the documented `Date` parsing surface, unsupported `Intl`
-  locales or options, and returning `Date` values across the structured host
-  boundary all fail closed
+- unsupported `Intl` locales/options and returning `Date` values across the
+  structured host boundary fail closed; unsupported date-string formats parse
+  to NaN, as do invalid/out-of-range ISO dates
 - real `RegExp` instances support `source`, `flags`, `global`, `ignoreCase`,
   `multiline`, `dotAll`, `unicode`, `sticky`, `hasIndices`, `lastIndex`, `exec`, and `test`
 - symbol-based match/replace protocol hooks and full ECMAScript `RegExp`
@@ -859,3 +852,32 @@ resource-limit exhaustion still terminates execution. Custom async iterator
 and constructor authoring remain outside the supported surface. Driver state,
 GC roots, microtask phases and partially built arrays survive authenticated
 suspension snapshots. Thenables retain the documented synchronous-handler policy.
+
+### UTC Date completion
+
+The runtime's local time zone is always UTC, independent of host configuration.
+`Date.UTC`, `Date.parse`, multi-argument construction and the local/UTC `set*`
+families support normalized months, days and time components, truncation,
+year-0..99 constructor/UTC compatibility, invalid-date repair by `setFullYear`,
+and the full ±8.64e15 ms TimeClip range. `setTime`, `getTimezoneOffset`, and the
+legacy `getYear`/`setYear` are included. All local and UTC getters are available,
+including weekday and milliseconds. Borrowed methods require a real Date;
+`Date.prototype` itself is not a Date value. BigInt numeric operands reject.
+
+Supported strings are ISO `YYYY`, `YYYY-MM`, `YYYY-MM-DD`, full-date timestamps
+with hours/minutes, optional seconds/fraction, and either Z, a colon-separated
+numeric offset, or no zone (UTC). Signed six-digit years and exact midnight
+24:00 are supported; negative-zero years and nonexistent calendar dates reject
+with NaN. The runtime also parses its own UTC `toString`/`toUTCString` output.
+It does not accept arbitrary locale-specific legacy formats. Parsing work is
+metered. Checked wide calendar arithmetic prevents overflow before clipping.
+
+`Date()` returns the current UTC display string, ignoring arguments. `toString`,
+`toDateString`, `toTimeString`, `toUTCString` (also `toGMTString`), and default
+Date string coercion use deterministic English UTC text. Invalid dates render
+"Invalid Date"; existing toISOString/toJSON error/null behavior is unchanged.
+`toLocaleString`, `toLocaleDateString`, and `toLocaleTimeString` share the existing
+en-US/UTC numeric-field Intl profile and supply their standard default fields.
+Other locales/time zones/dateStyle/timeStyle and unsupported fields still reject.
+Date values and method references retain their state through guest snapshots;
+Date objects themselves still cannot cross the structured host boundary.

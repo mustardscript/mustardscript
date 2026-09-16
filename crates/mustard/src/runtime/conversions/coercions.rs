@@ -137,7 +137,7 @@ impl Runtime {
                         "TypeError: cannot convert prototype-less object to a primitive value",
                     ));
                 }
-                ObjectKind::Date(_) => "[object Date]".to_string(),
+                ObjectKind::Date(date) => Self::date_default_string(date.timestamp_ms),
                 ObjectKind::RegExp(regex) => format!("/{}/{}", regex.pattern, regex.flags),
                 ObjectKind::NumberObject(value) => value.to_js_string(),
                 ObjectKind::StringObject(value) => value.clone(),

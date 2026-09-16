@@ -555,7 +555,7 @@ test('unsupported static and prototype member calls report the missing supported
     ['"x".normalize("unsupported");', 'RangeError: normalization form must be NFC, NFD, NFKC, or NFKD'],
     ['(1).toLocaleString();', 'TypeError: Number.prototype.toLocaleString is not supported'],
     ['[].groupBy();', 'TypeError: Array.prototype.groupBy is not supported'],
-    ['new Date(0).toLocaleString();', 'TypeError: Date.prototype.toLocaleString is not supported'],
+    ['new Date(0).toLocaleString("fr-FR");', 'TypeError: Intl currently supports only the `en-US` locale'],
     ['Array.fromAsync([], 1);', 'TypeError: Array.fromAsync expects a callable map function'],
     ['({}).missing();', 'TypeError: Object.prototype.missing is not supported'],
   ]) {

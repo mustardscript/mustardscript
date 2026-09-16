@@ -66,6 +66,58 @@ impl Runtime {
         })
     }
 
+    pub(super) fn date_prototype_method(key: &str) -> Option<BuiltinFunction> {
+        Some(match key {
+            "getTime" => BuiltinFunction::DateGetTime,
+            "valueOf" => BuiltinFunction::DateValueOf,
+            "toISOString" => BuiltinFunction::DateToISOString,
+            "toJSON" => BuiltinFunction::DateToJSON,
+            "getUTCFullYear" => BuiltinFunction::DateGetUTCFullYear,
+            "getUTCMonth" => BuiltinFunction::DateGetUTCMonth,
+            "getUTCDate" => BuiltinFunction::DateGetUTCDate,
+            "getUTCHours" => BuiltinFunction::DateGetUTCHours,
+            "getUTCMinutes" => BuiltinFunction::DateGetUTCMinutes,
+            "getUTCSeconds" => BuiltinFunction::DateGetUTCSeconds,
+            "getFullYear" => BuiltinFunction::DateGetFullYear,
+            "getMonth" => BuiltinFunction::DateGetMonth,
+            "getDate" => BuiltinFunction::DateGetDate,
+            "getDay" => BuiltinFunction::DateGetDay,
+            "getHours" => BuiltinFunction::DateGetHours,
+            "getMinutes" => BuiltinFunction::DateGetMinutes,
+            "getSeconds" => BuiltinFunction::DateGetSeconds,
+            "getMilliseconds" => BuiltinFunction::DateGetMilliseconds,
+            "getUTCDay" => BuiltinFunction::DateGetUTCDay,
+            "getUTCMilliseconds" => BuiltinFunction::DateGetUTCMilliseconds,
+            "getTimezoneOffset" => BuiltinFunction::DateGetTimezoneOffset,
+            "getYear" => BuiltinFunction::DateGetYear,
+            "setFullYear" => BuiltinFunction::DateSetFullYear,
+            "setMonth" => BuiltinFunction::DateSetMonth,
+            "setDate" => BuiltinFunction::DateSetDate,
+            "setHours" => BuiltinFunction::DateSetHours,
+            "setMinutes" => BuiltinFunction::DateSetMinutes,
+            "setSeconds" => BuiltinFunction::DateSetSeconds,
+            "setMilliseconds" => BuiltinFunction::DateSetMilliseconds,
+            "setUTCFullYear" => BuiltinFunction::DateSetUTCFullYear,
+            "setUTCMonth" => BuiltinFunction::DateSetUTCMonth,
+            "setUTCDate" => BuiltinFunction::DateSetUTCDate,
+            "setUTCHours" => BuiltinFunction::DateSetUTCHours,
+            "setUTCMinutes" => BuiltinFunction::DateSetUTCMinutes,
+            "setUTCSeconds" => BuiltinFunction::DateSetUTCSeconds,
+            "setUTCMilliseconds" => BuiltinFunction::DateSetUTCMilliseconds,
+            "setTime" => BuiltinFunction::DateSetTime,
+            "setYear" => BuiltinFunction::DateSetYear,
+            "toString" => BuiltinFunction::DateToString,
+            "toDateString" => BuiltinFunction::DateToDateString,
+            "toTimeString" => BuiltinFunction::DateToTimeString,
+            "toUTCString" => BuiltinFunction::DateToUTCString,
+            "toLocaleString" => BuiltinFunction::DateToLocaleString,
+            "toLocaleDateString" => BuiltinFunction::DateToLocaleDateString,
+            "toLocaleTimeString" => BuiltinFunction::DateToLocaleTimeString,
+            "toGMTString" => BuiltinFunction::DateToUTCString,
+            _ => return None,
+        })
+    }
+
     fn function_helper_method(key: &str) -> Option<Value> {
         match key {
             "call" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionCall)),
@@ -449,6 +501,44 @@ impl Runtime {
             BuiltinFunction::NumberIsSafeInteger => "isSafeInteger",
             BuiltinFunction::DateCtor => "Date",
             BuiltinFunction::DateNow => "now",
+            BuiltinFunction::DateUTC => "UTC",
+            BuiltinFunction::DateParse => "parse",
+            BuiltinFunction::DateGetFullYear => "getFullYear",
+            BuiltinFunction::DateGetMonth => "getMonth",
+            BuiltinFunction::DateGetDate => "getDate",
+            BuiltinFunction::DateGetDay => "getDay",
+            BuiltinFunction::DateGetHours => "getHours",
+            BuiltinFunction::DateGetMinutes => "getMinutes",
+            BuiltinFunction::DateGetSeconds => "getSeconds",
+            BuiltinFunction::DateGetMilliseconds => "getMilliseconds",
+            BuiltinFunction::DateGetUTCDay => "getUTCDay",
+            BuiltinFunction::DateGetUTCMilliseconds => "getUTCMilliseconds",
+            BuiltinFunction::DateGetTimezoneOffset => "getTimezoneOffset",
+            BuiltinFunction::DateGetYear => "getYear",
+            BuiltinFunction::DateSetFullYear => "setFullYear",
+            BuiltinFunction::DateSetMonth => "setMonth",
+            BuiltinFunction::DateSetDate => "setDate",
+            BuiltinFunction::DateSetHours => "setHours",
+            BuiltinFunction::DateSetMinutes => "setMinutes",
+            BuiltinFunction::DateSetSeconds => "setSeconds",
+            BuiltinFunction::DateSetMilliseconds => "setMilliseconds",
+            BuiltinFunction::DateSetUTCFullYear => "setUTCFullYear",
+            BuiltinFunction::DateSetUTCMonth => "setUTCMonth",
+            BuiltinFunction::DateSetUTCDate => "setUTCDate",
+            BuiltinFunction::DateSetUTCHours => "setUTCHours",
+            BuiltinFunction::DateSetUTCMinutes => "setUTCMinutes",
+            BuiltinFunction::DateSetUTCSeconds => "setUTCSeconds",
+            BuiltinFunction::DateSetUTCMilliseconds => "setUTCMilliseconds",
+            BuiltinFunction::DateSetTime => "setTime",
+            BuiltinFunction::DateSetYear => "setYear",
+            BuiltinFunction::DateToString => "toString",
+            BuiltinFunction::DateToDateString => "toDateString",
+            BuiltinFunction::DateToTimeString => "toTimeString",
+            BuiltinFunction::DateToUTCString => "toUTCString",
+            BuiltinFunction::DateToLocaleString => "toLocaleString",
+            BuiltinFunction::DateToLocaleDateString => "toLocaleDateString",
+            BuiltinFunction::DateToLocaleTimeString => "toLocaleTimeString",
+
             BuiltinFunction::DateGetTime => "getTime",
             BuiltinFunction::DateValueOf => "valueOf",
             BuiltinFunction::DateToISOString => "toISOString",
@@ -680,6 +770,44 @@ impl Runtime {
             BuiltinFunction::NumberIsSafeInteger => 1,
             BuiltinFunction::DateCtor => 7,
             BuiltinFunction::DateNow => 0,
+            BuiltinFunction::DateUTC => 7,
+            BuiltinFunction::DateParse => 1,
+            BuiltinFunction::DateGetFullYear => 0,
+            BuiltinFunction::DateGetMonth => 0,
+            BuiltinFunction::DateGetDate => 0,
+            BuiltinFunction::DateGetDay => 0,
+            BuiltinFunction::DateGetHours => 0,
+            BuiltinFunction::DateGetMinutes => 0,
+            BuiltinFunction::DateGetSeconds => 0,
+            BuiltinFunction::DateGetMilliseconds => 0,
+            BuiltinFunction::DateGetUTCDay => 0,
+            BuiltinFunction::DateGetUTCMilliseconds => 0,
+            BuiltinFunction::DateGetTimezoneOffset => 0,
+            BuiltinFunction::DateGetYear => 0,
+            BuiltinFunction::DateSetFullYear => 3,
+            BuiltinFunction::DateSetMonth => 2,
+            BuiltinFunction::DateSetDate => 1,
+            BuiltinFunction::DateSetHours => 4,
+            BuiltinFunction::DateSetMinutes => 3,
+            BuiltinFunction::DateSetSeconds => 2,
+            BuiltinFunction::DateSetMilliseconds => 1,
+            BuiltinFunction::DateSetUTCFullYear => 3,
+            BuiltinFunction::DateSetUTCMonth => 2,
+            BuiltinFunction::DateSetUTCDate => 1,
+            BuiltinFunction::DateSetUTCHours => 4,
+            BuiltinFunction::DateSetUTCMinutes => 3,
+            BuiltinFunction::DateSetUTCSeconds => 2,
+            BuiltinFunction::DateSetUTCMilliseconds => 1,
+            BuiltinFunction::DateSetTime => 1,
+            BuiltinFunction::DateSetYear => 1,
+            BuiltinFunction::DateToString => 0,
+            BuiltinFunction::DateToDateString => 0,
+            BuiltinFunction::DateToTimeString => 0,
+            BuiltinFunction::DateToUTCString => 0,
+            BuiltinFunction::DateToLocaleString => 0,
+            BuiltinFunction::DateToLocaleDateString => 0,
+            BuiltinFunction::DateToLocaleTimeString => 0,
+
             BuiltinFunction::DateGetTime => 0,
             BuiltinFunction::DateValueOf => 0,
             BuiltinFunction::DateToISOString => 0,
@@ -814,9 +942,12 @@ impl Runtime {
                     "is" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectIs)),
                     _ => None,
                 },
-                BuiltinFunction::DateCtor if key == "now" => {
-                    Some(Value::BuiltinFunction(BuiltinFunction::DateNow))
-                }
+                BuiltinFunction::DateCtor => match key {
+                    "now" => Some(Value::BuiltinFunction(BuiltinFunction::DateNow)),
+                    "UTC" => Some(Value::BuiltinFunction(BuiltinFunction::DateUTC)),
+                    "parse" => Some(Value::BuiltinFunction(BuiltinFunction::DateParse)),
+                    _ => None,
+                },
                 BuiltinFunction::StringCtor => match key {
                     "fromCharCode" => {
                         Some(Value::BuiltinFunction(BuiltinFunction::StringFromCharCode))
@@ -872,6 +1003,11 @@ impl Runtime {
         property: Value,
     ) -> MustardResult<bool> {
         let key = self.to_property_key(property)?;
+        if Self::date_prototype_method(&key).is_some()
+            && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::DateCtor)))))
+        {
+            return Ok(true);
+        }
         if Self::set_prototype_method(&key).is_some()
             && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::SetCtor)))))
         {
@@ -948,19 +1084,9 @@ impl Runtime {
                             || key == "constructor"
                             || matches!(key.as_str(), "call" | "apply" | "bind")
                     }
-                    ObjectKind::Date(_) => matches!(
-                        key.as_str(),
-                        "getTime"
-                            | "valueOf"
-                            | "toISOString"
-                            | "toJSON"
-                            | "getUTCFullYear"
-                            | "getUTCMonth"
-                            | "getUTCDate"
-                            | "getUTCHours"
-                            | "getUTCMinutes"
-                            | "getUTCSeconds"
-                    ),
+                    ObjectKind::Date(_) => {
+                        key == "constructor" || Self::date_prototype_method(&key).is_some()
+                    }
                     ObjectKind::RegExp(_) => matches!(
                         key.as_str(),
                         "source"
@@ -1882,36 +2008,14 @@ impl Runtime {
                     _ => {}
                 }
                 if let ObjectKind::Date(_) = &object.kind {
-                    let built_in = match key {
-                        "getTime" => Some(Value::BuiltinFunction(BuiltinFunction::DateGetTime)),
-                        "valueOf" => Some(Value::BuiltinFunction(BuiltinFunction::DateValueOf)),
-                        "toISOString" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateToISOString))
-                        }
-                        "toJSON" => Some(Value::BuiltinFunction(BuiltinFunction::DateToJSON)),
-                        "getUTCFullYear" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCFullYear))
-                        }
-                        "getUTCMonth" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCMonth))
-                        }
-                        "getUTCDate" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCDate))
-                        }
-                        "getUTCHours" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCHours))
-                        }
-                        "getUTCMinutes" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCMinutes))
-                        }
-                        "getUTCSeconds" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCSeconds))
-                        }
-                        "constructor" => Some(Value::BuiltinFunction(BuiltinFunction::DateCtor)),
-                        _ => None,
-                    };
-                    if let Some(value) = built_in {
-                        return Ok(value);
+                    if let Some(value) = object.properties.get(key) {
+                        return Ok(value.clone());
+                    }
+                    if key == "constructor" {
+                        return Ok(Value::BuiltinFunction(BuiltinFunction::DateCtor));
+                    }
+                    if let Some(method) = Self::date_prototype_method(key) {
+                        return Ok(Value::BuiltinFunction(method));
                     }
                 }
                 if let ObjectKind::RegExp(regex) = &object.kind {
@@ -2117,52 +2221,9 @@ impl Runtime {
                     if matches!(
                         constructor,
                         Value::BuiltinFunction(BuiltinFunction::DateCtor)
-                    ) {
-                        match key {
-                            "getTime" => {
-                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateGetTime));
-                            }
-                            "valueOf" => {
-                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateValueOf));
-                            }
-                            "toISOString" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateToISOString,
-                                ));
-                            }
-                            "toJSON" => {
-                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateToJSON));
-                            }
-                            "getUTCFullYear" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateGetUTCFullYear,
-                                ));
-                            }
-                            "getUTCMonth" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateGetUTCMonth,
-                                ));
-                            }
-                            "getUTCDate" => {
-                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateGetUTCDate));
-                            }
-                            "getUTCHours" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateGetUTCHours,
-                                ));
-                            }
-                            "getUTCMinutes" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateGetUTCMinutes,
-                                ));
-                            }
-                            "getUTCSeconds" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateGetUTCSeconds,
-                                ));
-                            }
-                            _ => {}
-                        }
+                    ) && let Some(method) = Self::date_prototype_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
                     }
                     if matches!(
                         constructor,

@@ -649,3 +649,24 @@ fn async_array_construction_and_resolvers_preserve_sequential_state() {
         "[\"TypeError\",\"TypeError\",\"TypeError\",\"URIError\"]".into()
     );
 }
+
+#[test]
+fn utc_date_completion_normalizes_components_and_preserves_invalid_dates() {
+    assert_eq!(run(r#"
+        const d = new Date(2020, 1, 29, 23, 59, 59, 999);
+        const before = [d.toISOString(), d.getFullYear(), d.getMonth(), d.getDate(), d.getDay(), d.getUTCDay(), d.getMilliseconds(), d.getUTCMilliseconds(), d.getTimezoneOffset()];
+        d.setMilliseconds(1001); const changed = d.toISOString();
+        const invalid = new Date(NaN); invalid.setUTCFullYear(2000, 1, 29);
+        JSON.stringify([before, changed, invalid.toISOString(), Date.UTC(99,0,1), Date.parse('1970-01-01T00:00'), new Date(null).getTime(), new Date(0).toLocaleString(), new Date(0).toLocaleDateString()]);
+    "#), "[[\"2020-02-29T23:59:59.999Z\",2020,1,29,6,6,999,999,0],\"2020-03-01T00:00:00.001Z\",\"2000-02-29T00:00:00.000Z\",915148800000,0,0,\"1/1/1970, 12:00:00 AM\",\"1/1/1970\"]".into());
+    assert_eq!(run(r#"const d = new Date(0); [d.toString(), d.toDateString(), d.toTimeString(), d.toUTCString(), d.toGMTString()].join('|');"#), "Thu Jan 01 1970 00:00:00 GMT+0000 (Coordinated Universal Time)|Thu Jan 01 1970|00:00:00 GMT+0000 (Coordinated Universal Time)|Thu, 01 Jan 1970 00:00:00 GMT|Thu, 01 Jan 1970 00:00:00 GMT".into());
+    for source in [
+        "Date.prototype.setFullYear(2000)",
+        "new Date(0).setHours(1n)",
+        "new Date(0).toLocaleDateString('fr-FR')",
+        "new Date(0).toLocaleDateString('en-US', {timeZone:'America/New_York'})",
+    ] {
+        let error = execute(&compile(source).unwrap(), ExecutionOptions::default()).unwrap_err();
+        assert!(error.to_string().contains("TypeError"), "{source}: {error}");
+    }
+}
