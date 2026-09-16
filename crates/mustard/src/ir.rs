@@ -392,6 +392,7 @@ pub enum UnaryOp {
     Typeof,
     Void,
     Delete,
+    BitNot,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -412,6 +413,12 @@ pub enum BinaryOp {
     LessThanEq,
     GreaterThan,
     GreaterThanEq,
+    BitAnd,
+    BitOr,
+    BitXor,
+    ShiftLeft,
+    ShiftRight,
+    ShiftRightUnsigned,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -433,4 +440,10 @@ pub enum AssignOp {
     OrAssign,
     AndAssign,
     NullishAssign,
+    BitAndAssign,
+    BitOrAssign,
+    BitXorAssign,
+    ShiftLeftAssign,
+    ShiftRightAssign,
+    ShiftRightUnsignedAssign,
 }

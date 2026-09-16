@@ -137,12 +137,6 @@ fn rejects_function_scoped_var_declarations() {
 }
 
 #[test]
-fn rejects_additional_unsupported_assignment_operators() {
-    let source = "let value = 2; value &= 3;";
-    assert_validation_reject(source, "unsupported assignment operator in v1");
-}
-
-#[test]
 fn rejects_object_literal_accessors() {
     let error = compile("({ get value() { return 1; } });")
         .expect_err("object literal accessors should fail closed");

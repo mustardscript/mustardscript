@@ -22,7 +22,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [ ] 12. Deterministic, real en-US collation
 - [ ] 13. Number and multi-currency formatting
 - [x] 14. Unicode normalization and character APIs with an explicit string contract
-- [ ] 15. Bitwise/shift operators and assignments
+- [x] 15. Bitwise/shift operators and assignments
 - [ ] 16. BigInt conversion
 - [ ] 17. Set algebra
 - [ ] 18. Remaining Math helpers
@@ -159,3 +159,13 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm run build`, full Node suite and
   `npm run lint`; focused parity/GC/snapshot tests and hostile-regex subprocess
   checks verify both budget exhaustion and timely successful linear matching.
+
+### Number bitwise operators and assignments
+
+- Added IR/parser/compiler/runtime support for bitwise not/and/or/xor and signed
+  or unsigned shifts, plus every compound assignment, with wrapping Number
+  coercion and modulo-32 shift counts. BigInt operands explicitly reject.
+- Passed: `cargo test --workspace`, `npm run build`, full Node suite and
+  `npm run lint`. Differential tests cover a 30-by-30 coercion matrix, evaluation
+  order and snapshot bytecode; promoted obsolete parser/Test262/contract rejection
+  cases to supported coverage.

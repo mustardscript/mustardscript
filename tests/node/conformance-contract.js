@@ -403,11 +403,9 @@ const FEATURE_CONTRACT = Object.freeze([
   },
   {
     id: 'validation.unsupported-unary',
-    title: 'unsupported unary operators are validation rejects',
-    outcome: OUTCOME.VALIDATION_REJECT,
-    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
-    source: '~1;',
-    messageIncludes: 'unsupported unary operator in v1',
+    title: 'Number bitwise not matches Node',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.EXISTING],
   },
   {
     id: 'validation.unsupported-binary',
@@ -423,11 +421,9 @@ const FEATURE_CONTRACT = Object.freeze([
   },
   {
     id: 'validation.unsupported-assignment',
-    title: 'unsupported assignment operators are validation rejects',
-    outcome: OUTCOME.VALIDATION_REJECT,
-    coverage: [COVERAGE.PROPERTY_NEGATIVE, COVERAGE.TEST262_UNSUPPORTED],
-    source: 'let value = 1; value &= 2;',
-    messageIncludes: 'unsupported assignment operator in v1',
+    title: 'Number bitwise and shift assignments match Node',
+    outcome: OUTCOME.NODE_PARITY,
+    coverage: [COVERAGE.EXISTING],
   },
   {
     id: 'validation.object-accessors',

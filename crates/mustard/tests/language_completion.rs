@@ -462,3 +462,28 @@ fn regexp_classes_and_indices_follow_the_explicit_unicode_profile() {
     .unwrap_err();
     assert!(error.to_string().contains("iu word boundaries"));
 }
+
+#[test]
+fn number_bitwise_and_shift_operations_wrap_and_evaluate_references_once() {
+    assert_eq!(run(r#"
+        const object = {x: 4294967295}; let trace = '';
+        function base() { trace += 'B'; return object; }
+        function key() { trace += 'K'; return 'x'; }
+        function rhs() { trace += 'R'; object.x = 0; return 1; }
+        const result = base()[key()] >>>= rhs();
+        let x = 6; x &= 3; x |= 8; x ^= 1; x <<= 32; x >>= 1; x >>>= 0;
+        JSON.stringify([~1, ~NaN, ~Infinity, -1 >>> 0, 1 << 31, 1 << 32, 1 << -1,
+          4294967297 | 0, -4294967297 | 0, '0xff' & 15, undefined | true,
+          -9.9 >> 1, result, object.x, trace, x]);
+    "#), r#"[-2,-1,-1,4294967295,-2147483648,1,-2147483648,1,-1,15,1,-5,2147483647,2147483647,"BKR",5]"#.into());
+    for source in [
+        "~1n;",
+        "1n & 1n;",
+        "1 | 1n;",
+        "1n << 2;",
+        "let x = 1n; x >>>= 1;",
+    ] {
+        let error = execute(&compile(source).unwrap(), ExecutionOptions::default()).unwrap_err();
+        assert!(error.to_string().contains("TypeError"), "{source}: {error}");
+    }
+}

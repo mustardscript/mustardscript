@@ -210,8 +210,6 @@ rejected.
 
 - fully general Promise constructor and thenable-adoption edge cases,
   including hostile thenable cycles
-- unsupported assignment operators such as the bitwise and shift assignment
-  families
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
 - legacy `var` hoisting, same-scope redeclaration, and loop interaction rules
@@ -781,3 +779,13 @@ Offsets use the runtime's existing **Unicode scalar** contract. `matchAll` start
 at a regexp's lastIndex without mutating it; empty exec matches leave lastIndex at
 the match end. Flags are exposed in canonical order. Compilation, matching and
 index construction are budgeted, and the native regexp cache/engine sizes are bounded.
+
+### Number bitwise operators
+
+`~`, `&`, `|`, `^`, `<<`, `>>`, `>>>` and their compound assignments support
+Number operands and the supported primitive coercions. Inputs wrap through
+ToInt32/ToUint32 (NaN/infinities become zero); shift counts are modulo 32. `>>>`
+returns an unsigned Number, while the other results are signed 32-bit Numbers.
+Compound property assignments evaluate their receiver and key once. BigInt
+operands, including mixed Number/BigInt operations, throw TypeError in this
+Number-only bitwise profile.

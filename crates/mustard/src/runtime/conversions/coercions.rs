@@ -57,6 +57,18 @@ impl Runtime {
         })
     }
 
+    pub(in crate::runtime) fn coerce_uint32(&mut self, value: Value) -> MustardResult<u32> {
+        if let Value::String(text) = &value {
+            self.charge_native_helper_work(text.len())?;
+        }
+        let value = self.to_number(value)?;
+        Ok(if !value.is_finite() || value == 0.0 {
+            0
+        } else {
+            value.trunc().rem_euclid(4294967296.0) as u32
+        })
+    }
+
     pub(in crate::runtime) fn to_integer(&self, value: Value) -> MustardResult<i64> {
         let number = self.to_number(value)?;
         if number.is_nan() || number == 0.0 {

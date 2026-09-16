@@ -357,3 +357,33 @@ test('native receivers and intermediate regexp results survive GC-triggering wor
   `).run({limits: {heapLimitBytes: 128 * 1024}}), Array.from({length:30}, (_, i) => ['a', i * 3, true]));
   assert.equal(await runtime('function f() { return this === undefined; } f.call();').run(), true);
 });
+
+test('Number bitwise operators and compound assignments match Node coercion and ordering', async () => {
+  const values = [undefined, null, true, false, NaN, Infinity, -Infinity, -0, 0, 1, -1,
+    31, 32, 33, -33, 9.9, -9.9, 2 ** 31, 2 ** 32 - 1, 2 ** 32 + 1,
+    -(2 ** 32) - 1, 1e30, -1e30, 1e-20, '', '  ', '0xff', '0b11', '-9.5', 'oops'];
+  const source = `values.flatMap(a => values.map(b => [a & b, a | b, a ^ b, a << b, a >> b, a >>> b]));`;
+  assert.deepEqual(await runtime(source).run({inputs: {values}}), values.flatMap(a => values.map(b => [a & b, a | b, a ^ b, a << b, a >> b, a >>> b])));
+  assert.deepEqual(await runtime('values.map(x => ~x);').run({inputs: {values}}), values.map(x => ~x));
+  const ordering = `
+    const object = {x: 4294967295}; let trace = '';
+    function base() { trace += 'B'; return object; }
+    function key() { trace += 'K'; return 'x'; }
+    function rhs() { trace += 'R'; object.x = 0; return 1; }
+    const result = base()[key()] >>>= rhs();
+    let x = 6; x &= 3; x |= 8; x ^= 1; x <<= 32; x >>= 1; x >>>= 0;
+    [result, object.x, trace, x];
+  `;
+  assert.deepEqual(await runtime(ordering).run(), [2147483647, 2147483647, 'BKR', 5]);
+  for (const source of ['~1n;', '1n & 1n;', '1 | 1n;', '1n << 2;', 'let x = 1n; x >>>= 1;']) {
+    await assert.rejects(runtime(source).run(), /TypeError/);
+  }
+});
+
+test('bitwise bytecode round-trips through authenticated snapshots', () => {
+  const capabilities = {checkpoint() {}};
+  const snapshotKey = Buffer.from('language-completion-test-key');
+  const first = runtime('let x = -1; checkpoint(); x >>>= 1; [x, x << 1, ~x, x & 255];').start({capabilities, snapshotKey});
+  const restored = Progress.load(first.dump(), {capabilities, snapshotKey, limits: {}});
+  assert.deepEqual(restored.resume(undefined), [2147483647, -2, -2147483648, 255]);
+});

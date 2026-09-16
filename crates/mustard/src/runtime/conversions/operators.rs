@@ -67,6 +67,7 @@ impl Runtime {
             )),
             UnaryOp::Void => Ok(Value::Undefined),
             UnaryOp::Delete => Ok(Value::Bool(true)),
+            UnaryOp::BitNot => Ok(Value::Number(!(self.coerce_uint32(value)? as i32) as f64)),
         }
     }
 
@@ -77,6 +78,25 @@ impl Runtime {
         right: Value,
     ) -> MustardResult<Value> {
         match operator {
+            BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::ShiftLeft
+            | BinaryOp::ShiftRight
+            | BinaryOp::ShiftRightUnsigned => {
+                let left = self.coerce_uint32(left)?;
+                let right = self.coerce_uint32(right)?;
+                let result = match operator {
+                    BinaryOp::BitAnd => (left & right) as i32 as f64,
+                    BinaryOp::BitOr => (left | right) as i32 as f64,
+                    BinaryOp::BitXor => (left ^ right) as i32 as f64,
+                    BinaryOp::ShiftLeft => (left << (right & 31)) as i32 as f64,
+                    BinaryOp::ShiftRight => ((left as i32) >> (right & 31)) as f64,
+                    BinaryOp::ShiftRightUnsigned => (left >> (right & 31)) as f64,
+                    _ => unreachable!(),
+                };
+                Ok(Value::Number(result))
+            }
             BinaryOp::Add => {
                 if matches!(left, Value::String(_)) || matches!(right, Value::String(_)) {
                     Ok(Value::String(format!(

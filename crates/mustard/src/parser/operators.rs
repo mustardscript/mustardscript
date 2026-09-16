@@ -27,7 +27,7 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_unary_op(
         &mut self,
         op: UnaryOperator,
-        span: oxc_span::Span,
+        _span: oxc_span::Span,
     ) -> Option<UnaryOp> {
         match op {
             UnaryOperator::UnaryPlus => Some(UnaryOp::Plus),
@@ -36,17 +36,14 @@ impl<'a> Lowerer<'a> {
             UnaryOperator::Typeof => Some(UnaryOp::Typeof),
             UnaryOperator::Void => Some(UnaryOp::Void),
             UnaryOperator::Delete => Some(UnaryOp::Delete),
-            _ => {
-                self.unsupported("unsupported unary operator in v1", Some(span.into()));
-                None
-            }
+            UnaryOperator::BitwiseNot => Some(UnaryOp::BitNot),
         }
     }
 
     pub(super) fn lower_binary_op(
         &mut self,
         op: BinaryOperator,
-        span: oxc_span::Span,
+        _span: oxc_span::Span,
     ) -> Option<BinaryOp> {
         match op {
             BinaryOperator::Addition => Some(BinaryOp::Add),
@@ -65,10 +62,12 @@ impl<'a> Lowerer<'a> {
             BinaryOperator::LessEqualThan => Some(BinaryOp::LessThanEq),
             BinaryOperator::GreaterThan => Some(BinaryOp::GreaterThan),
             BinaryOperator::GreaterEqualThan => Some(BinaryOp::GreaterThanEq),
-            _ => {
-                self.unsupported("unsupported binary operator in v1", Some(span.into()));
-                None
-            }
+            BinaryOperator::BitwiseAnd => Some(BinaryOp::BitAnd),
+            BinaryOperator::BitwiseOR => Some(BinaryOp::BitOr),
+            BinaryOperator::BitwiseXOR => Some(BinaryOp::BitXor),
+            BinaryOperator::ShiftLeft => Some(BinaryOp::ShiftLeft),
+            BinaryOperator::ShiftRight => Some(BinaryOp::ShiftRight),
+            BinaryOperator::ShiftRightZeroFill => Some(BinaryOp::ShiftRightUnsigned),
         }
     }
 
@@ -87,7 +86,7 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_assign_op(
         &mut self,
         op: AssignmentOperator,
-        span: oxc_span::Span,
+        _span: oxc_span::Span,
     ) -> Option<AssignOp> {
         match op {
             AssignmentOperator::Assign => Some(AssignOp::Assign),
@@ -100,10 +99,12 @@ impl<'a> Lowerer<'a> {
             AssignmentOperator::LogicalOr => Some(AssignOp::OrAssign),
             AssignmentOperator::LogicalAnd => Some(AssignOp::AndAssign),
             AssignmentOperator::LogicalNullish => Some(AssignOp::NullishAssign),
-            _ => {
-                self.unsupported("unsupported assignment operator in v1", Some(span.into()));
-                None
-            }
+            AssignmentOperator::BitwiseAnd => Some(AssignOp::BitAndAssign),
+            AssignmentOperator::BitwiseOR => Some(AssignOp::BitOrAssign),
+            AssignmentOperator::BitwiseXOR => Some(AssignOp::BitXorAssign),
+            AssignmentOperator::ShiftLeft => Some(AssignOp::ShiftLeftAssign),
+            AssignmentOperator::ShiftRight => Some(AssignOp::ShiftRightAssign),
+            AssignmentOperator::ShiftRightZeroFill => Some(AssignOp::ShiftRightUnsignedAssign),
         }
     }
 }

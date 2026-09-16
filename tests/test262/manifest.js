@@ -3,6 +3,18 @@
 module.exports = {
   pass: [
     {
+      id: 'language/expressions/assignment/bitwise-and.js',
+      file: 'cases/pass/language/expressions/assignment/bitwise-and.js',
+      expected: 2,
+      contractId: 'validation.unsupported-assignment',
+    },
+    {
+      id: 'language/expressions/unary/bitwise-not.js',
+      file: 'cases/pass/language/expressions/unary/bitwise-not.js',
+      expected: -2,
+      contractId: 'validation.unsupported-unary',
+    },
+    {
       id: 'language/expressions/coalesce/basic.js',
       file: 'cases/pass/language/expressions/coalesce/basic.js',
       expected: [3, 7, 9],
@@ -297,13 +309,6 @@ module.exports = {
       errorKind: 'Validation',
       messageIncludes: 'debugger statements are not supported',
       reason: 'Debugger hooks are excluded from the guest surface.',
-    },
-    {
-      id: 'language/expressions/assignment/bitwise-and.js',
-      file: 'cases/unsupported/language/expressions/assignment/bitwise-and.js',
-      errorKind: 'Validation',
-      messageIncludes: 'unsupported assignment operator in v1',
-      reason: 'Bitwise assignment remains outside the supported assignment surface.',
     },
     {
       id: 'language/expressions/object/accessor-basic.js',

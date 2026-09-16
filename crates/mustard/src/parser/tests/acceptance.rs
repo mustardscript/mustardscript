@@ -379,3 +379,9 @@ fn parses_logical_assignment_operators_into_ir() {
         other => panic!("expected &&= assignment expression, got {other:?}"),
     }
 }
+
+#[test]
+fn accepts_number_bitwise_operators_and_assignments() {
+    compile("let x = ~1; x &= 3; x |= 4; x ^= 2; x <<= 32; x >>= -1; x >>>= 0;")
+        .expect("bitwise operators are supported");
+}
