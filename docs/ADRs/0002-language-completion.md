@@ -78,3 +78,20 @@ existing en-US/UTC Intl policy. Display strings use fixed English names and UTC.
 This does **not** make the clock deterministic: Date.now and zero-argument Date
 continue to consume the existing host clock. Host-boundary Date rejection stays.
 See [Date algorithms](https://tc39.es/ecma262/multipage/numbers-and-dates.html#sec-date-objects).
+
+## Collation data and binary-size tradeoff
+
+Use ICU4X `icu_collator` 2.3.1 with exact-pinned 2.3.0 normalization, collation
+and locale-fallback data for en-US string comparison. The maintained Unicode
+collator is preferable to an approximate hand-written comparator. This knowingly
+adds compiled data to the binary; no system locale, host callback, networking or
+locale-dependent process state is involved. Data changes require an explicit
+version update and parity review. Snapshot values contain only the builtin
+identity, not engine state. Native buffer capacity and combining-run work are
+bounded before comparison.
+
+Sensitivity maps to ICU strength/case-level as documented by
+[ICU4X](https://docs.rs/icu_collator/latest/icu_collator/options/struct.CollatorOptions.html).
+The supported options implement the sorting portion of
+[ECMA-402 localeCompare](https://tc39.es/ecma402/#sec-string.prototype.localecompare);
+unsupported locale/search profiles reject rather than silently approximate.

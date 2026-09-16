@@ -625,3 +625,44 @@ test('UTC Date parsing, errors, budgeting and snapshots preserve the declared pr
   const first=runtime('const d=new Date(2000,1,29); const setter=d.setFullYear; checkpoint(); setter.call(d,2001); [d.toISOString(),d.getTimezoneOffset()];').start({capabilities,snapshotKey});
   assert.deepEqual(Progress.load(first.dump(),{capabilities,snapshotKey,limits:{}}).resume(undefined),['2001-03-01T00:00:00.000Z',0]);
 });
+
+test('localeCompare matches en-US collation across accents, case, digits and scripts', async () => {
+  const words = ['', 'a', 'A', 'á', 'ä', 'a\u0301', 'b', 'Z', '2', '10', '002', 'file9', 'file10',
+    'ab', 'a-b', 'a b', 'a_b', '$', '€', 'ß', 'ss', 'œ', 'oe', '中', '😀', '\u0345\u0301'];
+  const profiles = [{}, {numeric:true}, ...['base','accent','case','variant'].map(sensitivity=>({sensitivity})),
+    {caseFirst:'upper'}, {caseFirst:'lower'}, {ignorePunctuation:true},
+    {numeric:true, sensitivity:'base', ignorePunctuation:true, caseFirst:'upper'}];
+  for (const options of profiles) {
+    const expected = words.map(a => words.map(b => Math.sign(a.localeCompare(b, 'en-US', options))));
+    assert.deepEqual(await runtime(`words.map(a => words.map(b => a.localeCompare(b, 'en-US', options)));`).run({inputs:{words, options}}), expected, JSON.stringify(options));
+  }
+  const source = `JSON.stringify([
+    ['z', 'ä', 'B', 'a'].toSorted((a,b) => a.localeCompare(b)),
+    String.prototype.localeCompare.call(42, '9'), new String('é').localeCompare('e', 'EN-us', {sensitivity:'base'}),
+    ''.localeCompare(), 'x'.localeCompare('y', []), 'x'.localeCompare('y', [,'en-US']),
+    ''.localeCompare.name, ''.localeCompare.length, String.prototype.hasOwnProperty('localeCompare')
+  ]);`;
+  assert.equal(await runtime(source).run(), require('node:vm').runInNewContext(source));
+});
+
+test('collation rejects unsupported profiles, bounds work/space and survives snapshots', async () => {
+  for (const source of [
+    `'a'.localeCompare('b', ['en-US','fr-FR']);`,
+    `const x = []; x.push(x); 'a'.localeCompare('b', x);`,
+    `'a'.localeCompare('b', undefined, null);`,
+    `'a'.localeCompare('b', undefined, {usage:'search'});`,
+    `'a'.localeCompare('b', undefined, {numeric:1});`,
+    `'a'.localeCompare('b', undefined, {caseFirst:'bad'});`,
+    `'a'.localeCompare('b', undefined, {sensitivity:'bad'});`,
+    `'a'.localeCompare('b', undefined, {collation:'emoji'});`,
+    `'a'.localeCompare('b', undefined, {unknown:true});`,
+    `String.prototype.localeCompare.call(undefined, 'x');`,
+  ]) await assert.rejects(runtime(source).run(), /TypeError|RangeError/, source);
+  await assert.rejects(runtime(`text.localeCompare('a');`).run({inputs:{text:'a'.repeat(10000)},limits:{instructionBudget:1000}}), /instruction budget/);
+  await assert.rejects(runtime(`text.localeCompare(text);`).run({inputs:{text:'a'+'\u0301'.repeat(1000)},limits:{instructionBudget:100000,heapLimitBytes:1024*1024}}), /instruction budget/);
+  await assert.rejects(runtime(`text.localeCompare('a');`).run({inputs:{text:'a'.repeat(10000)},limits:{heapLimitBytes:128*1024}}), /heap limit/);
+  const capabilities = {checkpoint() {}};
+  const snapshotKey = Buffer.from('language-completion-collation');
+  const first = runtime(`const compare = String.prototype.localeCompare; checkpoint(); compare.call('2','10','en-US',{numeric:true});`).start({capabilities,snapshotKey});
+  assert.equal(Progress.load(first.dump(), {capabilities,snapshotKey,limits:{}}).resume(undefined), -1);
+});

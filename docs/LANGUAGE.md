@@ -881,3 +881,19 @@ en-US/UTC numeric-field Intl profile and supply their standard default fields.
 Other locales/time zones/dateStyle/timeStyle and unsupported fields still reject.
 Date values and method references retain their state through guest snapshots;
 Date objects themselves still cannot cross the structured host boundary.
+
+### Deterministic en-US string collation
+
+`String.prototype.localeCompare(other, locales?, options?)` uses pinned ICU4X
+collation and normalization data, not scalar/code-point ordering. It returns
+-1, 0 or 1. Supported options are `numeric` (boolean), `sensitivity` (`base`,
+`accent`, `case`, `variant`), `caseFirst` (`false`, `lower`, `upper`), and
+`ignorePunctuation` (boolean). `usage: "sort"`, `collation: "default"` and either
+standard `localeMatcher` spelling are accepted; other options/values fail closed.
+Search collation and the `Intl.Collator` constructor remain unsupported.
+
+Locales default to en-US. Case-equivalent en-US tags and arrays containing only
+those tags are accepted; all present list entries are validated. Other locales,
+extensions, non-string list entries and null options reject. These locale-list
+rules also apply to the other Intl constructors. Comparison buffers and work,
+including long combining runs, are preflighted against runtime limits.

@@ -2,7 +2,10 @@ use super::*;
 use unicode_normalization::UnicodeNormalization;
 
 impl Runtime {
-    fn unicode_string_receiver(&self, value: Value) -> MustardResult<String> {
+    pub(in crate::runtime) fn unicode_string_receiver(
+        &self,
+        value: Value,
+    ) -> MustardResult<String> {
         if matches!(value, Value::Null | Value::Undefined) {
             return Err(MustardError::runtime(
                 "TypeError: String method requires a non-nullish receiver",

@@ -275,6 +275,9 @@ impl Runtime {
             BuiltinFunction::StringCodePointAt => self.call_string_code_at(this_value, args, true),
             BuiltinFunction::StringFromCharCode => self.call_string_from_codes(args, false),
             BuiltinFunction::StringFromCodePoint => self.call_string_from_codes(args, true),
+            BuiltinFunction::StringLocaleCompare => {
+                self.call_string_locale_compare(this_value, args)
+            }
             BuiltinFunction::StringNormalize => self.call_string_normalize(this_value, args),
             BuiltinFunction::StringIsWellFormed => self.call_string_is_well_formed(this_value),
             BuiltinFunction::StringAt => self.call_string_at(this_value, args),

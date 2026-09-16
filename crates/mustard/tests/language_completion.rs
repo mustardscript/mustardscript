@@ -670,3 +670,34 @@ fn utc_date_completion_normalizes_components_and_preserves_invalid_dates() {
         assert!(error.to_string().contains("TypeError"), "{source}: {error}");
     }
 }
+
+#[test]
+fn locale_comparison_uses_real_en_us_collation_and_explicit_options() {
+    assert_eq!(
+        run(r#"JSON.stringify([
+        'ä'.localeCompare('z'), 'a'.localeCompare('A'), '2'.localeCompare('10'),
+        '2'.localeCompare('10', 'en-US', {numeric:true}),
+        'é'.localeCompare('e', ['en-US'], {sensitivity:'base'}),
+        'é'.localeCompare('e', [], {sensitivity:'accent'}),
+        'a-b'.localeCompare('ab', undefined, {ignorePunctuation:true}),
+        String.prototype.localeCompare.call(2, 10),
+        String.prototype.hasOwnProperty('localeCompare'), 'localeCompare' in new String(''),
+        ''.localeCompare.name, ''.localeCompare.length
+    ]);"#),
+        r#"[-1,-1,1,-1,0,1,0,1,true,true,"localeCompare",1]"#.into()
+    );
+    for source in [
+        "'x'.localeCompare('y', 'fr-FR');",
+        "'x'.localeCompare('y', ['en-US', 'fr-FR']);",
+        "const locales = []; locales.push(locales); 'x'.localeCompare('y', locales);",
+        "'x'.localeCompare('y', undefined, null);",
+        "'x'.localeCompare('y', undefined, {usage:'search'});",
+        "'x'.localeCompare('y', undefined, {sensitivity:'bad'});",
+        "String.prototype.localeCompare.call(null, 'y');",
+    ] {
+        assert!(
+            execute(&compile(source).unwrap(), ExecutionOptions::default()).is_err(),
+            "{source}"
+        );
+    }
+}

@@ -19,7 +19,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 9. RegExp character-class parity and match indices
 - [x] 10. URI encoding and decoding
 - [x] 11. UTC-profile Date completion
-- [ ] 12. Deterministic, real en-US collation
+- [x] 12. Deterministic, real en-US collation
 - [ ] 13. Number and multi-currency formatting
 - [x] 14. Unicode normalization and character APIs with an explicit string contract
 - [x] 15. Bitwise/shift operators and assignments
@@ -236,3 +236,13 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm run build`, full Node suite and
   `npm run lint`. Node matrices cover setters/optional arguments, extended years,
   invalid dates, ISO offsets, formatting, receiver failures, limits and snapshots.
+
+### Deterministic en-US collation
+
+- Added ICU4X-backed localeCompare with pinned compiled data, sensitivity,
+  numeric sorting, case order and punctuation handling. Locale lists validate
+  every entry without recursion; unsupported profiles and null options reject.
+  Buffer and combining-run work are preflighted before native comparison.
+- Passed: `cargo test --workspace`, `npm run build`, full Node suite and
+  `npm run lint`. Differential matrices cover accents/case/digits/scripts,
+  canonical equivalence, coercions, metadata, resource limits and snapshots.

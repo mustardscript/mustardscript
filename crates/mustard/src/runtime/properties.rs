@@ -419,6 +419,7 @@ impl Runtime {
             BuiltinFunction::StringCodePointAt => "codePointAt",
             BuiltinFunction::StringFromCharCode => "fromCharCode",
             BuiltinFunction::StringFromCodePoint => "fromCodePoint",
+            BuiltinFunction::StringLocaleCompare => "localeCompare",
             BuiltinFunction::StringNormalize => "normalize",
             BuiltinFunction::StringIsWellFormed => "isWellFormed",
 
@@ -687,6 +688,7 @@ impl Runtime {
             BuiltinFunction::StringCodePointAt => 1,
             BuiltinFunction::StringFromCharCode => 1,
             BuiltinFunction::StringFromCodePoint => 1,
+            BuiltinFunction::StringLocaleCompare => 1,
             BuiltinFunction::StringNormalize => 0,
             BuiltinFunction::StringIsWellFormed => 0,
 
@@ -1884,6 +1886,7 @@ impl Runtime {
         Some(match key {
             "charCodeAt" => BuiltinFunction::StringCharCodeAt,
             "codePointAt" => BuiltinFunction::StringCodePointAt,
+            "localeCompare" => BuiltinFunction::StringLocaleCompare,
             "normalize" => BuiltinFunction::StringNormalize,
             "isWellFormed" => BuiltinFunction::StringIsWellFormed,
             _ => return None,

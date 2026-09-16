@@ -1,35 +1,49 @@
 use super::*;
 
 impl Runtime {
-    fn normalize_intl_locale(&self, value: Option<Value>) -> MustardResult<String> {
-        let Some(value) = value else {
-            return Ok("en-US".to_string());
-        };
-        match value {
-            Value::Undefined => Ok("en-US".to_string()),
-            Value::String(locale) if locale == "en-US" => Ok(locale),
-            Value::Array(array) => {
-                let first = self
+    fn normalize_intl_locale(&mut self, value: Option<Value>) -> MustardResult<String> {
+        let locales = match value.unwrap_or(Value::Undefined) {
+            Value::Undefined => return Ok("en-US".to_string()),
+            Value::String(locale) => vec![Some(Value::String(locale))],
+            Value::Array(key) => {
+                let length = self
                     .arrays
-                    .get(array)
+                    .get(key)
                     .ok_or_else(|| MustardError::runtime("array missing"))?
                     .elements
-                    .iter()
-                    .flatten()
-                    .next()
-                    .cloned()
-                    .unwrap_or(Value::String("en-US".to_string()));
-                self.normalize_intl_locale(Some(first))
+                    .len();
+                self.charge_native_helper_work(length)?;
+                self.ensure_heap_capacity(
+                    length.saturating_mul(std::mem::size_of::<Option<Value>>()),
+                )?;
+                self.arrays.get(key).unwrap().elements.clone()
             }
-            _ => Err(MustardError::runtime(
-                "TypeError: Intl currently supports only the `en-US` locale",
-            )),
+            _ => {
+                return Err(MustardError::runtime(
+                    "TypeError: Intl currently supports only the `en-US` locale",
+                ));
+            }
+        };
+        // Validate every present entry without recursively following guest arrays/objects.
+        for locale in locales.into_iter().flatten() {
+            let Value::String(locale) = locale else {
+                return Err(MustardError::runtime(
+                    "TypeError: Intl locale list entries must be strings",
+                ));
+            };
+            self.charge_native_helper_work(locale.len())?;
+            if !locale.eq_ignore_ascii_case("en-US") {
+                return Err(MustardError::runtime(
+                    "TypeError: Intl currently supports only the `en-US` locale",
+                ));
+            }
         }
+        Ok("en-US".to_string())
     }
 
     fn intl_options_object(&self, value: Option<Value>) -> MustardResult<Option<ObjectKey>> {
         match value.unwrap_or(Value::Undefined) {
-            Value::Undefined | Value::Null => Ok(None),
+            Value::Undefined => Ok(None),
             Value::Object(object) => Ok(Some(object)),
             _ => Err(MustardError::runtime(
                 "TypeError: Intl options must be a plain object in the supported surface",
@@ -632,5 +646,130 @@ impl Runtime {
                 )
             })
         })
+    }
+}
+
+impl Runtime {
+    pub(crate) fn call_string_locale_compare(
+        &mut self,
+        this_value: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
+        use icu_collator::options::{
+            AlternateHandling, CaseLevel, CollatorOptions, MaxVariable, Strength,
+        };
+        use icu_collator::preferences::{CollationCaseFirst, CollationNumericOrdering};
+        use icu_collator::{Collator, CollatorPreferences};
+
+        let left = self.unicode_string_receiver(this_value)?;
+        let right = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        self.normalize_intl_locale(args.get(1).cloned())?;
+        let options = self.intl_options_object(args.get(2).cloned())?;
+        self.intl_assert_supported_option_keys(
+            options,
+            "Collator",
+            &[
+                "usage",
+                "localeMatcher",
+                "collation",
+                "numeric",
+                "caseFirst",
+                "sensitivity",
+                "ignorePunctuation",
+            ],
+        )?;
+        for (key, allowed) in [
+            ("usage", &["sort"][..]),
+            ("localeMatcher", &["lookup", "best fit"][..]),
+            ("collation", &["default"][..]),
+        ] {
+            if let Some(value) = self.intl_option_string(options, key)?
+                && !allowed.contains(&value.as_str())
+            {
+                return Err(MustardError::runtime(format!(
+                    "TypeError: Intl.Collator does not support `{key}: {value}`"
+                )));
+            }
+        }
+        let mut prefs: CollatorPreferences = icu_locale_core::locale!("en-US").into();
+        prefs.numeric_ordering = Some(
+            if self.intl_option_bool(options, "numeric")?.unwrap_or(false) {
+                CollationNumericOrdering::True
+            } else {
+                CollationNumericOrdering::False
+            },
+        );
+        prefs.case_first = Some(
+            match self
+                .intl_option_string(options, "caseFirst")?
+                .as_deref()
+                .unwrap_or("false")
+            {
+                "false" => CollationCaseFirst::False,
+                "upper" => CollationCaseFirst::Upper,
+                "lower" => CollationCaseFirst::Lower,
+                _ => {
+                    return Err(MustardError::runtime(
+                        "RangeError: invalid collation caseFirst",
+                    ));
+                }
+            },
+        );
+        let mut config = CollatorOptions::default();
+        let (strength, case_level) = match self
+            .intl_option_string(options, "sensitivity")?
+            .as_deref()
+            .unwrap_or("variant")
+        {
+            "base" => (Strength::Primary, CaseLevel::Off),
+            "accent" => (Strength::Secondary, CaseLevel::Off),
+            "case" => (Strength::Primary, CaseLevel::On),
+            "variant" => (Strength::Tertiary, CaseLevel::Off),
+            _ => {
+                return Err(MustardError::runtime(
+                    "RangeError: invalid collation sensitivity",
+                ));
+            }
+        };
+        config.strength = Some(strength);
+        config.case_level = Some(case_level);
+        config.alternate_handling = Some(
+            if self
+                .intl_option_bool(options, "ignorePunctuation")?
+                .unwrap_or(false)
+            {
+                AlternateHandling::Shifted
+            } else {
+                AlternateHandling::NonIgnorable
+            },
+        );
+        config.max_variable = Some(MaxVariable::Punctuation);
+
+        // ICU buffers collation elements/decompositions, and can reorder a combining
+        // run while handling contractions. Preflight both space and worst-case work.
+        let bytes = left.len().saturating_add(right.len());
+        self.charge_native_helper_work(bytes.saturating_mul(8))?;
+        self.ensure_heap_capacity(bytes.saturating_mul(128).saturating_add(1024))?;
+        let mut combining_run = 0usize;
+        for ch in left
+            .chars()
+            .chain(std::iter::once('\0'))
+            .chain(right.chars())
+        {
+            if unicode_normalization::char::canonical_combining_class(ch) == 0 {
+                combining_run = 0;
+            } else {
+                combining_run = combining_run.saturating_add(1);
+                self.charge_native_helper_work(combining_run.saturating_mul(16))?;
+            }
+        }
+        let collator = Collator::try_new(prefs, config).map_err(|_| {
+            MustardError::runtime("TypeError: pinned en-US collation data unavailable")
+        })?;
+        Ok(Value::Number(match collator.compare(&left, &right) {
+            std::cmp::Ordering::Less => -1.0,
+            std::cmp::Ordering::Equal => 0.0,
+            std::cmp::Ordering::Greater => 1.0,
+        }))
     }
 }
