@@ -621,3 +621,31 @@ fn labeled_control_flow_preserves_nested_finally_and_loop_targets() {
         assert!(compile(source).is_err(), "{source}");
     }
 }
+
+#[test]
+fn async_array_construction_and_resolvers_preserve_sequential_state() {
+    assert_eq!(
+        run(r#"
+        async function main() {
+            const gate = Promise.withResolvers(); const first = Promise.withResolvers();
+            first.resolve(gate.promise); first.reject('ignored'); gate.resolve(7);
+            const values = await Array.fromAsync([Promise.resolve(1), 2, 3], async function(v, i) { return v + i + this.offset; }, {offset: 10});
+            const sparse = await Array.fromAsync({0: Promise.resolve('a'), length: 2});
+            return JSON.stringify([await first.promise, values, sparse]);
+        } main();
+    "#),
+        "[7,[11,13,15],[\"a\",null]]".into()
+    );
+    assert_eq!(
+        run(r#"
+        async function main() {
+            const names=[];
+            for (const value of [null, undefined]) { try { await Array.fromAsync(value); } catch(e) { names.push(e.name); } }
+            try { await Array.fromAsync([], 1); } catch(e) { names.push(e.name); }
+            try { await Array.fromAsync([Promise.reject(new URIError('bad'))]); } catch(e) { names.push(e.name); }
+            return JSON.stringify(names);
+        } main();
+    "#),
+        "[\"TypeError\",\"TypeError\",\"TypeError\",\"URIError\"]".into()
+    );
+}

@@ -27,7 +27,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 17. Set algebra
 - [x] 18. Remaining Math helpers
 - [x] 19. Labeled break and continue
-- [ ] 20. Promise.withResolvers and Array.fromAsync
+- [x] 20. Promise.withResolvers and Array.fromAsync
 
 ## Verification and delivery
 
@@ -214,3 +214,15 @@ language docs, tests, and comparative runtime probes before implementation.
   `npm run lint`; additionally ran the malformed-control-transfer unit regression.
   Node comparisons cover return/throw overrides, local exits inside cleanup,
   nested cleanup and authenticated snapshots with pending labeled transfers.
+
+### Async array construction and Promise capability records
+
+- Added one-shot resolver pairs, including pending adoption/throw handling for
+  existing constructors and thenables. Added sequential Array.fromAsync drivers
+  with awaited native iteration, array-likes, bound/async/host mapping, captured
+  lengths/live reads, microtask phases and snapshot/GC/accounting validation.
+- Passed: `cargo test --workspace`, `npm run build`, full Node suite and
+  `npm run lint`. Tests compare Node values and microtask order, verify one host
+  mapper call at a time across authenticated snapshots, extracted resolver GC
+  roots, rejection/resource-limit paths and malformed driver/reaction rejection.
+  Updated the obsolete Array.fromAsync rejection tests to reject invalid mappers.

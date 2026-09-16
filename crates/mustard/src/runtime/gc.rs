@@ -212,7 +212,8 @@ impl Runtime {
                                 self.mark_value(&rejection.value, &mut marks, &mut worklist);
                             }
                         },
-                        PromiseReaction::Combinator { .. } => {}
+                        PromiseReaction::Combinator { .. }
+                        | PromiseReaction::ArrayFromAsync { .. } => {}
                     }
                 }
                 MicrotaskJob::PromiseCombinator { target, input, .. } => {
@@ -426,11 +427,30 @@ impl Runtime {
                                 self.mark_value(&rejection.value, &mut marks, &mut worklist);
                             }
                         },
-                        PromiseReaction::Combinator { .. } => {}
+                        PromiseReaction::Combinator { .. }
+                        | PromiseReaction::ArrayFromAsync { .. } => {}
                     }
                 }
                 if let Some(driver) = &promise.driver {
                     match driver {
+                        PromiseDriver::ArrayFromAsync(state) => {
+                            self.mark_value(&state.source, &mut marks, &mut worklist);
+                            self.mark_value(&state.this_arg, &mut marks, &mut worklist);
+                            self.mark_value(&Value::Array(state.result), &mut marks, &mut worklist);
+                            if let Some(mapper) = &state.mapper {
+                                self.mark_value(mapper, &mut marks, &mut worklist);
+                            }
+                            if let Some(iterator) = state.iterator {
+                                self.mark_value(
+                                    &Value::Iterator(iterator),
+                                    &mut marks,
+                                    &mut worklist,
+                                );
+                            }
+                            if let Some(waiting) = state.waiting {
+                                self.mark_promise(waiting, &mut marks, &mut worklist);
+                            }
+                        }
                         PromiseDriver::Thenable { value } => {
                             self.mark_value(value, &mut marks, &mut worklist);
                         }
@@ -554,6 +574,10 @@ impl Runtime {
                 }
             }
             Value::Promise(key) => self.mark_promise(*key, marks, worklist),
+            Value::BuiltinFunction(BuiltinFunction::PromiseResolveOnce(guard))
+            | Value::BuiltinFunction(BuiltinFunction::PromiseRejectOnce(guard)) => {
+                self.mark_value(&Value::Object(*guard), marks, worklist)
+            }
             Value::BuiltinFunction(BuiltinFunction::PromiseResolveFunction(key))
             | Value::BuiltinFunction(BuiltinFunction::PromiseRejectFunction(key)) => {
                 self.mark_promise(*key, marks, worklist)

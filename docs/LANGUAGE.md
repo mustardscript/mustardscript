@@ -841,3 +841,21 @@ Exits preserve lexical scope, run intervening `finally` blocks in order and allo
 cleanup to override a pending break, continue, return or throw. Exits wholly
 inside a finally block leave its pending completion intact. Pending transfers
 and nested cleanup survive authenticated suspension snapshots.
+
+### Sequential async construction
+
+`Promise.withResolvers()` returns `{ promise, resolve, reject }`. The two functions
+share a one-shot guard: the first call wins, including adoption of a still-pending
+promise. Extracted functions and adoption state survive snapshots. Borrowing this
+method for unsupported constructors throws TypeError.
+
+`Array.fromAsync(items, mapFn?, thisArg?)` returns a Promise. It supports the same
+native iterables, boxed strings and array-like inputs as `Array.from`, awaits each
+input and mapping result sequentially, fills sparse slots with undefined, and
+captures array-like length while reading values live. It supports guest async
+mappers, bound functions and host-capability mappers; only one mapping operation
+is in flight at a time. Setup/iteration/mapping failures reject the promise;
+resource-limit exhaustion still terminates execution. Custom async iterator
+and constructor authoring remain outside the supported surface. Driver state,
+GC roots, microtask phases and partially built arrays survive authenticated
+suspension snapshots. Thenables retain the documented synchronous-handler policy.

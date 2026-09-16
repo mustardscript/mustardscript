@@ -266,8 +266,7 @@ impl Runtime {
                     value: value.clone(),
                 }),
             )?;
-            let resolve = self.promise_settler(promise, false);
-            let reject = self.promise_settler(promise, true);
+            let (resolve, reject) = self.promise_resolvers(promise)?;
             self.call_promise_setup_callback(
                 promise,
                 then,

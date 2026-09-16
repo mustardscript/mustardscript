@@ -31,6 +31,12 @@ impl Runtime {
             )),
             BuiltinFunction::ArrayCtor => self.call_array_ctor(args),
             BuiltinFunction::ArrayFrom => self.call_array_from(args),
+            BuiltinFunction::ArrayFromAsync => self.call_array_from_async(args),
+            BuiltinFunction::PromiseWithResolvers => self.call_promise_with_resolvers(this_value),
+            BuiltinFunction::PromiseResolveOnce(guard) => {
+                self.call_promise_once(guard, false, args)
+            }
+            BuiltinFunction::PromiseRejectOnce(guard) => self.call_promise_once(guard, true, args),
             BuiltinFunction::ArrayOf => self.call_array_of(args),
             BuiltinFunction::ArrayIsArray => {
                 Ok(Value::Bool(matches!(args.first(), Some(Value::Array(_)))))

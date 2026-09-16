@@ -5,6 +5,7 @@ use indexmap::IndexMap;
 mod arrays;
 mod bigint;
 mod collections;
+mod from_async;
 mod install;
 mod intl;
 mod json;

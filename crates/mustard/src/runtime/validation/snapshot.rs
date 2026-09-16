@@ -358,6 +358,29 @@ fn validate_promise_combinator_target(
     Ok(())
 }
 
+fn validate_array_from_async_reaction(
+    runtime: &Runtime,
+    target: PromiseKey,
+    source: PromiseKey,
+    phase: ArrayFromAsyncPhase,
+) -> MustardResult<()> {
+    let promise = runtime
+        .promises
+        .get(target)
+        .ok_or_else(|| snapshot_error("missing Array.fromAsync reaction target"))?;
+    if !matches!(promise.state, PromiseState::Pending) {
+        return Ok(());
+    }
+    match &promise.driver {
+        Some(PromiseDriver::ArrayFromAsync(state))
+            if state.waiting == Some(source) && state.phase == phase =>
+        {
+            Ok(())
+        }
+        _ => Err(snapshot_error("invalid Array.fromAsync reaction state")),
+    }
+}
+
 fn validate_microtask_snapshot(runtime: &Runtime, microtask: &MicrotaskJob) -> MustardResult<()> {
     match microtask {
         MicrotaskJob::ResumeAsync {
@@ -370,13 +393,17 @@ fn validate_microtask_snapshot(runtime: &Runtime, microtask: &MicrotaskJob) -> M
                 PromiseReaction::Then { target, .. }
                 | PromiseReaction::Finally { target, .. }
                 | PromiseReaction::FinallyPassThrough { target, .. }
-                | PromiseReaction::Combinator { target, .. } => *target,
+                | PromiseReaction::Combinator { target, .. }
+                | PromiseReaction::ArrayFromAsync { target, .. } => *target,
             };
             if runtime.promises.get(target).is_none() {
                 return Err(snapshot_error(format!(
                     "promise reaction microtask references missing target {:?}",
                     target
                 )));
+            }
+            if let PromiseReaction::ArrayFromAsync { phase, .. } = reaction {
+                validate_array_from_async_reaction(runtime, target, *source, *phase)?;
             }
             if let PromiseReaction::Combinator { index, kind, .. } = reaction {
                 validate_promise_combinator_target(
@@ -442,6 +469,30 @@ fn validate_promise_snapshot(
     promise_key: PromiseKey,
     promise: &PromiseObject,
 ) -> MustardResult<()> {
+    if let Some(PromiseDriver::ArrayFromAsync(state)) = &promise.driver {
+        if !matches!(promise.state, PromiseState::Pending)
+            || state.index > u32::MAX as usize
+            || (state.iterator.is_none()
+                && (state.index > state.length || state.length > u32::MAX as usize))
+            || runtime
+                .arrays
+                .get(state.result)
+                .is_none_or(|array| array.elements.len() != state.index)
+            || state
+                .waiting
+                .is_none_or(|source| runtime.promises.get(source).is_none())
+            || (state.phase == ArrayFromAsyncPhase::Mapper
+                && (state.mapper.is_none() || state.done))
+            || (state.phase == ArrayFromAsyncPhase::IteratorValue && state.iterator.is_none())
+        {
+            return Err(snapshot_error("invalid Array.fromAsync driver state"));
+        }
+        if let Some(mapper) = &state.mapper
+            && !runtime.is_callable_value(mapper)?
+        {
+            return Err(snapshot_error("invalid Array.fromAsync mapping function"));
+        }
+    }
     for dependent in &promise.dependents {
         if runtime.promises.get(*dependent).is_none() {
             return Err(snapshot_error(format!(
@@ -451,11 +502,15 @@ fn validate_promise_snapshot(
         }
     }
     for reaction in &promise.reactions {
+        if let PromiseReaction::ArrayFromAsync { target, phase } = reaction {
+            validate_array_from_async_reaction(runtime, *target, promise_key, *phase)?;
+        }
         match reaction {
             PromiseReaction::Then { target, .. }
             | PromiseReaction::Finally { target, .. }
             | PromiseReaction::FinallyPassThrough { target, .. }
-            | PromiseReaction::Combinator { target, .. } => {
+            | PromiseReaction::Combinator { target, .. }
+            | PromiseReaction::ArrayFromAsync { target, .. } => {
                 if runtime.promises.get(*target).is_none() {
                     return Err(snapshot_error(format!(
                         "promise {:?} reaction references missing target {:?}",
@@ -485,6 +540,27 @@ fn validate_promise_snapshot(
 
 fn validate_runtime_value(runtime: &Runtime, value: &Value) -> MustardResult<()> {
     match value {
+        Value::BuiltinFunction(BuiltinFunction::PromiseResolveOnce(guard))
+        | Value::BuiltinFunction(BuiltinFunction::PromiseRejectOnce(guard)) => {
+            let object = runtime
+                .objects
+                .get(*guard)
+                .ok_or_else(|| snapshot_error("missing Promise resolver guard"))?;
+            if !matches!(object.properties.get("resolved"), Some(Value::Bool(_))) {
+                return Err(snapshot_error("invalid Promise resolver guard"));
+            }
+            match object.properties.get("promise") {
+                Some(Value::Promise(target)) if runtime.promises.get(*target).is_some() => Ok(()),
+                _ => Err(snapshot_error("invalid Promise resolver target")),
+            }
+        }
+        Value::BuiltinFunction(BuiltinFunction::PromiseResolveFunction(target))
+        | Value::BuiltinFunction(BuiltinFunction::PromiseRejectFunction(target))
+            if runtime.promises.get(*target).is_none() =>
+        {
+            Err(snapshot_error("missing Promise resolver target"))
+        }
+
         Value::Object(object) if runtime.objects.get(*object).is_none() => Err(snapshot_error(
             format!("value references missing object {:?}", object),
         )),

@@ -1701,7 +1701,10 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
             "new Date(0).toLocaleString();",
             "Date.prototype.toLocaleString is not supported",
         ),
-        ("Array.fromAsync([]);", "Array.fromAsync is not supported"),
+        (
+            "Array.fromAsync([], 1);",
+            "Array.fromAsync expects a callable map function",
+        ),
         (
             "({}).missing();",
             "Object.prototype.missing is not supported",

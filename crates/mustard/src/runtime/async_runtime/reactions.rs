@@ -64,7 +64,8 @@ impl Runtime {
             PromiseReaction::Then { target, .. }
             | PromiseReaction::Finally { target, .. }
             | PromiseReaction::FinallyPassThrough { target, .. }
-            | PromiseReaction::Combinator { target, .. } => *target,
+            | PromiseReaction::Combinator { target, .. }
+            | PromiseReaction::ArrayFromAsync { target, .. } => *target,
         }
     }
 
@@ -483,6 +484,9 @@ impl Runtime {
     ) -> MustardResult<()> {
         let target = self.promise_reaction_target(&reaction);
         let result = (|| match reaction {
+            PromiseReaction::ArrayFromAsync { target, phase } => {
+                self.activate_array_from_async(target, phase, outcome)
+            }
             PromiseReaction::Then {
                 target,
                 on_fulfilled,

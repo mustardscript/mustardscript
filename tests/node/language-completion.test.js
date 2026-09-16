@@ -524,3 +524,60 @@ test('labeled pending exits survive snapshots taken inside nested cleanup', () =
   }
   assert.deepEqual(progress, [0, 'tail', 1, 'tail']);
 });
+
+test('Promise.withResolvers and Array.fromAsync match Node values and sequencing', async () => {
+  const vm = require('node:vm');
+  const bodies = [
+    `const gate=Promise.withResolvers(); const r=Promise.withResolvers(); r.resolve({then(resolve,reject){resolve(gate.promise);reject(2);throw 3;}}); gate.resolve(7); return await r.promise;`,
+    `const gate=Promise.withResolvers(); const p=new Promise((resolve,reject)=>{resolve(gate.promise);reject(2);throw 3;}); gate.resolve(7); return await p;`,
+    `const r=Promise.withResolvers(); const gate=Promise.withResolvers(); r.resolve(gate.promise); r.reject('ignored'); r.resolve(99); gate.resolve(7); return [await r.promise, Object.keys(r), r.resolve.name, r.resolve.length, Promise.withResolvers.length];`,
+    `const r=Promise.withResolvers(); r.reject(new URIError('first')); r.resolve(2); try { await r.promise; } catch(e) { return [e.name,e.message]; }`,
+    `const r=Promise.withResolvers(); r.resolve(r.promise); try {await r.promise;} catch(e) {return e.name;}`,
+    `return await Array.fromAsync([Promise.resolve(2),3,4], async function(v,i){return this.offset+v+i;},{offset:10});`,
+    `return await Array.fromAsync({0: Promise.resolve('a'),2:'c',length:3}, (v,i)=>[v,i]);`,
+    `const values=[1,2]; return await Array.fromAsync(values, function(v,i){if(i===0)values.push(3);return v*2;});`,
+    `const values={0:1,1:2,length:2}; return await Array.fromAsync(values, function(v,i){if(i===0){values.length=0;delete values[1];}return v;});`,
+    `return [await Array.fromAsync('a🙂'),await Array.fromAsync(new Set([3,1])), await Array.fromAsync(new Map([[1,'x']]))];`,
+    `return await Array.fromAsync([1,2], function(prefix,v,i){return this.offset+prefix+v+i;}.bind({offset:10},100), {offset:0});`,
+    `const log=[]; const p=Array.fromAsync([1], v=>{log.push('map');return v;}).then(()=>log.push('done')); Promise.resolve().then(()=>log.push('one')).then(()=>log.push('two')).then(()=>log.push('three')); await p;return log;`,
+    `const log=[]; const p=Array.fromAsync([]).then(()=>log.push('done')); Promise.resolve().then(()=>log.push('one')).then(()=>log.push('two')); await p;return log;`,
+    `const log=[]; try {await Array.fromAsync([1,Promise.reject(new TypeError('bad')),3], v=>{log.push(v);return v;});}catch(e){log.push(e.name,e.message);}return log;`,
+    `return await Array.fromAsync([1,2], async v=>({then(resolve){resolve(v+1);}}));`,
+  ];
+  for (const body of bodies) {
+    const source = `(async function(){${body}})();`;
+    const expected = await vm.runInNewContext(source);
+    const actual = await runtime(source).run();
+    assert.deepEqual(JSON.parse(JSON.stringify(actual)), JSON.parse(JSON.stringify(expected)), source);
+  }
+  assert.equal(await runtime('let sync=false; let p; try {p=Array.fromAsync(null);} catch(e) {sync=true;} [sync,p instanceof Promise];').run().then(JSON.stringify), '[false,true]');
+  for (const source of ['Array.fromAsync(null);','Array.fromAsync(undefined);','Array.fromAsync([],1);','Promise.withResolvers.call({});']) await assert.rejects(runtime(source).run(), /TypeError/);
+  await assert.rejects(runtime('Array.fromAsync({length:1e9});').run(), /heap limit/);
+});
+
+test('async array construction is sequential across authenticated host snapshots', () => {
+  const capabilities = {checkpoint() {}};
+  const snapshotKey = Buffer.from('language-completion-test-key');
+  const source = `async function main(){ return await Array.fromAsync([1,2,3], async (v,i)=>{const next=await checkpoint(v,i);return next+1;});} main();`;
+  let progress = runtime(source).start({capabilities, snapshotKey});
+  for (let i=0;i<3;i++) {
+    assert.ok(progress instanceof Progress);
+    assert.deepEqual(progress.args,[i+1,i]);
+    const restored = Progress.load(progress.dump(), {capabilities, snapshotKey, limits: {}});
+    progress=restored.resume((i+1)*10);
+  }
+  assert.deepEqual(progress,[11,21,31]);
+  const direct = runtime('Array.fromAsync([4,5], checkpoint);').start({capabilities, snapshotKey});
+  assert.deepEqual(direct.args, [4,0]);
+  const second = Progress.load(direct.dump(),{capabilities,snapshotKey,limits:{}}).resume(40);
+  assert.deepEqual(second.args,[5,1]);
+  assert.deepEqual(Progress.load(second.dump(),{capabilities,snapshotKey,limits:{}}).resume(50),[40,50]);
+});
+
+test('async drivers and extracted resolvers retain GC roots', async () => {
+  const source = `async function main(){ let gate=Promise.withResolvers(); const resolve=gate.resolve; const reject=gate.reject; const input={0:gate.promise,length:1}; const p=Array.fromAsync(input, v=>({value:v})); delete input[0]; gate=null; for(let i=0;i<1000;i++){const garbage={text:'x'.repeat(200)};} resolve(42); reject(0); return await p; } main();`;
+  assert.deepEqual(await runtime(source).run({limits:{heapLimitBytes:128*1024}}),[{value:42}]);
+  const capabilities={checkpoint(){}}; const snapshotKey=Buffer.from('language-completion-test-key');
+  const first=runtime('const r=Promise.withResolvers(); const resolve=r.resolve; checkpoint(); resolve(7); resolve(8); r.promise;').start({capabilities,snapshotKey});
+  assert.equal(Progress.load(first.dump(),{capabilities,snapshotKey,limits:{}}).resume(undefined),7);
+});

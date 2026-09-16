@@ -113,11 +113,25 @@ where
                 PromiseOutcome::Fulfilled(value) => visit(value)?,
                 PromiseOutcome::Rejected(rejection) => visit(&rejection.value)?,
             },
-            PromiseReaction::Combinator { .. } => {}
+            PromiseReaction::Combinator { .. } | PromiseReaction::ArrayFromAsync { .. } => {}
         }
     }
     if let Some(driver) = &promise.driver {
         match driver {
+            PromiseDriver::ArrayFromAsync(state) => {
+                visit(&state.source)?;
+                visit(&state.this_arg)?;
+                visit(&Value::Array(state.result))?;
+                if let Some(mapper) = &state.mapper {
+                    visit(mapper)?;
+                }
+                if let Some(iterator) = state.iterator {
+                    visit(&Value::Iterator(iterator))?;
+                }
+                if let Some(waiting) = state.waiting {
+                    visit(&Value::Promise(waiting))?;
+                }
+            }
             PromiseDriver::Thenable { value } => visit(value)?,
             PromiseDriver::All { values, .. } => {
                 for value in values.iter().flatten() {
@@ -198,7 +212,7 @@ where
                 PromiseOutcome::Fulfilled(value) => visit_value(value)?,
                 PromiseOutcome::Rejected(rejection) => visit_value(&rejection.value)?,
             },
-            PromiseReaction::Combinator { .. } => {}
+            PromiseReaction::Combinator { .. } | PromiseReaction::ArrayFromAsync { .. } => {}
         },
         MicrotaskJob::PromiseCombinator { input, .. } => {
             if let PromiseCombinatorInput::Fulfilled(value) = input {

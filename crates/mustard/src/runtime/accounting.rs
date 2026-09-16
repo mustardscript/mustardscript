@@ -1545,7 +1545,7 @@ fn measure_promise_reaction_entry_bytes(reaction: &PromiseReaction) -> usize {
             PromiseReaction::FinallyPassThrough {
                 original_outcome, ..
             } => measure_promise_outcome_payload_bytes(original_outcome),
-            PromiseReaction::Combinator { .. } => 0,
+            PromiseReaction::Combinator { .. } | PromiseReaction::ArrayFromAsync { .. } => 0,
         }
 }
 
@@ -1566,6 +1566,12 @@ fn measure_promise_settled_result_bytes(result: &PromiseSettledResult) -> usize 
 
 fn measure_promise_driver_bytes(driver: &Option<PromiseDriver>) -> usize {
     match driver {
+        Some(PromiseDriver::ArrayFromAsync(state)) => {
+            std::mem::size_of::<ArrayFromAsyncState>()
+                + extra_value_bytes(&state.source)
+                + extra_value_bytes(&state.this_arg)
+                + state.mapper.as_ref().map_or(0, extra_value_bytes)
+        }
         Some(PromiseDriver::Thenable { value }) => extra_value_bytes(value),
         Some(PromiseDriver::All { values, .. }) => values
             .iter()

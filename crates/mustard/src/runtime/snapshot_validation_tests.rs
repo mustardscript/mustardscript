@@ -237,3 +237,29 @@ fn rejects_malformed_structured_control_transfers() {
         assert!(load_program(&bytes).is_err(), "malformed transfer accepted");
     }
 }
+
+#[test]
+fn rejects_invalid_async_array_driver_and_reaction_state() {
+    for corrupt_reaction in [false, true] {
+        let mut suspension = suspend_async_host_wait(
+            "Array.fromAsync([1, 2], async value => await fetch_data(value));",
+        );
+        let runtime = &mut suspension.snapshot.runtime;
+        let state = runtime
+            .promises
+            .values_mut()
+            .find_map(|promise| match promise.driver.as_mut() {
+                Some(PromiseDriver::ArrayFromAsync(state)) => Some(state),
+                _ => None,
+            })
+            .expect("fromAsync driver");
+        if corrupt_reaction {
+            state.phase = ArrayFromAsyncPhase::Value;
+        } else {
+            state.index = usize::MAX;
+        }
+        let bytes = dump_snapshot(&suspension.snapshot).expect("serialize corrupt snapshot");
+        let error = load_snapshot(&bytes).expect_err("corrupt async array snapshot must reject");
+        assert!(error.to_string().contains("Array.fromAsync"), "{error}");
+    }
+}

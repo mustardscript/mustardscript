@@ -650,6 +650,10 @@ pub(super) enum BuiltinFunction {
     SetIsSubsetOf,
     SetIsSupersetOf,
     SetIsDisjointFrom,
+    PromiseWithResolvers,
+    PromiseResolveOnce(ObjectKey),
+    PromiseRejectOnce(ObjectKey),
+    ArrayFromAsync,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1292,6 +1296,10 @@ pub(super) enum PromiseReaction {
         index: usize,
         kind: PromiseCombinatorKind,
     },
+    ArrayFromAsync {
+        target: PromiseKey,
+        phase: ArrayFromAsyncPhase,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -1319,6 +1327,7 @@ pub(super) enum PromiseDriver {
         remaining: usize,
         reasons: Vec<Option<Value>>,
     },
+    ArrayFromAsync(Box<ArrayFromAsyncState>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1609,4 +1618,25 @@ pub(super) struct GarbageCollectionWorklist {
 pub(super) struct GarbageCollectionStats {
     pub(super) reclaimed_bytes: usize,
     pub(super) reclaimed_allocations: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(super) enum ArrayFromAsyncPhase {
+    IteratorValue,
+    Value,
+    Mapper,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct ArrayFromAsyncState {
+    pub(super) source: Value,
+    pub(super) iterator: Option<IteratorKey>,
+    pub(super) length: usize,
+    pub(super) index: usize,
+    pub(super) result: ArrayKey,
+    pub(super) mapper: Option<Value>,
+    pub(super) this_arg: Value,
+    pub(super) waiting: Option<PromiseKey>,
+    pub(super) phase: ArrayFromAsyncPhase,
+    pub(super) done: bool,
 }

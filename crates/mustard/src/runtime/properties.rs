@@ -402,6 +402,9 @@ impl Runtime {
             BuiltinFunction::SetIsSubsetOf => "isSubsetOf",
             BuiltinFunction::SetIsSupersetOf => "isSupersetOf",
             BuiltinFunction::SetIsDisjointFrom => "isDisjointFrom",
+            BuiltinFunction::PromiseWithResolvers => "withResolvers",
+            BuiltinFunction::PromiseResolveOnce(_) | BuiltinFunction::PromiseRejectOnce(_) => "",
+            BuiltinFunction::ArrayFromAsync => "fromAsync",
             BuiltinFunction::SetForEach => "forEach",
             BuiltinFunction::IteratorNext => "next",
             BuiltinFunction::PromiseCtor => "Promise",
@@ -629,6 +632,10 @@ impl Runtime {
             BuiltinFunction::SetIsSubsetOf => 1,
             BuiltinFunction::SetIsSupersetOf => 1,
             BuiltinFunction::SetIsDisjointFrom => 1,
+            BuiltinFunction::PromiseWithResolvers => 0,
+            BuiltinFunction::PromiseResolveOnce(_)
+            | BuiltinFunction::PromiseRejectOnce(_)
+            | BuiltinFunction::ArrayFromAsync => 1,
             BuiltinFunction::SetForEach => 1,
             BuiltinFunction::IteratorNext => 0,
             BuiltinFunction::PromiseCtor => 1,
@@ -784,6 +791,7 @@ impl Runtime {
                 BuiltinFunction::ArrayCtor => match key {
                     "isArray" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray)),
                     "from" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayFrom)),
+                    "fromAsync" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayFromAsync)),
                     "of" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayOf)),
                     _ => None,
                 },
@@ -838,6 +846,9 @@ impl Runtime {
                     _ => None,
                 },
                 BuiltinFunction::PromiseCtor => match key {
+                    "withResolvers" => Some(Value::BuiltinFunction(
+                        BuiltinFunction::PromiseWithResolvers,
+                    )),
                     "resolve" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseResolve)),
                     "reject" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseReject)),
                     "all" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseAll)),
