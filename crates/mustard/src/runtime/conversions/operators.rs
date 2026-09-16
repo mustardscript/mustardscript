@@ -264,6 +264,7 @@ impl Runtime {
                             .get(object)
                             .is_some_and(|object| matches!(object.kind, ObjectKind::Error(_)))
                 )),
+                BuiltinFunction::BigIntCtor => Ok(false),
                 BuiltinFunction::TypeErrorCtor => Ok(self.error_kind_matches(left, "TypeError")),
                 BuiltinFunction::ReferenceErrorCtor => {
                     Ok(self.error_kind_matches(left, "ReferenceError"))

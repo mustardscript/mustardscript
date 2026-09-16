@@ -3,6 +3,7 @@ use super::*;
 use indexmap::IndexMap;
 
 mod arrays;
+mod bigint;
 mod collections;
 mod install;
 mod intl;

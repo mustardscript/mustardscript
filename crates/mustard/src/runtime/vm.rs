@@ -1232,6 +1232,7 @@ impl Runtime {
             BuiltinFunction::RegExpCtor => "RegExp".to_string(),
             BuiltinFunction::DateCtor => "Date".to_string(),
             BuiltinFunction::NumberCtor => "Number".to_string(),
+            BuiltinFunction::BigIntCtor => "BigInt".to_string(),
             BuiltinFunction::StringCtor => "String".to_string(),
             BuiltinFunction::BooleanCtor => "Boolean".to_string(),
             BuiltinFunction::FunctionCtor => "Function".to_string(),
@@ -1362,6 +1363,9 @@ impl Runtime {
                 Value::BuiltinFunction(kind) => self.call_builtin(kind, Value::Undefined, args),
                 _ => unreachable!(),
             },
+            Value::BuiltinFunction(BuiltinFunction::BigIntCtor) => Err(MustardError::runtime(
+                "TypeError: BigInt is not a constructor",
+            )),
             _ => Err(MustardError::runtime(
                 "only conservative built-in constructors are supported in v1",
             )),

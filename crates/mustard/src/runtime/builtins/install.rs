@@ -170,6 +170,9 @@ impl Runtime {
             BuiltinFunction::AggregateErrorCtor => self.call_aggregate_error_ctor(args),
             BuiltinFunction::ErrorToString => self.call_error_to_string(this_value),
             BuiltinFunction::NumberCtor => self.call_number_ctor(args),
+            BuiltinFunction::BigIntCtor => self.call_bigint_conversion(args),
+            BuiltinFunction::BigIntToString => self.call_bigint_to_string(this_value, args),
+            BuiltinFunction::BigIntValueOf => self.call_bigint_value_of(this_value),
             BuiltinFunction::NumberParseInt => self.call_number_parse_int(args),
             BuiltinFunction::NumberParseFloat => self.call_number_parse_float(args),
             BuiltinFunction::NumberIsNaN => Ok(self.call_number_is_nan(args)),
@@ -306,6 +309,7 @@ impl Runtime {
             BuiltinFunction::URIErrorCtor,
             BuiltinFunction::AggregateErrorCtor,
             BuiltinFunction::NumberCtor,
+            BuiltinFunction::BigIntCtor,
             BuiltinFunction::BooleanCtor,
             BuiltinFunction::IntlDateTimeFormatCtor,
             BuiltinFunction::IntlNumberFormatCtor,
@@ -335,6 +339,11 @@ impl Runtime {
         self.define_global(
             "decodeURIComponent".into(),
             Value::BuiltinFunction(BuiltinFunction::DecodeURIComponent),
+            false,
+        )?;
+        self.define_global(
+            "BigInt".into(),
+            Value::BuiltinFunction(BuiltinFunction::BigIntCtor),
             false,
         )?;
         self.define_global(

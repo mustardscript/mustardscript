@@ -487,3 +487,38 @@ fn number_bitwise_and_shift_operations_wrap_and_evaluate_references_once() {
         assert!(error.to_string().contains("TypeError"), "{source}: {error}");
     }
 }
+
+#[test]
+fn bigint_conversion_is_exact_budgeted_and_guest_internal() {
+    assert_eq!(run(r#"
+        const inputs = ['', '  ', '0xFF', '0o77', '0b11', '+0012', '-0012', '\uFEFF42\u00A0'];
+        JSON.stringify([inputs.map(v => BigInt(v).toString()),
+          [0, -0, true, false, 1e20, new Number(2), new String('16')].map(v => BigInt(v).toString()),
+          BigInt('18446744073709551616') === 18446744073709551616n,
+          BigInt('255').toString(16), BigInt('-10').toString(2),
+          BigInt(0).toString(), BigInt(1).valueOf() === 1n,
+          typeof BigInt, BigInt.name, BigInt.length,
+          Object.hasOwn(BigInt.prototype, 'toString'), Object.prototype.toString.call(BigInt.prototype)]);
+    "#), r#"[["0","0","255","63","3","12","-12","42"],["0","0","1","0","100000000000000000000","2","16"],true,"ff","-1010","0",true,"function","BigInt",1,true,"[object BigInt]"]"#.into());
+    for (source, name) in [
+        ("BigInt(1.5);", "RangeError"),
+        ("BigInt(NaN);", "RangeError"),
+        ("BigInt('1.0');", "SyntaxError"),
+        ("BigInt('-0xff');", "SyntaxError"),
+        ("BigInt();", "TypeError"),
+        ("BigInt(null);", "TypeError"),
+        ("new BigInt(1);", "TypeError"),
+        ("BigInt.prototype.toString();", "TypeError"),
+        ("BigInt.prototype.valueOf();", "TypeError"),
+        (
+            "const n = new Number(2); n.valueOf = () => 3; BigInt(n);",
+            "TypeError",
+        ),
+        ("BigInt({valueOf() { return 1; }});", "TypeError"),
+        ("BigInt.prototype.toString.call(1);", "TypeError"),
+        ("(1n).toString(1);", "RangeError"),
+    ] {
+        let error = execute(&compile(source).unwrap(), ExecutionOptions::default()).unwrap_err();
+        assert!(error.to_string().contains(name), "{source}: {error}");
+    }
+}

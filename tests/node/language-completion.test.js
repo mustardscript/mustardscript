@@ -387,3 +387,35 @@ test('bitwise bytecode round-trips through authenticated snapshots', () => {
   const restored = Progress.load(first.dump(), {capabilities, snapshotKey, limits: {}});
   assert.deepEqual(restored.resume(undefined), [2147483647, -2, -2147483648, 255]);
 });
+
+test('BigInt conversion and explicit radix formatting match Node for supported inputs', async () => {
+  const vm = require('node:vm');
+  const cases = [
+    `['', '  ', '0xFF', '0o77', '0b11', '+0012', '-0012', '\uFEFF42\u00A0', '9'.repeat(100)].map(v => BigInt(v).toString());`,
+    `[0, -0, true, false, 1e20, 1e100, -1e100, new Number(2), new String('16')].map(v => BigInt(v).toString());`,
+    `const n = BigInt('18446744073709551616'); [n === 18446744073709551616n, n.toString(2), n.toString(16), n.toString(36), (-10n).toString(2), n.valueOf() === n];`,
+    `[BigInt(0).toString(), typeof BigInt, BigInt.name, BigInt.length, Object.hasOwn(BigInt.prototype, 'toString'), Object.prototype.toString.call(BigInt.prototype), (1n instanceof BigInt)];`,
+  ];
+  for (const source of cases) {
+    assert.deepEqual(JSON.parse(JSON.stringify(await runtime(source).run())), JSON.parse(JSON.stringify(vm.runInNewContext(source))), source);
+  }
+  for (const [source, name] of [
+    ['BigInt(1.5);', 'RangeError'], ['BigInt(Infinity);', 'RangeError'], ['BigInt(NaN);', 'RangeError'],
+    ["BigInt('1.0');", 'SyntaxError'], ["BigInt('-0xff');", 'SyntaxError'], ["BigInt('0x');", 'SyntaxError'], ["BigInt('1e3');", 'SyntaxError'],
+    ['BigInt.prototype.toString();', 'TypeError'], ['BigInt.prototype.valueOf();', 'TypeError'], ['BigInt();', 'TypeError'], ['BigInt(null);', 'TypeError'], ['new BigInt(1);', 'TypeError'],
+    ['BigInt.prototype.toString.call(1);', 'TypeError'], ['(1n).toString(1);', 'RangeError'],
+  ]) {
+    await assert.rejects(runtime(source).run(), new RegExp(name));
+  }
+  await assert.rejects(runtime('BigInt(text);').run({inputs: {text: '9'.repeat(10000)}, limits: {instructionBudget: 20000}}), /instruction budget/);
+  await assert.rejects(runtime('BigInt(1);').run(), /BigInt.*boundary|BigInt.*cross/i);
+  await assert.rejects(runtime('text;').run({inputs: {text: 1n}}), /Unsupported host value/);
+});
+
+test('converted BigInts retain exact value across snapshots', () => {
+  const capabilities = {checkpoint() {}};
+  const snapshotKey = Buffer.from('language-completion-test-key');
+  const first = runtime(`let n = BigInt('9999999999999999999999999999999999999999'); checkpoint(); n += 2n; n.toString();`).start({capabilities, snapshotKey});
+  const restored = Progress.load(first.dump(), {capabilities, snapshotKey, limits: {}});
+  assert.equal(restored.resume(undefined), '10000000000000000000000000000000000000001');
+});

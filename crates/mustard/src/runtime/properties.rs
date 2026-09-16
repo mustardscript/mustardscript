@@ -340,6 +340,9 @@ impl Runtime {
             BuiltinFunction::ObjectEntries => "entries",
             BuiltinFunction::ObjectHasOwn => "hasOwn",
             BuiltinFunction::ObjectIs => "is",
+            BuiltinFunction::BigIntCtor => "BigInt",
+            BuiltinFunction::BigIntToString => "toString",
+            BuiltinFunction::BigIntValueOf => "valueOf",
             BuiltinFunction::StringCharCodeAt => "charCodeAt",
             BuiltinFunction::StringCodePointAt => "codePointAt",
             BuiltinFunction::StringFromCharCode => "fromCharCode",
@@ -542,6 +545,8 @@ impl Runtime {
             BuiltinFunction::ObjectEntries => 1,
             BuiltinFunction::ObjectHasOwn => 2,
             BuiltinFunction::ObjectIs => 2,
+            BuiltinFunction::BigIntCtor | BuiltinFunction::BigIntToString => 1,
+            BuiltinFunction::BigIntValueOf => 0,
             BuiltinFunction::StringCharCodeAt => 1,
             BuiltinFunction::StringCodePointAt => 1,
             BuiltinFunction::StringFromCharCode => 1,
@@ -790,6 +795,11 @@ impl Runtime {
         property: Value,
     ) -> MustardResult<bool> {
         let key = self.to_property_key(property)?;
+        if Self::bigint_prototype_method(&key).is_some()
+            && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::BigIntCtor)))))
+        {
+            return Ok(true);
+        }
         if Self::string_extension_method(&key).is_some()
             && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::StringObject(_) | ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::StringCtor)))))
         {
@@ -1665,6 +1675,14 @@ impl Runtime {
         self.get_property_by_key(object, key, optional)
     }
 
+    pub(super) fn bigint_prototype_method(key: &str) -> Option<BuiltinFunction> {
+        match key {
+            "toString" => Some(BuiltinFunction::BigIntToString),
+            "valueOf" => Some(BuiltinFunction::BigIntValueOf),
+            _ => None,
+        }
+    }
+
     pub(super) fn string_extension_method(key: &str) -> Option<BuiltinFunction> {
         Some(match key {
             "charCodeAt" => BuiltinFunction::StringCharCodeAt,
@@ -1989,6 +2007,13 @@ impl Runtime {
                 if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
                     if matches!(
                         constructor,
+                        Value::BuiltinFunction(BuiltinFunction::BigIntCtor)
+                    ) && let Some(method) = Self::bigint_prototype_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
+                    }
+                    if matches!(
+                        constructor,
                         Value::BuiltinFunction(BuiltinFunction::StringCtor)
                     ) && let Some(method) = Self::string_extension_method(key)
                     {
@@ -2297,10 +2322,16 @@ impl Runtime {
                 "valueOf" => Ok(Value::BuiltinFunction(BuiltinFunction::BooleanValueOf)),
                 _ => Ok(Value::Undefined),
             },
+            Value::BigInt(_) => Ok(if key == "constructor" {
+                Value::BuiltinFunction(BuiltinFunction::BigIntCtor)
+            } else {
+                Self::bigint_prototype_method(key)
+                    .map(Value::BuiltinFunction)
+                    .unwrap_or(Value::Undefined)
+            }),
             Value::Null | Value::Undefined => Err(MustardError::runtime(
                 "TypeError: cannot read properties of nullish value",
             )),
-            _ => Ok(Value::Undefined),
         }
     }
 

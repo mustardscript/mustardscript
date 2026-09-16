@@ -625,6 +625,9 @@ pub(super) enum BuiltinFunction {
     StringFromCodePoint,
     StringNormalize,
     StringIsWellFormed,
+    BigIntCtor,
+    BigIntToString,
+    BigIntValueOf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

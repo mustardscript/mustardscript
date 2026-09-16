@@ -789,3 +789,17 @@ returns an unsigned Number, while the other results are signed 32-bit Numbers.
 Compound property assignments evaluate their receiver and key once. BigInt
 operands, including mixed Number/BigInt operations, throw TypeError in this
 Number-only bitwise profile.
+
+### Explicit BigInt conversion
+
+`BigInt(value)` converts BigInts, booleans, finite integer Numbers, supported
+boxed Number/String/Boolean values, and integer strings. Strings support signed
+decimal and unsigned 0x/0o/0b forms, with ECMAScript whitespace (empty means zero).
+Non-integer or non-finite Numbers throw RangeError; malformed strings throw
+SyntaxError. Nullish inputs, object coercion hooks and `new BigInt(...)` throw
+TypeError. Conversion work and temporary allocation are bounded.
+
+`BigInt.prototype.toString(radix)` supports radix 2–36, and `valueOf()` returns the
+receiver's guest BigInt. BigInts remain guest-internal: `Number(1n)`, JSON encoding,
+Object boxing and the structured host boundary retain their explicit rejections.
+Convert an integer to a string before returning it to a host capability or caller.

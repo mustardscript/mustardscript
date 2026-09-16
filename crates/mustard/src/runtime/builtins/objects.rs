@@ -388,6 +388,7 @@ impl Runtime {
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
                 object.properties.contains_key(&key)
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::BigIntCtor)) if Self::bigint_prototype_method(&key).is_some())
                     || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::StringCtor)) if Self::string_extension_method(&key).is_some())
                     || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::ObjectCtor)) if Self::object_prototype_method(&key).is_some())
                     || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::ArrayCtor)) if Self::array_prototype_method(&key).is_some())
@@ -456,6 +457,9 @@ impl Runtime {
                 ObjectKind::StringObject(_) => "String",
                 ObjectKind::BooleanObject(_) => "Boolean",
                 ObjectKind::BoundFunction(_) => "Function",
+                ObjectKind::FunctionPrototype(Value::BuiltinFunction(
+                    BuiltinFunction::BigIntCtor,
+                )) => "BigInt",
                 ObjectKind::Math => "Math",
                 ObjectKind::Json => "JSON",
                 ObjectKind::IntlDateTimeFormat(_) => "Intl.DateTimeFormat",

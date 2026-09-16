@@ -23,7 +23,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [ ] 13. Number and multi-currency formatting
 - [x] 14. Unicode normalization and character APIs with an explicit string contract
 - [x] 15. Bitwise/shift operators and assignments
-- [ ] 16. BigInt conversion
+- [x] 16. BigInt conversion
 - [ ] 17. Set algebra
 - [ ] 18. Remaining Math helpers
 - [ ] 19. Labeled break and continue
@@ -173,3 +173,13 @@ language docs, tests, and comparative runtime probes before implementation.
 - Follow-up verification: mapped the two promoted bitwise conformance entries
   to their executable Node test anchors; coverage-audit and the full Node suite
   pass after that correction.
+
+### BigInt conversion
+
+- Added non-constructible BigInt(value), exact Number/integer-string conversion,
+  primitive-wrapper support, budgeted parsing/radix formatting and valueOf.
+  Malformed strings, fractional/nonfinite Numbers and unsupported coercion hooks
+  have explicit typed failures. BigInts remain prohibited at the host boundary.
+- Passed: `cargo test --workspace`, `npm run build`, full Node suite and
+  `npm run lint`; tests compare Node for exact large values and all supported
+  radices, cover prototype receiver errors, limits, host rejection and snapshots.
