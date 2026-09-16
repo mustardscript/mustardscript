@@ -388,6 +388,7 @@ impl Runtime {
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
                 object.properties.contains_key(&key)
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::SetCtor)) if Self::set_prototype_method(&key).is_some())
                     || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::BigIntCtor)) if Self::bigint_prototype_method(&key).is_some())
                     || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::StringCtor)) if Self::string_extension_method(&key).is_some())
                     || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::ObjectCtor)) if Self::object_prototype_method(&key).is_some())

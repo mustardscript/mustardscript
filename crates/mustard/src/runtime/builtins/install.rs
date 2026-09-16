@@ -115,6 +115,15 @@ impl Runtime {
             BuiltinFunction::SetKeys => self.call_set_keys(this_value),
             BuiltinFunction::SetValues => self.call_set_values(this_value),
             BuiltinFunction::SetForEach => self.call_set_for_each(this_value, args),
+            BuiltinFunction::SetUnion
+            | BuiltinFunction::SetIntersection
+            | BuiltinFunction::SetDifference
+            | BuiltinFunction::SetSymmetricDifference
+            | BuiltinFunction::SetIsSubsetOf
+            | BuiltinFunction::SetIsSupersetOf
+            | BuiltinFunction::SetIsDisjointFrom => {
+                self.call_set_algebra(function, this_value, args)
+            }
             BuiltinFunction::IteratorNext => self.call_iterator_next(this_value),
             BuiltinFunction::PromiseCtor => Err(MustardError::runtime(
                 "TypeError: Promise constructor must be called with new",

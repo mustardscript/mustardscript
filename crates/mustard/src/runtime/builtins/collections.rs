@@ -35,28 +35,24 @@ impl Runtime {
 
     pub(crate) fn construct_set(&mut self, args: &[Value]) -> MustardResult<Value> {
         let iterable = args.first().cloned().unwrap_or(Value::Undefined);
-        let length_hint = self.iterable_length_hint(&iterable)?;
-        let set = match length_hint {
-            Some(length) => self.insert_set_slots(vec![None; length])?,
-            None => self.insert_set(Vec::new())?,
-        };
+        let set = self.insert_set(Vec::new())?;
         if matches!(iterable, Value::Null | Value::Undefined) {
             return Ok(Value::Set(set));
         }
-
-        let iterator = self.create_iterator(iterable)?;
-        loop {
-            let (value, done) = self.iterator_next(iterator.clone())?;
-            if done {
-                break;
-            }
-            self.set_add(set, value)?;
-        }
-        if length_hint.is_some() {
-            self.trim_trailing_set_builder_slots(set)?;
-        }
-
-        Ok(Value::Set(set))
+        self.with_temporary_roots(&[Value::Set(set)], |runtime| {
+            let iterator = runtime.create_iterator(iterable)?;
+            runtime.with_temporary_roots(std::slice::from_ref(&iterator), |runtime| {
+                loop {
+                    runtime.charge_native_helper_work(1)?;
+                    let (value, done) = runtime.iterator_next(iterator.clone())?;
+                    if done {
+                        break;
+                    }
+                    runtime.set_add(set, value)?;
+                }
+                Ok(Value::Set(set))
+            })
+        })
     }
 
     pub(in crate::runtime) fn map_receiver(
@@ -166,7 +162,7 @@ impl Runtime {
     }
 
     pub(in crate::runtime) fn next_set_value_from_state(
-        &self,
+        &mut self,
         set: SetKey,
         next_index: &mut usize,
         observed_clear_epoch: &mut u64,
@@ -179,13 +175,17 @@ impl Runtime {
             *observed_clear_epoch = set_ref.clear_epoch;
             *next_index = 0;
         }
+        let start = *next_index;
+        let mut result = None;
         while let Some(value) = set_ref.entries.get(*next_index) {
             *next_index += 1;
             if let Some(value) = value.clone() {
-                return Ok(Some(value));
+                result = Some(value);
+                break;
             }
         }
-        Ok(None)
+        self.charge_native_helper_work(next_index.saturating_sub(start))?;
+        Ok(result)
     }
 
     fn map_lookup_bytes(map: &MapObject) -> usize {
@@ -455,22 +455,11 @@ impl Runtime {
             if existing_slot.is_some() {
                 (0, 0)
             } else {
-                let (slot, old_slot_bytes) = if set_ref.live_len < set_ref.entries.len()
-                    && set_ref.entries[set_ref.live_len].is_none()
-                {
-                    let slot = set_ref.live_len;
-                    let old_slot_bytes = Self::set_slot_bytes(None);
-                    set_ref.entries[slot] = Some(value);
-                    (slot, old_slot_bytes)
-                } else {
-                    set_ref.entries.push(Some(value));
-                    let slot = set_ref
-                        .entries
-                        .len()
-                        .checked_sub(1)
-                        .ok_or_else(|| MustardError::runtime("set entry missing"))?;
-                    (slot, 0)
-                };
+                // Deleted slots are never reused: live iterators must observe
+                // newly appended values even after deleting a tail entry.
+                let slot = set_ref.entries.len();
+                let old_slot_bytes = 0;
+                set_ref.entries.push(Some(value));
                 let old_lookup_bytes = Self::set_lookup_bytes(set_ref);
                 set_ref.live_len = set_ref
                     .live_len
@@ -544,35 +533,6 @@ impl Runtime {
         self.apply_map_component_delta(map, removed_bytes, 0)
     }
 
-    fn trim_trailing_set_builder_slots(&mut self, set: SetKey) -> MustardResult<()> {
-        let removed_slots = {
-            let set_ref = self
-                .sets
-                .get_mut(set)
-                .ok_or_else(|| MustardError::runtime("set missing"))?;
-            let removed_slots = set_ref
-                .entries
-                .iter()
-                .rev()
-                .take_while(|entry| entry.is_none())
-                .count();
-            if removed_slots == 0 {
-                return Ok(());
-            }
-            let next_len = set_ref
-                .entries
-                .len()
-                .checked_sub(removed_slots)
-                .ok_or_else(|| MustardError::runtime("set entry underflow"))?;
-            set_ref.entries.truncate(next_len);
-            removed_slots
-        };
-        let removed_bytes = removed_slots
-            .checked_mul(Self::set_slot_bytes(None))
-            .ok_or_else(|| MustardError::runtime("set accounting overflow"))?;
-        self.apply_set_component_delta(set, removed_bytes, 0)
-    }
-
     pub(in crate::runtime) fn set_contains(
         &self,
         set: SetKey,
@@ -595,7 +555,11 @@ impl Runtime {
         Ok(true)
     }
 
-    fn set_delete(&mut self, set: SetKey, value: &Value) -> MustardResult<bool> {
+    pub(in crate::runtime) fn set_delete(
+        &mut self,
+        set: SetKey,
+        value: &Value,
+    ) -> MustardResult<bool> {
         let slot = {
             let set_ref = self
                 .sets

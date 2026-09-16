@@ -24,7 +24,7 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] 14. Unicode normalization and character APIs with an explicit string contract
 - [x] 15. Bitwise/shift operators and assignments
 - [x] 16. BigInt conversion
-- [ ] 17. Set algebra
+- [x] 17. Set algebra
 - [x] 18. Remaining Math helpers
 - [ ] 19. Labeled break and continue
 - [ ] 20. Promise.withResolvers and Array.fromAsync
@@ -192,3 +192,14 @@ language docs, tests, and comparative runtime probes before implementation.
 - Passed: `cargo test --workspace`, `npm run build`, full Node suite and
   `npm run lint`. Tests compare Node across subnormals, signed zeros, NaN,
   infinities, rounding boundaries, maximal finite values and integer wraparound.
+
+### Set algebra and live iteration
+
+- Added seven ordered Set operations, prototype metadata, Set/Map/set-like
+  inputs, size validation and callback/iterator failure paths. Result copying
+  follows observable callback order and preserves SameValueZero identity.
+  Set deletion tombstones are no longer reused by append, and constructor/
+  algebra temporaries remain GC-rooted; scans debit tombstone work too.
+- Passed: `cargo test --workspace`, `npm run build`, full Node suite and
+  `npm run lint`. Tests compare Node for sizes/order/mutations, duplicate keys,
+  Promise-valued has callbacks, prototype membership, snapshots and 128 KiB GC.

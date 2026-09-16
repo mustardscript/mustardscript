@@ -13,6 +13,7 @@ mod primitives;
 mod promises;
 mod regexp;
 mod regexp_profile;
+mod sets;
 mod strings;
 mod support;
 mod unicode;

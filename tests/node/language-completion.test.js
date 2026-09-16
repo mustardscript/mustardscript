@@ -442,3 +442,41 @@ test('remaining Math helpers preserve special values and numerical accuracy', as
   for (const source of ['Math.imul(1n,1);', 'Math.clz32(0n);', 'Math.fround(1n);', 'Math.acos(0n);']) await assert.rejects(runtime(source).run(), /TypeError/);
   await assert.rejects(runtime('Math.fround(text);').run({inputs: {text: '0'.repeat(10000)}, limits: {instructionBudget: 200}}), /instruction budget/);
 });
+
+test('Set algebra matches Node for order, identity, live mutation and set-like records', async () => {
+  const vm = require('node:vm');
+  const methods = ['union', 'intersection', 'difference', 'symmetricDifference', 'isSubsetOf', 'isSupersetOf', 'isDisjointFrom'];
+  const cases = [
+    `const a = new Set([3, 1, 2]); const b = new Set([2, 3, 4]); methods.map(m => { const r = a[m](b); return typeof r === 'boolean' ? r : [...r]; });`,
+    `const a = new Set([3, 1, 2]); const b = new Map([[2, 9], [1, 8]]); methods.map(m => { const r = a[m](b); return typeof r === 'boolean' ? r : [...r]; });`,
+    `const x = {}; const a = new Set([x, NaN, -0]); const b = new Set([0, x, NaN]); methods.map(m => { const r = a[m](b); return typeof r === 'boolean' ? r : [r.size, r.has(x), r.has(NaN), r.has(0), [...r].some(v => Object.is(v, -0))]; });`,
+    `methods.map(m => { const a = new Set([1, 2, 3]); const seen = []; const b = {size: 20, has(v) { seen.push(v); if (v === 1) { a.delete(2); a.delete(3); a.add(4); } return true; }, keys() { return [2, 5, 5].values(); }}; const r = a[m](b); return [typeof r === 'boolean' ? r : [...r], seen, [...a]]; });`,
+    `methods.map(m => { const a = new Set([1, 2]); const b = {size: 1, has(v) { return v === 2; }, keys() { a.add(7); a.delete(1); return [2, 3, 3].values(); }}; const r = a[m](b); return typeof r === 'boolean' ? r : [...r]; });`,
+    `const a = new Set([1, 2]); const b = {size: Infinity, has: async v => false, keys() { return [].values(); }}; [...a.intersection(b)];`,
+    `const a = new Set([1, 2]); const iterator = a.values(); iterator.next(); iterator.next(); a.delete(2); a.add(3); [iterator.next(), [...a]];`,
+    `methods.map(m => [m in new Set(), Object.hasOwn(Set.prototype, m), Object.hasOwn(new Set(), m), Set.prototype[m].name, Set.prototype[m].length]);`,
+  ];
+  for (const source of cases) {
+    const actual = await runtime(source).run({inputs: {methods}});
+    const expected = vm.runInNewContext(source, {methods});
+    assert.deepEqual(JSON.parse(JSON.stringify(actual)), JSON.parse(JSON.stringify(expected)), source);
+  }
+  for (const size of [-1, -Infinity, NaN, undefined]) {
+    const name = size < 0 ? 'RangeError' : 'TypeError';
+    await assert.rejects(runtime('new Set().union({size, has() {}, keys() { return [].values(); }});').run({inputs:{size}}), new RegExp(name));
+  }
+  await assert.rejects(runtime('new Set().union({size: 0, has() {}, keys() { return {next() {return {done: true};}}; }});').run(), /supported native iterator/);
+  await assert.rejects(runtime('new Set([1]).intersection({size: 2, has() { throw new URIError("boom"); }, keys() {return [].values();}});').run(), /URIError: boom/);
+  await assert.rejects(runtime('new Set([1]).intersection({size: 2, has: checkpoint, keys() {return [].values();}});').run({capabilities: {checkpoint() { throw new Error('must not run'); }}}), /synchronous host suspensions/);
+  await assert.rejects(runtime('const a = new Set([0]); a.intersection({size: Infinity, has(v) { a.add(v+1); return true; }, keys() {return [].values();}});').run({limits: {instructionBudget: 10000}}), /instruction budget/);
+});
+
+test('Set algebra roots callback values under GC and survives snapshots', async () => {
+  const source = `const a = new Set(Array.from({length: 40}, (_, i) => ({i}))); const b = {size: Infinity, has(v) { for(let i=0;i<60;i++) { const garbage = {text: 'x'.repeat(200)}; } return v.i % 2 === 0; }, keys() { return [].values(); }}; [...a.intersection(b)].map(v => v.i);`;
+  assert.deepEqual(await runtime(source).run({limits: {heapLimitBytes: 128 * 1024}}), Array.from({length: 20}, (_, i) => i*2));
+  const capabilities = {checkpoint() {}};
+  const snapshotKey = Buffer.from('language-completion-test-key');
+  const first = runtime('const a = new Set([1, 2]); const operation = a.union; checkpoint(); [...operation.call(a, new Set([2, 3]))];').start({capabilities, snapshotKey});
+  const restored = Progress.load(first.dump(), {capabilities, snapshotKey, limits: {}});
+  assert.deepEqual(restored.resume(undefined), [1, 2, 3]);
+});

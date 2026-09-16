@@ -46,6 +46,26 @@ impl Runtime {
         })
     }
 
+    pub(super) fn set_prototype_method(key: &str) -> Option<BuiltinFunction> {
+        Some(match key {
+            "add" => BuiltinFunction::SetAdd,
+            "has" => BuiltinFunction::SetHas,
+            "delete" => BuiltinFunction::SetDelete,
+            "clear" => BuiltinFunction::SetClear,
+            "entries" => BuiltinFunction::SetEntries,
+            "keys" | "values" => BuiltinFunction::SetValues,
+            "forEach" => BuiltinFunction::SetForEach,
+            "union" => BuiltinFunction::SetUnion,
+            "intersection" => BuiltinFunction::SetIntersection,
+            "difference" => BuiltinFunction::SetDifference,
+            "symmetricDifference" => BuiltinFunction::SetSymmetricDifference,
+            "isSubsetOf" => BuiltinFunction::SetIsSubsetOf,
+            "isSupersetOf" => BuiltinFunction::SetIsSupersetOf,
+            "isDisjointFrom" => BuiltinFunction::SetIsDisjointFrom,
+            _ => return None,
+        })
+    }
+
     fn function_helper_method(key: &str) -> Option<Value> {
         match key {
             "call" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionCall)),
@@ -290,7 +310,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn builtin_function_name(function: BuiltinFunction) -> &'static str {
+    pub(super) fn builtin_function_name(function: BuiltinFunction) -> &'static str {
         match function {
             BuiltinFunction::FunctionCtor => "Function",
             BuiltinFunction::FunctionCall => "call",
@@ -375,6 +395,13 @@ impl Runtime {
             BuiltinFunction::SetEntries => "entries",
             BuiltinFunction::SetKeys => "keys",
             BuiltinFunction::SetValues => "values",
+            BuiltinFunction::SetUnion => "union",
+            BuiltinFunction::SetIntersection => "intersection",
+            BuiltinFunction::SetDifference => "difference",
+            BuiltinFunction::SetSymmetricDifference => "symmetricDifference",
+            BuiltinFunction::SetIsSubsetOf => "isSubsetOf",
+            BuiltinFunction::SetIsSupersetOf => "isSupersetOf",
+            BuiltinFunction::SetIsDisjointFrom => "isDisjointFrom",
             BuiltinFunction::SetForEach => "forEach",
             BuiltinFunction::IteratorNext => "next",
             BuiltinFunction::PromiseCtor => "Promise",
@@ -595,6 +622,13 @@ impl Runtime {
             BuiltinFunction::SetEntries => 0,
             BuiltinFunction::SetKeys => 0,
             BuiltinFunction::SetValues => 0,
+            BuiltinFunction::SetUnion => 1,
+            BuiltinFunction::SetIntersection => 1,
+            BuiltinFunction::SetDifference => 1,
+            BuiltinFunction::SetSymmetricDifference => 1,
+            BuiltinFunction::SetIsSubsetOf => 1,
+            BuiltinFunction::SetIsSupersetOf => 1,
+            BuiltinFunction::SetIsDisjointFrom => 1,
             BuiltinFunction::SetForEach => 1,
             BuiltinFunction::IteratorNext => 0,
             BuiltinFunction::PromiseCtor => 1,
@@ -827,6 +861,11 @@ impl Runtime {
         property: Value,
     ) -> MustardResult<bool> {
         let key = self.to_property_key(property)?;
+        if Self::set_prototype_method(&key).is_some()
+            && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::SetCtor)))))
+        {
+            return Ok(true);
+        }
         if Self::bigint_prototype_method(&key).is_some()
             && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::BigIntCtor)))))
         {
@@ -1060,19 +1099,8 @@ impl Runtime {
                 self.sets
                     .get(set)
                     .ok_or_else(|| MustardError::runtime("set missing"))?;
-                Ok(matches!(
-                    key.as_str(),
-                    "constructor"
-                        | "size"
-                        | "add"
-                        | "has"
-                        | "delete"
-                        | "clear"
-                        | "entries"
-                        | "keys"
-                        | "values"
-                        | "forEach"
-                ))
+                Ok(matches!(key.as_str(), "constructor" | "size")
+                    || Self::set_prototype_method(&key).is_some())
             }
             Value::Iterator(iterator) => {
                 self.iterators
@@ -2039,6 +2067,13 @@ impl Runtime {
                 if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
                     if matches!(
                         constructor,
+                        Value::BuiltinFunction(BuiltinFunction::SetCtor)
+                    ) && let Some(method) = Self::set_prototype_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
+                    }
+                    if matches!(
+                        constructor,
                         Value::BuiltinFunction(BuiltinFunction::BigIntCtor)
                     ) && let Some(method) = Self::bigint_prototype_method(key)
                     {
@@ -2245,15 +2280,9 @@ impl Runtime {
                 match key {
                     "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::SetCtor)),
                     "size" => Ok(Value::Number(set.live_len as f64)),
-                    "add" => Ok(Value::BuiltinFunction(BuiltinFunction::SetAdd)),
-                    "has" => Ok(Value::BuiltinFunction(BuiltinFunction::SetHas)),
-                    "delete" => Ok(Value::BuiltinFunction(BuiltinFunction::SetDelete)),
-                    "clear" => Ok(Value::BuiltinFunction(BuiltinFunction::SetClear)),
-                    "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::SetEntries)),
-                    "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::SetKeys)),
-                    "values" => Ok(Value::BuiltinFunction(BuiltinFunction::SetValues)),
-                    "forEach" => Ok(Value::BuiltinFunction(BuiltinFunction::SetForEach)),
-                    _ => Ok(Value::Undefined),
+                    _ => Ok(Self::set_prototype_method(key)
+                        .map(Value::BuiltinFunction)
+                        .unwrap_or(Value::Undefined)),
                 }
             }
             Value::Iterator(_) if key == "next" => {

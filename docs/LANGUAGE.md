@@ -814,3 +814,18 @@ infinities. The near-zero functions use dedicated numerical operations, not
 `log(1 + x)`/`exp(x) - 1`. Domain errors return NaN/infinity as appropriate, and
 BigInt operands throw TypeError. Transcendental results retain the existing native
 floating-point accuracy profile; string numeric coercion is metered.
+
+### Set algebra
+
+Set instances and `Set.prototype` expose `union`, `intersection`, `difference`,
+`symmetricDifference`, `isSubsetOf`, `isSupersetOf`, and `isDisjointFrom`.
+They accept Sets, Maps (using their keys), and set-like objects with a nonnegative
+numeric `size` and callable `has`/`keys`. `keys()` must return a supported native
+iterator; custom iterator authoring remains unsupported and throws TypeError.
+NaN size throws TypeError, negative integer size throws RangeError, and methods
+validate both callbacks even when size allows an early result. Callbacks receive
+the other object as `this`; their results are not awaited. Synchronous host
+suspension is rejected. Iteration, copying and callback work are budgeted.
+Results preserve ECMAScript order, SameValueZero membership and object identity;
+intersection selects iteration order by the reported sizes. Live Set iteration
+observes additions and deletions, including appends after deleting a tail slot.

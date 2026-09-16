@@ -549,3 +549,45 @@ fn remaining_math_helpers_handle_precision_domains_and_integer_wraparound() {
         assert!(error.to_string().contains("TypeError"));
     }
 }
+
+#[test]
+fn set_algebra_preserves_order_and_validates_set_like_records() {
+    assert_eq!(
+        run(r#"
+        const a = new Set([3, 1, 2]); const b = new Set([2, 3, 4]);
+        JSON.stringify([[...a.union(b)], [...a.intersection(b)], [...a.difference(b)],
+            [...a.symmetricDifference(b)], a.isSubsetOf(b), a.isSupersetOf(b), a.isDisjointFrom(b),
+            [...a.intersection(new Map([[2, 0], [1, 0]]))],
+            Set.prototype.keys === Set.prototype.values, Object.hasOwn(Set.prototype, 'union')]);
+    "#),
+        "[[3,1,2,4],[3,2],[1],[1,4],false,false,false,[2,1],true,true]".into()
+    );
+    assert_eq!(
+        run(r#"
+        const a = new Set([1, 2]); const seen = [];
+        const other = {size: 20, has(v) { seen.push(v); if(v === 1) { a.delete(2); a.add(3); } return true; }, keys() { return [].values(); }};
+        const result = a.intersection(other);
+        JSON.stringify([[...result], seen]);
+    "#),
+        "[[1,3],[1,3]]".into()
+    );
+    for (source, name) in [
+        ("new Set().union([])", "TypeError"),
+        (
+            "new Set().union({size: -1, has() {}, keys() {}})",
+            "RangeError",
+        ),
+        (
+            "new Set().isSubsetOf({size: 0, has() {}, keys: 1})",
+            "TypeError",
+        ),
+        (
+            "new Set().union({size: 0, has() {}, keys() { return []; }})",
+            "TypeError",
+        ),
+        ("Set.prototype.union.call({}, new Set())", "TypeError"),
+    ] {
+        let error = execute(&compile(source).unwrap(), ExecutionOptions::default()).unwrap_err();
+        assert!(error.to_string().contains(name), "{source}: {error}");
+    }
+}

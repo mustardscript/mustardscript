@@ -643,6 +643,13 @@ pub(super) enum BuiltinFunction {
     MathFround,
     MathLog1p,
     MathExpm1,
+    SetUnion,
+    SetIntersection,
+    SetDifference,
+    SetSymmetricDifference,
+    SetIsSubsetOf,
+    SetIsSupersetOf,
+    SetIsDisjointFrom,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

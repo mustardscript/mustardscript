@@ -1072,25 +1072,6 @@ impl Runtime {
         Ok(self.sets.insert(set))
     }
 
-    pub(super) fn insert_set_slots(
-        &mut self,
-        entries: Vec<Option<Value>>,
-    ) -> MustardResult<SetKey> {
-        let mut set = SetObject {
-            entries,
-            live_len: 0,
-            string_key_live_len: 0,
-            clear_epoch: 0,
-            lookup: CollectionLookup::default(),
-            lookup_accounted_bytes: 0,
-            accounted_bytes: 0,
-        };
-        set.rebuild_lookup();
-        set.accounted_bytes = measure_set_bytes(&set);
-        self.account_new_allocation(set.accounted_bytes)?;
-        Ok(self.sets.insert(set))
-    }
-
     pub(super) fn insert_iterator(&mut self, state: IteratorState) -> MustardResult<IteratorKey> {
         let mut iterator = IteratorObject {
             state,
