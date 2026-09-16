@@ -42,6 +42,14 @@ const SERIALIZATION_DOC = readRepo('docs/SERIALIZATION.md');
 const SIDECAR_PROTOCOL = readRepo('docs/SIDECAR_PROTOCOL.md');
 
 const MANUAL_CONFORMANCE_BUCKETS = Object.freeze({
+  'validation.unsupported-unary': {
+    file: 'tests/node/language-completion.test.js',
+    pattern: 'Number bitwise operators and compound assignments match Node coercion and ordering',
+  },
+  'validation.unsupported-assignment': {
+    file: 'tests/node/language-completion.test.js',
+    pattern: 'Number bitwise operators and compound assignments match Node coercion and ordering',
+  },
   'language.array-holes': {
     file: 'tests/node/builtins.test.js',
     pattern: 'run preserves sparse array holes across helpers, enumeration, and JSON',

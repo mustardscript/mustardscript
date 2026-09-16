@@ -169,3 +169,7 @@ language docs, tests, and comparative runtime probes before implementation.
   `npm run lint`. Differential tests cover a 30-by-30 coercion matrix, evaluation
   order and snapshot bytecode; promoted obsolete parser/Test262/contract rejection
   cases to supported coverage.
+
+- Follow-up verification: mapped the two promoted bitwise conformance entries
+  to their executable Node test anchors; coverage-audit and the full Node suite
+  pass after that correction.
