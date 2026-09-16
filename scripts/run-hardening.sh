@@ -5,6 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 fuzz_seconds="${MUSTARD_FUZZ_SECONDS:-10}"
+fuzz_timeout_seconds="${MUSTARD_FUZZ_TIMEOUT_SECONDS:-5}"
 fuzz_targets="${MUSTARD_FUZZ_TARGETS:-parser snapshot_load sidecar_protocol}"
 fuzz_toolchain="${MUSTARD_FUZZ_TOOLCHAIN:-nightly}"
 fuzz_install_toolchain="${MUSTARD_FUZZ_INSTALL_TOOLCHAIN:-stable}"
@@ -39,6 +40,7 @@ for target in ${fuzz_targets}; do
   mkdir -p "${target_artifact_dir}"
   cargo +"${fuzz_toolchain}" fuzz run "${target}" -- \
     "-max_total_time=${fuzz_seconds}" \
+    "-timeout=${fuzz_timeout_seconds}" \
     "-print_final_stats=1" \
     "-verbosity=0"
 done

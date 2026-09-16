@@ -525,3 +525,60 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn source_nesting_is_bounded_before_parser_entry_but_literal_text_is_not_code() {
+    for source in [
+        "[".repeat(2000),
+        format!("{}1{}", "[".repeat(2000), "]".repeat(2000)),
+        format!("{}1{}", "(".repeat(2000), ")".repeat(2000)),
+        format!("{}1{}", "`x${".repeat(2000), "}`".repeat(2000)),
+        "while(true){".repeat(2000),
+    ] {
+        let error = compile(&source).expect_err("deep source must reject before parsing");
+        assert!(
+            error.to_string().contains("source nesting limit exceeded"),
+            "{error}"
+        );
+    }
+    for source in [
+        format!("'{}';", "[".repeat(2000)),
+        format!("`{}`;", "[".repeat(2000)),
+        format!("/* {} */ 1;", "[".repeat(2000)),
+        format!("/[{}]/;", "[".repeat(2000)),
+        "const a = `text ${ {x: `nested ${1}`}.x } tail`;".to_string(),
+        format!(
+            "const a = '{}'; {}1{}",
+            "]".repeat(2000),
+            "[".repeat(64),
+            "]".repeat(64)
+        ),
+    ] {
+        compile(&source).unwrap_or_else(|error| {
+            panic!(
+                "literal/comment punctuation must not consume code nesting ({source:.40}): {error}"
+            )
+        });
+    }
+}
+
+#[test]
+fn malformed_template_fuzz_regression_returns_without_looping() {
+    let source = include_str!("fixtures/malformed-template.js");
+    assert!(compile(source).is_err());
+    assert!(compile(&format!("/* {} */ {source}", "[".repeat(128))).is_err());
+}
+
+#[test]
+fn nesting_preflight_tracks_regexp_and_division_contexts() {
+    for source in [
+        "const x = 4; x / 2; /[[]/.test('[');",
+        "if (true) {} /[[]/.test('[');",
+        "const r = /=/.test('='); let q = 4; q /= 2;",
+        "const f = () => /[[]/;",
+        "const t = `text ${ {x: `inner ${1}`}.x } tail`;",
+    ] {
+        compile(&format!("/* {} */ {source}", "[".repeat(128)))
+            .unwrap_or_else(|error| panic!("{source}: {error}"));
+    }
+}

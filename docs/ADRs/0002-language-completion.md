@@ -113,3 +113,21 @@ portion of [ECMA-402 number formatting](https://tc39.es/ecma402/#sec-formatnumer
 It intentionally does not add arbitrary-precision Intl string/BigInt inputs or
 new Intl option families. Formatter fields keep their serialized layout, while
 snapshot validation now bounds digit counts and checks currency configuration.
+
+## Pre-parse delimiter nesting
+
+The CI-equivalent sidecar fuzz smoke exposed stack exhaustion inside Oxc on deeply
+nested source before runtime limits could apply. Oxc 0.124 does not expose a
+nesting option (nor does the audited 0.150 parser); enabling its benchmark-only
+lexer backdoor would bypass safety invariants. Use the public, pinned SWC 44.0.0
+lexer for a 64-level delimiter/template preflight, retaining Oxc for parsing
+and language validation. Scanning errors fail closed; punctuation in lexical
+literals/comments cannot hide or consume code nesting. Preserve the discovered
+request family in protocol tests and both relevant fuzz corpora, and replay the
+actual saved crash under ASan before claiming the fix verified. RESS 0.11.7 was
+rejected during validation after fuzzing exposed an infinite loop on malformed
+template escapes; that input is also preserved as a regression and corpus seed.
+
+The hardening runner also bounds each fuzz input to five seconds by default
+(`MUSTARD_FUZZ_TIMEOUT_SECONDS`), so a hung helper produces a failing saved input
+instead of outliving the whole smoke-test budget. This tightens the checks.

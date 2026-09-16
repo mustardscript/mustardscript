@@ -1,4 +1,5 @@
 mod expressions;
+mod nesting;
 mod operators;
 mod patterns;
 mod scope;
@@ -48,6 +49,7 @@ pub fn compile_with_options(
     source: &str,
     options: CompileOptions,
 ) -> MustardResult<CompiledProgram> {
+    nesting::check_source_nesting(source)?;
     let allocator = Allocator::default();
     let parsed = parse_source(&allocator, source, options);
     let mut diagnostics = Vec::new();

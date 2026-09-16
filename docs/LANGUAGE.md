@@ -920,3 +920,13 @@ string/BigInt formatting); `Number.toLocaleString` requires a Number receiver.
 Null options, non-en-US locales and inconsistent/out-of-range digit bounds
 reject. Formatting work/buffers are bounded, and restored formatter settings
 are validated before they can allocate buffers.
+
+### Source nesting guard
+
+Before the recursive parser runs, a tokenizing preflight rejects more than 64
+nested delimiters/template substitutions with a parse diagnostic. This applies
+to all compile entry points, including malformed/unterminated sidecar source.
+String, comment and RegExp contents do not count as code delimiters; template
+substitutions do. This source-syntax guard is separate from runtime call depth,
+JSON nesting, heap and instruction budgets. It is not a general compilation
+CPU/memory quota or a replacement for the documented process-isolation policy.

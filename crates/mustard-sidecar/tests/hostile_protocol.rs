@@ -389,3 +389,27 @@ fn mutated_request_lines_never_panic() {
         }
     }
 }
+
+#[test]
+fn deeply_nested_compile_requests_reject_before_recursive_parsing() {
+    let response = handle_request_line(include_str!("fixtures/deep-source-request.json"))
+        .expect("request handler")
+        .expect("response");
+    let response = decode_response(&response);
+    assert!(
+        response
+            .to_string()
+            .contains("source nesting limit exceeded"),
+        "{response}"
+    );
+    // A rejected compile request does not poison subsequent protocol processing.
+    let response =
+        handle_request_line(r#"{"protocol_version":2,"method":"compile","id":2,"source":"1+1;"}"#)
+            .expect("request handler")
+            .expect("response");
+    assert!(
+        !decode_response(&response)
+            .to_string()
+            .contains("nesting limit")
+    );
+}

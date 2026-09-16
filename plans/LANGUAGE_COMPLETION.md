@@ -34,8 +34,9 @@ language docs, tests, and comparative runtime probes before implementation.
 - [x] `cargo test --workspace`
 - [x] `npm test`
 - [x] `npm run lint`
-- [ ] Hardening smoke (`scripts/run-hardening.sh`)
-- [ ] PR opened; CI green on the final head commit
+- [x] Hardening smoke (`scripts/run-hardening.sh`)
+- [x] [PR #1 opened](https://github.com/mustardscript/mustardscript/pull/1)
+- Final-head CI status is tracked on the PR; verify its current checks before delivery.
 
 ## Starting state
 
@@ -258,3 +259,19 @@ language docs, tests, and comparative runtime probes before implementation.
   smoke), `npm run lint`, and `cargo check -p mustard-wasm --target
   wasm32-unknown-unknown`. Tests compare all non-default minor units/symbols,
   full-range binary64 formatting, default/explicit options, failures and snapshots.
+
+### Fuzz-discovered parser stack exhaustion
+
+- Reproduced the sidecar fuzz crash under ASan, then added a tokenizing 64-level
+  delimiter/template guard before Oxc parsing. SWC handles lexical context;
+  literal/comment/regexp text does not consume nesting. The raw-count fast path
+  retains original Oxc diagnostics for ordinary inputs.
+- Rejected an initial RESS tokenizer candidate when extended fuzzing exposed a
+  malformed-template loop. Both saved inputs now replay successfully under ASan,
+  have regression coverage, and are seeded into future fuzz runs. Hardening now
+  applies a five-second per-input timeout in addition to the overall smoke budget.
+- Passed with the final guard: `cargo test --workspace`, `npm test`, `npm run lint`,
+  `cargo check -p mustard-wasm --target wasm32-unknown-unknown`, both explicit
+  `cargo +nightly fuzz run ... -- -runs=1` replays, and `scripts/run-hardening.sh`
+  (10 seconds each: parser 143,975 inputs, snapshot_load 212,586, sidecar_protocol
+  205,098; all exit 0). GitHub checks are verified separately on the final PR head.

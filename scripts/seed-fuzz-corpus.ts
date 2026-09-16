@@ -43,7 +43,7 @@ const UNSUPPORTED_SOURCE_SEEDS = Object.freeze([
   },
   {
     name: 'unsupported-delete.js',
-    source: 'delete value.prop;',
+    source: 'delete value;',
   },
   {
     name: 'unsupported-dynamic-import.js',
@@ -217,6 +217,10 @@ function main() {
   writeProgramSeeds();
   writeSnapshotSeeds();
   writeSidecarProtocolSeeds();
+  const deepRequest = fs.readFileSync(path.join(repoRoot, 'crates/mustard-sidecar/tests/fixtures/deep-source-request.json'), 'utf8');
+  writeSeed('sidecar_protocol', 'deep-source-request.jsonl', deepRequest);
+  writeSeed('parser', 'deep-source.js', JSON.parse(deepRequest).source);
+  writeSeed('parser', 'malformed-template.js', fs.readFileSync(path.join(repoRoot, 'crates/mustard/tests/fixtures/malformed-template.js')));
 }
 
 main();

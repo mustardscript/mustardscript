@@ -43,6 +43,9 @@ slotmap = { version = "1.1.1", features = ["serde"] }
 thiserror = "2.0.17"
 time = { version = "0.3.44", features = ["parsing"] }
 tokio = { version = "1.51.1", features = ["io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
+swc_ecma_lexer = { version = "=44.0.0", default-features = false }
+swc_common = "=26.0.0"
+swc_ecma_ast = "=29.0.0"
 regex = "1.12.2"
 unicode-normalization = "=0.1.25"
 regex-syntax = "=0.8.11"
