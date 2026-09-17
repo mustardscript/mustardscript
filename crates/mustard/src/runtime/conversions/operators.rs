@@ -138,10 +138,11 @@ impl Runtime {
             BinaryOp::Instanceof => {
                 Ok(Value::Bool(self.instanceof_supported_surface(left, right)?))
             }
-            BinaryOp::Eq | BinaryOp::StrictEq => Ok(Value::Bool(strict_equal(&left, &right))),
-            BinaryOp::NotEq | BinaryOp::StrictNotEq => {
-                Ok(Value::Bool(!strict_equal(&left, &right)))
-            }
+            BinaryOp::Eq | BinaryOp::NotEq => Err(MustardError::runtime(
+                "TypeError: loose equality (== and !=) is not supported",
+            )),
+            BinaryOp::StrictEq => Ok(Value::Bool(strict_equal(&left, &right))),
+            BinaryOp::StrictNotEq => Ok(Value::Bool(!strict_equal(&left, &right))),
             BinaryOp::LessThan
             | BinaryOp::LessThanEq
             | BinaryOp::GreaterThan

@@ -18,6 +18,10 @@ extensions are called out explicitly instead of being implied.
 - Input has no module system; `import` and `export` syntax is rejected even
   though top-level `await` is supported.
 - Unsupported features fail closed with explicit diagnostics.
+- Equality uses `===` and `!==`. Loose `==` and `!=` are rejected at validation,
+  including in loaded bytecode; abstract equality and implicit object coercion
+  are not supported. Use `value === null || value === undefined` for a nullish
+  check, or an explicit conversion such as `Number(value) === 1` when intended.
 - Free references to forbidden ambient globals are rejected when lexical
   resolution proves they are unresolved.
 - Free `eval` and free `Function` are rejected for the same reason.
