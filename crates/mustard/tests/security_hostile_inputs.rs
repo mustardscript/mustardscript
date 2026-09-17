@@ -41,6 +41,26 @@ fn simple_function(code: Vec<Instruction>) -> FunctionPrototype {
     }
 }
 
+#[test]
+fn malformed_lexical_slot_depths_reject_without_unbounded_traversal() {
+    for depth in [1_000_000, usize::MAX] {
+        let program = BytecodeProgram {
+            functions: vec![simple_function(vec![
+                Instruction::LoadSlot { depth, slot: 0 },
+                Instruction::Return,
+            ])],
+            root: 0,
+        };
+        let loaded = load_program(&dump_program(&program).unwrap()).unwrap();
+        let error = start_bytecode(&loaded, ExecutionOptions::default())
+            .expect_err("out-of-range lexical depth must reject promptly");
+        assert!(error.to_string().contains("environment missing"), "{error}");
+    }
+    let program = load_program(include_bytes!("fixtures/oversized-lexical-depth.bin")).unwrap();
+    let error = start_bytecode(&program, ExecutionOptions::default()).unwrap_err();
+    assert!(error.to_string().contains("environment missing"), "{error}");
+}
+
 fn suspended_snapshot_bytes() -> Vec<u8> {
     let program = compile("const value = fetch_data(1); value + 2;").expect("compile should work");
     let step = start(

@@ -154,17 +154,25 @@ impl Runtime {
     }
 
     fn env_at_depth(&self, env: EnvKey, depth: usize) -> MustardResult<EnvKey> {
-        let mut current = Some(env);
-        for _ in 0..depth {
-            current = current
-                .and_then(|key| self.envs.get(key))
-                .and_then(|env| env.parent);
-        }
-        current.ok_or_else(|| {
+        let missing = || {
             MustardError::runtime(format!(
                 "environment missing while resolving lexical slot at depth {depth}"
             ))
-        })
+        };
+        // Malformed bytecode can request usize::MAX. Never walk more parents
+        // than exist, or keep looping on None after reaching the root.
+        if depth >= self.envs.len() {
+            return Err(missing());
+        }
+        let mut current = env;
+        for _ in 0..depth {
+            current = self
+                .envs
+                .get(current)
+                .and_then(|env| env.parent)
+                .ok_or_else(missing)?;
+        }
+        Ok(current)
     }
 
     /// Hot-path slot resolution: returns the resolved environment plus the bound

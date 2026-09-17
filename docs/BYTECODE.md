@@ -38,6 +38,9 @@ syntactically final expression retains the direct operand-stack return path.
   across calls and host suspensions; exceptions discard that continuation.
 - `StoreName` and property-set instructions push the assigned value back so
   assignment expressions still produce a result.
+- Lexical-slot lookup stops at the environment-chain root and rejects impossible
+  depths before walking; malformed serialized operands cannot request an
+  unbounded parent traversal inside one instruction.
 - `JumpIfFalse`, `JumpIfTrue`, and `JumpIfNullish` inspect the top-of-stack
   value without popping it.
 - The optimizer may emit private combined handlers such as

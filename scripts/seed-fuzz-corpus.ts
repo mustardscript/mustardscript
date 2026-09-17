@@ -135,6 +135,8 @@ function writeSourceSeeds() {
 }
 
 function writeProgramSeeds() {
+  writeSeed('bytecode_execution', 'oversized-lexical-depth.bin',
+    fs.readFileSync(path.join(repoRoot, 'crates/mustard/tests/fixtures/oversized-lexical-depth.bin')));
   for (const seed of SUPPORTED_SOURCE_SEEDS) {
     const program = new Mustard(seed.source).dump();
     writeSeed('bytecode_validation', seed.name.replace(/\.js$/, '.bin'), program);
