@@ -9,6 +9,14 @@ lastUpdated: "2026-04-14"
 
 # Bytecode VM Model
 
+Script bodies that need compound-statement completion values use a private
+lexical result cell. Normal expression statements update it; control-flow
+constructs apply their empty/undefined completion rules. A `try` with `finally`
+preserves its result in a private scope until normal cleanup finishes. These
+are ordinary VM cells, so GC, limits, and suspension serialization need no
+separate result channel. Function bodies do not update the script cell. A
+syntactically final expression retains the direct operand-stack return path.
+
 `mustard` currently uses a private stack-based bytecode.
 
 ## Program Shape

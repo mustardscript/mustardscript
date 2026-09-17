@@ -87,3 +87,47 @@ fn classic_for_preserves_header_tdz_const_and_continue_cleanup() {
         StructuredValue::String("[[[1,0],[3,0]],[\"ReferenceError\",\"TypeError\"]]".into())
     );
 }
+
+#[test]
+fn compound_statements_supply_script_completion_values() {
+    for (source, expected) in [
+        ("if(true) {42;}", 42.0),
+        ("try {42;} catch(e) {0;}", 42.0),
+        ("try {throw 1;} catch(e) {42;} finally {0;}", 42.0),
+        ("switch(2) {default: 1; break; case 2: 42; break;}", 42.0),
+        ("switch(1) {case 1: const x=42; x; break;}", 42.0),
+        ("42; const ignored=0; {}", 42.0),
+        ("for(let i=0;i<3;i++) {i;}", 2.0),
+        ("label: {try {42; break label;} finally {0;}}", 42.0),
+        ("label: {try {1;} finally {42; break label;}}", 42.0),
+    ] {
+        for lenient_mode in [false, true] {
+            let program = compile_with_options(source, CompileOptions { lenient_mode }).unwrap();
+            assert_eq!(
+                execute(&program, ExecutionOptions::default()).unwrap(),
+                StructuredValue::from(expected),
+                "{source}"
+            );
+        }
+    }
+    for source in [
+        "42; if(false) {1;}",
+        "42; while(false) {}",
+        "42; switch(0) {}",
+        "42; try {} finally {1;}",
+        "try {42; throw 1;} catch(e) {}",
+        "label: {try {42;} finally {break label;}}",
+    ] {
+        let program = compile(source).unwrap();
+        assert_eq!(
+            execute(&program, ExecutionOptions::default()).unwrap(),
+            StructuredValue::Undefined,
+            "{source}"
+        );
+    }
+    let program = compile("\"directive result\"; const ignored=0;").unwrap();
+    assert_eq!(
+        execute(&program, ExecutionOptions::default()).unwrap(),
+        StructuredValue::String("directive result".into())
+    );
+}

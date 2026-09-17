@@ -216,23 +216,32 @@ impl<'a> Lowerer<'a> {
                     })
                 }
             }
-            Statement::SwitchStatement(statement) => Some(Stmt::Switch {
-                span: statement.span.into(),
-                discriminant: self.lower_expr(&statement.discriminant)?,
-                cases: statement
-                    .cases
-                    .iter()
-                    .map(|case| crate::ir::SwitchCase {
-                        span: case.span.into(),
-                        test: case.test.as_ref().and_then(|expr| self.lower_expr(expr)),
-                        consequent: case
-                            .consequent
-                            .iter()
-                            .filter_map(|statement| self.lower_stmt(statement))
-                            .collect(),
-                    })
-                    .collect(),
-            }),
+            Statement::SwitchStatement(statement) => {
+                let discriminant = self.lower_expr(&statement.discriminant)?;
+                self.push_scope();
+                for case in &statement.cases {
+                    self.predeclare_block(&case.consequent);
+                }
+                let result = Some(Stmt::Switch {
+                    span: statement.span.into(),
+                    discriminant,
+                    cases: statement
+                        .cases
+                        .iter()
+                        .map(|case| crate::ir::SwitchCase {
+                            span: case.span.into(),
+                            test: case.test.as_ref().and_then(|expr| self.lower_expr(expr)),
+                            consequent: case
+                                .consequent
+                                .iter()
+                                .filter_map(|statement| self.lower_stmt(statement))
+                                .collect(),
+                        })
+                        .collect(),
+                });
+                self.pop_scope();
+                result
+            }
             Statement::ThrowStatement(statement) => Some(Stmt::Throw {
                 span: statement.span.into(),
                 value: self.lower_expr(&statement.argument)?,

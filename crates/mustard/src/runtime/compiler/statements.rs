@@ -46,7 +46,11 @@ impl Compiler {
             Stmt::FunctionDecl { .. } => {}
             Stmt::Expression { expression, .. } => {
                 self.compile_expr(context, expression)?;
-                context.code.push(Instruction::Pop);
+                if let Some(name) = context.completion_binding.clone() {
+                    self.emit_store_name_discard(context, &name);
+                } else {
+                    context.code.push(Instruction::Pop);
+                }
             }
             Stmt::If {
                 test,
@@ -54,6 +58,7 @@ impl Compiler {
                 alternate,
                 ..
             } => {
+                self.reset_statement_completion(context);
                 self.compile_expr(context, test)?;
                 let jump_to_else = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
                 context.code.push(Instruction::Pop);
@@ -69,6 +74,7 @@ impl Compiler {
                 self.patch_jump(context, jump_to_end, end_ip);
             }
             Stmt::While { test, body, .. } => {
+                self.reset_statement_completion(context);
                 let loop_start = context.code.len();
                 self.compile_expr(context, test)?;
                 let exit_jump = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
@@ -95,6 +101,7 @@ impl Compiler {
                 }
             }
             Stmt::DoWhile { body, test, .. } => {
+                self.reset_statement_completion(context);
                 let loop_start = context.code.len();
                 context.loop_stack.push(LoopContext {
                     finally_depth: context.active_finally.len(),
@@ -131,6 +138,7 @@ impl Compiler {
                 body,
                 ..
             } => {
+                self.reset_statement_completion(context);
                 self.enter_env_scope(context);
                 let mut per_iteration_names = Vec::new();
                 if let Some(init) = init {
@@ -228,6 +236,7 @@ impl Compiler {
                 iterable,
                 body,
             } => {
+                self.reset_statement_completion(context);
                 self.enter_env_scope(context);
                 let loop_scope_depth = context.scope_depth;
                 let iterator_binding = self.fresh_internal_name(context, "iter");
@@ -421,19 +430,28 @@ impl Compiler {
                 context.code.push(Instruction::Throw { span: *span });
             }
             Stmt::Try {
+                span,
                 body,
                 catch,
                 finally,
-                ..
             } => {
-                self.compile_try(context, body, catch.as_ref(), finally.as_deref())?;
+                self.compile_try(context, body, catch.as_ref(), finally.as_deref(), *span)?;
             }
             Stmt::Switch {
                 discriminant,
                 cases,
                 ..
             } => {
+                self.reset_statement_completion(context);
                 self.compile_expr(context, discriminant)?;
+                // Case clauses share a lexical scope, but the discriminant is
+                // evaluated outside it. Declarations do not produce completions.
+                self.enter_env_scope(context);
+                let case_statements: Vec<_> = cases
+                    .iter()
+                    .flat_map(|case| case.consequent.iter().cloned())
+                    .collect();
+                self.emit_block_prologue(context, &case_statements, false)?;
                 let mut case_jumps = Vec::new();
                 let mut default_case_index = None;
                 context.loop_stack.push(LoopContext {
@@ -452,7 +470,10 @@ impl Compiler {
                             self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
                         context.code.push(Instruction::Pop);
                         context.code.push(Instruction::Pop);
-                        case_jumps.push(self.emit_jump(context, Instruction::Jump(usize::MAX)));
+                        case_jumps.push((
+                            self.emit_jump(context, Instruction::Jump(usize::MAX)),
+                            case_index,
+                        ));
                         let miss_ip = context.code.len();
                         self.patch_jump(context, miss_jump, miss_ip);
                         context.code.push(Instruction::Pop);
@@ -475,17 +496,25 @@ impl Compiler {
                     .and_then(|index| case_offsets.get(index).copied())
                     .unwrap_or(end_ip);
                 self.patch_jump(context, jump_past_cases, default_target);
-                for (jump, target) in case_jumps.into_iter().zip(case_offsets.iter().copied()) {
-                    self.patch_jump(context, jump, target);
+                for (jump, case_index) in case_jumps {
+                    self.patch_jump(context, jump, case_offsets[case_index]);
                 }
                 let loop_ctx = context.loop_stack.pop().unwrap_or_default();
                 for jump in loop_ctx.break_jumps {
                     self.patch_control_transfer(context, jump, end_ip);
                 }
+                self.exit_env_scope(context);
             }
             Stmt::Empty { .. } => {}
         }
         Ok(())
+    }
+
+    pub(super) fn reset_statement_completion(&self, context: &mut CompileContext) {
+        if let Some(name) = context.completion_binding.clone() {
+            context.code.push(Instruction::PushUndefined);
+            self.emit_store_name_discard(context, &name);
+        }
     }
 
     fn copy_iteration_bindings(

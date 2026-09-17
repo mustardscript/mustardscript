@@ -16,7 +16,26 @@ impl Compiler {
         body: &Stmt,
         catch: Option<&crate::ir::CatchClause>,
         finally: Option<&Stmt>,
+        span: crate::span::SourceSpan,
     ) -> MustardResult<()> {
+        let saved_completion = if context.completion_binding.is_some() && finally.is_some() {
+            // An unconditional private scope avoids conditional declarations
+            // changing the slot layout of the surrounding guest environment.
+            self.enter_env_scope(context);
+            let name = self.fresh_internal_name(context, "finally_result");
+            self.emit_declare_name(context, name.clone(), true);
+            context.code.push(Instruction::PushUndefined);
+            context.code.push(Instruction::InitializePattern(
+                crate::ir::Pattern::Identifier {
+                    span,
+                    name: name.clone(),
+                },
+            ));
+            Some(name)
+        } else {
+            None
+        };
+        self.reset_statement_completion(context);
         let finally_region = finally.map(|_| {
             context
                 .finally_regions
@@ -60,6 +79,7 @@ impl Compiler {
 
         if let Some(catch_clause) = catch {
             self.patch_handler_catch(context, try_handler_site, context.code.len());
+            self.reset_statement_completion(context);
 
             if let Some(region) = finally_region {
                 let catch_handler_site = context.code.len();
@@ -111,6 +131,15 @@ impl Compiler {
                 finally_region.expect("finally region should exist"),
                 finally_ip,
             );
+            if let Some(saved) = &saved_completion {
+                let result = context
+                    .completion_binding
+                    .clone()
+                    .expect("script completion binding");
+                self.emit_load_name(context, &result);
+                self.emit_store_name_discard(context, saved);
+                self.reset_statement_completion(context);
+            }
             let enter_finally = context.code.len();
             context
                 .code
@@ -119,6 +148,16 @@ impl Compiler {
                 exit_patch_site: enter_finally,
             });
             self.compile_stmt(context, finally_stmt)?;
+            // Only normal cleanup restores the try/catch value. Abrupt cleanup
+            // skips this and supplies its own completion to the existing unwinder.
+            if let Some(saved) = &saved_completion {
+                let result = context
+                    .completion_binding
+                    .clone()
+                    .expect("script completion binding");
+                self.emit_load_name(context, saved);
+                self.emit_store_name_discard(context, &result);
+            }
             let continue_ip = context.code.len();
             let active_finally = context
                 .active_finally
@@ -139,6 +178,10 @@ impl Compiler {
         } else if let Some(skip_catch_jump) = skip_catch_jump {
             let after_catch = context.code.len();
             self.patch_jump(context, skip_catch_jump, after_catch);
+        }
+
+        if saved_completion.is_some() {
+            self.exit_env_scope(context);
         }
 
         Ok(())

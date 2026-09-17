@@ -162,15 +162,24 @@ impl<'a> Lowerer<'a> {
     fn lower_program(&mut self, program: &Program<'a>) -> Script {
         self.check_directives(&program.directives);
         self.predeclare_block(&program.body);
-        let body = program
+        let statements = program
             .body
             .iter()
             .enumerate()
             .filter_map(|(index, statement)| {
                 let is_last = index + 1 == program.body.len();
                 self.lower_root_stmt(statement, is_last)
-            })
-            .collect();
+            });
+        // Directives are still evaluated string expression statements and can
+        // supply a Script completion even though their strictness is implicit.
+        let directives = program.directives.iter().map(|directive| Stmt::Expression {
+            span: directive.span.into(),
+            expression: Expr::String {
+                span: directive.expression.span.into(),
+                value: directive.expression.value.as_str().to_string(),
+            },
+        });
+        let body = directives.chain(statements).collect();
         Script {
             span: program.span.into(),
             body,

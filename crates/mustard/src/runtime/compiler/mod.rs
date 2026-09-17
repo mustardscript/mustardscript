@@ -191,6 +191,21 @@ impl Compiler {
         context.push_binding_scope();
         context.declare_binding("this".to_string(), false);
         let is_async = statements_contain_top_level_await(statements);
+        // A final expression unconditionally supplies the result, so retain the
+        // existing zero-overhead path for that common case. Other endings need
+        // the StatementList completion carried through blocks/control flow.
+        if !matches!(statements.last(), None | Some(Stmt::Expression { .. })) {
+            let name = self.fresh_internal_name(&mut context, "completion");
+            self.emit_declare_name(&mut context, name.clone(), true);
+            context.code.push(Instruction::PushUndefined);
+            context
+                .code
+                .push(Instruction::InitializePattern(Pattern::Identifier {
+                    span,
+                    name: name.clone(),
+                }));
+            context.completion_binding = Some(name);
+        }
         self.emit_block_prologue(&mut context, statements, true)?;
         let mut produced_result = false;
         for (index, statement) in statements.iter().enumerate() {
@@ -202,7 +217,9 @@ impl Compiler {
             }
             self.compile_stmt(&mut context, statement)?;
         }
-        if !produced_result {
+        if let Some(name) = context.completion_binding.clone() {
+            self.emit_load_name(&mut context, &name);
+        } else if !produced_result {
             context.code.push(Instruction::PushUndefined);
         }
         context.code.push(Instruction::Return);

@@ -92,6 +92,26 @@ remain immutable and are not copied per iteration. Expression-only headers
 keep using their surrounding bindings. These cells use ordinary lexical-scope
 GC accounting and survive compiled-program and suspension snapshot round trips.
 
+## Script Completion Values
+
+A script returns its ECMAScript statement completion, not just a syntactically
+final expression. Blocks, selected `if` branches, `switch` clauses (including
+fallthrough), loop bodies, and `try`/`catch` bodies can supply the result.
+Empty statements and declarations preserve a preceding statement's value;
+an `if` with no selected value, an unentered loop, an unmatched `switch`, or
+an empty `try`/`catch` completes with `undefined` instead.
+
+A normally completed `finally` does not replace the `try`/`catch` result.
+Abrupt cleanup (`throw`, `break`, or `continue`) overrides the pending
+completion under the usual control-flow rules. Results remain rooted during
+cleanup, host suspension, and top-level `await`, and survive snapshots.
+Directive strings can also supply a script result. Function bodies still
+return `undefined` without an explicit `return`; they do not change their
+caller's statement completion. These rules are the same in `lenientMode`.
+
+For example, `try { 42; } finally { 99; }` returns `42`, while
+`42; if (false) { 99; }` returns `undefined` and `42; let unused;` returns `42`.
+
 ## Supported Function Call Surface
 
 - non-arrow guest member calls bind the computed receiver as `this`

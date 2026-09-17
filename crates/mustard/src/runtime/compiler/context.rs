@@ -13,6 +13,9 @@ pub(super) struct CompileContext {
     pub(super) scope_depth: usize,
     pub(super) internal_name_counter: usize,
     pub(super) binding_scopes: Vec<BindingScope>,
+    // Script-only completion state. Function bodies always require an explicit
+    // return and must not overwrite their caller's statement result.
+    pub(super) completion_binding: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
