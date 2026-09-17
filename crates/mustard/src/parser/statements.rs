@@ -103,33 +103,43 @@ impl<'a> Lowerer<'a> {
                 expression: self.lower_expr(&statement.expression)?,
             }),
             Statement::ForStatement(statement) => {
-                let init = match &statement.init {
-                    Some(ForStatementInit::VariableDeclaration(decl)) => {
-                        Some(ForInit::VariableDecl {
-                            kind: self.lower_binding_kind(decl.kind, decl.span)?,
-                            declarators: decl
-                                .declarations
-                                .iter()
-                                .filter_map(|declarator| self.lower_declarator(declarator))
-                                .collect(),
-                        })
+                self.push_scope();
+                if let Some(ForStatementInit::VariableDeclaration(decl)) = &statement.init {
+                    for declarator in &decl.declarations {
+                        self.collect_pattern_bindings(&declarator.id);
                     }
-                    Some(init) => Some(ForInit::Expression(self.lower_for_init_expr(init)?)),
-                    None => None,
-                };
-                Some(Stmt::For {
-                    span: statement.span.into(),
-                    init,
-                    test: statement
-                        .test
-                        .as_ref()
-                        .and_then(|test| self.lower_expr(test)),
-                    update: statement
-                        .update
-                        .as_ref()
-                        .and_then(|expr| self.lower_expr(expr)),
-                    body: Box::new(self.lower_stmt(&statement.body)?),
-                })
+                }
+                let result = (|| {
+                    let init = match &statement.init {
+                        Some(ForStatementInit::VariableDeclaration(decl)) => {
+                            Some(ForInit::VariableDecl {
+                                kind: self.lower_binding_kind(decl.kind, decl.span)?,
+                                declarators: decl
+                                    .declarations
+                                    .iter()
+                                    .filter_map(|declarator| self.lower_declarator(declarator))
+                                    .collect(),
+                            })
+                        }
+                        Some(init) => Some(ForInit::Expression(self.lower_for_init_expr(init)?)),
+                        None => None,
+                    };
+                    Some(Stmt::For {
+                        span: statement.span.into(),
+                        init,
+                        test: statement
+                            .test
+                            .as_ref()
+                            .and_then(|test| self.lower_expr(test)),
+                        update: statement
+                            .update
+                            .as_ref()
+                            .and_then(|expr| self.lower_expr(expr)),
+                        body: Box::new(self.lower_stmt(&statement.body)?),
+                    })
+                })();
+                self.pop_scope();
+                result
             }
             Statement::ForOfStatement(statement) => {
                 let head = self.lower_for_loop_head(&statement.left, "for...of")?;

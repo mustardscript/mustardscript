@@ -51,3 +51,39 @@ fn loose_equality_fails_closed_in_source_and_serialized_bytecode() {
         StructuredValue::Bool(true)
     );
 }
+
+#[test]
+fn classic_for_copies_lexical_cells_before_the_first_test_and_each_update() {
+    let source = r#"
+        const body = [], updates = []; let initial;
+        for (let [i, j] = [0, 10], get = () => i; i < 3; updates.push(() => i), i++, j++) {
+            initial = get; body.push(() => [i, j]);
+        }
+        JSON.stringify([initial(), body.map(f => f()), updates.map(f => f())]);
+    "#;
+    let program = compile(source).unwrap();
+    assert_eq!(
+        execute(&program, ExecutionOptions::default()).unwrap(),
+        StructuredValue::String("[0,[[0,10],[1,11],[2,12]],[1,2,3]]".into())
+    );
+}
+
+#[test]
+fn classic_for_preserves_header_tdz_const_and_continue_cleanup() {
+    let source = r#"
+        const f = [], errors = [];
+        outer: for (let i = 0; i < 4; i++) {
+            try { for (let j = 0; j < 2; j++) { f.push(() => [i,j]); continue outer; } }
+            finally { i++; }
+        }
+        globalThis.later = 9;
+        try { for (let first = later, later = 1; false;) {} } catch(e) { errors.push(e.name); }
+        try { for (const i = 0; i < 1; i++) {} } catch(e) { errors.push(e.name); }
+        JSON.stringify([f.map(fn => fn()), errors]);
+    "#;
+    let program = compile(source).unwrap();
+    assert_eq!(
+        execute(&program, ExecutionOptions::default()).unwrap(),
+        StructuredValue::String("[[[1,0],[3,0]],[\"ReferenceError\",\"TypeError\"]]".into())
+    );
+}

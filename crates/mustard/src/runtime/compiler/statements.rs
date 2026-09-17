@@ -124,6 +124,7 @@ impl Compiler {
                 }
             }
             Stmt::For {
+                span,
                 init,
                 test,
                 update,
@@ -131,20 +132,29 @@ impl Compiler {
                 ..
             } => {
                 self.enter_env_scope(context);
+                let mut per_iteration_names = Vec::new();
                 if let Some(init) = init {
                     match init {
-                        ForInit::VariableDecl {
-                            kind: _,
-                            declarators,
-                        } => {
+                        ForInit::VariableDecl { kind, declarators } => {
+                            // The complete header scope exists (in the TDZ) before any
+                            // initializer, including references from earlier declarators.
+                            for declarator in declarators {
+                                for (name, _) in pattern_bindings(&declarator.pattern) {
+                                    self.emit_declare_name(
+                                        context,
+                                        name.clone(),
+                                        *kind == BindingKind::Let,
+                                    );
+                                    if *kind == BindingKind::Let {
+                                        per_iteration_names.push(name);
+                                    }
+                                }
+                            }
                             for declarator in declarators {
                                 let initializer_kind =
                                     declarator.initializer.as_ref().and_then(|initializer| {
                                         self.expr_known_collection_kind(context, initializer)
                                     });
-                                for (name, mutable) in pattern_bindings(&declarator.pattern) {
-                                    self.emit_declare_name(context, name, mutable);
-                                }
                                 if let Some(initializer) = &declarator.initializer {
                                     self.compile_expr(context, initializer)?;
                                 } else {
@@ -164,6 +174,9 @@ impl Compiler {
                         }
                     }
                 }
+                // Initializer closures retain the original cells. Tests/body closures
+                // capture the first iteration's cells instead.
+                self.copy_iteration_bindings(context, &per_iteration_names, *span);
                 let loop_start = context.code.len();
                 let exit_jump = if let Some(test) = test {
                     self.compile_expr(context, test)?;
@@ -184,6 +197,8 @@ impl Compiler {
                 if let Some(loop_ctx) = context.loop_stack.last_mut() {
                     loop_ctx.continue_target = Some(update_start);
                 }
+                // Continue runs cleanup, then copies cells before evaluating update.
+                self.copy_iteration_bindings(context, &per_iteration_names, *span);
                 if let Some(update) = update {
                     self.compile_expr(context, update)?;
                     context.code.push(Instruction::Pop);
@@ -471,5 +486,34 @@ impl Compiler {
             Stmt::Empty { .. } => {}
         }
         Ok(())
+    }
+
+    fn copy_iteration_bindings(
+        &self,
+        context: &mut CompileContext,
+        names: &[String],
+        span: crate::span::SourceSpan,
+    ) {
+        if names.is_empty() {
+            return;
+        }
+        // Keep values on the operand stack while allocating the sibling scope,
+        // so ordinary GC rooting/accounting and snapshot handling apply.
+        for name in names {
+            self.emit_load_name(context, name);
+        }
+        self.exit_env_scope(context);
+        self.enter_env_scope(context);
+        for name in names {
+            self.emit_declare_name(context, name.clone(), true);
+        }
+        for name in names.iter().rev() {
+            context
+                .code
+                .push(Instruction::InitializePattern(Pattern::Identifier {
+                    span,
+                    name: name.clone(),
+                }));
+        }
     }
 }

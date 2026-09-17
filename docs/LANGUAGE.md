@@ -82,6 +82,16 @@ snippets. This does not add script-level early-return control flow: `return`
 inside top-level `if`, loop, block, or any non-final root statement is still
 rejected.
 
+Classic `for (let ...; test; update)` creates a fresh set of header binding
+cells before the first test and before each update, copying the previous
+values. Closures from initializers, loop bodies, tests, and updates therefore
+retain the appropriate iteration's bindings. `continue` runs intervening
+`finally` blocks before copying those bindings and running the update. All
+header names are in the temporal dead zone until initialized; `const` headers
+remain immutable and are not copied per iteration. Expression-only headers
+keep using their surrounding bindings. These cells use ordinary lexical-scope
+GC accounting and survive compiled-program and suspension snapshot round trips.
+
 ## Supported Function Call Surface
 
 - non-arrow guest member calls bind the computed receiver as `this`
