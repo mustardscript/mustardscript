@@ -234,7 +234,10 @@ impl Runtime {
         }
     }
 
-    fn callable_display_string(&self, value: &Value) -> MustardResult<String> {
+    pub(in crate::runtime) fn callable_display_string(
+        &self,
+        value: &Value,
+    ) -> MustardResult<String> {
         Ok(match value {
             Value::Closure(closure) => {
                 let closure = self

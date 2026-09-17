@@ -517,6 +517,12 @@ impl Runtime {
         for value in &frame.stack {
             self.mark_value(value, marks, worklist);
         }
+        if let Some(state) = &frame.pending_equality {
+            self.mark_value(&state.primitive, marks, worklist);
+            for work in &state.work {
+                self.mark_value(&work.root(), marks, worklist);
+            }
+        }
         if let Some(value) = &frame.pending_exception {
             self.mark_value(value, marks, worklist);
         }
@@ -840,6 +846,7 @@ fn instruction_may_allocate(instruction: &Instruction) -> bool {
             | Instruction::SetPropStaticDiscard { .. }
             | Instruction::SetPropComputed
             | Instruction::SetPropComputedDiscard
+            | Instruction::Binary(BinaryOp::Eq | BinaryOp::NotEq)
             | Instruction::Call { .. }
             | Instruction::CallWithArray { .. }
             | Instruction::Await

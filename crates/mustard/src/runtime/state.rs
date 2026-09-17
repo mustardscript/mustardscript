@@ -85,6 +85,20 @@ pub(super) enum Value {
     BigInt(BigInt),
 }
 
+impl Value {
+    pub(super) fn is_primitive(&self) -> bool {
+        matches!(
+            self,
+            Self::Undefined
+                | Self::Null
+                | Self::Bool(_)
+                | Self::Number(_)
+                | Self::String(_)
+                | Self::BigInt(_)
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub(super) enum CollectionNumberKey {
     Finite(u64),
@@ -693,6 +707,9 @@ pub(super) enum BuiltinFunction {
     DateToLocaleTimeString,
     StringLocaleCompare,
     NumberToLocaleString,
+    ObjectValueOf,
+    FunctionToString,
+    RegExpToString,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1403,6 +1420,46 @@ pub(super) struct PendingHostCall {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct EqualityContinuation {
+    pub(super) primitive: Value,
+    pub(super) negate: bool,
+    pub(super) work: Vec<CoercionWork>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) enum CoercionWork {
+    Primitive {
+        object: Value,
+        prefer_string: bool,
+        next_method: u8,
+        awaiting_result: bool,
+    },
+    ArrayJoin {
+        array: ArrayKey,
+        length: usize,
+        next_index: usize,
+        text: String,
+        separator: Option<String>,
+        awaiting_element: bool,
+    },
+    RegExpString {
+        receiver: Value,
+        source: Option<String>,
+        awaiting_result: bool,
+    },
+}
+
+impl CoercionWork {
+    pub(super) fn root(&self) -> Value {
+        match self {
+            Self::Primitive { object, .. } => object.clone(),
+            Self::ArrayJoin { array, .. } => Value::Array(*array),
+            Self::RegExpString { receiver, .. } => receiver.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct Frame {
     pub(super) function_id: usize,
     pub(super) ip: usize,
@@ -1411,6 +1468,7 @@ pub(super) struct Frame {
     pub(super) stack: Vec<Value>,
     pub(super) handlers: Vec<ExceptionHandler>,
     pub(super) pending_exception: Option<Value>,
+    pub(super) pending_equality: Option<EqualityContinuation>,
     pub(super) pending_completions: Vec<CompletionRecord>,
     pub(super) active_finally: Vec<ActiveFinallyState>,
     pub(super) async_promise: Option<PromiseKey>,

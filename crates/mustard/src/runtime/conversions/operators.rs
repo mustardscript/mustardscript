@@ -138,9 +138,13 @@ impl Runtime {
             BinaryOp::Instanceof => {
                 Ok(Value::Bool(self.instanceof_supported_surface(left, right)?))
             }
-            BinaryOp::Eq | BinaryOp::NotEq => Err(MustardError::runtime(
-                "TypeError: loose equality (== and !=) is not supported",
-            )),
+            // Object coercion is handled by the resumable Binary instruction.
+            BinaryOp::Eq | BinaryOp::NotEq => {
+                let equal = self.loose_equality(&left, &right)?.ok_or_else(|| {
+                    MustardError::runtime("object equality requires a VM continuation")
+                })?;
+                Ok(Value::Bool(equal != matches!(operator, BinaryOp::NotEq)))
+            }
             BinaryOp::StrictEq => Ok(Value::Bool(strict_equal(&left, &right))),
             BinaryOp::StrictNotEq => Ok(Value::Bool(!strict_equal(&left, &right))),
             BinaryOp::LessThan

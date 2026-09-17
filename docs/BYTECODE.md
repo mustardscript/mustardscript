@@ -33,6 +33,9 @@ syntactically final expression retains the direct operand-stack return path.
 - Each frame owns an operand stack.
 - Literal loads, name loads, and closure creation push values.
 - Arithmetic and comparison operations pop their operands and push one result.
+- Loose equality may run guest coercion methods. A bounded, GC-rooted frame
+  continuation tracks method order and default array element string conversion
+  across calls and host suspensions; exceptions discard that continuation.
 - `StoreName` and property-set instructions push the assigned value back so
   assignment expressions still produce a result.
 - `JumpIfFalse`, `JumpIfTrue`, and `JumpIfNullish` inspect the top-of-stack
@@ -55,7 +58,7 @@ syntactically final expression retains the direct operand-stack return path.
   currently stays opt-in until broader portfolio data justifies enabling it by
   default.
 - Jump targets always start a fresh optimization block.
-- The optimizer flushes at handler and pending-completion edges, control-flow
+- The optimizer flushes at coercing equality, handler and pending-completion edges, control-flow
   transfers, `await`, calls, construction, `return`, and `throw`.
 - There is no bytecode-level source-position marker today, so no additional
   source-position flush boundary is currently encoded.
@@ -69,6 +72,8 @@ Each frame currently tracks:
 - `env`: the current lexical environment
 - `scope_stack`: the nested lexical environments introduced by `PushEnv`
 - `stack`: the operand stack for the frame
+- `pending_equality`: resumable object-to-primitive and array string conversion
+  work for an unfinished `==` or `!=` instruction
 - `async_promise`: the backing promise for an async function frame when present
 
 `this` is stored in the frame's lexical environment as a normal binding.

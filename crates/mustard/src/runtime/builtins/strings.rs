@@ -25,6 +25,9 @@ impl Runtime {
                 .kind
             {
                 ObjectKind::StringObject(value) => Ok(value.clone()),
+                ObjectKind::FunctionPrototype(Value::BuiltinFunction(
+                    BuiltinFunction::StringCtor,
+                )) => Ok(String::new()),
                 _ => Err(MustardError::runtime(format!(
                     "TypeError: String.prototype.{method} called on incompatible receiver",
                 ))),
@@ -45,6 +48,9 @@ impl Runtime {
                 .kind
             {
                 ObjectKind::StringObject(value) => Ok(value.clone()),
+                ObjectKind::FunctionPrototype(Value::BuiltinFunction(
+                    BuiltinFunction::StringCtor,
+                )) => Ok(String::new()),
                 ObjectKind::NumberObject(value) => self.to_string(Value::Number(*value)),
                 ObjectKind::BooleanObject(value) => self.to_string(Value::Bool(*value)),
                 _ => Err(MustardError::runtime(format!(

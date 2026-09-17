@@ -97,6 +97,9 @@ impl Runtime {
                 }))
             }
             BuiltinFunction::ObjectToString => self.call_object_to_string(this_value),
+            BuiltinFunction::ObjectValueOf => self.call_object_value_of(this_value),
+            BuiltinFunction::FunctionToString => self.call_function_to_string(this_value),
+            BuiltinFunction::RegExpToString => self.call_regexp_to_string(this_value),
             BuiltinFunction::ArrayToString => self.call_array_to_string(this_value),
             BuiltinFunction::MapCtor => Err(MustardError::runtime(
                 "TypeError: Map constructor must be called with new",

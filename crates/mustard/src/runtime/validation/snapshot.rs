@@ -201,6 +201,74 @@ fn validate_frame(runtime: &Runtime, frame: &Frame) -> MustardResult<()> {
             ));
         }
     }
+    if let Some(state) = &frame.pending_equality {
+        let operator = frame.ip.checked_sub(1).and_then(|ip| function.code.get(ip));
+        if !state.primitive.is_primitive()
+            || matches!(state.primitive, Value::Null | Value::Undefined)
+            || state.work.is_empty()
+            || state.work.len() > 256
+            || !matches!(
+                operator,
+                Some(Instruction::Binary(
+                    crate::ir::BinaryOp::Eq | crate::ir::BinaryOp::NotEq
+                ))
+            )
+            || state.negate
+                != matches!(
+                    operator,
+                    Some(Instruction::Binary(crate::ir::BinaryOp::NotEq))
+                )
+        {
+            return Err(snapshot_error("invalid equality continuation"));
+        }
+        for work in &state.work {
+            match work {
+                CoercionWork::Primitive {
+                    object,
+                    next_method,
+                    awaiting_result,
+                    ..
+                } => {
+                    if object.is_primitive()
+                        || *next_method > 2
+                        || (*awaiting_result && *next_method == 0)
+                    {
+                        return Err(snapshot_error("invalid primitive coercion continuation"));
+                    }
+                }
+                CoercionWork::ArrayJoin {
+                    array,
+                    next_index,
+                    length,
+                    awaiting_element,
+                    text,
+                    separator,
+                } => {
+                    if runtime.arrays.get(*array).is_none()
+                        || next_index > length
+                        || (*awaiting_element && *next_index == 0)
+                        || text
+                            .len()
+                            .saturating_add(separator.as_ref().map_or(0, String::len))
+                            > runtime.limits.heap_limit_bytes
+                    {
+                        return Err(snapshot_error("invalid array equality continuation"));
+                    }
+                }
+                CoercionWork::RegExpString {
+                    receiver, source, ..
+                } => {
+                    if receiver.is_primitive()
+                        || source
+                            .as_ref()
+                            .is_some_and(|s| s.len() > runtime.limits.heap_limit_bytes)
+                    {
+                        return Err(snapshot_error("invalid RegExp equality continuation"));
+                    }
+                }
+            }
+        }
+    }
     for completion in &frame.pending_completions {
         if let CompletionRecord::StructuredJump {
             target_finally_depth,

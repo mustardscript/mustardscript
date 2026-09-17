@@ -29,6 +29,8 @@ the safety rules they are expected to follow.
 ## Versioning
 
 - Serialized data is versioned explicitly.
+- Format version 3 includes resumable equality coercion in frame state. Older
+  formats are not compatible with this frame layout.
 - Round-tripping is only guaranteed within the same `mustard` version.
 - Cross-version loads are rejected.
 
@@ -42,6 +44,10 @@ the safety rules they are expected to follow.
   async continuations, and queued microtasks, plus referenced runtime objects,
   iterator references, promise references, and queued host-call state before
   restore.
+- Equality continuations preserve the primitive operand, coercion receivers,
+  method progress, and partially joined arrays. Their work-stack bounds,
+  instruction association, and referenced values are checked on load, and host
+  capability policy also covers values retained by these continuations.
 - Loaded snapshots are inert until the host rebinds explicit resume policy.
   Restores fail closed if the host does not reassert allowed capability names
   and authoritative runtime limits.

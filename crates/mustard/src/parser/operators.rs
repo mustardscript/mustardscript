@@ -43,7 +43,7 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_binary_op(
         &mut self,
         op: BinaryOperator,
-        span: oxc_span::Span,
+        _span: oxc_span::Span,
     ) -> Option<BinaryOp> {
         match op {
             BinaryOperator::Addition => Some(BinaryOp::Add),
@@ -54,13 +54,8 @@ impl<'a> Lowerer<'a> {
             BinaryOperator::Exponential => Some(BinaryOp::Pow),
             BinaryOperator::In => Some(BinaryOp::In),
             BinaryOperator::Instanceof => Some(BinaryOp::Instanceof),
-            BinaryOperator::Equality | BinaryOperator::Inequality => {
-                self.unsupported(
-                    "loose equality (== and !=) is not supported; use === or !== with explicit conversions or nullish checks",
-                    Some(span.into()),
-                );
-                None
-            }
+            BinaryOperator::Equality => Some(BinaryOp::Eq),
+            BinaryOperator::Inequality => Some(BinaryOp::NotEq),
             BinaryOperator::StrictEquality => Some(BinaryOp::StrictEq),
             BinaryOperator::StrictInequality => Some(BinaryOp::StrictNotEq),
             BinaryOperator::LessThan => Some(BinaryOp::LessThan),

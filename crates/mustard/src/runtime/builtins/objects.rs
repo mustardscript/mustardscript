@@ -1,6 +1,47 @@
 use super::*;
 
 impl Runtime {
+    pub(in crate::runtime) fn regexp_display_source(pattern: &str) -> String {
+        if pattern.is_empty() {
+            return "(?:)".into();
+        }
+        let mut result = String::with_capacity(pattern.len());
+        let mut chars = pattern.chars().peekable();
+        let mut in_class = false;
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\\' => {
+                    if chars
+                        .peek()
+                        .is_some_and(|ch| matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}'))
+                    {
+                        // The line terminator gets a printable escape next.
+                        continue;
+                    }
+                    result.push(ch);
+                    if let Some(next) = chars.next() {
+                        result.push(next);
+                    }
+                }
+                '[' => {
+                    in_class = true;
+                    result.push(ch);
+                }
+                ']' => {
+                    in_class = false;
+                    result.push(ch);
+                }
+                '/' if !in_class => result.push_str("\\/"),
+                '\n' => result.push_str("\\n"),
+                '\r' => result.push_str("\\r"),
+                '\u{2028}' => result.push_str("\\u2028"),
+                '\u{2029}' => result.push_str("\\u2029"),
+                _ => result.push(ch),
+            }
+        }
+        result
+    }
+
     fn object_helper_type_error() -> MustardError {
         MustardError::runtime(
             "TypeError: Object helpers currently only support plain objects and arrays",
@@ -431,6 +472,41 @@ impl Runtime {
             _ => false,
         };
         Ok(Value::Bool(has_key))
+    }
+
+    pub(crate) fn call_object_value_of(&mut self, value: Value) -> MustardResult<Value> {
+        if matches!(value, Value::Null | Value::Undefined) {
+            return Err(MustardError::runtime(
+                "TypeError: Object.valueOf requires a non-nullish receiver",
+            ));
+        }
+        self.call_object_ctor(&[value])
+    }
+
+    pub(crate) fn call_function_to_string(&mut self, value: Value) -> MustardResult<Value> {
+        if !self.is_callable_value(&value)? {
+            return Err(MustardError::runtime(
+                "TypeError: Function.toString requires a callable receiver",
+            ));
+        }
+        let text = self.callable_display_string(&value)?;
+        self.charge_native_helper_work(text.len())?;
+        self.ensure_heap_capacity(text.len())?;
+        Ok(Value::String(text))
+    }
+
+    pub(crate) fn call_regexp_to_string(&mut self, value: Value) -> MustardResult<Value> {
+        if value.is_primitive() {
+            return Err(MustardError::runtime(
+                "TypeError: RegExp.toString requires an object receiver",
+            ));
+        }
+        let source = self.get_property_static(value.clone(), "source", false)?;
+        let flags = self.get_property_static(value, "flags", false)?;
+        let text = format!("/{}/{}", self.to_string(source)?, self.to_string(flags)?);
+        self.charge_native_helper_work(text.len())?;
+        self.ensure_heap_capacity(text.len())?;
+        Ok(Value::String(text))
     }
 
     pub(crate) fn call_object_to_string(&self, value: Value) -> MustardResult<Value> {

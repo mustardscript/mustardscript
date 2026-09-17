@@ -45,44 +45,9 @@ impl Runtime {
                     MustardError::runtime("RangeError: invalid BigInt Number input")
                 })?
             }
-            Value::String(value) => {
-                self.charge_native_helper_work(value.len())?;
-                let text = value.trim_matches(is_ecmascript_whitespace);
-                if text.is_empty() {
-                    return Ok(Value::BigInt(BigInt::from(0)));
-                }
-                let (digits, radix, negative) = if let Some(digits) =
-                    text.strip_prefix("0x").or_else(|| text.strip_prefix("0X"))
-                {
-                    (digits, 16, false)
-                } else if let Some(digits) =
-                    text.strip_prefix("0o").or_else(|| text.strip_prefix("0O"))
-                {
-                    (digits, 8, false)
-                } else if let Some(digits) =
-                    text.strip_prefix("0b").or_else(|| text.strip_prefix("0B"))
-                {
-                    (digits, 2, false)
-                } else {
-                    (
-                        text.strip_prefix(['+', '-']).unwrap_or(text),
-                        10,
-                        text.starts_with('-'),
-                    )
-                };
-                if digits.is_empty() || !digits.chars().all(|ch| ch.is_digit(radix)) {
-                    return Err(MustardError::runtime("SyntaxError: invalid BigInt string"));
-                }
-                // Decimal conversion performs growing multiplications; charge its quadratic
-                // component before parsing. Power-of-two radix conversion is linear.
-                if radix == 10 {
-                    self.charge_native_helper_work(digits.len().saturating_mul(digits.len()) / 64)?;
-                }
-                self.ensure_heap_capacity(digits.len().saturating_mul(3).saturating_add(128))?;
-                let value = BigInt::parse_bytes(digits.as_bytes(), radix)
-                    .ok_or_else(|| MustardError::runtime("SyntaxError: invalid BigInt string"))?;
-                if negative { -value } else { value }
-            }
+            Value::String(value) => self
+                .parse_string_bigint(&value)?
+                .ok_or_else(|| MustardError::runtime("SyntaxError: invalid BigInt string"))?,
             _ => {
                 return Err(MustardError::runtime(
                     "TypeError: value cannot be converted to BigInt",
@@ -90,6 +55,46 @@ impl Runtime {
             }
         };
         Ok(Value::BigInt(value))
+    }
+
+    // StringToBigInt returns undefined for invalid syntax; callers choose whether
+    // that means false (abstract equality) or a SyntaxError (the constructor).
+    pub(in crate::runtime) fn parse_string_bigint(
+        &mut self,
+        value: &str,
+    ) -> MustardResult<Option<BigInt>> {
+        self.charge_native_helper_work(value.len())?;
+        let text = value.trim_matches(is_ecmascript_whitespace);
+        if text.is_empty() {
+            return Ok(Some(BigInt::from(0)));
+        }
+        let (digits, radix, negative) = if let Some(digits) =
+            text.strip_prefix("0x").or_else(|| text.strip_prefix("0X"))
+        {
+            (digits, 16, false)
+        } else if let Some(digits) = text.strip_prefix("0o").or_else(|| text.strip_prefix("0O")) {
+            (digits, 8, false)
+        } else if let Some(digits) = text.strip_prefix("0b").or_else(|| text.strip_prefix("0B")) {
+            (digits, 2, false)
+        } else {
+            (
+                text.strip_prefix(['+', '-']).unwrap_or(text),
+                10,
+                text.starts_with('-'),
+            )
+        };
+        if digits.is_empty() || !digits.chars().all(|ch| ch.is_digit(radix)) {
+            return Ok(None);
+        }
+        // Decimal conversion performs growing multiplications; charge its quadratic
+        // component before parsing. Power-of-two radix conversion is linear.
+        if radix == 10 {
+            self.charge_native_helper_work(digits.len().saturating_mul(digits.len()) / 64)?;
+        }
+        self.ensure_heap_capacity(digits.len().saturating_mul(3).saturating_add(128))?;
+        let value = BigInt::parse_bytes(digits.as_bytes(), radix)
+            .ok_or_else(|| MustardError::runtime("SyntaxError: invalid BigInt string"))?;
+        Ok(Some(if negative { -value } else { value }))
     }
 
     fn bigint_receiver(&self, value: Value) -> MustardResult<BigInt> {

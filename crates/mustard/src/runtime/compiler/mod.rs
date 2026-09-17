@@ -742,6 +742,7 @@ impl Compiler {
                 | Instruction::JumpIfFalse(_)
                 | Instruction::JumpIfTrue(_)
                 | Instruction::JumpIfNullish(_)
+                | Instruction::Binary(crate::ir::BinaryOp::Eq | crate::ir::BinaryOp::NotEq)
                 | Instruction::Call { .. }
                 | Instruction::MapSetCounter { .. }
                 | Instruction::SetAddDirect { .. }
@@ -1799,6 +1800,25 @@ mod tests {
                 Instruction::Return,
             ] if value == "value"
         ));
+    }
+
+    #[test]
+    fn top_of_stack_peephole_flushes_across_coercing_equality() {
+        for operator in [crate::ir::BinaryOp::Eq, crate::ir::BinaryOp::NotEq] {
+            let optimized = Compiler::apply_top_of_stack_peephole(vec![
+                Instruction::LoadSlot { depth: 0, slot: 0 },
+                Instruction::LoadSlot { depth: 0, slot: 1 },
+                Instruction::PushNumber(1.0),
+                Instruction::Binary(operator),
+                Instruction::Pop,
+                Instruction::LoadSlot { depth: 0, slot: 0 },
+                Instruction::Return,
+            ]);
+            assert!(matches!(
+                optimized[5],
+                Instruction::LoadSlot { depth: 0, slot: 0 }
+            ));
+        }
     }
 
     #[test]

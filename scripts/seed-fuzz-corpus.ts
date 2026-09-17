@@ -12,6 +12,13 @@ const SIDECAR_PROTOCOL_VERSION = 2;
 
 const SUPPORTED_SOURCE_SEEDS = Object.freeze([
   {
+    name: 'abstract-equality.js',
+    source: `
+      const value={valueOf(){return this;},toString(){return '7';}};
+      [undefined==null, '1'==1, [value]==7, 9007199254740993n!=9007199254740992];
+    `,
+  },
+  {
     name: 'basic-arithmetic.js',
     source: 'const value = 1; value + 2;',
   },
@@ -52,6 +59,14 @@ const UNSUPPORTED_SOURCE_SEEDS = Object.freeze([
 ]);
 
 const SUSPENSION_SOURCE_SEEDS = Object.freeze([
+  {
+    name: 'equality-coercion.snapshot',
+    source: '({valueOf: fetch_data}) == 7;',
+  },
+  {
+    name: 'equality-array-coercion.snapshot',
+    source: "[[{toString: fetch_data}]] == '7';",
+  },
   {
     name: 'sync-capability.snapshot',
     source: 'const value = fetch_data(4); value + 2;',

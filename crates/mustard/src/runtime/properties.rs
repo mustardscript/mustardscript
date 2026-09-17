@@ -123,6 +123,7 @@ impl Runtime {
             "call" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionCall)),
             "apply" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionApply)),
             "bind" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionBind)),
+            "toString" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionToString)),
             _ => None,
         }
     }
@@ -429,7 +430,11 @@ impl Runtime {
             BuiltinFunction::DecodeURIComponent => "decodeURIComponent",
 
             BuiltinFunction::ObjectHasOwnProperty => "hasOwnProperty",
-            BuiltinFunction::ObjectToString | BuiltinFunction::ArrayToString => "toString",
+            BuiltinFunction::ObjectToString
+            | BuiltinFunction::ArrayToString
+            | BuiltinFunction::FunctionToString
+            | BuiltinFunction::RegExpToString => "toString",
+            BuiltinFunction::ObjectValueOf => "valueOf",
             BuiltinFunction::MapCtor => "Map",
             BuiltinFunction::MapGet => "get",
             BuiltinFunction::MapSet => "set",
@@ -699,7 +704,11 @@ impl Runtime {
             BuiltinFunction::DecodeURIComponent => 1,
 
             BuiltinFunction::ObjectHasOwnProperty => 1,
-            BuiltinFunction::ObjectToString | BuiltinFunction::ArrayToString => 0,
+            BuiltinFunction::ObjectToString
+            | BuiltinFunction::ArrayToString
+            | BuiltinFunction::ObjectValueOf
+            | BuiltinFunction::FunctionToString
+            | BuiltinFunction::RegExpToString => 0,
             BuiltinFunction::MapCtor => 0,
             BuiltinFunction::MapGet => 1,
             BuiltinFunction::MapSet => 2,
@@ -1764,7 +1773,10 @@ impl Runtime {
         key: &str,
         site: Option<(usize, usize)>,
     ) -> MustardResult<Option<Value>> {
-        if matches!(key, "constructor" | "hasOwnProperty" | "toString") {
+        if matches!(
+            key,
+            "constructor" | "hasOwnProperty" | "toString" | "valueOf"
+        ) {
             return Ok(None);
         }
 
@@ -1906,6 +1918,7 @@ impl Runtime {
         match key {
             "hasOwnProperty" => Some(BuiltinFunction::ObjectHasOwnProperty),
             "toString" => Some(BuiltinFunction::ObjectToString),
+            "valueOf" => Some(BuiltinFunction::ObjectValueOf),
             _ => None,
         }
     }
@@ -1962,6 +1975,22 @@ impl Runtime {
                     .objects
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
+                if matches!(key, "valueOf" | "toString") {
+                    if let Some(value) = object.properties.get(key) {
+                        return Ok(value.clone());
+                    }
+                    if key == "toString"
+                        && matches!(
+                            object.kind,
+                            ObjectKind::RegExp(_)
+                                | ObjectKind::FunctionPrototype(Value::BuiltinFunction(
+                                    BuiltinFunction::RegExpCtor
+                                ))
+                        )
+                    {
+                        return Ok(Value::BuiltinFunction(BuiltinFunction::RegExpToString));
+                    }
+                }
                 match &object.kind {
                     ObjectKind::NullPrototype => {
                         return Ok(object
@@ -2032,7 +2061,9 @@ impl Runtime {
                 }
                 if let ObjectKind::RegExp(regex) = &object.kind {
                     let built_in = match key {
-                        "source" => Some(Value::String(regex.pattern.clone())),
+                        "source" => {
+                            Some(Value::String(Self::regexp_display_source(&regex.pattern)))
+                        }
                         "flags" => Some(Value::String(regex.flags.clone())),
                         "global" => Some(Value::Bool(regex.flags.contains('g'))),
                         "hasIndices" => Some(Value::Bool(regex.flags.contains('d'))),
@@ -2197,6 +2228,27 @@ impl Runtime {
                     return Ok(value.clone());
                 }
                 if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
+                    match (constructor, key) {
+                        (Value::BuiltinFunction(BuiltinFunction::StringCtor), "toString") => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::StringToString));
+                        }
+                        (Value::BuiltinFunction(BuiltinFunction::StringCtor), "valueOf") => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::StringValueOf));
+                        }
+                        (Value::BuiltinFunction(BuiltinFunction::BooleanCtor), "toString") => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::BooleanToString));
+                        }
+                        (Value::BuiltinFunction(BuiltinFunction::BooleanCtor), "valueOf") => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::BooleanValueOf));
+                        }
+                        (Value::BuiltinFunction(BuiltinFunction::RegExpCtor), "source") => {
+                            return Ok(Value::String("(?:)".into()));
+                        }
+                        (Value::BuiltinFunction(BuiltinFunction::RegExpCtor), "flags") => {
+                            return Ok(Value::String(String::new()));
+                        }
+                        _ => {}
+                    }
                     if matches!(
                         constructor,
                         Value::BuiltinFunction(BuiltinFunction::SetCtor)

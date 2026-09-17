@@ -59,6 +59,9 @@ impl Runtime {
                 .kind
             {
                 ObjectKind::BooleanObject(value) => Ok(*value),
+                ObjectKind::FunctionPrototype(Value::BuiltinFunction(
+                    BuiltinFunction::BooleanCtor,
+                )) => Ok(false),
                 _ => Err(MustardError::runtime(format!(
                     "TypeError: Boolean.prototype.{method} called on incompatible receiver",
                 ))),

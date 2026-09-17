@@ -92,12 +92,6 @@ fn validate_function(
     let code_len = function.code.len();
     for (ip, instruction) in function.code.iter().enumerate() {
         match instruction {
-            Instruction::Binary(crate::ir::BinaryOp::Eq | crate::ir::BinaryOp::NotEq) => {
-                return Err(MustardError::validation(
-                    "bytecode validation failed: loose equality (== and !=) is not supported",
-                    None,
-                ));
-            }
             Instruction::MakeClosure {
                 function_id: target,
             } if *target >= program.functions.len() => {

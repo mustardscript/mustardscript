@@ -290,3 +290,43 @@ fn rejects_invalid_number_format_configuration_before_allocation() {
         assert!(error.to_string().contains("Intl.NumberFormat"), "{error}");
     }
 }
+
+#[test]
+fn rejects_corrupt_equality_continuations_in_snapshots() {
+    for corruption in 0..6 {
+        let mut suspension = suspend_async_host_wait("[{toString: fetch_data}] == '7';");
+        let frame = &mut suspension.snapshot.runtime.frames[0];
+        let state = frame
+            .pending_equality
+            .as_mut()
+            .expect("equality is pending");
+        match corruption {
+            0 => state.primitive = state.work[0].root(),
+            1 => state.negate = !state.negate,
+            2 => state.work.clear(),
+            3 => {
+                if let CoercionWork::Primitive { next_method, .. } = state.work.last_mut().unwrap()
+                {
+                    *next_method = 3;
+                } else {
+                    panic!("expected pending method");
+                }
+            }
+            4 => {
+                for work in &mut state.work {
+                    if let CoercionWork::ArrayJoin {
+                        next_index, length, ..
+                    } = work
+                    {
+                        *next_index = *length + 1;
+                    }
+                }
+            }
+            5 => frame.ip = 1,
+            _ => unreachable!(),
+        }
+        let bytes = dump_snapshot(&suspension.snapshot).unwrap();
+        let error = load_snapshot(&bytes).expect_err("corrupt equality must not resume");
+        assert!(error.to_string().contains("continuation"), "{error}");
+    }
+}

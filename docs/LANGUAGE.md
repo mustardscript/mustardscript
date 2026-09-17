@@ -18,10 +18,19 @@ extensions are called out explicitly instead of being implied.
 - Input has no module system; `import` and `export` syntax is rejected even
   though top-level `await` is supported.
 - Unsupported features fail closed with explicit diagnostics.
-- Equality uses `===` and `!==`. Loose `==` and `!=` are rejected at validation,
-  including in loaded bytecode; abstract equality and implicit object coercion
-  are not supported. Use `value === null || value === undefined` for a nullish
-  check, or an explicit conversion such as `Number(value) === 1` when intended.
+- `==` and `!=` implement abstract equality; `===` and `!==` remain strict.
+  Null and undefined compare loosely equal; booleans, strings, Numbers, and
+  BigInts follow their ECMAScript conversion rules. BigInt/Number comparison is
+  exact, and invalid BigInt strings compare unequal rather than throwing.
+  Object/primitive equality invokes `valueOf` then `toString` (reversed for
+  Dates), honoring overrides, non-callable methods, mutations, and exceptions.
+  Two objects compare by identity without conversion; nullish comparisons never
+  invoke object hooks. Failure to produce a primitive throws `TypeError`.
+  Coercion calls and default array element conversions use resumable VM state,
+  including across host suspensions. Equality does not await a promise returned
+  by a conversion method. Existing unsupported surfaces, such as Symbols and
+  custom prototypes, remain outside the language; this does not broaden the
+  coercion policy of other operators or native APIs.
 - Free references to forbidden ambient globals are rejected when lexical
   resolution proves they are unresolved.
 - Free `eval` and free `Function` are rejected for the same reason.
@@ -739,15 +748,25 @@ Map keys retain first occurrence order, and Object keys follow own-key ordering.
 are distinct). `Object.hasOwn` and `Object.prototype.hasOwnProperty` accept
 non-nullish primitives as well as supported objects. String indices/length are own
 properties; inherited methods and Map/Set size are not. Plain objects inherit
-`hasOwnProperty` and `toString`; prototype-less grouping results do not. Own values,
+`hasOwnProperty`, `valueOf`, and `toString`; prototype-less grouping results do not. Own values,
 including an explicit `undefined`, shadow these methods.
+
+`Object.prototype.valueOf` returns its object receiver (boxing supported primitive
+receivers); nullish receivers throw. Callable `toString` exposes the existing
+guest-source/native display representation. RegExp `toString` uses its source and
+flags, with empty patterns and literal delimiters/line terminators escaped in
+`source`.
 
 `Object.prototype.toString.call(value)` returns the supported built-in type tag.
 `Array.prototype.toString` calls the receiver's callable `join`, or falls back to
 Object's type tag. Ordinary arrays join with commas; nullish values, holes, and
 cyclic references contribute empty strings. Array string conversion is bounded by
 work/output limits and a 128-array nesting limit (RangeError). User-defined coercion
-hooks on nested elements and arbitrary prototype-chain mutation remain unsupported.
+hooks on nested elements remain outside these native string helpers. Abstract
+equality's default array conversion instead uses the resumable coercion path
+described above, including nested element hooks, bound methods, and live reads
+after mutations. That path is bounded to 256 coercion work items. Arbitrary
+prototype-chain mutation remains unsupported.
 
 ### URI encoding and decoding
 

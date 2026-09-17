@@ -6,44 +6,37 @@ use mustard::{
 };
 
 #[test]
-fn loose_equality_fails_closed_in_source_and_serialized_bytecode() {
+fn abstract_equality_executes_in_source_and_serialized_bytecode() {
     for source in [
         "undefined == null;",
         "'1' == 1;",
-        "1 != '1';",
-        "if (false) { 0 == 0; }",
+        "1 != '2';",
+        "9007199254740993n != 9007199254740992;",
+        "({valueOf() {return '1';}}) == 1;",
     ] {
         for lenient_mode in [false, true] {
-            let error = compile_with_options(source, CompileOptions { lenient_mode })
-                .expect_err("loose equality must not silently become strict equality");
-            assert!(error.to_string().contains("loose equality"), "{error}");
-            assert!(
-                error.to_string().contains("["),
-                "diagnostic must include a span"
+            let program = compile_with_options(source, CompileOptions { lenient_mode }).unwrap();
+            assert_eq!(
+                execute(&program, ExecutionOptions::default()).unwrap(),
+                StructuredValue::Bool(true)
             );
         }
     }
-    for operator in [BinaryOp::Eq, BinaryOp::NotEq] {
-        let mut bytecode = lower_to_bytecode(&compile("1 === 1;").unwrap()).unwrap();
+    for (operator, expected) in [(BinaryOp::Eq, true), (BinaryOp::NotEq, false)] {
+        let mut bytecode = lower_to_bytecode(&compile("'1' === 1;").unwrap()).unwrap();
         let instruction = bytecode.functions[bytecode.root]
             .code
             .iter_mut()
             .find(|instruction| matches!(instruction, Instruction::Binary(_)))
             .unwrap();
         *instruction = Instruction::Binary(operator);
-        let bytes = dump_program(&bytecode).unwrap();
-        assert!(
-            load_program(&bytes)
-                .unwrap_err()
-                .to_string()
-                .contains("loose equality")
-        );
-        assert!(
-            start_bytecode(&bytecode, ExecutionOptions::default())
-                .unwrap_err()
-                .to_string()
-                .contains("loose equality")
-        );
+        let loaded = load_program(&dump_program(&bytecode).unwrap()).unwrap();
+        match start_bytecode(&loaded, ExecutionOptions::default()).unwrap() {
+            mustard::ExecutionStep::Completed(value) => {
+                assert_eq!(value, StructuredValue::Bool(expected))
+            }
+            _ => panic!("equality unexpectedly suspended"),
+        }
     }
     let program = compile("undefined !== null && '1' !== 1 && Number('1') === 1;").unwrap();
     assert_eq!(

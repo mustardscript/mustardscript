@@ -67,6 +67,27 @@ where
     for value in &frame.stack {
         visit(value)?;
     }
+    if let Some(state) = &frame.pending_equality {
+        visit(&state.primitive)?;
+        for work in &state.work {
+            visit(&work.root())?;
+            match work {
+                CoercionWork::ArrayJoin {
+                    text, separator, ..
+                } => {
+                    visit(&Value::String(text.clone()))?;
+                    if let Some(separator) = separator {
+                        visit(&Value::String(separator.clone()))?;
+                    }
+                }
+                CoercionWork::RegExpString {
+                    source: Some(source),
+                    ..
+                } => visit(&Value::String(source.clone()))?,
+                _ => {}
+            }
+        }
+    }
     if let Some(value) = &frame.pending_exception {
         visit(value)?;
     }

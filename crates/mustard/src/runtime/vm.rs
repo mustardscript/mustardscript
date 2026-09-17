@@ -43,6 +43,11 @@ impl Runtime {
             .len()
             .checked_sub(1)
             .ok_or_else(|| MustardError::runtime("vm lost all frames"))?;
+        if self.frames[frame_index].pending_equality.is_some() {
+            self.bump_instruction_budget()?;
+            self.collect_garbage_before_instruction(&Instruction::Binary(BinaryOp::Eq))?;
+            return self.continue_loose_equality(frame_index);
+        }
         let function_id = self.frames[frame_index].function_id;
         let ip = self.frames[frame_index].ip;
         let instruction = program
@@ -476,6 +481,9 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                if matches!(operator, BinaryOp::Eq | BinaryOp::NotEq) {
+                    return self.start_loose_equality(frame_index, *operator, left, right);
+                }
                 // Number-Number fast path: bypass the to_number / string / BigInt
                 // coercion cascade for the overwhelmingly common arithmetic and
                 // ordering-comparison case. `to_number(Number(x)) == x`, so these
@@ -755,37 +763,8 @@ impl Runtime {
                 {
                     return Err(self.unsupported_member_call_error(&this_value, member_name));
                 }
-                match self.call_callable(callee, this_value, &args)? {
-                    RunState::Completed(value) => {
-                        self.frames[frame_index].stack.push(value);
-                    }
-                    RunState::PushedFrame => {}
-                    RunState::StartedAsync(value) => {
-                        self.frames[frame_index].stack.push(value);
-                    }
-                    RunState::Suspended {
-                        capability,
-                        args,
-                        resume_behavior,
-                    } => {
-                        self.pending_resume_behavior = resume_behavior;
-                        self.suspended_host_call = Some(PendingHostCall {
-                            capability: capability.clone(),
-                            args: args.clone(),
-                            promise: None,
-                            resume_behavior,
-                            traceback: self.traceback_snapshots(),
-                        });
-                        self.snapshot_nonce = next_snapshot_nonce();
-                        return Ok(StepAction::Return(ExecutionStep::Suspended(Box::new(
-                            Suspension {
-                                capability,
-                                args,
-                                snapshot: ExecutionSnapshot::capture(self),
-                            },
-                        ))));
-                    }
-                }
+                let call = self.call_callable(callee, this_value, &args)?;
+                return self.finish_call_step(frame_index, call);
             }
             Instruction::MapSetCounter { .. } => {
                 self.record_builtin_feedback_site(BuiltinFunction::MapSet);
@@ -1068,12 +1047,52 @@ impl Runtime {
             stack: Vec::new(),
             handlers: Vec::new(),
             pending_exception: None,
+            pending_equality: None,
             pending_completions: Vec::new(),
             active_finally: Vec::new(),
             async_promise,
             callback_capture: false,
         });
         Ok(())
+    }
+
+    pub(super) fn finish_call_step(
+        &mut self,
+        frame_index: usize,
+        call: RunState,
+    ) -> MustardResult<StepAction> {
+        match call {
+            RunState::Completed(value) => {
+                self.frames[frame_index].stack.push(value);
+            }
+            RunState::PushedFrame => {}
+            RunState::StartedAsync(value) => {
+                self.frames[frame_index].stack.push(value);
+            }
+            RunState::Suspended {
+                capability,
+                args,
+                resume_behavior,
+            } => {
+                self.pending_resume_behavior = resume_behavior;
+                self.suspended_host_call = Some(PendingHostCall {
+                    capability: capability.clone(),
+                    args: args.clone(),
+                    promise: None,
+                    resume_behavior,
+                    traceback: self.traceback_snapshots(),
+                });
+                self.snapshot_nonce = next_snapshot_nonce();
+                return Ok(StepAction::Return(ExecutionStep::Suspended(Box::new(
+                    Suspension {
+                        capability,
+                        args,
+                        snapshot: ExecutionSnapshot::capture(self),
+                    },
+                ))));
+            }
+        }
+        Ok(StepAction::Continue)
     }
 
     pub(super) fn call_callable(

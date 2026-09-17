@@ -88,7 +88,11 @@ impl Runtime {
         Ok((key, value))
     }
 
-    fn array_receiver(&self, value: Value, method: &str) -> MustardResult<ArrayKey> {
+    pub(in crate::runtime) fn array_receiver(
+        &self,
+        value: Value,
+        method: &str,
+    ) -> MustardResult<ArrayKey> {
         match value {
             Value::Array(key) => Ok(key),
             _ => Err(MustardError::runtime(format!(

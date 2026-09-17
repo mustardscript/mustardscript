@@ -220,6 +220,7 @@ impl Runtime {
                 return Err(MustardError::runtime("vm lost all frames"));
             };
 
+            self.frames[frame_index].pending_equality = None;
             let boundary = self.active_finally_boundary(frame_index);
             if let Some(handler_index) = self.frames[frame_index]
                 .handlers

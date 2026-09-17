@@ -7,6 +7,7 @@ use super::*;
 
 mod boundary;
 mod coercions;
+mod equality;
 mod errors;
 mod operators;
 
