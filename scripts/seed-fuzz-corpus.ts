@@ -12,6 +12,27 @@ const SIDECAR_PROTOCOL_VERSION = 2;
 
 const SUPPORTED_SOURCE_SEEDS = Object.freeze([
   {
+    name: 'reentrant-json-reviver.js',
+    source: `const text='['.repeat(120)+'0'+']'.repeat(120);
+      function visit(k,v) { if(v===0) JSON.parse(text,visit); return v; }
+      JSON.parse(text,visit);`,
+  },
+  {
+    name: 'reentrant-json-replacer.js',
+    source: `const root=JSON.parse('['.repeat(120)+'0'+']'.repeat(120));
+      function visit(k,v) { if(v===0) JSON.stringify(root,visit); return v; }
+      JSON.stringify(root,visit);`,
+  },
+  {
+    name: 'reentrant-json-tojson.js',
+    source: `let root={toJSON(){return JSON.stringify(root);}};
+      for(let i=0;i<120;i++) root=[root]; JSON.stringify(root);`,
+  },
+  { name: 'native-callback-recursion.js', source: 'function f(){return [1].map(f);} f();' },
+  { name: 'set-compaction.js', source: `const s=new Set([0]); const it=s.values(); it.next();
+    for(let i=1;i<100;i++){s.add(i);s.delete(i);} s.add(100); it.next();` },
+  { name: 'sparse-array-branch.js', source: '1 ? {x:[1,,3]} : 0;' },
+  {
     name: 'abstract-equality.js',
     source: `
       const value={valueOf(){return this;},toString(){return '7';}};
@@ -44,6 +65,9 @@ const SUPPORTED_SOURCE_SEEDS = Object.freeze([
 ]);
 
 const UNSUPPORTED_SOURCE_SEEDS = Object.freeze([
+  {name:'deep-arrow-chain.js',source:'a=>'.repeat(3000)+'0;'},
+  {name:'deep-else-chain.js',source:'if(1);else '.repeat(3000)+';'},
+  {name:'deep-label-chain.js',source:Array.from({length:3000},(_,i)=>`label${i}:`).join('')+';'},
   {
     name: 'unsupported-class.js',
     source: 'class Example {}',
@@ -128,6 +152,10 @@ function suspendedSnapshotBytes(source) {
 }
 
 function writeSourceSeeds() {
+  const regexpRegression = fs.readFileSync(path.join(repoRoot, 'crates/mustard/tests/fixtures/regexp-preflight-reentry.bin'));
+  for (const target of ['parser', 'bytecode_execution']) {
+    writeSeed(target, 'regexp-preflight-reentry.bin', regexpRegression);
+  }
   for (const seed of [...SUPPORTED_SOURCE_SEEDS, ...UNSUPPORTED_SOURCE_SEEDS]) {
     writeSeed('parser', seed.name, `${seed.source.trim()}\n`);
     writeSeed('ir_lowering', seed.name, `${seed.source.trim()}\n`);
@@ -151,6 +179,11 @@ function writeSnapshotSeeds() {
 }
 
 function writeSidecarProtocolSeeds() {
+  for (const seed of UNSUPPORTED_SOURCE_SEEDS.filter(seed => seed.name.startsWith('deep-'))) {
+    writeSeed('sidecar_protocol', seed.name + '.jsonl', JSON.stringify({
+      protocol_version: SIDECAR_PROTOCOL_VERSION, method:'compile', id:1, source:seed.source,
+    }) + '\n');
+  }
   const compiled = new Mustard('const value = fetch_data(5); value + 1;');
   const programBase64 = compiled.dump().toString('base64');
 

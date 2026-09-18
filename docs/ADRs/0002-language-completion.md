@@ -150,6 +150,13 @@ actual saved crash under ASan before claiming the fix verified. RESS 0.11.7 was
 rejected during validation after fuzzing exposed an infinite loop on malformed
 template escapes; that input is also preserved as a regression and corpus seed.
 
+Expanded execution fuzzing also exposed SWC's recoverable conflict-marker path:
+it can return a slash token whose span starts at a preceding skipped line.
+Consume buffered lexer errors before rescanning, derive regexp starts from the
+verified slash-token suffix, and retain the exact input as a regression. This
+also handles valid regex literals after HTML comments without passing an invalid
+offset to the lexer's reset operation.
+
 The hardening runner also bounds each fuzz input to five seconds by default
 (`MUSTARD_FUZZ_TIMEOUT_SECONDS`), so a hung helper produces a failing saved input
 instead of outliving the whole smoke-test budget. This tightens the checks.

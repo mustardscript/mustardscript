@@ -6,7 +6,7 @@ cd "$repo_root"
 
 fuzz_seconds="${MUSTARD_FUZZ_SECONDS:-10}"
 fuzz_timeout_seconds="${MUSTARD_FUZZ_TIMEOUT_SECONDS:-5}"
-fuzz_targets="${MUSTARD_FUZZ_TARGETS:-parser snapshot_load sidecar_protocol}"
+fuzz_targets="${MUSTARD_FUZZ_TARGETS:-parser snapshot_load sidecar_protocol bytecode_execution}"
 fuzz_toolchain="${MUSTARD_FUZZ_TOOLCHAIN:-nightly}"
 fuzz_install_toolchain="${MUSTARD_FUZZ_INSTALL_TOOLCHAIN:-stable}"
 fuzz_artifact_root="${MUSTARD_FUZZ_ARTIFACT_ROOT:-fuzz/artifacts}"

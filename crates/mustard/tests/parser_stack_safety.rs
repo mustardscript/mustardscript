@@ -6,6 +6,28 @@ use std::{
 };
 
 #[test]
+fn malformed_regexp_preflight_returns_diagnostics() {
+    let bytes = include_bytes!("fixtures/regexp-preflight-reentry.bin");
+    let source = String::from_utf8_lossy(bytes);
+    assert!(compile(&source).is_err());
+    for marker in [
+        "=======",
+        "<<<<<<< branch",
+        ">>>>>>> branch",
+        "||||||| base",
+    ] {
+        assert!(compile(&format!("{marker}\n/a/;")).is_err());
+        assert!(compile(&format!("{marker}\n{}0;", "a=>".repeat(3000))).is_err());
+    }
+    for comment in ["<!-- comment", "--> comment"] {
+        compile(&format!("{comment}\n/a/.test('a');")).unwrap();
+        compile(&format!("{comment}\n/=/.test('=');")).unwrap();
+    }
+    let error_before_chain = format!("'\\xGG';{}0;", "a=>".repeat(3000));
+    assert!(compile(&error_before_chain).is_err());
+}
+
+#[test]
 fn delimiter_free_chains_are_bounded_on_small_stacks() {
     const HELPER: &str = "MUSTARD_PARSER_STACK_HELPER";
     if std::env::var_os(HELPER).is_some() {

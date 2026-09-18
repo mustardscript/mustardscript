@@ -65,9 +65,13 @@ fn compile_checked(
     options: CompileOptions,
     lexical_failure: Option<nesting::LexicalFailure>,
 ) -> MustardResult<CompiledProgram> {
-    let parse_text = &source[..lexical_failure
+    let mut prefix_end = lexical_failure
         .as_ref()
-        .map_or(source.len(), |e| e.prefix_end)];
+        .map_or(source.len(), |e| e.prefix_end.min(source.len()));
+    while !source.is_char_boundary(prefix_end) {
+        prefix_end -= 1;
+    }
+    let parse_text = &source[..prefix_end];
     let allocator = Allocator::default();
     let parsed = parse_source(&allocator, parse_text, options);
     let mut diagnostics = Vec::new();

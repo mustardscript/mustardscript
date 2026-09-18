@@ -1,5 +1,5 @@
 use super::*;
-use swc_common::BytePos;
+use swc_common::{BytePos, Spanned};
 use swc_ecma_ast::{AssignOp, EsVersion};
 use swc_ecma_lexer::{
     Lexer, StringInput, Syntax,
@@ -40,7 +40,17 @@ pub(super) fn check_source_nesting(source: &str) -> MustardResult<Option<Lexical
 
     loop {
         let expression_allowed = LexerState::state(&lexer).is_expr_allowed;
-        let Some(mut item) = lexer.next() else {
+        let next = lexer.next();
+        // Recoverable lexer errors (notably conflict markers) can skip source
+        // while returning the following token with the original start span.
+        // Stop at the first error before rescanning or parsing skipped text.
+        if let Some(error) = lexer.take_errors().into_iter().next() {
+            return Ok(Some(LexicalFailure {
+                prefix_end: (error.span().hi.0 as usize).min(source.len()),
+                message: error.kind().msg().into_owned(),
+            }));
+        }
+        let Some(mut item) = next else {
             break;
         };
         // SWC exposes regexp rescanning separately, using the lexer's own
@@ -51,12 +61,34 @@ pub(super) fn check_source_nesting(source: &str) -> MustardResult<Option<Lexical
                 Token::BinOp(BinOpToken::Div) | Token::AssignOp(AssignOp::DivAssign)
             )
         {
-            lexer.set_next_regexp(Some(item.span.lo));
+            // HTML comments can also leave the span's start at the preceding
+            // comment. The consumed '/' or '/=' always ends at span.hi. Check
+            // that invariant before calling SWC's unsafe reset-based rescan.
+            let spelling = if matches!(item.token, Token::AssignOp(_)) {
+                "/="
+            } else {
+                "/"
+            };
+            let end = item.span.hi.0 as usize;
+            let start = end.saturating_sub(spelling.len());
+            if source.get(start..end) != Some(spelling) {
+                return Ok(Some(LexicalFailure {
+                    prefix_end: (item.span.lo.0 as usize).min(source.len()),
+                    message: "invalid regexp token boundary".into(),
+                }));
+            }
+            lexer.set_next_regexp(Some(BytePos(start as u32)));
             let regexp = lexer.next();
             lexer.set_next_regexp(None);
+            if let Some(error) = lexer.take_errors().into_iter().next() {
+                return Ok(Some(LexicalFailure {
+                    prefix_end: (error.span().hi.0 as usize).min(source.len()),
+                    message: error.kind().msg().into_owned(),
+                }));
+            }
             let Some(regexp) = regexp else {
                 return Ok(Some(LexicalFailure {
-                    prefix_end: source.len(),
+                    prefix_end: end.min(source.len()),
                     message: "unterminated regexp token".into(),
                 }));
             };
