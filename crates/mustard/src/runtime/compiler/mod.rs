@@ -191,6 +191,21 @@ impl Compiler {
         context.push_binding_scope();
         context.declare_binding("this".to_string(), false);
         let is_async = statements_contain_top_level_await(statements);
+        // A final expression unconditionally supplies the result, so retain the
+        // existing zero-overhead path for that common case. Other endings need
+        // the StatementList completion carried through blocks/control flow.
+        if !matches!(statements.last(), None | Some(Stmt::Expression { .. })) {
+            let name = self.fresh_internal_name(&mut context, "completion");
+            self.emit_declare_name(&mut context, name.clone(), true);
+            context.code.push(Instruction::PushUndefined);
+            context
+                .code
+                .push(Instruction::InitializePattern(Pattern::Identifier {
+                    span,
+                    name: name.clone(),
+                }));
+            context.completion_binding = Some(name);
+        }
         self.emit_block_prologue(&mut context, statements, true)?;
         let mut produced_result = false;
         for (index, statement) in statements.iter().enumerate() {
@@ -202,7 +217,9 @@ impl Compiler {
             }
             self.compile_stmt(&mut context, statement)?;
         }
-        if !produced_result {
+        if let Some(name) = context.completion_binding.clone() {
+            self.emit_load_name(&mut context, &name);
+        } else if !produced_result {
             context.code.push(Instruction::PushUndefined);
         }
         context.code.push(Instruction::Return);
@@ -669,7 +686,9 @@ impl Compiler {
                 | Instruction::JumpIfTrue(target)
                 | Instruction::JumpIfNullish(target)
                 | Instruction::EnterFinally { exit: target }
-                | Instruction::PushPendingJump { target, .. } => {
+                | Instruction::PushPendingJump { target, .. }
+                | Instruction::PushCompletionJump { target, .. }
+                | Instruction::AbruptJump { target, .. } => {
                     targets[*target] = true;
                 }
                 Instruction::PushHandler { catch, finally } => {
@@ -715,10 +734,15 @@ impl Compiler {
                 | Instruction::PushPendingReturn
                 | Instruction::PushPendingThrow
                 | Instruction::ContinuePending
+                | Instruction::ContinuePendingRegion { .. }
+                | Instruction::AbruptReturn
+                | Instruction::AbruptJump { .. }
+                | Instruction::PushCompletionJump { .. }
                 | Instruction::Jump(_)
                 | Instruction::JumpIfFalse(_)
                 | Instruction::JumpIfTrue(_)
                 | Instruction::JumpIfNullish(_)
+                | Instruction::Binary(crate::ir::BinaryOp::Eq | crate::ir::BinaryOp::NotEq)
                 | Instruction::Call { .. }
                 | Instruction::MapSetCounter { .. }
                 | Instruction::SetAddDirect { .. }
@@ -834,6 +858,7 @@ impl Compiler {
                 let value = state.binding_value(&AbstractBinding::Name(name.clone()));
                 state.push_value(value);
             }
+            Instruction::LoadNameForTypeof(_) => state.push_temporary(),
             Instruction::LoadGlobal(name) => {
                 let value = state.binding_value(&AbstractBinding::Global(name.clone()));
                 state.push_value(value);
@@ -934,7 +959,7 @@ impl Compiler {
                 state.pop_value();
                 state.push_temporary();
             }
-            Instruction::GetPropComputed { .. } => {
+            Instruction::GetPropComputed { .. } | Instruction::DeletePropComputed => {
                 state.pop_value();
                 state.pop_value();
                 state.push_temporary();
@@ -995,6 +1020,10 @@ impl Compiler {
             | Instruction::JumpIfTrue(_)
             | Instruction::JumpIfNullish(_)
             | Instruction::ContinuePending
+            | Instruction::ContinuePendingRegion { .. }
+            | Instruction::AbruptReturn
+            | Instruction::AbruptJump { .. }
+            | Instruction::PushCompletionJump { .. }
             | Instruction::Return => {}
             Instruction::BeginCatch => {
                 state.push_temporary();
@@ -1211,7 +1240,9 @@ impl Compiler {
             | Instruction::JumpIfTrue(target)
             | Instruction::JumpIfNullish(target)
             | Instruction::EnterFinally { exit: target }
-            | Instruction::PushPendingJump { target, .. } => {
+            | Instruction::PushPendingJump { target, .. }
+            | Instruction::PushCompletionJump { target, .. }
+            | Instruction::AbruptJump { target, .. } => {
                 *target = old_to_new[*target];
             }
             Instruction::PushHandler { catch, finally } => {
@@ -1233,6 +1264,7 @@ fn statements_contain_top_level_await(statements: &[Stmt]) -> bool {
 
 fn stmt_contains_top_level_await(statement: &Stmt) -> bool {
     match statement {
+        Stmt::Labeled { body, .. } => stmt_contains_top_level_await(body),
         Stmt::Block { body, .. } => statements_contain_top_level_await(body),
         Stmt::VariableDecl { declarators, .. } => declarators.iter().any(|declarator| {
             pattern_contains_top_level_await(&declarator.pattern)
@@ -1322,7 +1354,11 @@ fn stmt_contains_top_level_await(statement: &Stmt) -> bool {
                         || statements_contain_top_level_await(&case.consequent)
                 })
         }
-        Stmt::Break { .. } | Stmt::Continue { .. } | Stmt::Empty { .. } => false,
+        Stmt::Break { .. }
+        | Stmt::Continue { .. }
+        | Stmt::LabeledBreak { .. }
+        | Stmt::LabeledContinue { .. }
+        | Stmt::Empty { .. } => false,
     }
 }
 
@@ -1695,7 +1731,7 @@ mod tests {
     #[test]
     fn compiler_emits_slot_computed_property_superinstruction_for_local_index_reads() {
         let program = compile(
-            "async function m(){let t=await read_file('x'),n=0;for(let i=0;i<t.length;i++)if(t[i]=='\\n')n++;return String(n)}m()",
+            "async function m(){let t=await read_file('x'),n=0;for(let i=0;i<t.length;i++)if(t[i]==='\\n')n++;return String(n)}m()",
         )
         .expect("source should compile");
         let bytecode = lower_to_bytecode(&program).expect("lowering should succeed");
@@ -1764,6 +1800,25 @@ mod tests {
                 Instruction::Return,
             ] if value == "value"
         ));
+    }
+
+    #[test]
+    fn top_of_stack_peephole_flushes_across_coercing_equality() {
+        for operator in [crate::ir::BinaryOp::Eq, crate::ir::BinaryOp::NotEq] {
+            let optimized = Compiler::apply_top_of_stack_peephole(vec![
+                Instruction::LoadSlot { depth: 0, slot: 0 },
+                Instruction::LoadSlot { depth: 0, slot: 1 },
+                Instruction::PushNumber(1.0),
+                Instruction::Binary(operator),
+                Instruction::Pop,
+                Instruction::LoadSlot { depth: 0, slot: 0 },
+                Instruction::Return,
+            ]);
+            assert!(matches!(
+                optimized[5],
+                Instruction::LoadSlot { depth: 0, slot: 0 }
+            ));
+        }
     }
 
     #[test]

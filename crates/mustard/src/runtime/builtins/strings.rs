@@ -25,6 +25,9 @@ impl Runtime {
                 .kind
             {
                 ObjectKind::StringObject(value) => Ok(value.clone()),
+                ObjectKind::FunctionPrototype(Value::BuiltinFunction(
+                    BuiltinFunction::StringCtor,
+                )) => Ok(String::new()),
                 _ => Err(MustardError::runtime(format!(
                     "TypeError: String.prototype.{method} called on incompatible receiver",
                 ))),
@@ -45,6 +48,9 @@ impl Runtime {
                 .kind
             {
                 ObjectKind::StringObject(value) => Ok(value.clone()),
+                ObjectKind::FunctionPrototype(Value::BuiltinFunction(
+                    BuiltinFunction::StringCtor,
+                )) => Ok(String::new()),
                 ObjectKind::NumberObject(value) => self.to_string(Value::Number(*value)),
                 ObjectKind::BooleanObject(value) => self.to_string(Value::Bool(*value)),
                 _ => Err(MustardError::runtime(format!(
@@ -546,9 +552,19 @@ impl Runtime {
             Some(StringSearchPattern::RegExp { regex, .. }) => {
                 self.record_regex_search_or_replacement();
                 let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
+                if value.is_empty() && !matches.is_empty() {
+                    return Ok(Value::Array(
+                        self.insert_array(Vec::new(), IndexMap::new())?,
+                    ));
+                }
                 let mut elements = Vec::new();
                 let mut last_end = 0usize;
                 for matched in matches {
+                    if matched.start_byte == matched.end_byte
+                        && (matched.start_byte == last_end || matched.end_byte == value.len())
+                    {
+                        continue;
+                    }
                     if elements.len() >= limit {
                         break;
                     }
@@ -598,6 +614,8 @@ impl Runtime {
                         end_index: 0,
                         captures: Vec::new(),
                         named_groups: IndexMap::new(),
+                        indices: None,
+                        named_indices: IndexMap::new(),
                     })
                 } else {
                     self.literal_match_data(&value, &search, 0)
@@ -697,6 +715,8 @@ impl Runtime {
                             end_index: index,
                             captures: Vec::new(),
                             named_groups: IndexMap::new(),
+                            indices: None,
+                            named_indices: IndexMap::new(),
                         });
                     }
                 } else {
@@ -874,8 +894,7 @@ impl Runtime {
                     )?;
                     Ok(Value::Array(array))
                 } else {
-                    let Some(matched) = self.first_regexp_match_from_state(&regex, &value, 0)?
-                    else {
+                    let Some(matched) = self.first_regexp_match(object, &value)? else {
                         return Ok(Value::Null);
                     };
                     self.regexp_match_array_value(&value, &matched)
@@ -899,27 +918,32 @@ impl Runtime {
                 self.record_literal_string_search();
                 collect_literal_matches(&value, &needle)
             }
-            StringSearchPattern::RegExp { object, regex } => {
+            StringSearchPattern::RegExp { regex, .. } => {
                 self.record_regex_search_or_replacement();
                 if !regex.flags.contains('g') {
                     return Err(MustardError::runtime(
                         "TypeError: String.prototype.matchAll requires a global RegExp",
                     ));
                 }
-                self.regexp_object_mut(object)?.last_index = 0;
-                if let Some(matches) = self.try_ascii_token_regex_matches(&value, &regex, true) {
+                if regex.last_index == 0
+                    && let Some(matches) = self.try_ascii_token_regex_matches(&value, &regex, true)
+                {
                     matches
                 } else {
-                    self.collect_regexp_matches_from_state(&regex, &value, true)?
+                    self.collect_regexp_matches_starting(&regex, &value, true, regex.last_index)?
                 }
             }
         };
-        let mut values = Vec::with_capacity(matches.len());
-        for matched in matches {
-            values.push(self.regexp_match_array_value(&value, &matched)?);
-        }
-        let array = self.insert_array(values, IndexMap::new())?;
-        self.call_array_values(Value::Array(array))
+        let array = self.insert_array(Vec::new(), IndexMap::new())?;
+        self.with_temporary_roots(&[Value::Array(array)], |runtime| {
+            for matched in matches {
+                let item = runtime.regexp_match_array_value(&value, &matched)?;
+                runtime.with_temporary_roots(std::slice::from_ref(&item), |runtime| {
+                    runtime.push_array_element(array, Some(item.clone()))
+                })?;
+            }
+            runtime.call_array_values(Value::Array(array))
+        })
     }
 
     fn literal_match_data(
@@ -939,6 +963,8 @@ impl Runtime {
             end_index,
             captures: Vec::new(),
             named_groups: IndexMap::new(),
+            indices: None,
+            named_indices: IndexMap::new(),
         })
     }
 }

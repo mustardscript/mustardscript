@@ -9,6 +9,7 @@ const {
 } = require('./cancellation.ts');
 const { resolveExecutionContext } = require('./policy.ts');
 const {
+  assertWellFormedString,
   encodeResumePayloadCancelBuffer,
   encodeResumePayloadErrorBuffer,
   encodeResumePayloadValueBuffer,
@@ -42,6 +43,7 @@ function createMustardClass({ native, materializeStep, parseStep }) {
   }
 
   function compileProgram(code, options = {}) {
+    if (typeof code === 'string') assertWellFormedString(code);
     const optionsJson = compileOptionsJson(options);
     if (optionsJson !== null) {
       return callNative(native.compileProgramWithOptions, code, optionsJson);

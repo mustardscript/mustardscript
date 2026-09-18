@@ -35,28 +35,24 @@ impl Runtime {
 
     pub(crate) fn construct_set(&mut self, args: &[Value]) -> MustardResult<Value> {
         let iterable = args.first().cloned().unwrap_or(Value::Undefined);
-        let length_hint = self.iterable_length_hint(&iterable)?;
-        let set = match length_hint {
-            Some(length) => self.insert_set_slots(vec![None; length])?,
-            None => self.insert_set(Vec::new())?,
-        };
+        let set = self.insert_set(Vec::new())?;
         if matches!(iterable, Value::Null | Value::Undefined) {
             return Ok(Value::Set(set));
         }
-
-        let iterator = self.create_iterator(iterable)?;
-        loop {
-            let (value, done) = self.iterator_next(iterator.clone())?;
-            if done {
-                break;
-            }
-            self.set_add(set, value)?;
-        }
-        if length_hint.is_some() {
-            self.trim_trailing_set_builder_slots(set)?;
-        }
-
-        Ok(Value::Set(set))
+        self.with_temporary_roots(&[Value::Set(set)], |runtime| {
+            let iterator = runtime.create_iterator(iterable)?;
+            runtime.with_temporary_roots(std::slice::from_ref(&iterator), |runtime| {
+                loop {
+                    runtime.charge_native_helper_work(1)?;
+                    let (value, done) = runtime.iterator_next(iterator.clone())?;
+                    if done {
+                        break;
+                    }
+                    runtime.set_add(set, value)?;
+                }
+                Ok(Value::Set(set))
+            })
+        })
     }
 
     pub(in crate::runtime) fn map_receiver(
@@ -166,11 +162,14 @@ impl Runtime {
     }
 
     pub(in crate::runtime) fn next_set_value_from_state(
-        &self,
+        &mut self,
         set: SetKey,
         next_index: &mut usize,
         observed_clear_epoch: &mut u64,
     ) -> MustardResult<Option<Value>> {
+        if *next_index == usize::MAX {
+            return Ok(None);
+        }
         let set_ref = self
             .sets
             .get(set)
@@ -179,13 +178,17 @@ impl Runtime {
             *observed_clear_epoch = set_ref.clear_epoch;
             *next_index = 0;
         }
+        let start = *next_index;
+        let mut result = None;
         while let Some(value) = set_ref.entries.get(*next_index) {
             *next_index += 1;
             if let Some(value) = value.clone() {
-                return Ok(Some(value));
+                result = Some(value);
+                break;
             }
         }
-        Ok(None)
+        self.charge_native_helper_work(next_index.saturating_sub(start))?;
+        Ok(result)
     }
 
     fn map_lookup_bytes(map: &MapObject) -> usize {
@@ -447,6 +450,44 @@ impl Runtime {
                 .ok_or_else(|| MustardError::runtime("set missing"))?;
             Self::set_slot_by_value(set_ref, &value)
         };
+        if existing_slot.is_some() {
+            return Ok(());
+        }
+        // Reserve growth before mutating. A GC triggered after insertion would
+        // observe stale cached accounting (and an unrooted new value).
+        let additional_bytes = {
+            let set_ref = self
+                .sets
+                .get(set)
+                .ok_or_else(|| MustardError::runtime("set missing"))?;
+            let next_len = set_ref.live_len + 1;
+            let next_strings = set_ref.string_key_live_len + usize::from(string_key);
+            let lookup_bytes =
+                if next_len >= SetObject::lookup_promotion_len_for(next_len, next_strings) {
+                    Self::collection_index_entry_bytes(&index_key)
+                        + if set_ref.lookup.is_empty() {
+                            set_ref
+                                .entries
+                                .iter()
+                                .flatten()
+                                .map(|v| {
+                                    Self::collection_index_entry_bytes(
+                                        &CollectionIndexKey::from_value(v),
+                                    )
+                                })
+                                .sum::<usize>()
+                        } else {
+                            Self::set_lookup_bytes(set_ref)
+                        }
+                } else {
+                    0
+                };
+            (Self::set_slot_bytes(Some(&value)) + lookup_bytes)
+                .saturating_sub(Self::set_lookup_bytes(set_ref))
+        };
+        self.with_temporary_roots(&[Value::Set(set), value.clone()], |runtime| {
+            runtime.ensure_heap_capacity(additional_bytes)
+        })?;
         let (old_bytes, new_bytes) = {
             let set_ref = self
                 .sets
@@ -455,22 +496,11 @@ impl Runtime {
             if existing_slot.is_some() {
                 (0, 0)
             } else {
-                let (slot, old_slot_bytes) = if set_ref.live_len < set_ref.entries.len()
-                    && set_ref.entries[set_ref.live_len].is_none()
-                {
-                    let slot = set_ref.live_len;
-                    let old_slot_bytes = Self::set_slot_bytes(None);
-                    set_ref.entries[slot] = Some(value);
-                    (slot, old_slot_bytes)
-                } else {
-                    set_ref.entries.push(Some(value));
-                    let slot = set_ref
-                        .entries
-                        .len()
-                        .checked_sub(1)
-                        .ok_or_else(|| MustardError::runtime("set entry missing"))?;
-                    (slot, 0)
-                };
+                // Append until compaction rebases all live cursors. Reusing a
+                // tail slot directly would make an iterator miss this value.
+                let slot = set_ref.entries.len();
+                let old_slot_bytes = 0;
+                set_ref.entries.push(Some(value));
                 let old_lookup_bytes = Self::set_lookup_bytes(set_ref);
                 set_ref.live_len = set_ref
                     .live_len
@@ -544,35 +574,6 @@ impl Runtime {
         self.apply_map_component_delta(map, removed_bytes, 0)
     }
 
-    fn trim_trailing_set_builder_slots(&mut self, set: SetKey) -> MustardResult<()> {
-        let removed_slots = {
-            let set_ref = self
-                .sets
-                .get_mut(set)
-                .ok_or_else(|| MustardError::runtime("set missing"))?;
-            let removed_slots = set_ref
-                .entries
-                .iter()
-                .rev()
-                .take_while(|entry| entry.is_none())
-                .count();
-            if removed_slots == 0 {
-                return Ok(());
-            }
-            let next_len = set_ref
-                .entries
-                .len()
-                .checked_sub(removed_slots)
-                .ok_or_else(|| MustardError::runtime("set entry underflow"))?;
-            set_ref.entries.truncate(next_len);
-            removed_slots
-        };
-        let removed_bytes = removed_slots
-            .checked_mul(Self::set_slot_bytes(None))
-            .ok_or_else(|| MustardError::runtime("set accounting overflow"))?;
-        self.apply_set_component_delta(set, removed_bytes, 0)
-    }
-
     pub(in crate::runtime) fn set_contains(
         &self,
         set: SetKey,
@@ -595,7 +596,11 @@ impl Runtime {
         Ok(true)
     }
 
-    fn set_delete(&mut self, set: SetKey, value: &Value) -> MustardResult<bool> {
+    pub(in crate::runtime) fn set_delete(
+        &mut self,
+        set: SetKey,
+        value: &Value,
+    ) -> MustardResult<bool> {
         let slot = {
             let set_ref = self
                 .sets
@@ -648,7 +653,66 @@ impl Runtime {
             (old_slot_bytes + old_lookup_bytes, new_bytes)
         };
         self.apply_set_component_delta(set, old_bytes, new_bytes)?;
+        self.compact_set_slots(set)?;
         Ok(true)
+    }
+
+    fn compact_set_slots(&mut self, set: SetKey) -> MustardResult<()> {
+        let set_ref = self
+            .sets
+            .get(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?;
+        let slots = set_ref.entries.len();
+        if slots < 64 || set_ref.live_len > slots / 2 {
+            return Ok(());
+        }
+        // Every mutable traversal, including forEach and set-like callbacks,
+        // keeps its cursor in the iterator arena. Charge rebasing work before
+        // mutating anything, then map old positions to live-prefix counts.
+        let mut work = slots.saturating_add(self.iterators.len());
+        for (_, iterator) in &self.iterators {
+            if let IteratorState::SetValues(state) | IteratorState::SetEntries(state) =
+                &iterator.state
+                && state.set == set
+                && state.next_index != usize::MAX
+                && state.observed_clear_epoch == set_ref.clear_epoch
+            {
+                work = work.saturating_add(state.next_index.min(slots));
+            }
+        }
+        self.charge_native_helper_work(work)?;
+        let set_ref = self
+            .sets
+            .get(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?;
+        for (_, iterator) in &mut self.iterators {
+            if let IteratorState::SetValues(state) | IteratorState::SetEntries(state) =
+                &mut iterator.state
+                && state.set == set
+                && state.next_index != usize::MAX
+            {
+                state.next_index = if state.observed_clear_epoch == set_ref.clear_epoch {
+                    set_ref.entries[..state.next_index.min(slots)]
+                        .iter()
+                        .filter(|v| v.is_some())
+                        .count()
+                } else {
+                    0
+                };
+                state.observed_clear_epoch = set_ref.clear_epoch;
+            }
+        }
+        let set_ref = self
+            .sets
+            .get_mut(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?;
+        let old_lookup = Self::set_lookup_bytes(set_ref);
+        let removed_bytes = (slots - set_ref.live_len) * Self::set_slot_bytes(None);
+        set_ref.entries.retain(Option::is_some);
+        set_ref.entries.shrink_to_fit();
+        set_ref.rebuild_lookup();
+        let new_lookup = Self::set_lookup_bytes(set_ref);
+        self.apply_set_component_delta(set, removed_bytes + old_lookup, new_lookup)
     }
 
     fn set_clear(&mut self, set: SetKey) -> MustardResult<()> {
@@ -901,29 +965,92 @@ impl Runtime {
     ) -> MustardResult<Value> {
         let set = self.set_receiver(this_value, "forEach")?;
         let (callback, this_arg) = self.collection_callback("Set.prototype.forEach", args)?;
-        let mut next_index = 0usize;
-        let mut observed_clear_epoch = self
-            .sets
-            .get(set)
-            .ok_or_else(|| MustardError::runtime("set missing"))?
-            .clear_epoch;
-        while let Some(value) =
-            self.next_set_value_from_state(set, &mut next_index, &mut observed_clear_epoch)?
-        {
-            self.charge_native_helper_work(1)?;
-            self.with_temporary_roots(
-                &[Value::Set(set), callback.clone(), this_arg.clone()],
-                |runtime| {
+        let iterator = self.create_iterator(Value::Set(set))?;
+        self.with_temporary_roots(
+            &[iterator.clone(), callback.clone(), this_arg.clone()],
+            |runtime| {
+                loop {
+                    let (value, done) = runtime.iterator_next(iterator.clone())?;
+                    if done {
+                        break;
+                    }
+                    runtime.charge_native_helper_work(1)?;
                     runtime.call_collection_callback(
                         "Set.prototype.forEach",
                         callback.clone(),
                         this_arg.clone(),
                         &[value.clone(), value, Value::Set(set)],
                     )?;
-                    Ok(())
-                },
-            )?;
-        }
-        Ok(Value::Undefined)
+                }
+                Ok(Value::Undefined)
+            },
+        )
+    }
+}
+
+impl Runtime {
+    pub(crate) fn call_group_by(&mut self, args: &[Value], as_map: bool) -> MustardResult<Value> {
+        self.with_temporary_roots(args, |runtime| {
+            let source = args.first().cloned().unwrap_or(Value::Undefined);
+            if matches!(source, Value::Undefined | Value::Null) {
+                return Err(MustardError::runtime("TypeError: groupBy requires a non-null iterable"));
+            }
+            let callback = args.get(1).cloned().unwrap_or(Value::Undefined);
+            if !runtime.is_callable_value(&callback)? {
+                return Err(MustardError::runtime("TypeError: groupBy expects a callable callback"));
+            }
+            let iterator = runtime.create_iterator(source)?;
+            runtime.with_temporary_roots(std::slice::from_ref(&iterator), |runtime| {
+                let result = if as_map {
+                    Value::Map(runtime.insert_map(Vec::new())?)
+                } else {
+                    Value::Object(runtime.insert_object(IndexMap::new(), ObjectKind::NullPrototype)?)
+                };
+                runtime.with_temporary_roots(std::slice::from_ref(&result), |runtime| {
+                    let mut index = 0usize;
+                    loop {
+                        runtime.charge_native_helper_work(1)?;
+                        let (value, done) = runtime.iterator_next(iterator.clone())?;
+                        if done { break; }
+                        runtime.with_temporary_roots(std::slice::from_ref(&value), |runtime| {
+                            let key = runtime.call_callback(callback.clone(), Value::Undefined, &[value.clone(), Value::Number(index as f64)], CallbackCallOptions {
+                                non_callable_message: "TypeError: groupBy expects a callable callback",
+                                host_suspension_message: "TypeError: groupBy callbacks do not support synchronous host suspensions",
+                                unsettled_message: "synchronous groupBy callback did not settle",
+                                allow_host_suspension: false,
+                                allow_pending_promise_result: true,
+                            })?;
+                            runtime.with_temporary_roots(std::slice::from_ref(&key), |runtime| {
+                                let (existing, property) = match result {
+                                    Value::Map(map) => (runtime.map_get(map, &key)?.map(|entry| entry.value), None),
+                                    Value::Object(object) => {
+                                        let property = runtime.to_property_key(key.clone())?;
+                                        let existing = runtime.objects.get(object).ok_or_else(|| MustardError::runtime("object missing"))?.properties.get(&property).cloned();
+                                        (existing, Some(property))
+                                    }
+                                    _ => unreachable!(),
+                                };
+                                let bucket = match existing {
+                                    Some(Value::Array(array)) => array,
+                                    None => {
+                                        let array = runtime.insert_array(Vec::new(), IndexMap::new())?;
+                                        match result {
+                                            Value::Map(map) => { runtime.map_set(map, key.clone(), Value::Array(array))?; }
+                                            Value::Object(_) => runtime.set_property_static(result.clone(), property.as_deref().expect("object key"), Value::Array(array))?,
+                                            _ => unreachable!(),
+                                        }
+                                        array
+                                    }
+                                    _ => return Err(MustardError::runtime("invalid internal groupBy bucket")),
+                                };
+                                runtime.push_array_element(bucket, Some(value.clone()))
+                            })
+                        })?;
+                        index += 1;
+                    }
+                    Ok(result.clone())
+                })
+            })
+        })
     }
 }

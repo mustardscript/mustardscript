@@ -3,20 +3,28 @@ use super::*;
 use indexmap::IndexMap;
 
 mod arrays;
+mod bigint;
 mod collections;
+mod currencies;
+mod dates;
+mod from_async;
 mod install;
 mod intl;
+mod json;
 mod objects;
 mod primitives;
 mod promises;
 mod regexp;
+mod regexp_profile;
+mod sets;
 mod strings;
 mod support;
+mod unicode;
+mod uri;
 
 use self::support::{
-    DateTimeFields, RegExpFlagsState, StringSearchPattern, advance_char_index,
-    ascii_string_fast_paths_enabled, ascii_to_lowercase, ascii_to_uppercase,
-    byte_index_to_char_index, char_index_to_byte_index, clamp_index,
+    DateTimeFields, RegExpFlagsState, StringSearchPattern, ascii_string_fast_paths_enabled,
+    ascii_to_lowercase, ascii_to_uppercase, char_index_to_byte_index, clamp_index,
     collect_ascii_literal_alternation_matches, collect_literal_matches, current_time_millis,
     date_time_fields_from_timestamp_ms, expand_regexp_replacement_template, find_string_pattern,
     format_en_us_number_grouped, format_iso_datetime, is_ascii_literal_alternation_regex,

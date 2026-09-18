@@ -18,6 +18,7 @@ const generatePrebuiltPackagesScriptPath = path.join(
   'scripts',
   'generate-prebuilt-packages.ts',
 );
+const consumerNode = process.env.MUSTARD_PACKAGE_SMOKE_NODE || process.execPath;
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const packageInfo = require(path.join(repoRoot, 'package.json'));
 const {
@@ -50,7 +51,7 @@ function run(command, args, cwd, options = {}) {
 
 function runGuestProgram(consumerRoot, source) {
   return run(
-    process.execPath,
+    consumerNode,
     [
       '-e',
       `
@@ -81,7 +82,8 @@ function readInstalledPackageManifest(consumerRoot) {
 
 function assertInstalledReleaseFiles(consumerRoot) {
   const packageRoot = installedPackageRoot(consumerRoot);
-  for (const file of ['LICENSE', 'README.md', 'SECURITY.md']) {
+  assert.deepEqual(readInstalledPackageManifest(consumerRoot).engines, {node: '>=20.0.0'});
+  for (const file of ['LICENSE', 'UNICODE-LICENSE', 'README.md', 'SECURITY.md']) {
     assert.ok(fs.existsSync(path.join(packageRoot, file)), `${file} should be shipped`);
   }
 }
@@ -136,8 +138,10 @@ function verifyPrebuiltPackageMetadata(stagingRoot) {
     );
     assert.equal(manifest.name, target.packageName);
     assert.equal(manifest.version, packageInfo.version);
+    assert.deepEqual(manifest.engines, packageInfo.engines);
     assert.equal(manifest.main, target.localFile);
-    assert.deepEqual(manifest.files, [target.localFile]);
+    assert.deepEqual(manifest.files, [target.localFile, 'UNICODE-LICENSE']);
+    assert.match(fs.readFileSync(path.join(packageRoot, 'UNICODE-LICENSE'), 'utf8'), /UNICODE LICENSE V3/);
     assert.deepEqual(manifest.os, target.os);
     assert.deepEqual(manifest.cpu, target.cpu);
     if (target.libc) {
@@ -304,6 +308,23 @@ test(
         runGuestProgram(consumerRoot, 'let total = 40; total = total + 2; total;'),
         '42',
       );
+      // Exercise the installed JS wrapper, not just the native addon. This
+      // runs under every supported Node floor in the compatibility CI job.
+      const smoke = run(consumerNode, ['-e', `
+        const assert = require('node:assert/strict');
+        const { Mustard, Progress } = require(${JSON.stringify(packageInfo.name)});
+        (async () => {
+          const options = {capabilities:{checkpoint(){}},limits:{},snapshotKey:Buffer.from('package-compatibility')};
+          let step = new Mustard('checkpoint(text); text;').start({...options,inputs:{text:'😀é'}});
+          assert.ok(step instanceof Progress);
+          step = Progress.load(step.dump(), options).resume(undefined);
+          assert.equal(step, '😀é');
+          assert.deepEqual(await new Mustard('input;').run({inputs:{input:[1,,3]}}),[1,,3]);
+          await assert.rejects(new Mustard('input;').run({inputs:{input:String.fromCharCode(0xd800)}}), /lone surrogates/);
+          process.stdout.write('compatible');
+        })().catch(error => { console.error(error); process.exit(1); });
+      `], consumerRoot);
+      assert.equal(smoke, 'compatible');
     } finally {
       fs.rmSync(tempRoot, { recursive: true, force: true });
       fs.rmSync(rootTarballPath, { force: true });

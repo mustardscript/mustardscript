@@ -11,6 +11,40 @@ const snapshotKey = Buffer.from('fuzz-corpus-snapshot-key');
 const SIDECAR_PROTOCOL_VERSION = 2;
 
 const SUPPORTED_SOURCE_SEEDS = Object.freeze([
+  { name: 'global-regexp-cursors.js', source: `const text='a '.repeat(1500);
+    [text.replace(/(a)/g,'b').length, Array.from(text.matchAll(/(a)/dg)).length];` },
+  { name: 'queue-shift.js', source: `const q=Array.from({length:1500},(_,i)=>i);
+    while(q.length) q.shift(); q.length;` },
+  { name: 'error-property-attributes.js', source: `const e=new Error('hidden');
+    e.name='Own';delete e.message;e.message='visible';[Object.keys(e),JSON.stringify(e)];` },
+  {
+    name: 'reentrant-json-reviver.js',
+    source: `const text='['.repeat(120)+'0'+']'.repeat(120);
+      function visit(k,v) { if(v===0) JSON.parse(text,visit); return v; }
+      JSON.parse(text,visit);`,
+  },
+  {
+    name: 'reentrant-json-replacer.js',
+    source: `const root=JSON.parse('['.repeat(120)+'0'+']'.repeat(120));
+      function visit(k,v) { if(v===0) JSON.stringify(root,visit); return v; }
+      JSON.stringify(root,visit);`,
+  },
+  {
+    name: 'reentrant-json-tojson.js',
+    source: `let root={toJSON(){return JSON.stringify(root);}};
+      for(let i=0;i<120;i++) root=[root]; JSON.stringify(root);`,
+  },
+  { name: 'native-callback-recursion.js', source: 'function f(){return [1].map(f);} f();' },
+  { name: 'set-compaction.js', source: `const s=new Set([0]); const it=s.values(); it.next();
+    for(let i=1;i<100;i++){s.add(i);s.delete(i);} s.add(100); it.next();` },
+  { name: 'sparse-array-branch.js', source: '1 ? {x:[1,,3]} : 0;' },
+  {
+    name: 'abstract-equality.js',
+    source: `
+      const value={valueOf(){return this;},toString(){return '7';}};
+      [undefined==null, '1'==1, [value]==7, 9007199254740993n!=9007199254740992];
+    `,
+  },
   {
     name: 'basic-arithmetic.js',
     source: 'const value = 1; value + 2;',
@@ -37,13 +71,16 @@ const SUPPORTED_SOURCE_SEEDS = Object.freeze([
 ]);
 
 const UNSUPPORTED_SOURCE_SEEDS = Object.freeze([
+  {name:'deep-arrow-chain.js',source:'a=>'.repeat(3000)+'0;'},
+  {name:'deep-else-chain.js',source:'if(1);else '.repeat(3000)+';'},
+  {name:'deep-label-chain.js',source:Array.from({length:3000},(_,i)=>`label${i}:`).join('')+';'},
   {
     name: 'unsupported-class.js',
     source: 'class Example {}',
   },
   {
     name: 'unsupported-delete.js',
-    source: 'delete value.prop;',
+    source: 'delete value;',
   },
   {
     name: 'unsupported-dynamic-import.js',
@@ -52,6 +89,14 @@ const UNSUPPORTED_SOURCE_SEEDS = Object.freeze([
 ]);
 
 const SUSPENSION_SOURCE_SEEDS = Object.freeze([
+  {
+    name: 'equality-coercion.snapshot',
+    source: '({valueOf: fetch_data}) == 7;',
+  },
+  {
+    name: 'equality-array-coercion.snapshot',
+    source: "[[{toString: fetch_data}]] == '7';",
+  },
   {
     name: 'sync-capability.snapshot',
     source: 'const value = fetch_data(4); value + 2;',
@@ -113,6 +158,10 @@ function suspendedSnapshotBytes(source) {
 }
 
 function writeSourceSeeds() {
+  const regexpRegression = fs.readFileSync(path.join(repoRoot, 'crates/mustard/tests/fixtures/regexp-preflight-reentry.bin'));
+  for (const target of ['parser', 'bytecode_execution']) {
+    writeSeed(target, 'regexp-preflight-reentry.bin', regexpRegression);
+  }
   for (const seed of [...SUPPORTED_SOURCE_SEEDS, ...UNSUPPORTED_SOURCE_SEEDS]) {
     writeSeed('parser', seed.name, `${seed.source.trim()}\n`);
     writeSeed('ir_lowering', seed.name, `${seed.source.trim()}\n`);
@@ -120,6 +169,8 @@ function writeSourceSeeds() {
 }
 
 function writeProgramSeeds() {
+  writeSeed('bytecode_execution', 'oversized-lexical-depth.bin',
+    fs.readFileSync(path.join(repoRoot, 'crates/mustard/tests/fixtures/oversized-lexical-depth.bin')));
   for (const seed of SUPPORTED_SOURCE_SEEDS) {
     const program = new Mustard(seed.source).dump();
     writeSeed('bytecode_validation', seed.name.replace(/\.js$/, '.bin'), program);
@@ -134,6 +185,11 @@ function writeSnapshotSeeds() {
 }
 
 function writeSidecarProtocolSeeds() {
+  for (const seed of UNSUPPORTED_SOURCE_SEEDS.filter(seed => seed.name.startsWith('deep-'))) {
+    writeSeed('sidecar_protocol', seed.name + '.jsonl', JSON.stringify({
+      protocol_version: SIDECAR_PROTOCOL_VERSION, method:'compile', id:1, source:seed.source,
+    }) + '\n');
+  }
   const compiled = new Mustard('const value = fetch_data(5); value + 1;');
   const programBase64 = compiled.dump().toString('base64');
 
@@ -217,6 +273,10 @@ function main() {
   writeProgramSeeds();
   writeSnapshotSeeds();
   writeSidecarProtocolSeeds();
+  const deepRequest = fs.readFileSync(path.join(repoRoot, 'crates/mustard-sidecar/tests/fixtures/deep-source-request.json'), 'utf8');
+  writeSeed('sidecar_protocol', 'deep-source-request.jsonl', deepRequest);
+  writeSeed('parser', 'deep-source.js', JSON.parse(deepRequest).source);
+  writeSeed('parser', 'malformed-template.js', fs.readFileSync(path.join(repoRoot, 'crates/mustard/tests/fixtures/malformed-template.js')));
 }
 
 main();

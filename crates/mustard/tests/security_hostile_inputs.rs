@@ -41,6 +41,26 @@ fn simple_function(code: Vec<Instruction>) -> FunctionPrototype {
     }
 }
 
+#[test]
+fn malformed_lexical_slot_depths_reject_without_unbounded_traversal() {
+    for depth in [1_000_000, usize::MAX] {
+        let program = BytecodeProgram {
+            functions: vec![simple_function(vec![
+                Instruction::LoadSlot { depth, slot: 0 },
+                Instruction::Return,
+            ])],
+            root: 0,
+        };
+        let loaded = load_program(&dump_program(&program).unwrap()).unwrap();
+        let error = start_bytecode(&loaded, ExecutionOptions::default())
+            .expect_err("out-of-range lexical depth must reject promptly");
+        assert!(error.to_string().contains("environment missing"), "{error}");
+    }
+    let program = load_program(include_bytes!("fixtures/oversized-lexical-depth.bin")).unwrap();
+    let error = start_bytecode(&program, ExecutionOptions::default()).unwrap_err();
+    assert!(error.to_string().contains("environment missing"), "{error}");
+}
+
 fn suspended_snapshot_bytes() -> Vec<u8> {
     let program = compile("const value = fetch_data(1); value + 2;").expect("compile should work");
     let step = start(
@@ -210,23 +230,36 @@ fn hostile_sources_fail_closed_without_host_leaks() {
 fn hostile_regex_patterns_do_not_pin_runtime() {
     if std::env::var_os(HOSTILE_REGEX_HELPER_ENV).is_some() {
         let source = compile("text.search(/^(a+)+$/);").expect("source should compile");
-        let result = mustard::runtime::execute(
-            &source,
-            ExecutionOptions {
-                inputs: IndexMap::from([(
-                    "text".to_string(),
-                    StructuredValue::String(format!("{}!", "a".repeat(256))),
-                )]),
-                capabilities: Vec::new(),
-                limits: RuntimeLimits {
-                    instruction_budget: 20,
-                    ..RuntimeLimits::default()
+        for budget in [20, 1000] {
+            let result = mustard::runtime::execute(
+                &source,
+                ExecutionOptions {
+                    inputs: IndexMap::from([(
+                        "text".to_string(),
+                        StructuredValue::String(format!("{}!", "a".repeat(256))),
+                    )]),
+                    capabilities: Vec::new(),
+                    limits: RuntimeLimits {
+                        instruction_budget: budget,
+                        ..RuntimeLimits::default()
+                    },
+                    cancellation_token: None,
                 },
-                cancellation_token: None,
-            },
-        )
-        .expect("hostile regex input should finish");
-        assert_eq!(result, StructuredValue::from(-1.0));
+            );
+            if budget == 20 {
+                assert!(
+                    result
+                        .expect_err("native regexp work must be charged")
+                        .to_string()
+                        .contains("instruction budget exhausted")
+                );
+            } else {
+                assert_eq!(
+                    result.expect("linear regexp should finish within budget"),
+                    StructuredValue::from(-1.0)
+                );
+            }
+        }
         return;
     }
 
@@ -510,5 +543,62 @@ proptest! {
         if let Err(error) = load_snapshot(&bytes) {
             assert_host_safe_message(&error.to_string());
         }
+    }
+}
+
+#[test]
+fn source_nesting_is_bounded_before_parser_entry_but_literal_text_is_not_code() {
+    for source in [
+        "[".repeat(2000),
+        format!("{}1{}", "[".repeat(2000), "]".repeat(2000)),
+        format!("{}1{}", "(".repeat(2000), ")".repeat(2000)),
+        format!("{}1{}", "`x${".repeat(2000), "}`".repeat(2000)),
+        "while(true){".repeat(2000),
+    ] {
+        let error = compile(&source).expect_err("deep source must reject before parsing");
+        assert!(
+            error.to_string().contains("source nesting limit exceeded"),
+            "{error}"
+        );
+    }
+    for source in [
+        format!("'{}';", "[".repeat(2000)),
+        format!("`{}`;", "[".repeat(2000)),
+        format!("/* {} */ 1;", "[".repeat(2000)),
+        format!("/[{}]/;", "[".repeat(2000)),
+        "const a = `text ${ {x: `nested ${1}`}.x } tail`;".to_string(),
+        format!(
+            "const a = '{}'; {}1{}",
+            "]".repeat(2000),
+            "[".repeat(64),
+            "]".repeat(64)
+        ),
+    ] {
+        compile(&source).unwrap_or_else(|error| {
+            panic!(
+                "literal/comment punctuation must not consume code nesting ({source:.40}): {error}"
+            )
+        });
+    }
+}
+
+#[test]
+fn malformed_template_fuzz_regression_returns_without_looping() {
+    let source = include_str!("fixtures/malformed-template.js");
+    assert!(compile(source).is_err());
+    assert!(compile(&format!("/* {} */ {source}", "[".repeat(128))).is_err());
+}
+
+#[test]
+fn nesting_preflight_tracks_regexp_and_division_contexts() {
+    for source in [
+        "const x = 4; x / 2; /[[]/.test('[');",
+        "if (true) {} /[[]/.test('[');",
+        "const r = /=/.test('='); let q = 4; q /= 2;",
+        "const f = () => /[[]/;",
+        "const t = `text ${ {x: `inner ${1}`}.x } tail`;",
+    ] {
+        compile(&format!("/* {} */ {source}", "[".repeat(128)))
+            .unwrap_or_else(|error| panic!("{source}: {error}"));
     }
 }

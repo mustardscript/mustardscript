@@ -42,6 +42,14 @@ const SERIALIZATION_DOC = readRepo('docs/SERIALIZATION.md');
 const SIDECAR_PROTOCOL = readRepo('docs/SIDECAR_PROTOCOL.md');
 
 const MANUAL_CONFORMANCE_BUCKETS = Object.freeze({
+  'validation.unsupported-unary': {
+    file: 'tests/node/language-completion.test.js',
+    pattern: 'Number bitwise operators and compound assignments match Node coercion and ordering',
+  },
+  'validation.unsupported-assignment': {
+    file: 'tests/node/language-completion.test.js',
+    pattern: 'Number bitwise operators and compound assignments match Node coercion and ordering',
+  },
   'language.array-holes': {
     file: 'tests/node/builtins.test.js',
     pattern: 'run preserves sparse array holes across helpers, enumeration, and JSON',
@@ -230,6 +238,24 @@ const DOCUMENTED_BUILTIN_COVERAGE = Object.freeze({
       file: 'tests/node/coverage-audit.test.js',
       pattern: 'primitive and error constructors expose the documented built-in surface',
     },
+  ],
+  '`SyntaxError`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'error constructors, AggregateError, and guest-only stacks are complete'},
+  ],
+  '`URIError`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'error constructors, AggregateError, and guest-only stacks are complete'},
+  ],
+  '`EvalError`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'error constructors, AggregateError, and guest-only stacks are complete'},
+  ],
+  '`AggregateError`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'error constructors, AggregateError, and guest-only stacks are complete'},
+  ],
+  '`BigInt`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'BigInt conversion and explicit radix formatting match Node for supported inputs'},
+  ],
+  '`encodeURI`, `decodeURI`, `encodeURIComponent`, `decodeURIComponent`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'URI codecs match Node and reject malformed percent/UTF-8 sequences'},
   ],
   '`RangeError`': [
     {

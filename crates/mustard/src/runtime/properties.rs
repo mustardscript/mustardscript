@@ -3,11 +3,127 @@ use super::*;
 const GET_PROP_STATIC_INLINE_CACHE_POLYMORPHIC_LIMIT: usize = 4;
 
 impl Runtime {
+    pub(super) fn array_prototype_method(key: &str) -> Option<BuiltinFunction> {
+        Some(match key {
+            "push" => BuiltinFunction::ArrayPush,
+            "pop" => BuiltinFunction::ArrayPop,
+            "slice" => BuiltinFunction::ArraySlice,
+            "splice" => BuiltinFunction::ArraySplice,
+            "concat" => BuiltinFunction::ArrayConcat,
+            "at" => BuiltinFunction::ArrayAt,
+            "join" => BuiltinFunction::ArrayJoin,
+            "toString" => BuiltinFunction::ArrayToString,
+            "includes" => BuiltinFunction::ArrayIncludes,
+            "indexOf" => BuiltinFunction::ArrayIndexOf,
+            "lastIndexOf" => BuiltinFunction::ArrayLastIndexOf,
+            "reverse" => BuiltinFunction::ArrayReverse,
+            "fill" => BuiltinFunction::ArrayFill,
+            "sort" => BuiltinFunction::ArraySort,
+            "values" => BuiltinFunction::ArrayValues,
+            "keys" => BuiltinFunction::ArrayKeys,
+            "entries" => BuiltinFunction::ArrayEntries,
+            "forEach" => BuiltinFunction::ArrayForEach,
+            "map" => BuiltinFunction::ArrayMap,
+            "filter" => BuiltinFunction::ArrayFilter,
+            "find" => BuiltinFunction::ArrayFind,
+            "findIndex" => BuiltinFunction::ArrayFindIndex,
+            "some" => BuiltinFunction::ArraySome,
+            "every" => BuiltinFunction::ArrayEvery,
+            "flat" => BuiltinFunction::ArrayFlat,
+            "flatMap" => BuiltinFunction::ArrayFlatMap,
+            "reduce" => BuiltinFunction::ArrayReduce,
+            "reduceRight" => BuiltinFunction::ArrayReduceRight,
+            "findLast" => BuiltinFunction::ArrayFindLast,
+            "findLastIndex" => BuiltinFunction::ArrayFindLastIndex,
+            "shift" => BuiltinFunction::ArrayShift,
+            "unshift" => BuiltinFunction::ArrayUnshift,
+            "toSorted" => BuiltinFunction::ArrayToSorted,
+            "toReversed" => BuiltinFunction::ArrayToReversed,
+            "toSpliced" => BuiltinFunction::ArrayToSpliced,
+            "with" => BuiltinFunction::ArrayWith,
+            "copyWithin" => BuiltinFunction::ArrayCopyWithin,
+            _ => return None,
+        })
+    }
+
+    pub(super) fn set_prototype_method(key: &str) -> Option<BuiltinFunction> {
+        Some(match key {
+            "add" => BuiltinFunction::SetAdd,
+            "has" => BuiltinFunction::SetHas,
+            "delete" => BuiltinFunction::SetDelete,
+            "clear" => BuiltinFunction::SetClear,
+            "entries" => BuiltinFunction::SetEntries,
+            "keys" | "values" => BuiltinFunction::SetValues,
+            "forEach" => BuiltinFunction::SetForEach,
+            "union" => BuiltinFunction::SetUnion,
+            "intersection" => BuiltinFunction::SetIntersection,
+            "difference" => BuiltinFunction::SetDifference,
+            "symmetricDifference" => BuiltinFunction::SetSymmetricDifference,
+            "isSubsetOf" => BuiltinFunction::SetIsSubsetOf,
+            "isSupersetOf" => BuiltinFunction::SetIsSupersetOf,
+            "isDisjointFrom" => BuiltinFunction::SetIsDisjointFrom,
+            _ => return None,
+        })
+    }
+
+    pub(super) fn date_prototype_method(key: &str) -> Option<BuiltinFunction> {
+        Some(match key {
+            "getTime" => BuiltinFunction::DateGetTime,
+            "valueOf" => BuiltinFunction::DateValueOf,
+            "toISOString" => BuiltinFunction::DateToISOString,
+            "toJSON" => BuiltinFunction::DateToJSON,
+            "getUTCFullYear" => BuiltinFunction::DateGetUTCFullYear,
+            "getUTCMonth" => BuiltinFunction::DateGetUTCMonth,
+            "getUTCDate" => BuiltinFunction::DateGetUTCDate,
+            "getUTCHours" => BuiltinFunction::DateGetUTCHours,
+            "getUTCMinutes" => BuiltinFunction::DateGetUTCMinutes,
+            "getUTCSeconds" => BuiltinFunction::DateGetUTCSeconds,
+            "getFullYear" => BuiltinFunction::DateGetFullYear,
+            "getMonth" => BuiltinFunction::DateGetMonth,
+            "getDate" => BuiltinFunction::DateGetDate,
+            "getDay" => BuiltinFunction::DateGetDay,
+            "getHours" => BuiltinFunction::DateGetHours,
+            "getMinutes" => BuiltinFunction::DateGetMinutes,
+            "getSeconds" => BuiltinFunction::DateGetSeconds,
+            "getMilliseconds" => BuiltinFunction::DateGetMilliseconds,
+            "getUTCDay" => BuiltinFunction::DateGetUTCDay,
+            "getUTCMilliseconds" => BuiltinFunction::DateGetUTCMilliseconds,
+            "getTimezoneOffset" => BuiltinFunction::DateGetTimezoneOffset,
+            "getYear" => BuiltinFunction::DateGetYear,
+            "setFullYear" => BuiltinFunction::DateSetFullYear,
+            "setMonth" => BuiltinFunction::DateSetMonth,
+            "setDate" => BuiltinFunction::DateSetDate,
+            "setHours" => BuiltinFunction::DateSetHours,
+            "setMinutes" => BuiltinFunction::DateSetMinutes,
+            "setSeconds" => BuiltinFunction::DateSetSeconds,
+            "setMilliseconds" => BuiltinFunction::DateSetMilliseconds,
+            "setUTCFullYear" => BuiltinFunction::DateSetUTCFullYear,
+            "setUTCMonth" => BuiltinFunction::DateSetUTCMonth,
+            "setUTCDate" => BuiltinFunction::DateSetUTCDate,
+            "setUTCHours" => BuiltinFunction::DateSetUTCHours,
+            "setUTCMinutes" => BuiltinFunction::DateSetUTCMinutes,
+            "setUTCSeconds" => BuiltinFunction::DateSetUTCSeconds,
+            "setUTCMilliseconds" => BuiltinFunction::DateSetUTCMilliseconds,
+            "setTime" => BuiltinFunction::DateSetTime,
+            "setYear" => BuiltinFunction::DateSetYear,
+            "toString" => BuiltinFunction::DateToString,
+            "toDateString" => BuiltinFunction::DateToDateString,
+            "toTimeString" => BuiltinFunction::DateToTimeString,
+            "toUTCString" => BuiltinFunction::DateToUTCString,
+            "toLocaleString" => BuiltinFunction::DateToLocaleString,
+            "toLocaleDateString" => BuiltinFunction::DateToLocaleDateString,
+            "toLocaleTimeString" => BuiltinFunction::DateToLocaleTimeString,
+            "toGMTString" => BuiltinFunction::DateToUTCString,
+            _ => return None,
+        })
+    }
+
     fn function_helper_method(key: &str) -> Option<Value> {
         match key {
             "call" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionCall)),
             "apply" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionApply)),
             "bind" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionBind)),
+            "toString" => Some(Value::BuiltinFunction(BuiltinFunction::FunctionToString)),
             _ => None,
         }
     }
@@ -247,7 +363,7 @@ impl Runtime {
         Ok(())
     }
 
-    fn builtin_function_name(function: BuiltinFunction) -> &'static str {
+    pub(super) fn builtin_function_name(function: BuiltinFunction) -> &'static str {
         match function {
             BuiltinFunction::FunctionCtor => "Function",
             BuiltinFunction::FunctionCall => "call",
@@ -296,6 +412,29 @@ impl Runtime {
             BuiltinFunction::ObjectValues => "values",
             BuiltinFunction::ObjectEntries => "entries",
             BuiltinFunction::ObjectHasOwn => "hasOwn",
+            BuiltinFunction::ObjectIs => "is",
+            BuiltinFunction::BigIntCtor => "BigInt",
+            BuiltinFunction::BigIntToString => "toString",
+            BuiltinFunction::BigIntValueOf => "valueOf",
+            BuiltinFunction::StringCharCodeAt => "charCodeAt",
+            BuiltinFunction::StringCodePointAt => "codePointAt",
+            BuiltinFunction::StringFromCharCode => "fromCharCode",
+            BuiltinFunction::StringFromCodePoint => "fromCodePoint",
+            BuiltinFunction::StringLocaleCompare => "localeCompare",
+            BuiltinFunction::StringNormalize => "normalize",
+            BuiltinFunction::StringIsWellFormed => "isWellFormed",
+
+            BuiltinFunction::EncodeURI => "encodeURI",
+            BuiltinFunction::EncodeURIComponent => "encodeURIComponent",
+            BuiltinFunction::DecodeURI => "decodeURI",
+            BuiltinFunction::DecodeURIComponent => "decodeURIComponent",
+
+            BuiltinFunction::ObjectHasOwnProperty => "hasOwnProperty",
+            BuiltinFunction::ObjectToString
+            | BuiltinFunction::ArrayToString
+            | BuiltinFunction::FunctionToString
+            | BuiltinFunction::RegExpToString => "toString",
+            BuiltinFunction::ObjectValueOf => "valueOf",
             BuiltinFunction::MapCtor => "Map",
             BuiltinFunction::MapGet => "get",
             BuiltinFunction::MapSet => "set",
@@ -314,6 +453,16 @@ impl Runtime {
             BuiltinFunction::SetEntries => "entries",
             BuiltinFunction::SetKeys => "keys",
             BuiltinFunction::SetValues => "values",
+            BuiltinFunction::SetUnion => "union",
+            BuiltinFunction::SetIntersection => "intersection",
+            BuiltinFunction::SetDifference => "difference",
+            BuiltinFunction::SetSymmetricDifference => "symmetricDifference",
+            BuiltinFunction::SetIsSubsetOf => "isSubsetOf",
+            BuiltinFunction::SetIsSupersetOf => "isSupersetOf",
+            BuiltinFunction::SetIsDisjointFrom => "isDisjointFrom",
+            BuiltinFunction::PromiseWithResolvers => "withResolvers",
+            BuiltinFunction::PromiseResolveOnce(_) | BuiltinFunction::PromiseRejectOnce(_) => "",
+            BuiltinFunction::ArrayFromAsync => "fromAsync",
             BuiltinFunction::SetForEach => "forEach",
             BuiltinFunction::IteratorNext => "next",
             BuiltinFunction::PromiseCtor => "Promise",
@@ -336,6 +485,19 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => "ReferenceError",
             BuiltinFunction::RangeErrorCtor => "RangeError",
             BuiltinFunction::SyntaxErrorCtor => "SyntaxError",
+            BuiltinFunction::EvalErrorCtor => "EvalError",
+            BuiltinFunction::URIErrorCtor => "URIError",
+            BuiltinFunction::AggregateErrorCtor => "AggregateError",
+            BuiltinFunction::ErrorToString => "toString",
+            BuiltinFunction::ArrayShift => "shift",
+            BuiltinFunction::ArrayUnshift => "unshift",
+            BuiltinFunction::ArrayToSorted => "toSorted",
+            BuiltinFunction::ArrayToReversed => "toReversed",
+            BuiltinFunction::ArrayToSpliced => "toSpliced",
+            BuiltinFunction::ArrayWith => "with",
+            BuiltinFunction::ArrayCopyWithin => "copyWithin",
+            BuiltinFunction::ObjectGroupBy | BuiltinFunction::MapGroupBy => "groupBy",
+
             BuiltinFunction::NumberCtor => "Number",
             BuiltinFunction::NumberParseInt => "parseInt",
             BuiltinFunction::NumberParseFloat => "parseFloat",
@@ -345,6 +507,44 @@ impl Runtime {
             BuiltinFunction::NumberIsSafeInteger => "isSafeInteger",
             BuiltinFunction::DateCtor => "Date",
             BuiltinFunction::DateNow => "now",
+            BuiltinFunction::DateUTC => "UTC",
+            BuiltinFunction::DateParse => "parse",
+            BuiltinFunction::DateGetFullYear => "getFullYear",
+            BuiltinFunction::DateGetMonth => "getMonth",
+            BuiltinFunction::DateGetDate => "getDate",
+            BuiltinFunction::DateGetDay => "getDay",
+            BuiltinFunction::DateGetHours => "getHours",
+            BuiltinFunction::DateGetMinutes => "getMinutes",
+            BuiltinFunction::DateGetSeconds => "getSeconds",
+            BuiltinFunction::DateGetMilliseconds => "getMilliseconds",
+            BuiltinFunction::DateGetUTCDay => "getUTCDay",
+            BuiltinFunction::DateGetUTCMilliseconds => "getUTCMilliseconds",
+            BuiltinFunction::DateGetTimezoneOffset => "getTimezoneOffset",
+            BuiltinFunction::DateGetYear => "getYear",
+            BuiltinFunction::DateSetFullYear => "setFullYear",
+            BuiltinFunction::DateSetMonth => "setMonth",
+            BuiltinFunction::DateSetDate => "setDate",
+            BuiltinFunction::DateSetHours => "setHours",
+            BuiltinFunction::DateSetMinutes => "setMinutes",
+            BuiltinFunction::DateSetSeconds => "setSeconds",
+            BuiltinFunction::DateSetMilliseconds => "setMilliseconds",
+            BuiltinFunction::DateSetUTCFullYear => "setUTCFullYear",
+            BuiltinFunction::DateSetUTCMonth => "setUTCMonth",
+            BuiltinFunction::DateSetUTCDate => "setUTCDate",
+            BuiltinFunction::DateSetUTCHours => "setUTCHours",
+            BuiltinFunction::DateSetUTCMinutes => "setUTCMinutes",
+            BuiltinFunction::DateSetUTCSeconds => "setUTCSeconds",
+            BuiltinFunction::DateSetUTCMilliseconds => "setUTCMilliseconds",
+            BuiltinFunction::DateSetTime => "setTime",
+            BuiltinFunction::DateSetYear => "setYear",
+            BuiltinFunction::DateToString => "toString",
+            BuiltinFunction::DateToDateString => "toDateString",
+            BuiltinFunction::DateToTimeString => "toTimeString",
+            BuiltinFunction::DateToUTCString => "toUTCString",
+            BuiltinFunction::DateToLocaleString => "toLocaleString",
+            BuiltinFunction::DateToLocaleDateString => "toLocaleDateString",
+            BuiltinFunction::DateToLocaleTimeString => "toLocaleTimeString",
+
             BuiltinFunction::DateGetTime => "getTime",
             BuiltinFunction::DateValueOf => "valueOf",
             BuiltinFunction::DateToISOString => "toISOString",
@@ -391,6 +591,7 @@ impl Runtime {
             BuiltinFunction::BooleanCtor => "Boolean",
             BuiltinFunction::BooleanToString => "toString",
             BuiltinFunction::BooleanValueOf => "valueOf",
+            BuiltinFunction::NumberToLocaleString => "toLocaleString",
             BuiltinFunction::NumberToString => "toString",
             BuiltinFunction::NumberValueOf => "valueOf",
             BuiltinFunction::NumberToFixed => "toFixed",
@@ -416,6 +617,22 @@ impl Runtime {
             BuiltinFunction::MathHypot => "hypot",
             BuiltinFunction::MathCbrt => "cbrt",
             BuiltinFunction::MathRandom => "random",
+            BuiltinFunction::MathTan => "tan",
+            BuiltinFunction::MathAsin => "asin",
+            BuiltinFunction::MathAcos => "acos",
+            BuiltinFunction::MathAtan => "atan",
+            BuiltinFunction::MathSinh => "sinh",
+            BuiltinFunction::MathCosh => "cosh",
+            BuiltinFunction::MathTanh => "tanh",
+            BuiltinFunction::MathAsinh => "asinh",
+            BuiltinFunction::MathAcosh => "acosh",
+            BuiltinFunction::MathAtanh => "atanh",
+            BuiltinFunction::MathClz32 => "clz32",
+            BuiltinFunction::MathImul => "imul",
+            BuiltinFunction::MathFround => "fround",
+            BuiltinFunction::MathLog1p => "log1p",
+            BuiltinFunction::MathExpm1 => "expm1",
+
             BuiltinFunction::JsonStringify => "stringify",
             BuiltinFunction::JsonParse => "parse",
         }
@@ -470,6 +687,28 @@ impl Runtime {
             BuiltinFunction::ObjectValues => 1,
             BuiltinFunction::ObjectEntries => 1,
             BuiltinFunction::ObjectHasOwn => 2,
+            BuiltinFunction::ObjectIs => 2,
+            BuiltinFunction::BigIntCtor | BuiltinFunction::BigIntToString => 1,
+            BuiltinFunction::BigIntValueOf => 0,
+            BuiltinFunction::StringCharCodeAt => 1,
+            BuiltinFunction::StringCodePointAt => 1,
+            BuiltinFunction::StringFromCharCode => 1,
+            BuiltinFunction::StringFromCodePoint => 1,
+            BuiltinFunction::StringLocaleCompare => 1,
+            BuiltinFunction::StringNormalize => 0,
+            BuiltinFunction::StringIsWellFormed => 0,
+
+            BuiltinFunction::EncodeURI => 1,
+            BuiltinFunction::EncodeURIComponent => 1,
+            BuiltinFunction::DecodeURI => 1,
+            BuiltinFunction::DecodeURIComponent => 1,
+
+            BuiltinFunction::ObjectHasOwnProperty => 1,
+            BuiltinFunction::ObjectToString
+            | BuiltinFunction::ArrayToString
+            | BuiltinFunction::ObjectValueOf
+            | BuiltinFunction::FunctionToString
+            | BuiltinFunction::RegExpToString => 0,
             BuiltinFunction::MapCtor => 0,
             BuiltinFunction::MapGet => 1,
             BuiltinFunction::MapSet => 2,
@@ -488,6 +727,17 @@ impl Runtime {
             BuiltinFunction::SetEntries => 0,
             BuiltinFunction::SetKeys => 0,
             BuiltinFunction::SetValues => 0,
+            BuiltinFunction::SetUnion => 1,
+            BuiltinFunction::SetIntersection => 1,
+            BuiltinFunction::SetDifference => 1,
+            BuiltinFunction::SetSymmetricDifference => 1,
+            BuiltinFunction::SetIsSubsetOf => 1,
+            BuiltinFunction::SetIsSupersetOf => 1,
+            BuiltinFunction::SetIsDisjointFrom => 1,
+            BuiltinFunction::PromiseWithResolvers => 0,
+            BuiltinFunction::PromiseResolveOnce(_)
+            | BuiltinFunction::PromiseRejectOnce(_)
+            | BuiltinFunction::ArrayFromAsync => 1,
             BuiltinFunction::SetForEach => 1,
             BuiltinFunction::IteratorNext => 0,
             BuiltinFunction::PromiseCtor => 1,
@@ -510,6 +760,19 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => 1,
             BuiltinFunction::RangeErrorCtor => 1,
             BuiltinFunction::SyntaxErrorCtor => 1,
+            BuiltinFunction::EvalErrorCtor => 1,
+            BuiltinFunction::URIErrorCtor => 1,
+            BuiltinFunction::AggregateErrorCtor => 2,
+            BuiltinFunction::ErrorToString => 0,
+            BuiltinFunction::ArrayShift => 0,
+            BuiltinFunction::ArrayUnshift => 1,
+            BuiltinFunction::ArrayToSorted => 1,
+            BuiltinFunction::ArrayToReversed => 0,
+            BuiltinFunction::ArrayToSpliced => 2,
+            BuiltinFunction::ArrayWith => 2,
+            BuiltinFunction::ArrayCopyWithin => 2,
+            BuiltinFunction::ObjectGroupBy | BuiltinFunction::MapGroupBy => 2,
+
             BuiltinFunction::NumberCtor => 1,
             BuiltinFunction::NumberParseInt => 2,
             BuiltinFunction::NumberParseFloat => 1,
@@ -519,6 +782,44 @@ impl Runtime {
             BuiltinFunction::NumberIsSafeInteger => 1,
             BuiltinFunction::DateCtor => 7,
             BuiltinFunction::DateNow => 0,
+            BuiltinFunction::DateUTC => 7,
+            BuiltinFunction::DateParse => 1,
+            BuiltinFunction::DateGetFullYear => 0,
+            BuiltinFunction::DateGetMonth => 0,
+            BuiltinFunction::DateGetDate => 0,
+            BuiltinFunction::DateGetDay => 0,
+            BuiltinFunction::DateGetHours => 0,
+            BuiltinFunction::DateGetMinutes => 0,
+            BuiltinFunction::DateGetSeconds => 0,
+            BuiltinFunction::DateGetMilliseconds => 0,
+            BuiltinFunction::DateGetUTCDay => 0,
+            BuiltinFunction::DateGetUTCMilliseconds => 0,
+            BuiltinFunction::DateGetTimezoneOffset => 0,
+            BuiltinFunction::DateGetYear => 0,
+            BuiltinFunction::DateSetFullYear => 3,
+            BuiltinFunction::DateSetMonth => 2,
+            BuiltinFunction::DateSetDate => 1,
+            BuiltinFunction::DateSetHours => 4,
+            BuiltinFunction::DateSetMinutes => 3,
+            BuiltinFunction::DateSetSeconds => 2,
+            BuiltinFunction::DateSetMilliseconds => 1,
+            BuiltinFunction::DateSetUTCFullYear => 3,
+            BuiltinFunction::DateSetUTCMonth => 2,
+            BuiltinFunction::DateSetUTCDate => 1,
+            BuiltinFunction::DateSetUTCHours => 4,
+            BuiltinFunction::DateSetUTCMinutes => 3,
+            BuiltinFunction::DateSetUTCSeconds => 2,
+            BuiltinFunction::DateSetUTCMilliseconds => 1,
+            BuiltinFunction::DateSetTime => 1,
+            BuiltinFunction::DateSetYear => 1,
+            BuiltinFunction::DateToString => 0,
+            BuiltinFunction::DateToDateString => 0,
+            BuiltinFunction::DateToTimeString => 0,
+            BuiltinFunction::DateToUTCString => 0,
+            BuiltinFunction::DateToLocaleString => 0,
+            BuiltinFunction::DateToLocaleDateString => 0,
+            BuiltinFunction::DateToLocaleTimeString => 0,
+
             BuiltinFunction::DateGetTime => 0,
             BuiltinFunction::DateValueOf => 0,
             BuiltinFunction::DateToISOString => 0,
@@ -565,6 +866,7 @@ impl Runtime {
             BuiltinFunction::BooleanCtor => 1,
             BuiltinFunction::BooleanToString => 0,
             BuiltinFunction::BooleanValueOf => 0,
+            BuiltinFunction::NumberToLocaleString => 0,
             BuiltinFunction::NumberToString => 0,
             BuiltinFunction::NumberValueOf => 0,
             BuiltinFunction::NumberToFixed => 1,
@@ -590,6 +892,22 @@ impl Runtime {
             BuiltinFunction::MathHypot => 2,
             BuiltinFunction::MathCbrt => 1,
             BuiltinFunction::MathRandom => 0,
+            BuiltinFunction::MathTan => 1,
+            BuiltinFunction::MathAsin => 1,
+            BuiltinFunction::MathAcos => 1,
+            BuiltinFunction::MathAtan => 1,
+            BuiltinFunction::MathSinh => 1,
+            BuiltinFunction::MathCosh => 1,
+            BuiltinFunction::MathTanh => 1,
+            BuiltinFunction::MathAsinh => 1,
+            BuiltinFunction::MathAcosh => 1,
+            BuiltinFunction::MathAtanh => 1,
+            BuiltinFunction::MathClz32 => 1,
+            BuiltinFunction::MathImul => 2,
+            BuiltinFunction::MathFround => 1,
+            BuiltinFunction::MathLog1p => 1,
+            BuiltinFunction::MathExpm1 => 1,
+
             BuiltinFunction::JsonStringify => 3,
             BuiltinFunction::JsonParse => 2,
         }
@@ -614,10 +932,15 @@ impl Runtime {
                 BuiltinFunction::ArrayCtor => match key {
                     "isArray" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayIsArray)),
                     "from" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayFrom)),
+                    "fromAsync" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayFromAsync)),
                     "of" => Some(Value::BuiltinFunction(BuiltinFunction::ArrayOf)),
                     _ => None,
                 },
+                BuiltinFunction::MapCtor if key == "groupBy" => {
+                    Some(Value::BuiltinFunction(BuiltinFunction::MapGroupBy))
+                }
                 BuiltinFunction::ObjectCtor => match key {
+                    "groupBy" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectGroupBy)),
                     "assign" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectAssign)),
                     "create" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectCreate)),
                     "freeze" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectFreeze)),
@@ -629,11 +952,24 @@ impl Runtime {
                     "values" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectValues)),
                     "entries" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectEntries)),
                     "hasOwn" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectHasOwn)),
+                    "is" => Some(Value::BuiltinFunction(BuiltinFunction::ObjectIs)),
                     _ => None,
                 },
-                BuiltinFunction::DateCtor if key == "now" => {
-                    Some(Value::BuiltinFunction(BuiltinFunction::DateNow))
-                }
+                BuiltinFunction::DateCtor => match key {
+                    "now" => Some(Value::BuiltinFunction(BuiltinFunction::DateNow)),
+                    "UTC" => Some(Value::BuiltinFunction(BuiltinFunction::DateUTC)),
+                    "parse" => Some(Value::BuiltinFunction(BuiltinFunction::DateParse)),
+                    _ => None,
+                },
+                BuiltinFunction::StringCtor => match key {
+                    "fromCharCode" => {
+                        Some(Value::BuiltinFunction(BuiltinFunction::StringFromCharCode))
+                    }
+                    "fromCodePoint" => {
+                        Some(Value::BuiltinFunction(BuiltinFunction::StringFromCodePoint))
+                    }
+                    _ => None,
+                },
                 BuiltinFunction::NumberCtor => match key {
                     "parseInt" => Some(Value::BuiltinFunction(BuiltinFunction::NumberParseInt)),
                     "parseFloat" => Some(Value::BuiltinFunction(BuiltinFunction::NumberParseFloat)),
@@ -654,6 +990,9 @@ impl Runtime {
                     _ => None,
                 },
                 BuiltinFunction::PromiseCtor => match key {
+                    "withResolvers" => Some(Value::BuiltinFunction(
+                        BuiltinFunction::PromiseWithResolvers,
+                    )),
                     "resolve" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseResolve)),
                     "reject" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseReject)),
                     "all" => Some(Value::BuiltinFunction(BuiltinFunction::PromiseAll)),
@@ -677,6 +1016,46 @@ impl Runtime {
         property: Value,
     ) -> MustardResult<bool> {
         let key = self.to_property_key(property)?;
+        if key == "toLocaleString"
+            && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::NumberCtor)))))
+        {
+            return Ok(true);
+        }
+        if Self::date_prototype_method(&key).is_some()
+            && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::DateCtor)))))
+        {
+            return Ok(true);
+        }
+        if Self::set_prototype_method(&key).is_some()
+            && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::SetCtor)))))
+        {
+            return Ok(true);
+        }
+        if Self::bigint_prototype_method(&key).is_some()
+            && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::BigIntCtor)))))
+        {
+            return Ok(true);
+        }
+        if Self::string_extension_method(&key).is_some()
+            && matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::StringObject(_) | ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::StringCtor)))))
+        {
+            return Ok(true);
+        }
+        if Self::object_prototype_method(&key).is_some()
+            && !matches!(
+                object,
+                Value::Null
+                    | Value::Undefined
+                    | Value::Bool(_)
+                    | Value::Number(_)
+                    | Value::String(_)
+                    | Value::BigInt(_)
+            )
+            && !matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::NullPrototype)))
+            && (key != "toString" || !self.is_callable_value(&object)?)
+        {
+            return Ok(true);
+        }
         match object {
             Value::Object(object) => {
                 let object = self
@@ -689,6 +1068,10 @@ impl Runtime {
                 Ok(match &object.kind {
                     ObjectKind::FunctionPrototype(constructor) => {
                         key == "constructor"
+                            || (matches!(
+                                constructor,
+                                Value::BuiltinFunction(BuiltinFunction::ArrayCtor)
+                            ) && Self::array_prototype_method(&key).is_some())
                             || matches!(
                                 (constructor, key.as_str()),
                                 (
@@ -710,6 +1093,7 @@ impl Runtime {
                                         | "toFixed"
                                         | "toExponential"
                                         | "toPrecision"
+                                        | "toLocaleString"
                                 )
                             )
                     }
@@ -719,24 +1103,15 @@ impl Runtime {
                             || key == "constructor"
                             || matches!(key.as_str(), "call" | "apply" | "bind")
                     }
-                    ObjectKind::Date(_) => matches!(
-                        key.as_str(),
-                        "getTime"
-                            | "valueOf"
-                            | "toISOString"
-                            | "toJSON"
-                            | "getUTCFullYear"
-                            | "getUTCMonth"
-                            | "getUTCDate"
-                            | "getUTCHours"
-                            | "getUTCMinutes"
-                            | "getUTCSeconds"
-                    ),
+                    ObjectKind::Date(_) => {
+                        key == "constructor" || Self::date_prototype_method(&key).is_some()
+                    }
                     ObjectKind::RegExp(_) => matches!(
                         key.as_str(),
                         "source"
                             | "flags"
                             | "global"
+                            | "hasIndices"
                             | "ignoreCase"
                             | "multiline"
                             | "dotAll"
@@ -798,6 +1173,7 @@ impl Runtime {
                                 | "toFixed"
                                 | "toExponential"
                                 | "toPrecision"
+                                | "toLocaleString"
                         )
                     }
                     ObjectKind::BooleanObject(_) => {
@@ -807,8 +1183,12 @@ impl Runtime {
                     ObjectKind::Plain
                     | ObjectKind::Global
                     | ObjectKind::Math
-                    | ObjectKind::Json
-                    | ObjectKind::Error(_) => key == "constructor",
+                    | ObjectKind::Json => key == "constructor",
+                    ObjectKind::Error(_) => matches!(
+                        key.as_str(),
+                        "constructor" | "toString" | "name" | "message"
+                    ),
+                    ObjectKind::NullPrototype => false,
                 })
             }
             Value::Array(array) => {
@@ -816,7 +1196,8 @@ impl Runtime {
                     .arrays
                     .get(array)
                     .ok_or_else(|| MustardError::runtime("array missing"))?;
-                Ok(key == "length"
+                Ok(Self::array_prototype_method(&key).is_some()
+                    || key == "length"
                     || key.parse::<usize>().ok().is_some_and(|index| {
                         array.elements.get(index).is_some_and(Option::is_some)
                     })
@@ -878,19 +1259,8 @@ impl Runtime {
                 self.sets
                     .get(set)
                     .ok_or_else(|| MustardError::runtime("set missing"))?;
-                Ok(matches!(
-                    key.as_str(),
-                    "constructor"
-                        | "size"
-                        | "add"
-                        | "has"
-                        | "delete"
-                        | "clear"
-                        | "entries"
-                        | "keys"
-                        | "values"
-                        | "forEach"
-                ))
+                Ok(matches!(key.as_str(), "constructor" | "size")
+                    || Self::set_prototype_method(&key).is_some())
             }
             Value::Iterator(iterator) => {
                 self.iterators
@@ -1110,6 +1480,9 @@ impl Runtime {
                     &mut state.next_index,
                     &mut state.observed_clear_epoch,
                 )?;
+                if value.is_none() {
+                    state.next_index = usize::MAX;
+                }
                 let produced = value
                     .map(|value: Value| {
                         self.insert_array(vec![value.clone(), value], IndexMap::new())
@@ -1124,6 +1497,9 @@ impl Runtime {
                     &mut state.next_index,
                     &mut state.observed_clear_epoch,
                 )?;
+                if value.is_none() {
+                    state.next_index = usize::MAX;
+                }
                 (value, IteratorState::SetValues(state))
             }
         };
@@ -1406,7 +1782,10 @@ impl Runtime {
         key: &str,
         site: Option<(usize, usize)>,
     ) -> MustardResult<Option<Value>> {
-        if key == "constructor" {
+        if matches!(
+            key,
+            "constructor" | "hasOwnProperty" | "toString" | "valueOf"
+        ) {
             return Ok(None);
         }
 
@@ -1525,7 +1904,72 @@ impl Runtime {
         self.get_property_by_key(object, key, optional)
     }
 
-    fn get_property_by_key(
+    pub(super) fn bigint_prototype_method(key: &str) -> Option<BuiltinFunction> {
+        match key {
+            "toString" => Some(BuiltinFunction::BigIntToString),
+            "valueOf" => Some(BuiltinFunction::BigIntValueOf),
+            _ => None,
+        }
+    }
+
+    pub(super) fn string_extension_method(key: &str) -> Option<BuiltinFunction> {
+        Some(match key {
+            "charCodeAt" => BuiltinFunction::StringCharCodeAt,
+            "codePointAt" => BuiltinFunction::StringCodePointAt,
+            "localeCompare" => BuiltinFunction::StringLocaleCompare,
+            "normalize" => BuiltinFunction::StringNormalize,
+            "isWellFormed" => BuiltinFunction::StringIsWellFormed,
+            _ => return None,
+        })
+    }
+
+    pub(super) fn object_prototype_method(key: &str) -> Option<BuiltinFunction> {
+        match key {
+            "hasOwnProperty" => Some(BuiltinFunction::ObjectHasOwnProperty),
+            "toString" => Some(BuiltinFunction::ObjectToString),
+            "valueOf" => Some(BuiltinFunction::ObjectValueOf),
+            _ => None,
+        }
+    }
+
+    pub(super) fn get_property_by_key(
+        &self,
+        object: Value,
+        key: &str,
+        optional: bool,
+    ) -> MustardResult<Value> {
+        let value = self.get_property_by_key_surface(object.clone(), key, optional)?;
+        if matches!(value, Value::Undefined)
+            && (matches!(object, Value::String(_))
+                || matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::StringObject(_)))))
+            && let Some(method) = Self::string_extension_method(key)
+            && matches!(
+                self.call_object_has_own(&[object.clone(), Value::String(key.to_string())])?,
+                Value::Bool(false)
+            )
+        {
+            return Ok(Value::BuiltinFunction(method));
+        }
+        if !matches!(value, Value::Undefined)
+            || matches!(object, Value::Null | Value::Undefined)
+            || matches!(&object, Value::Object(id) if self.objects.get(*id).is_some_and(|o| matches!(o.kind, ObjectKind::NullPrototype)))
+            || (key == "toString"
+                && (self.is_callable_value(&object)? || matches!(object, Value::BigInt(_))))
+        {
+            return Ok(value);
+        }
+        if let Some(method) = Self::object_prototype_method(key)
+            && matches!(
+                self.call_object_has_own(&[object, Value::String(key.to_string())])?,
+                Value::Bool(false)
+            )
+        {
+            return Ok(Value::BuiltinFunction(method));
+        }
+        Ok(value)
+    }
+
+    fn get_property_by_key_surface(
         &self,
         object: Value,
         key: &str,
@@ -1540,7 +1984,30 @@ impl Runtime {
                     .objects
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
+                if matches!(key, "valueOf" | "toString") {
+                    if let Some(value) = object.properties.get(key) {
+                        return Ok(value.clone());
+                    }
+                    if key == "toString"
+                        && matches!(
+                            object.kind,
+                            ObjectKind::RegExp(_)
+                                | ObjectKind::FunctionPrototype(Value::BuiltinFunction(
+                                    BuiltinFunction::RegExpCtor
+                                ))
+                        )
+                    {
+                        return Ok(Value::BuiltinFunction(BuiltinFunction::RegExpToString));
+                    }
+                }
                 match &object.kind {
+                    ObjectKind::NullPrototype => {
+                        return Ok(object
+                            .properties
+                            .get(key)
+                            .cloned()
+                            .unwrap_or(Value::Undefined));
+                    }
                     ObjectKind::Plain
                     | ObjectKind::Global
                     | ObjectKind::Math
@@ -1565,16 +2032,29 @@ impl Runtime {
                         }
                         return Ok(Value::Undefined);
                     }
-                    ObjectKind::Error(name) => {
+                    ObjectKind::Error(error) => {
                         if let Some(value) = object.properties.get(key) {
                             return Ok(value.clone());
                         }
+                        if key == "toString" {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::ErrorToString));
+                        }
+                        if key == "name" {
+                            return Ok(Value::String(error.name.clone()));
+                        }
+                        if key == "message" {
+                            return Ok(Value::String(String::new()));
+                        }
                         if key == "constructor" {
-                            let ctor = match name.as_str() {
+                            let ctor = match error.name.as_str() {
                                 "TypeError" => BuiltinFunction::TypeErrorCtor,
                                 "ReferenceError" => BuiltinFunction::ReferenceErrorCtor,
                                 "RangeError" => BuiltinFunction::RangeErrorCtor,
                                 "SyntaxError" => BuiltinFunction::SyntaxErrorCtor,
+                                "EvalError" => BuiltinFunction::EvalErrorCtor,
+                                "URIError" => BuiltinFunction::URIErrorCtor,
+                                "AggregateError" => BuiltinFunction::AggregateErrorCtor,
+
                                 _ => BuiltinFunction::ErrorCtor,
                             };
                             return Ok(Value::BuiltinFunction(ctor));
@@ -1584,43 +2064,24 @@ impl Runtime {
                     _ => {}
                 }
                 if let ObjectKind::Date(_) = &object.kind {
-                    let built_in = match key {
-                        "getTime" => Some(Value::BuiltinFunction(BuiltinFunction::DateGetTime)),
-                        "valueOf" => Some(Value::BuiltinFunction(BuiltinFunction::DateValueOf)),
-                        "toISOString" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateToISOString))
-                        }
-                        "toJSON" => Some(Value::BuiltinFunction(BuiltinFunction::DateToJSON)),
-                        "getUTCFullYear" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCFullYear))
-                        }
-                        "getUTCMonth" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCMonth))
-                        }
-                        "getUTCDate" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCDate))
-                        }
-                        "getUTCHours" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCHours))
-                        }
-                        "getUTCMinutes" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCMinutes))
-                        }
-                        "getUTCSeconds" => {
-                            Some(Value::BuiltinFunction(BuiltinFunction::DateGetUTCSeconds))
-                        }
-                        "constructor" => Some(Value::BuiltinFunction(BuiltinFunction::DateCtor)),
-                        _ => None,
-                    };
-                    if let Some(value) = built_in {
-                        return Ok(value);
+                    if let Some(value) = object.properties.get(key) {
+                        return Ok(value.clone());
+                    }
+                    if key == "constructor" {
+                        return Ok(Value::BuiltinFunction(BuiltinFunction::DateCtor));
+                    }
+                    if let Some(method) = Self::date_prototype_method(key) {
+                        return Ok(Value::BuiltinFunction(method));
                     }
                 }
                 if let ObjectKind::RegExp(regex) = &object.kind {
                     let built_in = match key {
-                        "source" => Some(Value::String(regex.pattern.clone())),
+                        "source" => {
+                            Some(Value::String(Self::regexp_display_source(&regex.pattern)))
+                        }
                         "flags" => Some(Value::String(regex.flags.clone())),
                         "global" => Some(Value::Bool(regex.flags.contains('g'))),
+                        "hasIndices" => Some(Value::Bool(regex.flags.contains('d'))),
                         "ignoreCase" => Some(Value::Bool(regex.flags.contains('i'))),
                         "multiline" => Some(Value::Bool(regex.flags.contains('m'))),
                         "dotAll" => Some(Value::Bool(regex.flags.contains('s'))),
@@ -1707,6 +2168,11 @@ impl Runtime {
                                 BuiltinFunction::NumberToExponential,
                             ));
                         }
+                        "toLocaleString" => {
+                            return Ok(Value::BuiltinFunction(
+                                BuiltinFunction::NumberToLocaleString,
+                            ));
+                        }
                         "toPrecision" => {
                             return Ok(Value::BuiltinFunction(BuiltinFunction::NumberToPrecision));
                         }
@@ -1777,58 +2243,71 @@ impl Runtime {
                     return Ok(value.clone());
                 }
                 if let ObjectKind::FunctionPrototype(constructor) = &object.kind {
+                    match (constructor, key) {
+                        (Value::BuiltinFunction(BuiltinFunction::StringCtor), "toString") => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::StringToString));
+                        }
+                        (Value::BuiltinFunction(BuiltinFunction::StringCtor), "valueOf") => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::StringValueOf));
+                        }
+                        (Value::BuiltinFunction(BuiltinFunction::BooleanCtor), "toString") => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::BooleanToString));
+                        }
+                        (Value::BuiltinFunction(BuiltinFunction::BooleanCtor), "valueOf") => {
+                            return Ok(Value::BuiltinFunction(BuiltinFunction::BooleanValueOf));
+                        }
+                        (Value::BuiltinFunction(BuiltinFunction::RegExpCtor), "source") => {
+                            return Ok(Value::String("(?:)".into()));
+                        }
+                        (Value::BuiltinFunction(BuiltinFunction::RegExpCtor), "flags") => {
+                            return Ok(Value::String(String::new()));
+                        }
+                        _ => {}
+                    }
+                    if matches!(
+                        constructor,
+                        Value::BuiltinFunction(BuiltinFunction::SetCtor)
+                    ) && let Some(method) = Self::set_prototype_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
+                    }
+                    if matches!(
+                        constructor,
+                        Value::BuiltinFunction(BuiltinFunction::BigIntCtor)
+                    ) && let Some(method) = Self::bigint_prototype_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
+                    }
+                    if matches!(
+                        constructor,
+                        Value::BuiltinFunction(BuiltinFunction::StringCtor)
+                    ) && let Some(method) = Self::string_extension_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
+                    }
+                    if matches!(
+                        constructor,
+                        Value::BuiltinFunction(BuiltinFunction::ObjectCtor)
+                    ) && let Some(method) = Self::object_prototype_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
+                    }
+                    if matches!(
+                        constructor,
+                        Value::BuiltinFunction(BuiltinFunction::ArrayCtor)
+                    ) && let Some(method) = Self::array_prototype_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
+                    }
                     if key == "constructor" {
                         return Ok(constructor.clone());
                     }
                     if matches!(
                         constructor,
                         Value::BuiltinFunction(BuiltinFunction::DateCtor)
-                    ) {
-                        match key {
-                            "getTime" => {
-                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateGetTime));
-                            }
-                            "valueOf" => {
-                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateValueOf));
-                            }
-                            "toISOString" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateToISOString,
-                                ));
-                            }
-                            "toJSON" => {
-                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateToJSON));
-                            }
-                            "getUTCFullYear" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateGetUTCFullYear,
-                                ));
-                            }
-                            "getUTCMonth" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateGetUTCMonth,
-                                ));
-                            }
-                            "getUTCDate" => {
-                                return Ok(Value::BuiltinFunction(BuiltinFunction::DateGetUTCDate));
-                            }
-                            "getUTCHours" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateGetUTCHours,
-                                ));
-                            }
-                            "getUTCMinutes" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateGetUTCMinutes,
-                                ));
-                            }
-                            "getUTCSeconds" => {
-                                return Ok(Value::BuiltinFunction(
-                                    BuiltinFunction::DateGetUTCSeconds,
-                                ));
-                            }
-                            _ => {}
-                        }
+                    ) && let Some(method) = Self::date_prototype_method(key)
+                    {
+                        return Ok(Value::BuiltinFunction(method));
                     }
                     if matches!(
                         constructor,
@@ -1847,6 +2326,11 @@ impl Runtime {
                             "toExponential" => {
                                 return Ok(Value::BuiltinFunction(
                                     BuiltinFunction::NumberToExponential,
+                                ));
+                            }
+                            "toLocaleString" => {
+                                return Ok(Value::BuiltinFunction(
+                                    BuiltinFunction::NumberToLocaleString,
                                 ));
                             }
                             "toPrecision" => {
@@ -1924,44 +2408,9 @@ impl Runtime {
                 } else if let Some(value) = array.properties.get(key) {
                     Ok(value.clone())
                 } else {
-                    match key {
-                        "sort" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySort)),
-                        "push" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPush)),
-                        "pop" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayPop)),
-                        "slice" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySlice)),
-                        "splice" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySplice)),
-                        "concat" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayConcat)),
-                        "at" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayAt)),
-                        "join" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayJoin)),
-                        "includes" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIncludes)),
-                        "indexOf" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayIndexOf)),
-                        "lastIndexOf" => {
-                            Ok(Value::BuiltinFunction(BuiltinFunction::ArrayLastIndexOf))
-                        }
-                        "reverse" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayReverse)),
-                        "fill" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFill)),
-                        "values" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayValues)),
-                        "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayKeys)),
-                        "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayEntries)),
-                        "forEach" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayForEach)),
-                        "map" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayMap)),
-                        "filter" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFilter)),
-                        "find" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFind)),
-                        "findIndex" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFindIndex)),
-                        "some" => Ok(Value::BuiltinFunction(BuiltinFunction::ArraySome)),
-                        "every" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayEvery)),
-                        "flat" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFlat)),
-                        "flatMap" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFlatMap)),
-                        "reduce" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayReduce)),
-                        "reduceRight" => {
-                            Ok(Value::BuiltinFunction(BuiltinFunction::ArrayReduceRight))
-                        }
-                        "findLast" => Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFindLast)),
-                        "findLastIndex" => {
-                            Ok(Value::BuiltinFunction(BuiltinFunction::ArrayFindLastIndex))
-                        }
-                        _ => Ok(Value::Undefined),
-                    }
+                    Ok(Self::array_prototype_method(key)
+                        .map(Value::BuiltinFunction)
+                        .unwrap_or(Value::Undefined))
                 }
             }
             Value::Map(map) => {
@@ -1992,15 +2441,9 @@ impl Runtime {
                 match key {
                     "constructor" => Ok(Value::BuiltinFunction(BuiltinFunction::SetCtor)),
                     "size" => Ok(Value::Number(set.live_len as f64)),
-                    "add" => Ok(Value::BuiltinFunction(BuiltinFunction::SetAdd)),
-                    "has" => Ok(Value::BuiltinFunction(BuiltinFunction::SetHas)),
-                    "delete" => Ok(Value::BuiltinFunction(BuiltinFunction::SetDelete)),
-                    "clear" => Ok(Value::BuiltinFunction(BuiltinFunction::SetClear)),
-                    "entries" => Ok(Value::BuiltinFunction(BuiltinFunction::SetEntries)),
-                    "keys" => Ok(Value::BuiltinFunction(BuiltinFunction::SetKeys)),
-                    "values" => Ok(Value::BuiltinFunction(BuiltinFunction::SetValues)),
-                    "forEach" => Ok(Value::BuiltinFunction(BuiltinFunction::SetForEach)),
-                    _ => Ok(Value::Undefined),
+                    _ => Ok(Self::set_prototype_method(key)
+                        .map(Value::BuiltinFunction)
+                        .unwrap_or(Value::Undefined)),
                 }
             }
             Value::Iterator(_) if key == "next" => {
@@ -2092,6 +2535,9 @@ impl Runtime {
                 "valueOf" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberValueOf)),
                 "toFixed" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToFixed)),
                 "toExponential" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToExponential)),
+                "toLocaleString" => Ok(Value::BuiltinFunction(
+                    BuiltinFunction::NumberToLocaleString,
+                )),
                 "toPrecision" => Ok(Value::BuiltinFunction(BuiltinFunction::NumberToPrecision)),
                 _ => Ok(Value::Undefined),
             },
@@ -2101,10 +2547,16 @@ impl Runtime {
                 "valueOf" => Ok(Value::BuiltinFunction(BuiltinFunction::BooleanValueOf)),
                 _ => Ok(Value::Undefined),
             },
+            Value::BigInt(_) => Ok(if key == "constructor" {
+                Value::BuiltinFunction(BuiltinFunction::BigIntCtor)
+            } else {
+                Self::bigint_prototype_method(key)
+                    .map(Value::BuiltinFunction)
+                    .unwrap_or(Value::Undefined)
+            }),
             Value::Null | Value::Undefined => Err(MustardError::runtime(
                 "TypeError: cannot read properties of nullish value",
             )),
-            _ => Ok(Value::Undefined),
         }
     }
 
@@ -2152,6 +2604,117 @@ impl Runtime {
             },
             _ => 0,
         })
+    }
+
+    pub(super) fn delete_property(&mut self, object: Value, property: Value) -> MustardResult<()> {
+        if matches!(object, Value::Undefined | Value::Null) {
+            return Err(MustardError::runtime(
+                "TypeError: cannot delete properties of nullish value",
+            ));
+        }
+        let key = self.to_property_key(property)?;
+        self.delete_property_by_key(object, &key)
+    }
+
+    pub(super) fn delete_property_by_key(&mut self, object: Value, key: &str) -> MustardResult<()> {
+        match object {
+            Value::Object(object) => {
+                let object_ref = self
+                    .objects
+                    .get(object)
+                    .ok_or_else(|| MustardError::runtime("object missing"))?;
+                if !matches!(
+                    object_ref.kind,
+                    ObjectKind::Plain | ObjectKind::NullPrototype | ObjectKind::Error(_)
+                ) {
+                    return Err(MustardError::runtime(
+                        "TypeError: delete only supports plain objects and arrays on the supported surface",
+                    ));
+                }
+                let work = object_ref.properties.len();
+                self.charge_native_helper_work(work)?;
+                self.materialize_object_properties_if_needed(object)?;
+                let removed = self
+                    .objects
+                    .get_mut(object)
+                    .expect("object checked")
+                    .properties
+                    .materialize()
+                    .shift_remove(key);
+                if let Some(value) = removed {
+                    if let ObjectKind::Error(error) =
+                        &mut self.objects.get_mut(object).expect("object checked").kind
+                    {
+                        error.non_enumerable &= !ErrorObject::property_bit(key);
+                    }
+                    self.apply_object_component_delta(
+                        object,
+                        Self::property_entry_bytes(key, &value),
+                        0,
+                    )?;
+                }
+                Ok(())
+            }
+            Value::Array(array) => {
+                if key == "length" {
+                    return Err(MustardError::runtime(
+                        "TypeError: cannot delete non-configurable array length",
+                    ));
+                }
+                if let Some(index) = array_index_from_property_key(key) {
+                    let removed = self
+                        .arrays
+                        .get_mut(array)
+                        .ok_or_else(|| MustardError::runtime("array missing"))?
+                        .elements
+                        .get_mut(index)
+                        .and_then(Option::take);
+                    if let Some(value) = removed {
+                        self.apply_array_component_delta(
+                            array,
+                            Self::array_slot_bytes(Some(&value)),
+                            Self::array_slot_bytes(None),
+                        )?;
+                    }
+                } else {
+                    let work = self
+                        .arrays
+                        .get(array)
+                        .ok_or_else(|| MustardError::runtime("array missing"))?
+                        .properties
+                        .len();
+                    self.charge_native_helper_work(work)?;
+                    let removed = self
+                        .arrays
+                        .get_mut(array)
+                        .expect("array checked")
+                        .properties
+                        .shift_remove(key);
+                    if let Some(value) = removed {
+                        self.apply_array_component_delta(
+                            array,
+                            Self::property_entry_bytes(key, &value),
+                            0,
+                        )?;
+                    }
+                }
+                Ok(())
+            }
+            Value::String(value)
+                if key == "length"
+                    || array_index_from_property_key(key).is_some_and(|index| {
+                        string_index_property_value(&value, index).is_some()
+                    }) =>
+            {
+                Err(MustardError::runtime(
+                    "TypeError: cannot delete non-configurable string property",
+                ))
+            }
+            Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::BigInt(_) => Ok(()),
+            _ => Err(MustardError::runtime(
+                "TypeError: delete only supports plain objects and arrays on the supported surface",
+            )),
+        }
     }
 
     pub(super) fn set_property(

@@ -85,6 +85,20 @@ pub(super) enum Value {
     BigInt(BigInt),
 }
 
+impl Value {
+    pub(super) fn is_primitive(&self) -> bool {
+        matches!(
+            self,
+            Self::Undefined
+                | Self::Null
+                | Self::Bool(_)
+                | Self::Number(_)
+                | Self::String(_)
+                | Self::BigInt(_)
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub(super) enum CollectionNumberKey {
     Finite(u64),
@@ -598,6 +612,104 @@ pub(super) enum BuiltinFunction {
     MathRandom,
     JsonStringify,
     JsonParse,
+    EvalErrorCtor,
+    URIErrorCtor,
+    AggregateErrorCtor,
+    ErrorToString,
+    ArrayShift,
+    ArrayUnshift,
+    ArrayToSorted,
+    ArrayToReversed,
+    ArrayToSpliced,
+    ArrayWith,
+    ArrayCopyWithin,
+    ObjectGroupBy,
+    MapGroupBy,
+    ObjectIs,
+    ObjectHasOwnProperty,
+    ObjectToString,
+    ArrayToString,
+    EncodeURI,
+    EncodeURIComponent,
+    DecodeURI,
+    DecodeURIComponent,
+    StringCharCodeAt,
+    StringCodePointAt,
+    StringFromCharCode,
+    StringFromCodePoint,
+    StringNormalize,
+    StringIsWellFormed,
+    BigIntCtor,
+    BigIntToString,
+    BigIntValueOf,
+    MathTan,
+    MathAsin,
+    MathAcos,
+    MathAtan,
+    MathSinh,
+    MathCosh,
+    MathTanh,
+    MathAsinh,
+    MathAcosh,
+    MathAtanh,
+    MathClz32,
+    MathImul,
+    MathFround,
+    MathLog1p,
+    MathExpm1,
+    SetUnion,
+    SetIntersection,
+    SetDifference,
+    SetSymmetricDifference,
+    SetIsSubsetOf,
+    SetIsSupersetOf,
+    SetIsDisjointFrom,
+    PromiseWithResolvers,
+    PromiseResolveOnce(ObjectKey),
+    PromiseRejectOnce(ObjectKey),
+    ArrayFromAsync,
+    DateUTC,
+    DateParse,
+    DateGetFullYear,
+    DateGetMonth,
+    DateGetDate,
+    DateGetDay,
+    DateGetHours,
+    DateGetMinutes,
+    DateGetSeconds,
+    DateGetMilliseconds,
+    DateGetUTCDay,
+    DateGetUTCMilliseconds,
+    DateGetTimezoneOffset,
+    DateGetYear,
+    DateSetFullYear,
+    DateSetMonth,
+    DateSetDate,
+    DateSetHours,
+    DateSetMinutes,
+    DateSetSeconds,
+    DateSetMilliseconds,
+    DateSetUTCFullYear,
+    DateSetUTCMonth,
+    DateSetUTCDate,
+    DateSetUTCHours,
+    DateSetUTCMinutes,
+    DateSetUTCSeconds,
+    DateSetUTCMilliseconds,
+    DateSetTime,
+    DateSetYear,
+    DateToString,
+    DateToDateString,
+    DateToTimeString,
+    DateToUTCString,
+    DateToLocaleString,
+    DateToLocaleDateString,
+    DateToLocaleTimeString,
+    StringLocaleCompare,
+    NumberToLocaleString,
+    ObjectValueOf,
+    FunctionToString,
+    RegExpToString,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -861,7 +973,7 @@ pub(super) enum ObjectKind {
     Intl,
     FunctionPrototype(Value),
     BoundFunction(BoundFunctionData),
-    Error(String),
+    Error(ErrorObject),
     Date(DateObject),
     RegExp(RegExpObject),
     NumberObject(f64),
@@ -869,6 +981,31 @@ pub(super) enum ObjectKind {
     BooleanObject(bool),
     IntlDateTimeFormat(IntlDateTimeFormatObject),
     IntlNumberFormat(IntlNumberFormatObject),
+    NullPrototype,
+}
+
+// Only constructor-created Error slots need descriptors in this profile.
+// Guest-created properties use ordinary enumerable storage; overwriting an
+// existing hidden slot preserves its attributes, while delete removes them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct ErrorObject {
+    pub(super) name: String,
+    pub(super) non_enumerable: u8,
+}
+
+impl ErrorObject {
+    pub(super) fn property_bit(key: &str) -> u8 {
+        match key {
+            "message" => 1,
+            "stack" => 2,
+            "cause" => 4,
+            "errors" => 8,
+            _ => 0,
+        }
+    }
+    pub(super) fn is_enumerable(&self, key: &str) -> bool {
+        self.non_enumerable & Self::property_bit(key) == 0
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1090,9 +1227,13 @@ impl MapObject {
 
 impl SetObject {
     pub(super) fn lookup_promotion_len(&self) -> usize {
+        Self::lookup_promotion_len_for(self.live_len, self.string_key_live_len)
+    }
+
+    pub(super) fn lookup_promotion_len_for(live_len: usize, string_key_live_len: usize) -> usize {
         if string_heavy_collection_lookup_enabled()
-            && self.live_len > 0
-            && self.string_key_live_len == self.live_len
+            && live_len > 0
+            && string_key_live_len == live_len
         {
             COLLECTION_STRING_LOOKUP_PROMOTION_LEN
         } else {
@@ -1239,6 +1380,10 @@ pub(super) enum PromiseReaction {
         index: usize,
         kind: PromiseCombinatorKind,
     },
+    ArrayFromAsync {
+        target: PromiseKey,
+        phase: ArrayFromAsyncPhase,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -1266,6 +1411,7 @@ pub(super) enum PromiseDriver {
         remaining: usize,
         reasons: Vec<Option<Value>>,
     },
+    ArrayFromAsync(Box<ArrayFromAsyncState>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1302,6 +1448,46 @@ pub(super) struct PendingHostCall {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct EqualityContinuation {
+    pub(super) primitive: Value,
+    pub(super) negate: bool,
+    pub(super) work: Vec<CoercionWork>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) enum CoercionWork {
+    Primitive {
+        object: Value,
+        prefer_string: bool,
+        next_method: u8,
+        awaiting_result: bool,
+    },
+    ArrayJoin {
+        array: ArrayKey,
+        length: usize,
+        next_index: usize,
+        text: String,
+        separator: Option<String>,
+        awaiting_element: bool,
+    },
+    RegExpString {
+        receiver: Value,
+        source: Option<String>,
+        awaiting_result: bool,
+    },
+}
+
+impl CoercionWork {
+    pub(super) fn root(&self) -> Value {
+        match self {
+            Self::Primitive { object, .. } => object.clone(),
+            Self::ArrayJoin { array, .. } => Value::Array(*array),
+            Self::RegExpString { receiver, .. } => receiver.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct Frame {
     pub(super) function_id: usize,
     pub(super) ip: usize,
@@ -1310,6 +1496,7 @@ pub(super) struct Frame {
     pub(super) stack: Vec<Value>,
     pub(super) handlers: Vec<ExceptionHandler>,
     pub(super) pending_exception: Option<Value>,
+    pub(super) pending_equality: Option<EqualityContinuation>,
     pub(super) pending_completions: Vec<CompletionRecord>,
     pub(super) active_finally: Vec<ActiveFinallyState>,
     pub(super) async_promise: Option<PromiseKey>,
@@ -1335,6 +1522,12 @@ pub(super) enum CompletionRecord {
     },
     Return(Value),
     Throw(Value),
+    StructuredJump {
+        target: usize,
+        target_handler_depth: usize,
+        target_scope_depth: usize,
+        target_finally_depth: usize,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1465,11 +1658,20 @@ pub(super) struct Runtime {
     #[serde(skip, default)]
     pub(super) cancellation_token: Option<CancellationToken>,
     #[serde(skip, default)]
-    pub(super) regex_cache: HashMap<(String, String), Regex>,
+    pub(super) regex_cache: IndexMap<(String, String), Regex>,
+    #[serde(skip, default)]
+    pub(super) collator_cache:
+        IndexMap<(bool, u8, u8, bool), Arc<icu_collator::CollatorBorrowed<'static>>>,
     #[serde(skip, default)]
     pub(super) pending_internal_exception: Option<PromiseRejection>,
     #[serde(skip, default)]
     pub(super) pending_sync_callback_result: Option<Value>,
+    #[serde(skip, default)]
+    pub(super) native_callback_host_suspension_message: Option<String>,
+    #[serde(skip, default)]
+    pub(super) native_temporary_roots: Vec<Value>,
+    #[serde(skip, default)]
+    pub(super) native_depth: usize,
     #[serde(skip, default)]
     pub(super) snapshot_policy_required: bool,
     pub(super) pending_resume_behavior: ResumeBehavior,
@@ -1546,4 +1748,25 @@ pub(super) struct GarbageCollectionWorklist {
 pub(super) struct GarbageCollectionStats {
     pub(super) reclaimed_bytes: usize,
     pub(super) reclaimed_allocations: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(super) enum ArrayFromAsyncPhase {
+    IteratorValue,
+    Value,
+    Mapper,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct ArrayFromAsyncState {
+    pub(super) source: Value,
+    pub(super) iterator: Option<IteratorKey>,
+    pub(super) length: usize,
+    pub(super) index: usize,
+    pub(super) result: ArrayKey,
+    pub(super) mapper: Option<Value>,
+    pub(super) this_arg: Value,
+    pub(super) waiting: Option<PromiseKey>,
+    pub(super) phase: ArrayFromAsyncPhase,
+    pub(super) done: bool,
 }

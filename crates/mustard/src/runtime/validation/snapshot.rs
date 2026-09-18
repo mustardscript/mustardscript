@@ -19,6 +19,8 @@ pub(in crate::runtime) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> Mus
         ));
     }
 
+    validate_intl_number_formats(runtime)?;
+    validate_error_properties(runtime)?;
     validate_envs(runtime)?;
     validate_closures(runtime)?;
     validate_builtin_function_objects(runtime)?;
@@ -62,6 +64,24 @@ pub(in crate::runtime) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> Mus
         validate_runtime_value(runtime, &exception.value)?;
     }
 
+    Ok(())
+}
+
+fn validate_error_properties(runtime: &Runtime) -> MustardResult<()> {
+    for object in runtime.objects.values() {
+        if let ObjectKind::Error(error) = &object.kind {
+            if error.non_enumerable & !15 != 0 {
+                return Err(snapshot_error("invalid Error property attributes"));
+            }
+            for key in ["message", "stack", "cause", "errors"] {
+                if !error.is_enumerable(key) && object.properties.get(key).is_none() {
+                    return Err(snapshot_error(
+                        "Error attributes reference missing property",
+                    ));
+                }
+            }
+        }
+    }
     Ok(())
 }
 
@@ -200,12 +220,94 @@ fn validate_frame(runtime: &Runtime, frame: &Frame) -> MustardResult<()> {
             ));
         }
     }
+    if let Some(state) = &frame.pending_equality {
+        let operator = frame.ip.checked_sub(1).and_then(|ip| function.code.get(ip));
+        if !state.primitive.is_primitive()
+            || matches!(state.primitive, Value::Null | Value::Undefined)
+            || state.work.is_empty()
+            || state.work.len() > 256
+            || !matches!(
+                operator,
+                Some(Instruction::Binary(
+                    crate::ir::BinaryOp::Eq | crate::ir::BinaryOp::NotEq
+                ))
+            )
+            || state.negate
+                != matches!(
+                    operator,
+                    Some(Instruction::Binary(crate::ir::BinaryOp::NotEq))
+                )
+        {
+            return Err(snapshot_error("invalid equality continuation"));
+        }
+        for work in &state.work {
+            match work {
+                CoercionWork::Primitive {
+                    object,
+                    next_method,
+                    awaiting_result,
+                    ..
+                } => {
+                    if object.is_primitive()
+                        || *next_method > 2
+                        || (*awaiting_result && *next_method == 0)
+                    {
+                        return Err(snapshot_error("invalid primitive coercion continuation"));
+                    }
+                }
+                CoercionWork::ArrayJoin {
+                    array,
+                    next_index,
+                    length,
+                    awaiting_element,
+                    text,
+                    separator,
+                } => {
+                    if runtime.arrays.get(*array).is_none()
+                        || next_index > length
+                        || (*awaiting_element && *next_index == 0)
+                        || text
+                            .len()
+                            .saturating_add(separator.as_ref().map_or(0, String::len))
+                            > runtime.limits.heap_limit_bytes
+                    {
+                        return Err(snapshot_error("invalid array equality continuation"));
+                    }
+                }
+                CoercionWork::RegExpString {
+                    receiver, source, ..
+                } => {
+                    if receiver.is_primitive()
+                        || source
+                            .as_ref()
+                            .is_some_and(|s| s.len() > runtime.limits.heap_limit_bytes)
+                    {
+                        return Err(snapshot_error("invalid RegExp equality continuation"));
+                    }
+                }
+            }
+        }
+    }
     for completion in &frame.pending_completions {
+        if let CompletionRecord::StructuredJump {
+            target_finally_depth,
+            ..
+        } = completion
+            && *target_finally_depth > frame.active_finally.len()
+        {
+            return Err(snapshot_error("pending jump targets missing finally depth"));
+        }
         match completion {
             CompletionRecord::Jump {
                 target,
                 target_handler_depth,
                 target_scope_depth,
+            }
+            | CompletionRecord::StructuredJump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+                ..
             } => {
                 if *target >= function.code.len() {
                     return Err(snapshot_error(format!(
@@ -344,6 +446,29 @@ fn validate_promise_combinator_target(
     Ok(())
 }
 
+fn validate_array_from_async_reaction(
+    runtime: &Runtime,
+    target: PromiseKey,
+    source: PromiseKey,
+    phase: ArrayFromAsyncPhase,
+) -> MustardResult<()> {
+    let promise = runtime
+        .promises
+        .get(target)
+        .ok_or_else(|| snapshot_error("missing Array.fromAsync reaction target"))?;
+    if !matches!(promise.state, PromiseState::Pending) {
+        return Ok(());
+    }
+    match &promise.driver {
+        Some(PromiseDriver::ArrayFromAsync(state))
+            if state.waiting == Some(source) && state.phase == phase =>
+        {
+            Ok(())
+        }
+        _ => Err(snapshot_error("invalid Array.fromAsync reaction state")),
+    }
+}
+
 fn validate_microtask_snapshot(runtime: &Runtime, microtask: &MicrotaskJob) -> MustardResult<()> {
     match microtask {
         MicrotaskJob::ResumeAsync {
@@ -356,13 +481,17 @@ fn validate_microtask_snapshot(runtime: &Runtime, microtask: &MicrotaskJob) -> M
                 PromiseReaction::Then { target, .. }
                 | PromiseReaction::Finally { target, .. }
                 | PromiseReaction::FinallyPassThrough { target, .. }
-                | PromiseReaction::Combinator { target, .. } => *target,
+                | PromiseReaction::Combinator { target, .. }
+                | PromiseReaction::ArrayFromAsync { target, .. } => *target,
             };
             if runtime.promises.get(target).is_none() {
                 return Err(snapshot_error(format!(
                     "promise reaction microtask references missing target {:?}",
                     target
                 )));
+            }
+            if let PromiseReaction::ArrayFromAsync { phase, .. } = reaction {
+                validate_array_from_async_reaction(runtime, target, *source, *phase)?;
             }
             if let PromiseReaction::Combinator { index, kind, .. } = reaction {
                 validate_promise_combinator_target(
@@ -428,6 +557,30 @@ fn validate_promise_snapshot(
     promise_key: PromiseKey,
     promise: &PromiseObject,
 ) -> MustardResult<()> {
+    if let Some(PromiseDriver::ArrayFromAsync(state)) = &promise.driver {
+        if !matches!(promise.state, PromiseState::Pending)
+            || state.index > u32::MAX as usize
+            || (state.iterator.is_none()
+                && (state.index > state.length || state.length > u32::MAX as usize))
+            || runtime
+                .arrays
+                .get(state.result)
+                .is_none_or(|array| array.elements.len() != state.index)
+            || state
+                .waiting
+                .is_none_or(|source| runtime.promises.get(source).is_none())
+            || (state.phase == ArrayFromAsyncPhase::Mapper
+                && (state.mapper.is_none() || state.done))
+            || (state.phase == ArrayFromAsyncPhase::IteratorValue && state.iterator.is_none())
+        {
+            return Err(snapshot_error("invalid Array.fromAsync driver state"));
+        }
+        if let Some(mapper) = &state.mapper
+            && !runtime.is_callable_value(mapper)?
+        {
+            return Err(snapshot_error("invalid Array.fromAsync mapping function"));
+        }
+    }
     for dependent in &promise.dependents {
         if runtime.promises.get(*dependent).is_none() {
             return Err(snapshot_error(format!(
@@ -437,11 +590,15 @@ fn validate_promise_snapshot(
         }
     }
     for reaction in &promise.reactions {
+        if let PromiseReaction::ArrayFromAsync { target, phase } = reaction {
+            validate_array_from_async_reaction(runtime, *target, promise_key, *phase)?;
+        }
         match reaction {
             PromiseReaction::Then { target, .. }
             | PromiseReaction::Finally { target, .. }
             | PromiseReaction::FinallyPassThrough { target, .. }
-            | PromiseReaction::Combinator { target, .. } => {
+            | PromiseReaction::Combinator { target, .. }
+            | PromiseReaction::ArrayFromAsync { target, .. } => {
                 if runtime.promises.get(*target).is_none() {
                     return Err(snapshot_error(format!(
                         "promise {:?} reaction references missing target {:?}",
@@ -471,6 +628,27 @@ fn validate_promise_snapshot(
 
 fn validate_runtime_value(runtime: &Runtime, value: &Value) -> MustardResult<()> {
     match value {
+        Value::BuiltinFunction(BuiltinFunction::PromiseResolveOnce(guard))
+        | Value::BuiltinFunction(BuiltinFunction::PromiseRejectOnce(guard)) => {
+            let object = runtime
+                .objects
+                .get(*guard)
+                .ok_or_else(|| snapshot_error("missing Promise resolver guard"))?;
+            if !matches!(object.properties.get("resolved"), Some(Value::Bool(_))) {
+                return Err(snapshot_error("invalid Promise resolver guard"));
+            }
+            match object.properties.get("promise") {
+                Some(Value::Promise(target)) if runtime.promises.get(*target).is_some() => Ok(()),
+                _ => Err(snapshot_error("invalid Promise resolver target")),
+            }
+        }
+        Value::BuiltinFunction(BuiltinFunction::PromiseResolveFunction(target))
+        | Value::BuiltinFunction(BuiltinFunction::PromiseRejectFunction(target))
+            if runtime.promises.get(*target).is_none() =>
+        {
+            Err(snapshot_error("missing Promise resolver target"))
+        }
+
         Value::Object(object) if runtime.objects.get(*object).is_none() => Err(snapshot_error(
             format!("value references missing object {:?}", object),
         )),
@@ -496,4 +674,24 @@ fn validate_runtime_value(runtime: &Runtime, value: &Value) -> MustardResult<()>
         )),
         _ => Ok(()),
     }
+}
+
+fn validate_intl_number_formats(runtime: &Runtime) -> MustardResult<()> {
+    for object in runtime.objects.values() {
+        if let ObjectKind::IntlNumberFormat(formatter) = &object.kind {
+            let currency_valid = formatter
+                .currency
+                .as_ref()
+                .is_none_or(|code| code.len() == 3 && code.bytes().all(|b| b.is_ascii_uppercase()));
+            if formatter.locale != "en-US"
+                || formatter.maximum_fraction_digits > 100
+                || formatter.minimum_fraction_digits > formatter.maximum_fraction_digits
+                || !currency_valid
+                || (formatter.style == IntlNumberStyle::Currency && formatter.currency.is_none())
+            {
+                return Err(snapshot_error("invalid Intl.NumberFormat configuration"));
+            }
+        }
+    }
+    Ok(())
 }

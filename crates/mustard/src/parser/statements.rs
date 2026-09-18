@@ -1,6 +1,33 @@
 use super::*;
 
 impl<'a> Lowerer<'a> {
+    fn validate_control_label(
+        &mut self,
+        label: &str,
+        continuing: bool,
+        span: SourceSpan,
+    ) -> Option<()> {
+        match self
+            .labels
+            .iter()
+            .rev()
+            .find(|(name, _, depth)| name == label && *depth == self.function_depth)
+        {
+            None => {
+                self.unsupported("unknown or out-of-scope statement label", Some(span));
+                None
+            }
+            Some((_, false, _)) if continuing => {
+                self.unsupported(
+                    "continue label must target an iteration statement",
+                    Some(span),
+                );
+                None
+            }
+            _ => Some(()),
+        }
+    }
+
     pub(super) fn lower_root_stmt(
         &mut self,
         statement: &Statement<'a>,
@@ -42,12 +69,32 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_stmt(&mut self, statement: &Statement<'a>) -> Option<Stmt> {
         match statement {
             Statement::BlockStatement(block) => Some(self.lower_block_stmt(block)),
-            Statement::BreakStatement(statement) => Some(Stmt::Break {
-                span: statement.span.into(),
-            }),
-            Statement::ContinueStatement(statement) => Some(Stmt::Continue {
-                span: statement.span.into(),
-            }),
+            Statement::BreakStatement(statement) => {
+                if let Some(label) = &statement.label {
+                    self.validate_control_label(label.name.as_str(), false, statement.span.into())?;
+                    Some(Stmt::LabeledBreak {
+                        span: statement.span.into(),
+                        label: label.name.to_string(),
+                    })
+                } else {
+                    Some(Stmt::Break {
+                        span: statement.span.into(),
+                    })
+                }
+            }
+            Statement::ContinueStatement(statement) => {
+                if let Some(label) = &statement.label {
+                    self.validate_control_label(label.name.as_str(), true, statement.span.into())?;
+                    Some(Stmt::LabeledContinue {
+                        span: statement.span.into(),
+                        label: label.name.to_string(),
+                    })
+                } else {
+                    Some(Stmt::Continue {
+                        span: statement.span.into(),
+                    })
+                }
+            }
             Statement::EmptyStatement(statement) => Some(Stmt::Empty {
                 span: statement.span.into(),
             }),
@@ -56,33 +103,43 @@ impl<'a> Lowerer<'a> {
                 expression: self.lower_expr(&statement.expression)?,
             }),
             Statement::ForStatement(statement) => {
-                let init = match &statement.init {
-                    Some(ForStatementInit::VariableDeclaration(decl)) => {
-                        Some(ForInit::VariableDecl {
-                            kind: self.lower_binding_kind(decl.kind, decl.span)?,
-                            declarators: decl
-                                .declarations
-                                .iter()
-                                .filter_map(|declarator| self.lower_declarator(declarator))
-                                .collect(),
-                        })
+                self.push_scope();
+                if let Some(ForStatementInit::VariableDeclaration(decl)) = &statement.init {
+                    for declarator in &decl.declarations {
+                        self.collect_pattern_bindings(&declarator.id);
                     }
-                    Some(init) => Some(ForInit::Expression(self.lower_for_init_expr(init)?)),
-                    None => None,
-                };
-                Some(Stmt::For {
-                    span: statement.span.into(),
-                    init,
-                    test: statement
-                        .test
-                        .as_ref()
-                        .and_then(|test| self.lower_expr(test)),
-                    update: statement
-                        .update
-                        .as_ref()
-                        .and_then(|expr| self.lower_expr(expr)),
-                    body: Box::new(self.lower_stmt(&statement.body)?),
-                })
+                }
+                let result = (|| {
+                    let init = match &statement.init {
+                        Some(ForStatementInit::VariableDeclaration(decl)) => {
+                            Some(ForInit::VariableDecl {
+                                kind: self.lower_binding_kind(decl.kind, decl.span)?,
+                                declarators: decl
+                                    .declarations
+                                    .iter()
+                                    .filter_map(|declarator| self.lower_declarator(declarator))
+                                    .collect(),
+                            })
+                        }
+                        Some(init) => Some(ForInit::Expression(self.lower_for_init_expr(init)?)),
+                        None => None,
+                    };
+                    Some(Stmt::For {
+                        span: statement.span.into(),
+                        init,
+                        test: statement
+                            .test
+                            .as_ref()
+                            .and_then(|test| self.lower_expr(test)),
+                        update: statement
+                            .update
+                            .as_ref()
+                            .and_then(|expr| self.lower_expr(expr)),
+                        body: Box::new(self.lower_stmt(&statement.body)?),
+                    })
+                })();
+                self.pop_scope();
+                result
             }
             Statement::ForOfStatement(statement) => {
                 let head = self.lower_for_loop_head(&statement.left, "for...of")?;
@@ -159,23 +216,32 @@ impl<'a> Lowerer<'a> {
                     })
                 }
             }
-            Statement::SwitchStatement(statement) => Some(Stmt::Switch {
-                span: statement.span.into(),
-                discriminant: self.lower_expr(&statement.discriminant)?,
-                cases: statement
-                    .cases
-                    .iter()
-                    .map(|case| crate::ir::SwitchCase {
-                        span: case.span.into(),
-                        test: case.test.as_ref().and_then(|expr| self.lower_expr(expr)),
-                        consequent: case
-                            .consequent
-                            .iter()
-                            .filter_map(|statement| self.lower_stmt(statement))
-                            .collect(),
-                    })
-                    .collect(),
-            }),
+            Statement::SwitchStatement(statement) => {
+                let discriminant = self.lower_expr(&statement.discriminant)?;
+                self.push_scope();
+                for case in &statement.cases {
+                    self.predeclare_block(&case.consequent);
+                }
+                let result = Some(Stmt::Switch {
+                    span: statement.span.into(),
+                    discriminant,
+                    cases: statement
+                        .cases
+                        .iter()
+                        .map(|case| crate::ir::SwitchCase {
+                            span: case.span.into(),
+                            test: case.test.as_ref().and_then(|expr| self.lower_expr(expr)),
+                            consequent: case
+                                .consequent
+                                .iter()
+                                .filter_map(|statement| self.lower_stmt(statement))
+                                .collect(),
+                        })
+                        .collect(),
+                });
+                self.pop_scope();
+                result
+            }
             Statement::ThrowStatement(statement) => Some(Stmt::Throw {
                 span: statement.span.into(),
                 value: self.lower_expr(&statement.argument)?,
@@ -236,11 +302,46 @@ impl<'a> Lowerer<'a> {
                 None
             }
             Statement::LabeledStatement(statement) => {
-                self.unsupported(
-                    "labeled statements are not supported in v1",
-                    Some(statement.span.into()),
+                let label = statement.label.name.to_string();
+                if self
+                    .labels
+                    .iter()
+                    .any(|(name, _, depth)| name == &label && *depth == self.function_depth)
+                {
+                    self.unsupported(
+                        "duplicate active statement label",
+                        Some(statement.span.into()),
+                    );
+                    return None;
+                }
+                let mut target = &statement.body;
+                while let Statement::LabeledStatement(nested) = target {
+                    target = &nested.body;
+                }
+                if matches!(target, Statement::FunctionDeclaration(_)) {
+                    self.unsupported(
+                        "labeled function declarations are not supported",
+                        Some(statement.span.into()),
+                    );
+                    return None;
+                }
+                let iteration = matches!(
+                    target,
+                    Statement::WhileStatement(_)
+                        | Statement::DoWhileStatement(_)
+                        | Statement::ForStatement(_)
+                        | Statement::ForOfStatement(_)
+                        | Statement::ForInStatement(_)
                 );
-                None
+                self.labels
+                    .push((label.clone(), iteration, self.function_depth));
+                let body = self.lower_stmt(&statement.body);
+                self.labels.pop();
+                Some(Stmt::Labeled {
+                    span: statement.span.into(),
+                    label,
+                    body: Box::new(body?),
+                })
             }
             statement if statement.is_module_declaration() => {
                 self.unsupported(

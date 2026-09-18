@@ -344,9 +344,58 @@ impl Compiler {
                 });
             }
             Expr::Unary {
+                operator: crate::ir::UnaryOp::Delete,
+                argument,
+                ..
+            } => {
+                if let Expr::Member {
+                    object,
+                    property,
+                    optional,
+                    ..
+                } = argument.as_ref()
+                {
+                    self.compile_expr(context, object)?;
+                    let short_circuit = if *optional {
+                        Some(self.emit_jump(context, Instruction::JumpIfNullish(usize::MAX)))
+                    } else {
+                        None
+                    };
+                    match property {
+                        MemberProperty::Static(name) => context.code.push(Instruction::PushString(
+                            super::super::property_name_to_key(name),
+                        )),
+                        MemberProperty::Computed(expression) => {
+                            self.compile_expr(context, expression)?
+                        }
+                    }
+                    context.code.push(Instruction::DeletePropComputed);
+                    if let Some(jump) = short_circuit {
+                        let end = self.emit_jump(context, Instruction::Jump(usize::MAX));
+                        self.patch_jump(context, jump, context.code.len());
+                        context.code.push(Instruction::Pop);
+                        context.code.push(Instruction::PushBool(true));
+                        self.patch_jump(context, end, context.code.len());
+                    }
+                } else {
+                    self.compile_expr(context, argument)?;
+                    context
+                        .code
+                        .push(Instruction::Unary(crate::ir::UnaryOp::Delete));
+                }
+            }
+            Expr::Unary {
                 operator, argument, ..
             } => {
-                self.compile_expr(context, argument)?;
+                if let (crate::ir::UnaryOp::Typeof, Expr::Identifier { name, .. }) =
+                    (operator, argument.as_ref())
+                {
+                    context
+                        .code
+                        .push(Instruction::LoadNameForTypeof(name.clone()));
+                } else {
+                    self.compile_expr(context, argument)?;
+                }
                 context.code.push(Instruction::Unary(*operator));
             }
             Expr::Binary {

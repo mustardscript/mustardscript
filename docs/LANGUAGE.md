@@ -18,9 +18,26 @@ extensions are called out explicitly instead of being implied.
 - Input has no module system; `import` and `export` syntax is rejected even
   though top-level `await` is supported.
 - Unsupported features fail closed with explicit diagnostics.
+- `==` and `!=` implement abstract equality; `===` and `!==` remain strict.
+  Null and undefined compare loosely equal; booleans, strings, Numbers, and
+  BigInts follow their ECMAScript conversion rules. BigInt/Number comparison is
+  exact, and invalid BigInt strings compare unequal rather than throwing.
+  Object/primitive equality invokes `valueOf` then `toString` (reversed for
+  Dates), honoring overrides, non-callable methods, mutations, and exceptions.
+  Two objects compare by identity without conversion; nullish comparisons never
+  invoke object hooks. Failure to produce a primitive throws `TypeError`.
+  Coercion calls and default array element conversions use resumable VM state,
+  including across host suspensions. Equality does not await a promise returned
+  by a conversion method. Existing unsupported surfaces, such as Symbols and
+  custom prototypes, remain outside the language; this does not broaden the
+  coercion policy of other operators or native APIs.
 - Free references to forbidden ambient globals are rejected when lexical
   resolution proves they are unresolved.
 - Free `eval` and free `Function` are rejected for the same reason.
+- `typeof` an unresolvable non-forbidden identifier returns `"undefined"`;
+  uninitialized lexical bindings still throw `ReferenceError`. This exception
+  does not suppress errors while evaluating member expressions or bypass the
+  forbidden-ambient-global validation policy.
 - Hosts may opt into `lenientMode` at compile time for generated snippets. In
   that mode, only a final top-level `return <expr>;` is accepted, and it is
   treated exactly like the final expression result of the script. Other
@@ -73,6 +90,36 @@ compile option `{ lenientMode: true }`, a final root statement such as
 snippets. This does not add script-level early-return control flow: `return`
 inside top-level `if`, loop, block, or any non-final root statement is still
 rejected.
+
+Classic `for (let ...; test; update)` creates a fresh set of header binding
+cells before the first test and before each update, copying the previous
+values. Closures from initializers, loop bodies, tests, and updates therefore
+retain the appropriate iteration's bindings. `continue` runs intervening
+`finally` blocks before copying those bindings and running the update. All
+header names are in the temporal dead zone until initialized; `const` headers
+remain immutable and are not copied per iteration. Expression-only headers
+keep using their surrounding bindings. These cells use ordinary lexical-scope
+GC accounting and survive compiled-program and suspension snapshot round trips.
+
+## Script Completion Values
+
+A script returns its ECMAScript statement completion, not just a syntactically
+final expression. Blocks, selected `if` branches, `switch` clauses (including
+fallthrough), loop bodies, and `try`/`catch` bodies can supply the result.
+Empty statements and declarations preserve a preceding statement's value;
+an `if` with no selected value, an unentered loop, an unmatched `switch`, or
+an empty `try`/`catch` completes with `undefined` instead.
+
+A normally completed `finally` does not replace the `try`/`catch` result.
+Abrupt cleanup (`throw`, `break`, or `continue`) overrides the pending
+completion under the usual control-flow rules. Results remain rooted during
+cleanup, host suspension, and top-level `await`, and survive snapshots.
+Directive strings can also supply a script result. Function bodies still
+return `undefined` without an explicit `return`; they do not change their
+caller's statement completion. These rules are the same in `lenientMode`.
+
+For example, `try { 42; } finally { 99; }` returns `42`, while
+`42; if (false) { 99; }` returns `undefined` and `42; let unused;` returns `42`.
 
 ## Supported Function Call Surface
 
@@ -186,7 +233,7 @@ rejected.
 ## Rejected With Validation Diagnostics
 
 - `import`, `export`, and dynamic `import()`
-- `delete` for plain objects and arrays
+- `delete` of bindings and compound optional chains
 - free `arguments`
 - free `eval` and free `Function`
 - free references to `process`, `module`, `exports`, `global`, `require`,
@@ -199,19 +246,15 @@ rejected.
   `const` binding, and declaration initializers in `for...of` / `for...in`
   headers
 - `debugger`
-- labeled statements
 - object literal accessors
 
 ## Explicit Deferrals
 
 - fully general Promise constructor and thenable-adoption edge cases,
   including hostile thenable cycles
-- unsupported assignment operators such as the bitwise and shift assignment
-  families
 - full `this` semantics beyond the current basic function-call behavior
 - implicit `arguments` object semantics
 - legacy `var` hoisting, same-scope redeclaration, and loop interaction rules
-- plain-object and array deletion semantics, including sparse-array behavior
 - symbol-based custom iterable protocol support
 - custom iterator authoring beyond the documented collection helpers
 - module loading
@@ -229,13 +272,16 @@ rejected.
 - `var` is intentionally out of scope for v1. The supported binding surface is
   lexical `let` / `const` only, so the runtime does not emulate function or
   global hoisting, same-scope redeclaration, or legacy loop-scoping behavior.
-- The `delete` operator is intentionally out of scope for plain objects and
-  arrays. Supporting it would require an explicit model for own-property
-  absence, sparse arrays, JSON/host-boundary interactions, and whether
-  descriptor-level configurability exists at all. Until that broader model is
-  chosen, validation rejects every use of the language operator. This does not
-  affect the supported `Map.prototype.delete` and `Set.prototype.delete`
-  collection methods.
+- `delete` removes own data properties from plain objects, Errors, and arrays. Array
+  index deletion creates a hole without changing length. Missing properties
+  return `true`; delete/reinsert puts non-index keys at the end of enumeration.
+  Static/computed references are evaluated once. A single optional member
+  short-circuits without evaluating its key; compound optional chains fail closed
+  until the chain IR can preserve their boundaries. Binding deletion is rejected
+  during validation. Array `length` and string indices/`length` are non-configurable
+  and throw `TypeError`; deletion on special objects (including `globalThis`),
+  callable values, and collections remains outside the supported surface.
+  See [ADR 0002](ADRs/0002-language-completion.md).
 - `instanceof` is intentionally conservative in v1. The supported surface is
   constructor-instance checks for the runtime's built-in instance kinds,
   conservative primitive-wrapper objects, and `Object` checks over the
@@ -273,6 +319,22 @@ rejected.
   / `for...in` skip missing indices, array iteration treats holes as
   `undefined`, and `JSON.stringify` renders holes as `null`.
 - Non-index array properties are ignored by `JSON.stringify`.
+- `JSON.stringify(value, replacer, space)` supports callable replacers, ordered
+  string/number property lists (including boxed values), and numeric/string
+  indentation capped at ten characters. It invokes supported `toJSON` methods
+  before the replacer and unboxes primitive wrappers afterwards. Replacer calls
+  receive `(key, value)` with the containing object as `this`, including the root
+  holder under key `""`. Keys/array length are snapshotted, but values are read
+  live so callback mutations are observable.
+- `JSON.parse(text, reviver)` invokes callable revivers in postorder with the
+  containing object as `this`. Returning `undefined` removes a property or leaves
+  an array hole; the root result can be replaced or removed. Invalid JSON throws
+  guest `SyntaxError`. Non-callable revivers follow ECMAScript's ignore rule.
+- JSON callbacks propagate guest exceptions and reject synchronous host
+  suspension. Traversals meter work, protect live values from GC during callbacks,
+  and reject nesting deeper than 128. The existing Unicode-scalar string contract
+  also applies to indentation-string truncation; arbitrary UTF-16 strings are not
+  silently approximated.
 - `JSON.stringify` omits object properties whose values are `undefined` or
   callable, serializes those values as `null` inside arrays, returns
   `undefined` for top-level `undefined` or callable inputs, serializes
@@ -311,6 +373,10 @@ rejected.
 - `TypeError`
 - `ReferenceError`
 - `RangeError`
+- `SyntaxError`
+- `EvalError`
+- `URIError`
+- `AggregateError`
 - `Number`
 - `Boolean`
 - `Intl`
@@ -326,6 +392,13 @@ rejected.
 - `Array.of`
 - `Array.prototype.push`
 - `Array.prototype.pop`
+- `Array.prototype.shift`
+- `Array.prototype.unshift`
+- `Array.prototype.toSorted`
+- `Array.prototype.toReversed`
+- `Array.prototype.toSpliced`
+- `Array.prototype.with`
+- `Array.prototype.copyWithin`
 - `Array.prototype.slice`
 - `Array.prototype.splice`
 - `Array.prototype.concat`
@@ -359,6 +432,8 @@ rejected.
 - `Object.assign`
 - `Object.fromEntries`
 - `Object.hasOwn`
+- `Object.groupBy`
+- `Map.groupBy`
 - `Map.prototype.get`
 - `Map.prototype.set`
 - `Map.prototype.has`
@@ -479,9 +554,13 @@ rejected.
   and promise-valued callback results reached from an async guest boundary
 - synchronous host suspensions from array callback helpers fail closed with a
   runtime `TypeError`
-- `Array.from` accepts the supported iterable surface and an optional
-  synchronous map function plus `thisArg`; inside async guest flows, guest map
-  callbacks may yield promise values for downstream helpers such as `Promise.all`
+- `Array.from` accepts supported iterables, boxed strings, and array-like inputs.
+  Array-like length is captured once and truncated/clamped; indexed values are
+  read live, and absent positions become own `undefined` elements. The optional
+  synchronous mapper accepts `thisArg` and bound callbacks. Inside async guest
+  flows, guest map callbacks may yield promises for helpers such as `Promise.all`.
+  Nullish sources, invalid mappers, lengths beyond the array range, and lengths
+  exceeding heap headroom fail explicitly before oversized backing allocations.
 - `Array.of` always creates a fresh guest array from its arguments and does not
   expose the special single-length constructor behavior from full JavaScript
 - `Array(...)` and `new Array(...)` follow JavaScript's single-length
@@ -497,6 +576,15 @@ rejected.
   positions, and returns the same array value
 - `Array.prototype.fill` mutates the original array in place over the requested
   start/end range and preserves holes outside that range
+- `shift`/`unshift` mutate queue ends and preserve shifted holes. `toSorted`,
+  `toReversed`, `toSpliced`, and `with` return fresh dense arrays (holes become
+  `undefined`) without copying extra properties. `with` supports negative indices
+  and throws `RangeError` out of range. `copyWithin` mutates with overlap-safe
+  copying, preserving source holes and array length. These prototype helpers,
+  like the existing array methods, require actual arrays as their receivers.
+- Sorting is stable, places `undefined` after defined values without passing it
+  to comparators, preserves collected values through comparator mutations/GC,
+  and respects the snapshotted range. Work and heap growth remain budgeted.
 - `Array.prototype.splice` mutates the original array in place, returns a fresh
   guest array of removed elements, and preserves non-index array properties on
   the mutated receiver
@@ -577,22 +665,16 @@ rejected.
   `$<name>` template expansion for `RegExp` matches
 - `String.prototype.replaceAll` requires a global `RegExp` when the search
   value is a `RegExp`
-- supported `RegExp` flags are `g`, `i`, `m`, `s`, `u`, and `y`; unsupported
+- supported `RegExp` flags are `d`, `g`, `i`, `m`, `s`, `u`, and `y`; unsupported
   flags fail closed with a runtime `SyntaxError`
 - `String.prototype.match` returns either `null`, a guest array of matched
   strings for global `RegExp` patterns, or the first-match array for
   non-global patterns, with guest-visible `index`, `input`, and optional
   `groups` properties on that result array
-- `Date.now()` reads the host wall clock as integral epoch milliseconds,
-  `new Date(value)` currently supports zero arguments or exactly one numeric,
-  string, or existing `Date` value, supported string inputs are currently
-  `YYYY-MM-DD` plus RFC3339 timestamps with `Z` or explicit numeric UTC
-  offsets, `Date.prototype.getTime()` returns the stored integral epoch
-  milliseconds, `toISOString()` and `toJSON()` render UTC RFC3339 timestamps
-  across the full ECMAScript time-clip range with signed six-digit years when
-  required, and the documented `getUTC*` accessors expose UTC
-  year/month/day/hour/minute/second fields while returning `NaN` for invalid
-  dates
+- Date uses a fixed UTC local-time profile: local and UTC getters/setters agree,
+  `getTimezoneOffset()` is zero for valid dates, and zone-less ISO timestamps
+  parse as UTC. `Date.now()` and zero-argument construction still read the host
+  wall clock. See UTC Date completion below for supported parsing and methods.
 - `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`,
   `Number.isFinite`, `Number.isInteger`, and `Number.isSafeInteger` are
   available as conservative static helpers on `Number`; the corresponding
@@ -609,8 +691,8 @@ rejected.
   documented numeric / two-digit date-time fields, formats hour-bearing output
   with the default `en-US` 12-hour clock plus `AM` / `PM`, and rejects any
   other option keys explicitly; `NumberFormat` currently supports only
-  `decimal`, `percent`, and `currency` formatting with `USD` as the only
-  supported currency code and rejects any other option keys explicitly
+  `decimal`, `percent`, and `currency` formatting with pinned CLDR currency
+  data and rejects other option keys explicitly (see number formatting below)
 - `Math.PI`, `E`, `LN2`, `LN10`, `LOG2E`, `LOG10E`, `SQRT2`, and `SQRT1_2`
   are available as numeric constants on `Math`
 - `Math.exp`, `log2`, `log10`, `sin`, `cos`, `atan2`, `hypot`, and `cbrt`
@@ -621,11 +703,294 @@ rejected.
   cryptographically strong API contract
 - structured host arrays may be sparse; hole positions are preserved across the
   boundary in both directions up to 1,000,000 elements
-- direct `Date()` calls, multi-argument `new Date(...)`, locale-specific date
-  strings outside the documented `Date` parsing surface, unsupported `Intl`
-  locales or options, and returning `Date` values across the structured host
-  boundary all fail closed
+- unsupported `Intl` locales/options and returning `Date` values across the
+  structured host boundary fail closed; unsupported date-string formats parse
+  to NaN, as do invalid/out-of-range ISO dates
 - real `RegExp` instances support `source`, `flags`, `global`, `ignoreCase`,
-  `multiline`, `dotAll`, `unicode`, `sticky`, `lastIndex`, `exec`, and `test`
+  `multiline`, `dotAll`, `unicode`, `sticky`, `hasIndices`, `lastIndex`, `exec`, and `test`
 - symbol-based match/replace protocol hooks and full ECMAScript `RegExp`
   parity remain deferred
+
+## Error objects
+
+All eight standard error constructors are available with call/new, constructor
+metadata, built-in `instanceof`, optional `cause`, and `toString()` behavior.
+`AggregateError(errors, message, options)` copies the supported iterable into its
+`errors` array; non-iterables fail closed. `Promise.any` uses the same visible kind.
+Malformed JSON raises `SyntaxError`. `name` is inherited, and `message` is an own
+property only when supplied. Constructor-created `message`, `stack`, `cause`, and
+`errors` properties are non-enumerable. Assigning a new own property (including
+`name` or an absent `message`/`cause`/`errors`) makes it enumerable; overwriting an
+existing hidden property keeps it hidden. Deletion removes the property's
+attributes, so re-adding it is enumerable. Object helpers/spread and default JSON
+keys share this metadata; explicit JSON replacer lists can include hidden fields.
+These attributes are validated and preserved in snapshots.
+
+Every error captures a deterministic guest-only `stack` string at creation:
+`Name: message` followed by guest function names and source-span offsets. It never
+adds Rust frames, host filenames, process details or native addresses. The stack
+is ordinary snapshot-preserved data, not a host `Error` object. Full mutable
+prototype-chain and property-descriptor semantics remain deferred.
+
+## Grouping
+
+`Object.groupBy(items, callback)` and `Map.groupBy(items, callback)` consume the
+supported iterable surface and call the callback with `(value, index)` and an
+undefined receiver. Bound callbacks work; exceptions propagate, synchronous host
+suspension rejects, and work/allocation limits apply throughout.
+
+Object grouping coerces keys to supported property keys and returns a prototype-less
+plain data object. Missing `constructor`, `toString`, and `hasOwnProperty` really are
+absent; `__proto__` is ordinary data. These objects support deletion, enumeration,
+spread/assignment, JSON, snapshots and the structured data boundary. The host boundary
+carries their own data, not guest prototype metadata. Full prototype manipulation
+remains deferred. Map grouping preserves key identity and SameValueZero semantics,
+including NaN and canonical positive-zero keys. Bucket values retain input order;
+Map keys retain first occurrence order, and Object keys follow own-key ordering.
+
+### Object compatibility and explicit string conversion
+
+`Object.is` uses SameValue equality (NaN equals itself; positive and negative zero
+are distinct). `Object.hasOwn` and `Object.prototype.hasOwnProperty` accept
+non-nullish primitives as well as supported objects. String indices/length are own
+properties; inherited methods and Map/Set size are not. Plain objects inherit
+`hasOwnProperty`, `valueOf`, and `toString`; prototype-less grouping results do not. Own values,
+including an explicit `undefined`, shadow these methods.
+
+`Object.prototype.valueOf` returns its object receiver (boxing supported primitive
+receivers); nullish receivers throw. Callable `toString` exposes the existing
+guest-source/native display representation. RegExp `toString` uses its source and
+flags, with empty patterns and literal delimiters/line terminators escaped in
+`source`.
+
+`Object.prototype.toString.call(value)` returns the supported built-in type tag.
+`Array.prototype.toString` calls the receiver's callable `join`, or falls back to
+Object's type tag. Ordinary arrays join with commas; nullish values, holes, and
+cyclic references contribute empty strings. Array string conversion is bounded by
+work/output limits and a 128-array nesting limit (RangeError). User-defined coercion
+hooks on nested elements remain outside these native string helpers. Abstract
+equality's default array conversion instead uses the resumable coercion path
+described above, including nested element hooks, bound methods, and live reads
+after mutations. That path is bounded to 256 coercion work items. Arbitrary
+prototype-chain mutation remains unsupported.
+
+### URI encoding and decoding
+
+The pure globals `encodeURI`, `encodeURIComponent`, `decodeURI`, and
+`decodeURIComponent` implement UTF-8 percent encoding/decoding. URI variants keep
+URI-reserved punctuation; component variants encode/decode it. Decoding does not
+turn plus signs into spaces and preserves reserved escape spelling in `decodeURI`.
+Malformed escapes, overlong UTF-8, surrogate encodings, and out-of-range code points
+throw `URIError`. Work and output allocation are budgeted. These functions operate
+on the existing well-formed Unicode string surface; URL and URLSearchParams remain
+host APIs, not guest globals.
+
+### Unicode character APIs and normalization
+
+`normalize()` supports NFC (default), NFD, NFKC and NFKD; invalid form names throw
+RangeError. Normalization uses pinned Unicode data in the Rust dependency and
+meters decomposition buffering and combining-mark sorting. `isWellFormed()` is
+true for all supported strings.
+
+The existing string profile is **Unicode scalar based**, not arbitrary UTF-16:
+`'🙂'.length` is 1, and indexing, slicing and regexp offsets count scalars. The new
+`charCodeAt(index)` and `codePointAt(index)` deliberately expose ECMAScript's
+**UTF-16 numeric view**: `'🙂'.charCodeAt(0)` is 55357,
+`'🙂'.codePointAt(0)` is 128578, and both at index 1 return the low surrogate 56898.
+Out-of-range results are NaN and undefined respectively.
+
+`String.fromCharCode(...units)` wraps numbers to unsigned 16-bit units and accepts
+valid surrogate pairs. `String.fromCodePoint(...points)` accepts scalar values up
+to 0x10FFFF. Both reject lone-surrogate results with RangeError; fromCodePoint also
+rejects non-integers and out-of-range values. Lone-surrogate source literals,
+template fragments and property keys are validation errors, and lone-surrogate
+host strings/keys are boundary TypeErrors. They are never silently replaced.
+
+
+### Linear regexp character classes and match indices
+
+`\w`, `\d`, `\b` and their complements use ECMAScript ASCII word/digit
+semantics (including inside bracket classes). `\s` uses ECMAScript whitespace,
+and dot excludes all four ECMAScript line terminators unless `s` is set. The `iu`
+word class also includes long-s (ſ) and Kelvin sign (K); legacy `i` folding does
+not incorrectly fold those characters into ASCII. Character classes are lowered
+structurally through the Rust regex-syntax parser, not by text substitution.
+
+The linear engine cannot express the special `iu` word boundary for ſ/K.
+Matching a pattern containing `\b`/`\B` with `iu` against input containing
+those characters therefore throws TypeError instead of returning a wrong result.
+Lookaround/backreferences, inline engine flags and non-ECMAScript nested/POSIX or
+set-operation class syntax remain explicit rejections. Existing non-UTF-16 regexp
+semantics and other bounded engine differences are not a full ECMAScript engine.
+
+The `d` flag adds `indices`, an array of `[start, end]` pairs (undefined for an
+unmatched capture), plus `indices.groups` for named captures. Named pairs share
+identity with their indexed capture pair; group dictionaries have no prototype.
+Offsets use the runtime's existing **Unicode scalar** contract. `matchAll` starts
+at a regexp's lastIndex without mutating it; empty exec matches leave lastIndex at
+the match end. Flags are exposed in canonical order. Compilation, matching and
+index construction are budgeted, and the native regexp cache/engine sizes are bounded.
+
+### Number bitwise operators
+
+`~`, `&`, `|`, `^`, `<<`, `>>`, `>>>` and their compound assignments support
+Number operands and the supported primitive coercions. Inputs wrap through
+ToInt32/ToUint32 (NaN/infinities become zero); shift counts are modulo 32. `>>>`
+returns an unsigned Number, while the other results are signed 32-bit Numbers.
+Compound property assignments evaluate their receiver and key once. BigInt
+operands, including mixed Number/BigInt operations, throw TypeError in this
+Number-only bitwise profile, with the explicit message
+`BigInt bitwise operators are unsupported` (also for `~` and compound assignments).
+
+### Explicit BigInt conversion
+
+`BigInt(value)` converts BigInts, booleans, finite integer Numbers, supported
+boxed Number/String/Boolean values, and integer strings. Strings support signed
+decimal and unsigned 0x/0o/0b forms, with ECMAScript whitespace (empty means zero).
+Non-integer or non-finite Numbers throw RangeError; malformed strings throw
+SyntaxError. Nullish inputs, object coercion hooks and `new BigInt(...)` throw
+TypeError. Conversion work and temporary allocation are bounded.
+
+`BigInt.prototype.toString(radix)` supports radix 2–36, and `valueOf()` returns the
+receiver's guest BigInt. BigInts remain guest-internal: `Number(1n)`, JSON encoding,
+Object boxing and the structured host boundary retain their explicit rejections.
+Convert an integer to a string before returning it to a host capability or caller.
+
+### Additional Math helpers
+
+The Math surface includes `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`,
+`asinh`, `acosh`, `atanh`, `clz32`, `imul`, `fround`, `log1p`, and `expm1`.
+`imul` wraps a 32-bit product; `clz32` counts leading zero bits after ToUint32;
+`fround` rounds through IEEE-754 binary32 while preserving signed zero and
+infinities. The near-zero functions use dedicated numerical operations, not
+`log(1 + x)`/`exp(x) - 1`. Domain errors return NaN/infinity as appropriate, and
+BigInt operands throw TypeError. Transcendental results retain the existing native
+floating-point accuracy profile; string numeric coercion is metered.
+
+### Set algebra
+
+Set instances and `Set.prototype` expose `union`, `intersection`, `difference`,
+`symmetricDifference`, `isSubsetOf`, `isSupersetOf`, and `isDisjointFrom`.
+They accept Sets, Maps (using their keys), and set-like objects with a nonnegative
+numeric `size` and callable `has`/`keys`. `keys()` must return a supported native
+iterator; custom iterator authoring remains unsupported and throws TypeError.
+NaN size throws TypeError, negative integer size throws RangeError, and methods
+validate both callbacks even when size allows an early result. Callbacks receive
+the other object as `this`; their results are not awaited. Synchronous host
+suspension is rejected. Iteration, copying and callback work are budgeted.
+Results preserve ECMAScript order, SameValueZero membership and object identity;
+intersection selects iteration order by the reported sizes. Live Set iteration
+observes additions and deletions, including appends after deleting a tail slot.
+
+### Labeled control flow
+
+Labels may wrap statements, including blocks and nested loop-label aliases.
+`break label` exits the labeled statement; `continue label` requires an enclosing
+iteration statement. Unlabeled continue skips intervening switches. Duplicate
+active labels, unknown/out-of-scope labels, cross-function transfers and labeled
+function declarations reject during validation.
+
+Exits preserve lexical scope, run intervening `finally` blocks in order and allow
+cleanup to override a pending break, continue, return or throw. Exits wholly
+inside a finally block leave its pending completion intact. Pending transfers
+and nested cleanup survive authenticated suspension snapshots.
+
+### Sequential async construction
+
+`Promise.withResolvers()` returns `{ promise, resolve, reject }`. The two functions
+share a one-shot guard: the first call wins, including adoption of a still-pending
+promise. Extracted functions and adoption state survive snapshots. Borrowing this
+method for unsupported constructors throws TypeError.
+
+`Array.fromAsync(items, mapFn?, thisArg?)` returns a Promise. It supports the same
+native iterables, boxed strings and array-like inputs as `Array.from`, awaits each
+input and mapping result sequentially, fills sparse slots with undefined, and
+captures array-like length while reading values live. It supports guest async
+mappers, bound functions and host-capability mappers; only one mapping operation
+is in flight at a time. Setup/iteration/mapping failures reject the promise;
+resource-limit exhaustion still terminates execution. Custom async iterator
+and constructor authoring remain outside the supported surface. Driver state,
+GC roots, microtask phases and partially built arrays survive authenticated
+suspension snapshots. Thenables retain the documented synchronous-handler policy.
+
+### UTC Date completion
+
+The runtime's local time zone is always UTC, independent of host configuration.
+`Date.UTC`, `Date.parse`, multi-argument construction and the local/UTC `set*`
+families support normalized months, days and time components, truncation,
+year-0..99 constructor/UTC compatibility, invalid-date repair by `setFullYear`,
+and the full ±8.64e15 ms TimeClip range. `setTime`, `getTimezoneOffset`, and the
+legacy `getYear`/`setYear` are included. All local and UTC getters are available,
+including weekday and milliseconds. Borrowed methods require a real Date;
+`Date.prototype` itself is not a Date value. BigInt numeric operands reject.
+
+Supported strings are ISO `YYYY`, `YYYY-MM`, `YYYY-MM-DD`, full-date timestamps
+with hours/minutes, optional seconds/fraction, and either Z, a colon-separated
+numeric offset, or no zone (UTC). Signed six-digit years and exact midnight
+24:00 are supported; negative-zero years and nonexistent calendar dates reject
+with NaN. The runtime also parses its own UTC `toString`/`toUTCString` output.
+It does not accept arbitrary locale-specific legacy formats. Parsing work is
+metered. Checked wide calendar arithmetic prevents overflow before clipping.
+
+`Date()` returns the current UTC display string, ignoring arguments. `toString`,
+`toDateString`, `toTimeString`, `toUTCString` (also `toGMTString`), and default
+Date string coercion use deterministic English UTC text. Invalid dates render
+"Invalid Date"; existing toISOString/toJSON error/null behavior is unchanged.
+`toLocaleString`, `toLocaleDateString`, and `toLocaleTimeString` share the existing
+en-US/UTC numeric-field Intl profile and supply their standard default fields.
+Other locales/time zones/dateStyle/timeStyle and unsupported fields still reject.
+Date values and method references retain their state through guest snapshots;
+Date objects themselves still cannot cross the structured host boundary.
+
+### Deterministic en-US string collation
+
+`String.prototype.localeCompare(other, locales?, options?)` uses pinned ICU4X
+collation and normalization data, not scalar/code-point ordering. It returns
+-1, 0 or 1. Supported options are `numeric` (boolean), `sensitivity` (`base`,
+`accent`, `case`, `variant`), `caseFirst` (`false`, `lower`, `upper`), and
+`ignorePunctuation` (boolean). `usage: "sort"`, `collation: "default"` and either
+standard `localeMatcher` spelling are accepted; other options/values fail closed.
+Search collation and the `Intl.Collator` constructor remain unsupported.
+
+Locales default to en-US. Case-equivalent en-US tags and arrays containing only
+those tags are accepted; all present list entries are validated. Other locales,
+extensions, non-string list entries and null options reject. These locale-list
+rules also apply to the other Intl constructors. Comparison buffers and work,
+including long combining runs, are preflighted against runtime limits.
+
+### Number and currency formatting
+
+`Number.prototype.toLocaleString(locales?, options?)` formats primitive or boxed
+Numbers using the same en-US profile as `Intl.NumberFormat`. Decimal, percent
+and currency styles support boolean `useGrouping` and minimum/maximum fraction
+digits from 0 through 100. Defaults follow the currency minor unit (otherwise
+0–3 decimal digits, or 0 percent digits); a single explicit digit bound adjusts
+the other default. Rounding is decimal half-expand, including signed zero,
+large finite values, subnormals, and decimal percent scaling without overflow.
+NaN and infinities retain the appropriate style affixes.
+
+Currency codes must be three ASCII letters (canonicalized to uppercase), and
+currency style requires one. Pinned Unicode CLDR 48.2.1 supplies standard en-US
+symbols, spacing and fraction digits; unfamiliar well-formed codes use the code
+and two fraction digits. Cash rounding is not applied. Options such as
+`currencyDisplay`, `currencySign`, significant digits, notation, alternative
+rounding modes, units and numbering systems remain unsupported and reject.
+Intl.format retains its Number-coercion input profile (not arbitrary-precision
+string/BigInt formatting); `Number.toLocaleString` requires a Number receiver.
+Null options, non-en-US locales and inconsistent/out-of-range digit bounds
+reject. Formatting work/buffers are bounded, and restored formatter settings
+are validated before they can allocate buffers.
+
+### Source nesting guard
+
+Before the recursive parser runs, a tokenizing preflight rejects more than 64
+nested delimiters/template substitutions, or more than 128 tokens in an
+uninterrupted syntactic chain, with a parse diagnostic. The conservative chain
+bound includes delimiter-free arrows, labels, operators and unbraced control
+flow. Independent statements and list elements reset their local chain count;
+an attaching `else` does not. This applies
+to all compile entry points, including malformed/unterminated sidecar source.
+String, comment and RegExp contents do not count as code tokens; template
+substitutions do. This source-syntax guard is separate from runtime call depth,
+JSON nesting, heap and instruction budgets. It is not a general compilation
+CPU/memory quota or a replacement for the documented process-isolation policy.

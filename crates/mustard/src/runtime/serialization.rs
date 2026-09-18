@@ -26,7 +26,7 @@ use super::{
     validation::validate_bytecode_program,
 };
 
-const SERIAL_FORMAT_VERSION: u32 = 2;
+const SERIAL_FORMAT_VERSION: u32 = 4;
 
 pub fn dump_program(program: &BytecodeProgram) -> MustardResult<Vec<u8>> {
     bincode::serialize(&SerializedProgram {
@@ -344,9 +344,13 @@ impl DetachedRuntime {
             operation_counters_enabled: false,
             accounting_recount_required: true,
             cancellation_token: None,
-            regex_cache: HashMap::new(),
+            regex_cache: IndexMap::new(),
+            collator_cache: IndexMap::new(),
             pending_internal_exception: None,
             pending_sync_callback_result: None,
+            native_callback_host_suspension_message: None,
+            native_temporary_roots: Vec::new(),
+            native_depth: 0,
             snapshot_policy_required: false,
             pending_resume_behavior: self.pending_resume_behavior,
         }

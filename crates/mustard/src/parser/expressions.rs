@@ -30,6 +30,7 @@ impl<'a> Lowerer<'a> {
                 }
             }
         }
+        self.check_directives(&body.directives);
         self.predeclare_block(&body.statements);
         let lowered = body
             .statements
@@ -66,6 +67,7 @@ impl<'a> Lowerer<'a> {
                 }
             }
         }
+        self.check_directives(&function.body.directives);
         self.predeclare_block(&function.body.statements);
         let body = if function.expression {
             if function.body.statements.len() == 1 {
@@ -208,10 +210,26 @@ impl<'a> Lowerer<'a> {
                 span: literal.span.into(),
                 value: literal.value.as_str().to_string(),
             }),
+            Expression::StringLiteral(literal) if literal.lone_surrogates => {
+                self.unsupported(
+                    "lone surrogates are not supported by the Unicode string profile",
+                    Some(literal.span.into()),
+                );
+                None
+            }
             Expression::StringLiteral(literal) => Some(Expr::String {
                 span: literal.span.into(),
                 value: literal.value.as_str().to_string(),
             }),
+            Expression::TemplateLiteral(literal)
+                if literal.quasis.iter().any(|quasi| quasi.lone_surrogates) =>
+            {
+                self.unsupported(
+                    "lone surrogates are not supported by the Unicode string profile",
+                    Some(literal.span.into()),
+                );
+                None
+            }
             Expression::TemplateLiteral(literal) => Some(Expr::Template {
                 span: literal.span.into(),
                 quasis: literal
@@ -304,11 +322,16 @@ impl<'a> Lowerer<'a> {
             Expression::FunctionExpression(function) => Some(Expr::Function(Box::new(
                 self.lower_function(function, false)?,
             ))),
-            Expression::UnaryExpression(expression) => Some(Expr::Unary {
-                span: expression.span.into(),
-                operator: self.lower_unary_op(expression.operator, expression.span)?,
-                argument: Box::new(self.lower_expr(&expression.argument)?),
-            }),
+            Expression::UnaryExpression(expression) => {
+                if expression.operator == UnaryOperator::Delete {
+                    self.validate_delete_argument(&expression.argument)?;
+                }
+                Some(Expr::Unary {
+                    span: expression.span.into(),
+                    operator: self.lower_unary_op(expression.operator, expression.span)?,
+                    argument: Box::new(self.lower_expr(&expression.argument)?),
+                })
+            }
             Expression::BinaryExpression(expression) => Some(Expr::Binary {
                 span: expression.span.into(),
                 operator: self.lower_binary_op(expression.operator, expression.span)?,
@@ -743,5 +766,60 @@ impl<'a> Lowerer<'a> {
                 .and_then(|rest| self.lower_assignment_target(&rest.target))
                 .map(Box::new),
         })
+    }
+}
+
+impl<'a> Lowerer<'a> {
+    fn validate_delete_argument(&mut self, expression: &Expression<'a>) -> Option<()> {
+        match expression {
+            Expression::ParenthesizedExpression(inner) => {
+                self.validate_delete_argument(&inner.expression)
+            }
+            Expression::Identifier(_) => {
+                self.unsupported(
+                    "delete of an identifier is not supported in strict mode",
+                    Some(expression.span().into()),
+                );
+                None
+            }
+            Expression::ChainExpression(chain) => {
+                // The current chain IR does not retain chain boundaries. Only a
+                // single optional member is representable without conflating
+                // short-circuiting with a genuine undefined intermediate value.
+                let supported = match &chain.expression {
+                    ChainElement::StaticMemberExpression(member) => {
+                        member.optional && !delete_base_has_chain(&member.object)
+                    }
+                    ChainElement::ComputedMemberExpression(member) => {
+                        member.optional && !delete_base_has_chain(&member.object)
+                    }
+                    _ => false,
+                };
+                if !supported {
+                    self.unsupported(
+                        "delete with a compound optional chain is not supported",
+                        Some(expression.span().into()),
+                    );
+                    return None;
+                }
+                Some(())
+            }
+            _ => Some(()),
+        }
+    }
+}
+
+fn delete_base_has_chain(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::ChainExpression(_) => true,
+        Expression::StaticMemberExpression(member) => {
+            member.optional || delete_base_has_chain(&member.object)
+        }
+        Expression::ComputedMemberExpression(member) => {
+            member.optional || delete_base_has_chain(&member.object)
+        }
+        Expression::CallExpression(call) => call.optional || delete_base_has_chain(&call.callee),
+        Expression::ParenthesizedExpression(_) => false,
+        _ => false,
     }
 }

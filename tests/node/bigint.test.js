@@ -209,3 +209,14 @@ test('matches Node for the supported guest-internal BigInt surface', async () =>
     });
   `);
 });
+
+test('unsupported BigInt bitwise operations explain the Number-only surface', async () => {
+  const sources=['~1n;'];
+  for (const op of ['&','|','^','<<','>>','>>>']) {
+    sources.push(`1n ${op} 2n;`, `1n ${op} 2;`, `1 ${op} 2n;`, `let n=1n; n ${op}= 2n;`);
+  }
+  for (const source of sources) {
+    await assert.rejects(new Mustard(source).run(), /TypeError: BigInt bitwise operators are unsupported/);
+    assert.equal(await new Mustard(`try { ${source} } catch(e) { e.name; }`).run(), 'TypeError');
+  }
+});

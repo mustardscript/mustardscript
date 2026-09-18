@@ -9,6 +9,14 @@ lastUpdated: "2026-04-14"
 
 # Bytecode VM Model
 
+Script bodies that need compound-statement completion values use a private
+lexical result cell. Normal expression statements update it; control-flow
+constructs apply their empty/undefined completion rules. A `try` with `finally`
+preserves its result in a private scope until normal cleanup finishes. These
+are ordinary VM cells, so GC, limits, and suspension serialization need no
+separate result channel. Function bodies do not update the script cell. A
+syntactically final expression retains the direct operand-stack return path.
+
 `mustard` currently uses a private stack-based bytecode.
 
 ## Program Shape
@@ -25,8 +33,18 @@ lastUpdated: "2026-04-14"
 - Each frame owns an operand stack.
 - Literal loads, name loads, and closure creation push values.
 - Arithmetic and comparison operations pop their operands and push one result.
+- Array builders keep the array on the stack: `ArrayPush` and `ArrayExtend`
+  consume an additional element/iterable (net minus one); `ArrayPushHole`
+  needs only the array (net zero). Validation uses these same effects at
+  branch merges and when checking untrusted bytecode for stack underflow.
+- Loose equality may run guest coercion methods. A bounded, GC-rooted frame
+  continuation tracks method order and default array element string conversion
+  across calls and host suspensions; exceptions discard that continuation.
 - `StoreName` and property-set instructions push the assigned value back so
   assignment expressions still produce a result.
+- Lexical-slot lookup stops at the environment-chain root and rejects impossible
+  depths before walking; malformed serialized operands cannot request an
+  unbounded parent traversal inside one instruction.
 - `JumpIfFalse`, `JumpIfTrue`, and `JumpIfNullish` inspect the top-of-stack
   value without popping it.
 - The optimizer may emit private combined handlers such as
@@ -47,7 +65,7 @@ lastUpdated: "2026-04-14"
   currently stays opt-in until broader portfolio data justifies enabling it by
   default.
 - Jump targets always start a fresh optimization block.
-- The optimizer flushes at handler and pending-completion edges, control-flow
+- The optimizer flushes at coercing equality, handler and pending-completion edges, control-flow
   transfers, `await`, calls, construction, `return`, and `throw`.
 - There is no bytecode-level source-position marker today, so no additional
   source-position flush boundary is currently encoded.
@@ -61,6 +79,8 @@ Each frame currently tracks:
 - `env`: the current lexical environment
 - `scope_stack`: the nested lexical environments introduced by `PushEnv`
 - `stack`: the operand stack for the frame
+- `pending_equality`: resumable object-to-primitive and array string conversion
+  work for an unfinished `==` or `!=` instruction
 - `async_promise`: the backing promise for an async function frame when present
 
 `this` is stored in the frame's lexical environment as a normal binding.

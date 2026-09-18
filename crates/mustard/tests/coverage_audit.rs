@@ -21,6 +21,7 @@ fn snapshot_policy(capabilities: &[&str], limits: RuntimeLimits) -> SnapshotPoli
 
 fn stmt_contains_expr(stmt: &Stmt, predicate: &impl Fn(&Expr) -> bool) -> bool {
     match stmt {
+        Stmt::Labeled { body, .. } => stmt_contains_expr(body, predicate),
         Stmt::Block { body, .. } => body
             .iter()
             .any(|entry| stmt_contains_expr(entry, predicate)),
@@ -111,7 +112,11 @@ fn stmt_contains_expr(stmt: &Stmt, predicate: &impl Fn(&Expr) -> bool) -> bool {
                             .any(|entry| stmt_contains_expr(entry, predicate))
                 })
         }
-        Stmt::Break { .. } | Stmt::Continue { .. } | Stmt::Empty { .. } => false,
+        Stmt::Break { .. }
+        | Stmt::Continue { .. }
+        | Stmt::LabeledBreak { .. }
+        | Stmt::LabeledContinue { .. }
+        | Stmt::Empty { .. } => false,
     }
 }
 

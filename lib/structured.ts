@@ -91,6 +91,7 @@ class BinaryWriter {
   }
 
   writeString(value) {
+    assertWellFormedString(value);
     const byteLength = Buffer.byteLength(value, 'utf8');
     this.writeU32(byteLength);
     this._ensureCapacity(byteLength);
@@ -100,6 +101,12 @@ class BinaryWriter {
 
   toBuffer() {
     return Buffer.from(this._buffer.subarray(0, this._offset));
+  }
+}
+
+function assertWellFormedString(value) {
+  if (!value.isWellFormed()) {
+    throw new TypeError('lone surrogates cannot cross the UTF-8 host boundary');
   }
 }
 
@@ -175,6 +182,7 @@ function enumerateDataProperties(value) {
   const entries = new Array(keys.length);
   let entryCount = 0;
   for (const key of keys) {
+    assertWellFormedString(key);
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (descriptor === undefined) {
       continue;
@@ -257,6 +265,7 @@ function encodeStructured(value, traversal = { active: new WeakSet() }, depth = 
     return encodeNumber(value);
   }
   if (typeof value === 'string') {
+    assertWellFormedString(value);
     return { String: value };
   }
   if (Array.isArray(value)) {
@@ -582,6 +591,7 @@ function encodeResumePayloadCancelBuffer() {
 }
 
 module.exports = {
+  assertWellFormedString,
   BOUNDARY_BINARY_KIND,
   decodeStructured,
   defineEnumerableProperty,

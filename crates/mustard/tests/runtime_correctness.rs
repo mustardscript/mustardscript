@@ -421,7 +421,7 @@ fn nested_helpers_after_loop_keep_function_binding_slots_stable() {
             const survived = +r[idx["Survived"]];
             const ageRaw = r[idx["Age"]];
             const age = ageRaw === "" ? null : +ageRaw;
-            if (age != null && age === age) {
+            if (age !== null && age !== undefined && age === age) {
               ageBySurv[survived].count++;
               ageBySurv[survived].sum += age;
             }

@@ -1,4 +1,5 @@
 mod expressions;
+mod nesting;
 mod operators;
 mod patterns;
 mod scope;
@@ -48,8 +49,31 @@ pub fn compile_with_options(
     source: &str,
     options: CompileOptions,
 ) -> MustardResult<CompiledProgram> {
+    let lexical_failure = nesting::check_source_nesting(source)?;
+    // The token limits bound recursion. Reserve room for that bounded parser
+    // and lowering work even when the embedder supplies a small native stack.
+    #[cfg(not(target_arch = "wasm32"))]
+    return stacker::maybe_grow(2 * 1024 * 1024, 8 * 1024 * 1024, || {
+        compile_checked(source, options, lexical_failure)
+    });
+    #[cfg(target_arch = "wasm32")]
+    compile_checked(source, options, lexical_failure)
+}
+
+fn compile_checked(
+    source: &str,
+    options: CompileOptions,
+    lexical_failure: Option<nesting::LexicalFailure>,
+) -> MustardResult<CompiledProgram> {
+    let mut prefix_end = lexical_failure
+        .as_ref()
+        .map_or(source.len(), |e| e.prefix_end.min(source.len()));
+    while !source.is_char_boundary(prefix_end) {
+        prefix_end -= 1;
+    }
+    let parse_text = &source[..prefix_end];
     let allocator = Allocator::default();
-    let parsed = parse_source(&allocator, source, options);
+    let parsed = parse_source(&allocator, parse_text, options);
     let mut diagnostics = Vec::new();
     diagnostics.extend(
         parsed
@@ -57,6 +81,12 @@ pub fn compile_with_options(
             .into_iter()
             .map(|error| Diagnostic::parse(error.to_string(), None)),
     );
+    if let Some(failure) = lexical_failure {
+        if diagnostics.is_empty() {
+            diagnostics.push(Diagnostic::parse(failure.message, None));
+        }
+        return Err(MustardError::Diagnostics(diagnostics));
+    }
     if parsed.panicked {
         return Err(MustardError::Diagnostics(diagnostics));
     }
@@ -130,6 +160,7 @@ struct Lowerer<'a> {
     scopes: Vec<HashSet<String>>,
     function_depth: usize,
     internal_name_counter: usize,
+    labels: Vec<(String, bool, usize)>,
 }
 
 impl<'a> Lowerer<'a> {
@@ -141,20 +172,42 @@ impl<'a> Lowerer<'a> {
             scopes: vec![HashSet::new()],
             function_depth: 0,
             internal_name_counter: 0,
+            labels: Vec::new(),
+        }
+    }
+
+    fn check_directives(&mut self, directives: &[Directive<'a>]) {
+        for directive in directives {
+            if directive.expression.lone_surrogates {
+                self.unsupported(
+                    "lone surrogates are not supported by the Unicode string profile",
+                    Some(directive.span.into()),
+                );
+            }
         }
     }
 
     fn lower_program(&mut self, program: &Program<'a>) -> Script {
+        self.check_directives(&program.directives);
         self.predeclare_block(&program.body);
-        let body = program
+        let statements = program
             .body
             .iter()
             .enumerate()
             .filter_map(|(index, statement)| {
                 let is_last = index + 1 == program.body.len();
                 self.lower_root_stmt(statement, is_last)
-            })
-            .collect();
+            });
+        // Directives are still evaluated string expression statements and can
+        // supply a Script completion even though their strictness is implicit.
+        let directives = program.directives.iter().map(|directive| Stmt::Expression {
+            span: directive.span.into(),
+            expression: Expr::String {
+                span: directive.expression.span.into(),
+                value: directive.expression.value.as_str().to_string(),
+            },
+        });
+        let body = directives.chain(statements).collect();
         Script {
             span: program.span.into(),
             body,

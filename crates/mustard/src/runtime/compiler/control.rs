@@ -16,7 +16,26 @@ impl Compiler {
         body: &Stmt,
         catch: Option<&crate::ir::CatchClause>,
         finally: Option<&Stmt>,
+        span: crate::span::SourceSpan,
     ) -> MustardResult<()> {
+        let saved_completion = if context.completion_binding.is_some() && finally.is_some() {
+            // An unconditional private scope avoids conditional declarations
+            // changing the slot layout of the surrounding guest environment.
+            self.enter_env_scope(context);
+            let name = self.fresh_internal_name(context, "finally_result");
+            self.emit_declare_name(context, name.clone(), true);
+            context.code.push(Instruction::PushUndefined);
+            context.code.push(Instruction::InitializePattern(
+                crate::ir::Pattern::Identifier {
+                    span,
+                    name: name.clone(),
+                },
+            ));
+            Some(name)
+        } else {
+            None
+        };
+        self.reset_statement_completion(context);
         let finally_region = finally.map(|_| {
             context
                 .finally_regions
@@ -35,10 +54,7 @@ impl Compiler {
                 .push(try_handler_site);
         }
 
-        context.active_handlers.push(ActiveHandlerContext {
-            finally_region,
-            scope_depth: context.scope_depth,
-        });
+        context.active_handlers.push(ActiveHandlerContext {});
         self.compile_stmt(context, body)?;
         context.active_handlers.pop();
         context.code.push(Instruction::PopHandler);
@@ -49,8 +65,9 @@ impl Compiler {
 
         if let Some(region) = finally_region {
             let patch = context.code.len();
-            context.code.push(Instruction::PushPendingJump {
+            context.code.push(Instruction::PushCompletionJump {
                 target: usize::MAX,
+                target_finally_depth: context.active_finally.len(),
                 target_handler_depth: outer_handler_depth,
                 target_scope_depth: context.scope_depth,
             });
@@ -62,6 +79,7 @@ impl Compiler {
 
         if let Some(catch_clause) = catch {
             self.patch_handler_catch(context, try_handler_site, context.code.len());
+            self.reset_statement_completion(context);
 
             if let Some(region) = finally_region {
                 let catch_handler_site = context.code.len();
@@ -72,10 +90,7 @@ impl Compiler {
                 context.finally_regions[region]
                     .handler_sites
                     .push(catch_handler_site);
-                context.active_handlers.push(ActiveHandlerContext {
-                    finally_region: Some(region),
-                    scope_depth: context.scope_depth,
-                });
+                context.active_handlers.push(ActiveHandlerContext {});
             }
 
             self.enter_env_scope(context);
@@ -98,8 +113,9 @@ impl Compiler {
                 context.active_handlers.pop();
                 context.code.push(Instruction::PopHandler);
                 let patch = context.code.len();
-                context.code.push(Instruction::PushPendingJump {
+                context.code.push(Instruction::PushCompletionJump {
                     target: usize::MAX,
+                    target_finally_depth: context.active_finally.len(),
                     target_handler_depth: outer_handler_depth,
                     target_scope_depth: context.scope_depth,
                 });
@@ -115,23 +131,43 @@ impl Compiler {
                 finally_region.expect("finally region should exist"),
                 finally_ip,
             );
+            if let Some(saved) = &saved_completion {
+                let result = context
+                    .completion_binding
+                    .clone()
+                    .expect("script completion binding");
+                self.emit_load_name(context, &result);
+                self.emit_store_name_discard(context, saved);
+                self.reset_statement_completion(context);
+            }
             let enter_finally = context.code.len();
             context
                 .code
                 .push(Instruction::EnterFinally { exit: usize::MAX });
             context.active_finally.push(ActiveFinallyContext {
                 exit_patch_site: enter_finally,
-                jump_sites: Vec::new(),
-                scope_depth: context.scope_depth,
             });
             self.compile_stmt(context, finally_stmt)?;
+            // Only normal cleanup restores the try/catch value. Abrupt cleanup
+            // skips this and supplies its own completion to the existing unwinder.
+            if let Some(saved) = &saved_completion {
+                let result = context
+                    .completion_binding
+                    .clone()
+                    .expect("script completion binding");
+                self.emit_load_name(context, saved);
+                self.emit_store_name_discard(context, &result);
+            }
             let continue_ip = context.code.len();
             let active_finally = context
                 .active_finally
                 .pop()
                 .expect("finally context should exist");
             self.patch_finally_exit(context, active_finally, continue_ip);
-            context.code.push(Instruction::ContinuePending);
+            context.code.push(Instruction::ContinuePendingRegion {
+                handler_depth: context.active_handlers.len(),
+                scope_depth: context.scope_depth,
+            });
             let after_finally = context.code.len();
             for patch in after_finally_patches {
                 self.patch_pending_jump(context, patch, after_finally);
@@ -144,24 +180,21 @@ impl Compiler {
             self.patch_jump(context, skip_catch_jump, after_catch);
         }
 
+        if saved_completion.is_some() {
+            self.exit_env_scope(context);
+        }
+
         Ok(())
     }
 
     pub(super) fn emit_return(&self, context: &mut CompileContext) {
-        if let Some(active_finally) = context.active_finally.last() {
-            self.emit_scope_cleanup(context, active_finally.scope_depth);
-            context.code.push(Instruction::PushPendingReturn);
-            self.emit_jump_to_active_finally_exit(context);
-            return;
-        }
-        if let Some((handler_depth, region)) = self.nearest_finally_region(context, 0) {
-            self.emit_scope_cleanup(context, context.active_handlers[handler_depth].scope_depth);
-            self.emit_handler_cleanup(context, handler_depth);
-            context.code.push(Instruction::PushPendingReturn);
-            self.emit_jump_to_finally(context, region);
-        } else {
-            context.code.push(Instruction::Return);
-        }
+        context.code.push(
+            if context.active_handlers.is_empty() && context.active_finally.is_empty() {
+                Instruction::Return
+            } else {
+                Instruction::AbruptReturn
+            },
+        );
     }
 
     pub(super) fn emit_jump_transfer(
@@ -169,84 +202,21 @@ impl Compiler {
         context: &mut CompileContext,
         target_handler_depth: usize,
         target_scope_depth: usize,
+        target_finally_depth: usize,
     ) -> ControlTransferPatch {
-        if let Some(active_finally) = context.active_finally.last() {
-            self.emit_scope_cleanup(context, active_finally.scope_depth);
-            let patch = context.code.len();
-            context.code.push(Instruction::PushPendingJump {
-                target: usize::MAX,
-                target_handler_depth,
-                target_scope_depth,
-            });
-            self.emit_jump_to_active_finally_exit(context);
-            return ControlTransferPatch::PendingJump(patch);
-        }
-        if let Some((handler_depth, region)) =
-            self.nearest_finally_region(context, target_handler_depth)
-        {
-            self.emit_scope_cleanup(context, context.active_handlers[handler_depth].scope_depth);
-            self.emit_handler_cleanup(context, handler_depth);
-            let patch = context.code.len();
-            context.code.push(Instruction::PushPendingJump {
-                target: usize::MAX,
-                target_handler_depth,
-                target_scope_depth,
-            });
-            self.emit_jump_to_finally(context, region);
-            ControlTransferPatch::PendingJump(patch)
-        } else {
-            self.emit_scope_cleanup(context, target_scope_depth);
-            self.emit_handler_cleanup(context, target_handler_depth);
-            ControlTransferPatch::DirectJump(self.emit_jump(context, Instruction::Jump(usize::MAX)))
-        }
-    }
-
-    pub(super) fn emit_scope_cleanup(
-        &self,
-        context: &mut CompileContext,
-        target_scope_depth: usize,
-    ) {
-        for _ in target_scope_depth..context.scope_depth {
-            context.code.push(Instruction::PopEnv);
-        }
-    }
-
-    pub(super) fn emit_handler_cleanup(
-        &self,
-        context: &mut CompileContext,
-        target_handler_depth: usize,
-    ) {
-        for _ in target_handler_depth..context.active_handlers.len() {
-            context.code.push(Instruction::PopHandler);
-        }
-    }
-
-    pub(super) fn nearest_finally_region(
-        &self,
-        context: &CompileContext,
-        target_handler_depth: usize,
-    ) -> Option<(usize, usize)> {
-        for handler_depth in (target_handler_depth..context.active_handlers.len()).rev() {
-            if let Some(region) = context.active_handlers[handler_depth].finally_region {
-                return Some((handler_depth, region));
-            }
-        }
-        None
+        let patch = context.code.len();
+        context.code.push(Instruction::AbruptJump {
+            target: usize::MAX,
+            target_handler_depth,
+            target_scope_depth,
+            target_finally_depth,
+        });
+        ControlTransferPatch::AbruptJump(patch)
     }
 
     pub(super) fn emit_jump_to_finally(&self, context: &mut CompileContext, region: usize) {
         let jump_site = self.emit_jump(context, Instruction::Jump(usize::MAX));
         context.finally_regions[region].jump_sites.push(jump_site);
-    }
-
-    pub(super) fn emit_jump_to_active_finally_exit(&self, context: &mut CompileContext) {
-        let jump_site = self.emit_jump(context, Instruction::Jump(usize::MAX));
-        context
-            .active_finally
-            .last_mut()
-            .expect("finally context should exist")
-            .jump_sites
-            .push(jump_site);
     }
 
     pub(super) fn patch_handler_catch(
@@ -287,9 +257,6 @@ impl Compiler {
         if let Instruction::EnterFinally { exit } = &mut context.code[finally.exit_patch_site] {
             *exit = target;
         }
-        for jump_site in finally.jump_sites {
-            self.patch_jump(context, jump_site, target);
-        }
     }
 
     pub(super) fn patch_pending_jump(
@@ -298,7 +265,7 @@ impl Compiler {
         index: usize,
         target: usize,
     ) {
-        if let Instruction::PushPendingJump { target: jump, .. } = &mut context.code[index] {
+        if let Instruction::PushCompletionJump { target: jump, .. } = &mut context.code[index] {
             *jump = target;
         }
     }
@@ -310,9 +277,10 @@ impl Compiler {
         target: usize,
     ) {
         match patch {
-            ControlTransferPatch::DirectJump(index) => self.patch_jump(context, index, target),
-            ControlTransferPatch::PendingJump(index) => {
-                self.patch_pending_jump(context, index, target)
+            ControlTransferPatch::AbruptJump(index) => {
+                if let Instruction::AbruptJump { target: jump, .. } = &mut context.code[index] {
+                    *jump = target;
+                }
             }
         }
     }

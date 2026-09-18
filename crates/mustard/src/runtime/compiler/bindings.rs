@@ -88,5 +88,11 @@ pub(super) fn assign_op_to_binary(operator: AssignOp) -> MustardResult<BinaryOp>
         AssignOp::DivAssign => Ok(BinaryOp::Div),
         AssignOp::RemAssign => Ok(BinaryOp::Rem),
         AssignOp::PowAssign => Ok(BinaryOp::Pow),
+        AssignOp::BitAndAssign => Ok(BinaryOp::BitAnd),
+        AssignOp::BitOrAssign => Ok(BinaryOp::BitOr),
+        AssignOp::BitXorAssign => Ok(BinaryOp::BitXor),
+        AssignOp::ShiftLeftAssign => Ok(BinaryOp::ShiftLeft),
+        AssignOp::ShiftRightAssign => Ok(BinaryOp::ShiftRight),
+        AssignOp::ShiftRightUnsignedAssign => Ok(BinaryOp::ShiftRightUnsigned),
     }
 }

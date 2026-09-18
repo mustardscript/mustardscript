@@ -75,12 +75,36 @@ Cooperative cancellation is controlled separately through:
 - Call-depth limits are enforced before each new guest frame is pushed, so
   recursive or deeply nested guest calls fail with a guest-safe limit error
   once the configured depth budget is exhausted.
+- Native recursion has an additional fixed, shared budget of 256 units:
+  each JSON property traversal or parse entry costs one, and each synchronous
+  native-to-guest callback entry costs sixteen. Reentrant revivers, replacers,
+  `toJSON`, and collection callbacks cannot reset this budget by starting a new
+  helper. Exits refund their units, including errors. Exhaustion reports
+  `native recursion depth limit exceeded` as a non-catchable limit error.
+  Native builds use `stacker` at these guarded entries to reserve stack space
+  on small threads and debug/ASan builds; the fixed recursion budget bounds
+  stack-segment growth independently of guest heap limits. WebAssembly uses
+  the same depth budget without native stack switching.
 - Cooperative cancellation is implemented and checked before each instruction,
   before idle microtask or queued-host-call checkpoints, on every resume
   entry, and inside long-running native helper loops.
+- Global RegExp helpers carry byte/scalar cursors forward and charge consumed
+  search spans plus capture materialization, not the entire input for every
+  match. Capture-index conversion scans each matched span once. Exhausted
+  searches still charge the remaining span; each attempt checks cancellation.
+- `Array.prototype.shift` moves slots in place and charges one native removal,
+  without allocating a discarded splice-result array or copying guest values.
+  The backing vector still performs a bounded native slot move; this is not a
+  claim of constant-time physical queue storage.
 - Native helper loops such as `Array.prototype.sort()` and `Object.keys()` now
   charge instruction budget explicitly instead of bypassing the guest budget
   inside opaque Rust work.
+- Native call rooting retains arena handles, not copies of owned strings or
+  BigInts. Each runtime keeps at most eight recently used compiled regexes and
+  eight immutable en-US collator configurations, evicting one least-recently-used
+  entry at a time. Regex programs/DFA caches retain their per-engine size bounds;
+  collators borrow pinned static ICU data. These caches are not serialized, and
+  cache hits do not skip input/option validation or per-call work/space checks.
 - `JSON.parse()`, `JSON.stringify()`, `Number.parseInt()`, and
   `Number.parseFloat()` also meter native helper work instead of bypassing the
   guest instruction budget inside long native scans.

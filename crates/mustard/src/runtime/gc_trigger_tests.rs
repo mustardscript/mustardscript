@@ -1105,3 +1105,236 @@ fn promise_combinator_completion_moves_driver_buffers_without_full_refreshes() {
         }))
     ));
 }
+
+#[test]
+fn deletion_releases_property_payloads_without_corrupting_cached_heap_totals() {
+    let mut runtime = test_runtime();
+    let object = runtime
+        .insert_object(
+            IndexMap::from([("payload".into(), Value::String("large".repeat(256)))]),
+            ObjectKind::Plain,
+        )
+        .unwrap();
+    let array = runtime
+        .insert_array(
+            vec![Value::String("other".repeat(256))],
+            IndexMap::from([("extra".into(), Value::String("extra".repeat(256)))]),
+        )
+        .unwrap();
+    let before = runtime.heap_bytes_used;
+    runtime
+        .delete_property_by_key(Value::Object(object), "payload")
+        .unwrap();
+    runtime
+        .delete_property_by_key(Value::Array(array), "0")
+        .unwrap();
+    runtime
+        .delete_property_by_key(Value::Array(array), "extra")
+        .unwrap();
+    assert!(runtime.heap_bytes_used < before);
+    assert_eq!(runtime.array_length(array).unwrap(), 1);
+    assert!(!runtime.array_has_index(array, 0).unwrap());
+    #[cfg(debug_assertions)]
+    runtime.debug_assert_cached_accounting_matches_full_walk();
+}
+
+#[test]
+fn native_temporary_roots_protect_microtask_values_without_an_active_frame() {
+    let mut runtime = test_runtime();
+    runtime.frames.clear();
+    let object = runtime
+        .insert_object(IndexMap::new(), ObjectKind::Plain)
+        .unwrap();
+    runtime
+        .with_temporary_roots(&[Value::Object(object)], |runtime| {
+            runtime.collect_garbage()?;
+            assert!(runtime.objects.contains_key(object));
+            Ok(())
+        })
+        .unwrap();
+    runtime.collect_garbage().unwrap();
+    assert!(!runtime.objects.contains_key(object));
+}
+
+#[test]
+fn copying_and_sorting_mutations_keep_array_heap_accounting_consistent() {
+    let mut runtime = test_runtime();
+    let array = runtime
+        .insert_sparse_array(
+            vec![
+                None,
+                Some(Value::String("large".repeat(100))),
+                Some(Value::String("small".into())),
+            ],
+            IndexMap::new(),
+        )
+        .unwrap();
+    runtime
+        .with_temporary_roots(&[Value::Array(array)], |runtime| {
+            runtime.call_array_copy_within(
+                Value::Array(array),
+                &[Value::Number(0.0), Value::Number(1.0)],
+            )?;
+            runtime.call_array_shift(Value::Array(array))?;
+            runtime.call_array_unshift(Value::Array(array), &[Value::Number(1.0)])?;
+            runtime.call_array_sort(Value::Array(array), &[])?;
+            #[cfg(debug_assertions)]
+            runtime.debug_assert_cached_accounting_matches_full_walk();
+            Ok(())
+        })
+        .unwrap();
+}
+
+#[test]
+fn set_churn_compacts_slots_without_invalidating_live_cursors() {
+    let mut runtime = test_runtime();
+    let set = runtime.insert_set(vec![Value::Number(-1.0)]).unwrap();
+    let iterator = runtime.create_iterator(Value::Set(set)).unwrap();
+    runtime
+        .define_global("kept_iterator".into(), iterator.clone(), false)
+        .unwrap();
+    assert!(
+        matches!(runtime.iterator_next(iterator.clone()).unwrap(), (Value::Number(n), false) if n == -1.0)
+    );
+    runtime.limits.heap_limit_bytes = runtime.heap_bytes_used + 8192;
+    for index in 0..1000 {
+        let value = Value::Number(index as f64);
+        runtime.set_add(set, value.clone()).unwrap();
+        runtime.set_delete(set, &value).unwrap();
+    }
+    assert!(runtime.sets[set].entries.len() < 64);
+    runtime.set_add(set, Value::Number(1001.0)).unwrap();
+    assert!(
+        matches!(runtime.iterator_next(iterator).unwrap(), (Value::Number(n), false) if n == 1001.0)
+    );
+    runtime.collect_garbage().unwrap();
+}
+
+#[test]
+fn rejected_set_growth_leaves_accounting_and_storage_unchanged() {
+    let mut runtime = test_runtime();
+    let set = runtime.insert_set(vec![Value::Number(1.0)]).unwrap();
+    runtime
+        .define_global("kept_set".into(), Value::Set(set), false)
+        .unwrap();
+    runtime.limits.heap_limit_bytes = runtime.heap_bytes_used + 8;
+    let error = runtime
+        .set_add(set, Value::String("x".repeat(4096)))
+        .unwrap_err();
+    assert!(error.to_string().contains("heap limit exceeded"), "{error}");
+    assert_eq!(runtime.sets[set].live_len, 1);
+    assert_eq!(runtime.sets[set].entries.len(), 1);
+    runtime.collect_garbage().unwrap();
+}
+
+#[test]
+fn native_roots_skip_owned_primitives_but_keep_arena_values_alive() {
+    let mut runtime = test_runtime();
+    let object = runtime
+        .insert_object(
+            IndexMap::from([("kept".into(), Value::Number(42.0))]),
+            ObjectKind::Plain,
+        )
+        .unwrap();
+    let roots = [
+        Value::String("large".repeat(20000)),
+        Value::BigInt(num_bigint::BigInt::from(42)),
+        Value::Object(object),
+    ];
+    runtime
+        .with_temporary_roots(&roots, |runtime| {
+            assert_eq!(runtime.native_temporary_roots.len(), 1);
+            runtime.collect_garbage()?;
+            assert!(runtime.objects.contains_key(object));
+            Ok(())
+        })
+        .unwrap();
+    assert!(runtime.native_temporary_roots.is_empty());
+    runtime.collect_garbage().unwrap();
+    assert!(!runtime.objects.contains_key(object));
+}
+
+#[test]
+fn regex_cache_retains_five_alternating_patterns_and_evicts_only_the_oldest() {
+    let mut runtime = test_runtime();
+    for i in 0..5 {
+        runtime
+            .construct_regexp(&[Value::String(format!("a{i}"))])
+            .unwrap();
+    }
+    let retained = runtime
+        .regex_cache
+        .get(&("a0".into(), String::new()))
+        .unwrap()
+        .clone();
+    for _ in 0..3 {
+        for i in 0..5 {
+            runtime
+                .construct_regexp(&[Value::String(format!("a{i}"))])
+                .unwrap();
+        }
+    }
+    assert_eq!(runtime.regex_cache.len(), 5);
+    assert_eq!(
+        retained.as_str().as_ptr(),
+        runtime
+            .regex_cache
+            .get(&("a0".into(), String::new()))
+            .unwrap()
+            .as_str()
+            .as_ptr()
+    );
+    for i in 5..9 {
+        runtime
+            .construct_regexp(&[Value::String(format!("a{i}"))])
+            .unwrap();
+    }
+    assert_eq!(runtime.regex_cache.len(), 8);
+    assert!(
+        !runtime
+            .regex_cache
+            .contains_key(&("a0".into(), String::new()))
+    );
+    assert!(
+        runtime
+            .regex_cache
+            .contains_key(&("a1".into(), String::new()))
+    );
+}
+
+#[test]
+fn collation_cache_reuses_configuration_but_revalidates_options() {
+    let mut runtime = test_runtime();
+    runtime
+        .call_string_locale_compare(Value::String("a".into()), &[Value::String("B".into())])
+        .unwrap();
+    let cached = Arc::clone(runtime.collator_cache.values().next().unwrap());
+    for _ in 0..10 {
+        runtime
+            .call_string_locale_compare(Value::String("z".into()), &[Value::String("a".into())])
+            .unwrap();
+    }
+    assert!(Arc::ptr_eq(
+        &cached,
+        runtime.collator_cache.values().next().unwrap()
+    ));
+    let options = runtime
+        .insert_object(
+            IndexMap::from([("sensitivity".into(), Value::String("invalid".into()))]),
+            ObjectKind::Plain,
+        )
+        .unwrap();
+    assert!(
+        runtime
+            .call_string_locale_compare(
+                Value::String("a".into()),
+                &[
+                    Value::String("B".into()),
+                    Value::Undefined,
+                    Value::Object(options)
+                ]
+            )
+            .is_err()
+    );
+    assert_eq!(runtime.collator_cache.len(), 1);
+}

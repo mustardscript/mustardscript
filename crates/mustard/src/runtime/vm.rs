@@ -43,6 +43,11 @@ impl Runtime {
             .len()
             .checked_sub(1)
             .ok_or_else(|| MustardError::runtime("vm lost all frames"))?;
+        if self.frames[frame_index].pending_equality.is_some() {
+            self.bump_instruction_budget()?;
+            self.collect_garbage_before_instruction(&Instruction::Binary(BinaryOp::Eq))?;
+            return self.continue_loose_equality(frame_index);
+        }
         let function_id = self.frames[frame_index].function_id;
         let ip = self.frames[frame_index].ip;
         let instruction = program
@@ -175,6 +180,11 @@ impl Runtime {
             Instruction::LoadName(name) => {
                 let env = self.frames[frame_index].env;
                 let value = self.lookup_name(env, name)?;
+                self.frames[frame_index].stack.push(value);
+            }
+            Instruction::LoadNameForTypeof(name) => {
+                let env = self.frames[frame_index].env;
+                let value = self.lookup_name_for_typeof(env, name)?;
                 self.frames[frame_index].stack.push(value);
             }
             Instruction::LoadGlobal(name) => {
@@ -388,6 +398,18 @@ impl Runtime {
                 let value = self.get_property(object, property, *optional)?;
                 self.frames[frame_index].stack.push(value);
             }
+            Instruction::DeletePropComputed => {
+                let property = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                let object = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                self.delete_property(object, property)?;
+                self.frames[frame_index].stack.push(Value::Bool(true));
+            }
             Instruction::SetPropStatic { name } => {
                 let value = self.frames[frame_index]
                     .stack
@@ -459,6 +481,9 @@ impl Runtime {
                     .stack
                     .pop()
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                if matches!(operator, BinaryOp::Eq | BinaryOp::NotEq) {
+                    return self.start_loose_equality(frame_index, *operator, left, right);
+                }
                 // Number-Number fast path: bypass the to_number / string / BigInt
                 // coercion cascade for the overwhelmingly common arithmetic and
                 // ordering-comparison case. `to_number(Number(x)) == x`, so these
@@ -603,6 +628,38 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 return self.raise_exception(value, Some(*span));
             }
+            Instruction::AbruptJump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+                target_finally_depth,
+            }
+            | Instruction::PushCompletionJump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+                target_finally_depth,
+            } => {
+                let completion = CompletionRecord::StructuredJump {
+                    target: *target,
+                    target_handler_depth: *target_handler_depth,
+                    target_scope_depth: *target_scope_depth,
+                    target_finally_depth: *target_finally_depth,
+                };
+                if matches!(instruction, Instruction::AbruptJump { .. }) {
+                    return self.resume_completion(completion);
+                }
+                self.frames[frame_index]
+                    .pending_completions
+                    .push(completion);
+            }
+            Instruction::AbruptReturn => {
+                let value = self.frames[frame_index]
+                    .stack
+                    .pop()
+                    .ok_or_else(|| MustardError::runtime("stack underflow"))?;
+                return self.resume_completion(CompletionRecord::Return(value));
+            }
             Instruction::PushPendingJump {
                 target,
                 target_handler_depth,
@@ -631,7 +688,7 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("stack underflow"))?;
                 self.store_completion(frame_index, CompletionRecord::Throw(value))?;
             }
-            Instruction::ContinuePending => {
+            Instruction::ContinuePending | Instruction::ContinuePendingRegion { .. } => {
                 let marker = self.frames[frame_index]
                     .active_finally
                     .pop()
@@ -706,37 +763,8 @@ impl Runtime {
                 {
                     return Err(self.unsupported_member_call_error(&this_value, member_name));
                 }
-                match self.call_callable(callee, this_value, &args)? {
-                    RunState::Completed(value) => {
-                        self.frames[frame_index].stack.push(value);
-                    }
-                    RunState::PushedFrame => {}
-                    RunState::StartedAsync(value) => {
-                        self.frames[frame_index].stack.push(value);
-                    }
-                    RunState::Suspended {
-                        capability,
-                        args,
-                        resume_behavior,
-                    } => {
-                        self.pending_resume_behavior = resume_behavior;
-                        self.suspended_host_call = Some(PendingHostCall {
-                            capability: capability.clone(),
-                            args: args.clone(),
-                            promise: None,
-                            resume_behavior,
-                            traceback: self.traceback_snapshots(),
-                        });
-                        self.snapshot_nonce = next_snapshot_nonce();
-                        return Ok(StepAction::Return(ExecutionStep::Suspended(Box::new(
-                            Suspension {
-                                capability,
-                                args,
-                                snapshot: ExecutionSnapshot::capture(self),
-                            },
-                        ))));
-                    }
-                }
+                let call = self.call_callable(callee, this_value, &args)?;
+                return self.finish_call_step(frame_index, call);
             }
             Instruction::MapSetCounter { .. } => {
                 self.record_builtin_feedback_site(BuiltinFunction::MapSet);
@@ -928,6 +956,19 @@ impl Runtime {
         target_depth: usize,
         host_suspension_message: &str,
     ) -> MustardResult<()> {
+        let previous = self
+            .native_callback_host_suspension_message
+            .replace(host_suspension_message.to_string());
+        let result = self.run_until_frame_depth_inner(target_depth, host_suspension_message);
+        self.native_callback_host_suspension_message = previous;
+        result
+    }
+
+    fn run_until_frame_depth_inner(
+        &mut self,
+        target_depth: usize,
+        host_suspension_message: &str,
+    ) -> MustardResult<()> {
         let program = Arc::clone(&self.program);
         while self.frames.len() > target_depth {
             self.check_cancellation()?;
@@ -1006,12 +1047,52 @@ impl Runtime {
             stack: Vec::new(),
             handlers: Vec::new(),
             pending_exception: None,
+            pending_equality: None,
             pending_completions: Vec::new(),
             active_finally: Vec::new(),
             async_promise,
             callback_capture: false,
         });
         Ok(())
+    }
+
+    pub(super) fn finish_call_step(
+        &mut self,
+        frame_index: usize,
+        call: RunState,
+    ) -> MustardResult<StepAction> {
+        match call {
+            RunState::Completed(value) => {
+                self.frames[frame_index].stack.push(value);
+            }
+            RunState::PushedFrame => {}
+            RunState::StartedAsync(value) => {
+                self.frames[frame_index].stack.push(value);
+            }
+            RunState::Suspended {
+                capability,
+                args,
+                resume_behavior,
+            } => {
+                self.pending_resume_behavior = resume_behavior;
+                self.suspended_host_call = Some(PendingHostCall {
+                    capability: capability.clone(),
+                    args: args.clone(),
+                    promise: None,
+                    resume_behavior,
+                    traceback: self.traceback_snapshots(),
+                });
+                self.snapshot_nonce = next_snapshot_nonce();
+                return Ok(StepAction::Return(ExecutionStep::Suspended(Box::new(
+                    Suspension {
+                        capability,
+                        args,
+                        snapshot: ExecutionSnapshot::capture(self),
+                    },
+                ))));
+            }
+        }
+        Ok(StepAction::Continue)
     }
 
     pub(super) fn call_callable(
@@ -1081,6 +1162,13 @@ impl Runtime {
                 self.call_callable(bound.target, bound.this_value, &combined)
             }
             Value::HostFunction(capability) => {
+                // A synchronous native callback cannot serialize the Rust
+                // traversal stack. Reject before suspension takes the VM state.
+                if self.current_async_boundary_index().is_none()
+                    && let Some(message) = &self.native_callback_host_suspension_message
+                {
+                    return Err(MustardError::runtime(message.clone()));
+                }
                 let resume_behavior = resume_behavior_for_capability(&capability);
                 let args = args
                     .iter()
@@ -1136,7 +1224,7 @@ impl Runtime {
             Value::Closure(_) | Value::HostFunction(_) => Some("Function.prototype".to_string()),
             Value::BuiltinFunction(function) => Some(self.builtin_function_surface(*function)),
             Value::Object(object) => self.objects.get(*object).map(|object| match &object.kind {
-                ObjectKind::Plain => "Object.prototype".to_string(),
+                ObjectKind::Plain | ObjectKind::NullPrototype => "Object.prototype".to_string(),
                 ObjectKind::Global => "globalThis".to_string(),
                 ObjectKind::Math => "Math".to_string(),
                 ObjectKind::Json => "JSON".to_string(),
@@ -1146,7 +1234,7 @@ impl Runtime {
                     self.prototype_surface_for_constructor(constructor)
                 }
                 ObjectKind::BoundFunction(_) => "Function.prototype".to_string(),
-                ObjectKind::Error(name) => format!("{name}.prototype"),
+                ObjectKind::Error(error) => format!("{}.prototype", error.name),
                 ObjectKind::Date(_) => "Date.prototype".to_string(),
                 ObjectKind::RegExp(_) => "RegExp.prototype".to_string(),
                 ObjectKind::NumberObject(_) => "Number.prototype".to_string(),
@@ -1195,6 +1283,7 @@ impl Runtime {
             BuiltinFunction::RegExpCtor => "RegExp".to_string(),
             BuiltinFunction::DateCtor => "Date".to_string(),
             BuiltinFunction::NumberCtor => "Number".to_string(),
+            BuiltinFunction::BigIntCtor => "BigInt".to_string(),
             BuiltinFunction::StringCtor => "String".to_string(),
             BuiltinFunction::BooleanCtor => "Boolean".to_string(),
             BuiltinFunction::FunctionCtor => "Function".to_string(),
@@ -1205,6 +1294,10 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => "ReferenceError".to_string(),
             BuiltinFunction::RangeErrorCtor => "RangeError".to_string(),
             BuiltinFunction::SyntaxErrorCtor => "SyntaxError".to_string(),
+            BuiltinFunction::EvalErrorCtor => "EvalError".to_string(),
+            BuiltinFunction::URIErrorCtor => "URIError".to_string(),
+            BuiltinFunction::AggregateErrorCtor => "AggregateError".to_string(),
+
             _ => "Function.prototype".to_string(),
         }
     }
@@ -1216,7 +1309,7 @@ impl Runtime {
             ));
         }
         let this_arg = args.first().cloned().unwrap_or(Value::Undefined);
-        self.call_callable(target, this_arg, &args[1..])
+        self.call_callable(target, this_arg, args.get(1..).unwrap_or_default())
     }
 
     fn call_function_apply(&mut self, target: Value, args: &[Value]) -> MustardResult<RunState> {
@@ -1256,7 +1349,7 @@ impl Runtime {
         )?))
     }
 
-    fn is_callable_value(&self, value: &Value) -> MustardResult<bool> {
+    pub(super) fn is_callable_value(&self, value: &Value) -> MustardResult<bool> {
         Ok(match value {
             Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => true,
             Value::Object(object) => matches!(
@@ -1286,6 +1379,9 @@ impl Runtime {
                 | BuiltinFunction::ReferenceErrorCtor
                 | BuiltinFunction::RangeErrorCtor
                 | BuiltinFunction::SyntaxErrorCtor
+                | BuiltinFunction::EvalErrorCtor
+                | BuiltinFunction::URIErrorCtor
+                | BuiltinFunction::AggregateErrorCtor
                 | BuiltinFunction::NumberCtor
                 | BuiltinFunction::StringCtor
                 | BuiltinFunction::BooleanCtor
@@ -1318,6 +1414,9 @@ impl Runtime {
                 Value::BuiltinFunction(kind) => self.call_builtin(kind, Value::Undefined, args),
                 _ => unreachable!(),
             },
+            Value::BuiltinFunction(BuiltinFunction::BigIntCtor) => Err(MustardError::runtime(
+                "TypeError: BigInt is not a constructor",
+            )),
             _ => Err(MustardError::runtime(
                 "only conservative built-in constructors are supported in v1",
             )),

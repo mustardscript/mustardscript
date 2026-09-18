@@ -1,6 +1,47 @@
 use super::*;
 
 impl Runtime {
+    pub(in crate::runtime) fn regexp_display_source(pattern: &str) -> String {
+        if pattern.is_empty() {
+            return "(?:)".into();
+        }
+        let mut result = String::with_capacity(pattern.len());
+        let mut chars = pattern.chars().peekable();
+        let mut in_class = false;
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\\' => {
+                    if chars
+                        .peek()
+                        .is_some_and(|ch| matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}'))
+                    {
+                        // The line terminator gets a printable escape next.
+                        continue;
+                    }
+                    result.push(ch);
+                    if let Some(next) = chars.next() {
+                        result.push(next);
+                    }
+                }
+                '[' => {
+                    in_class = true;
+                    result.push(ch);
+                }
+                ']' => {
+                    in_class = false;
+                    result.push(ch);
+                }
+                '/' if !in_class => result.push_str("\\/"),
+                '\n' => result.push_str("\\n"),
+                '\r' => result.push_str("\\r"),
+                '\u{2028}' => result.push_str("\\u2028"),
+                '\u{2029}' => result.push_str("\\u2029"),
+                _ => result.push(ch),
+            }
+        }
+        result
+    }
+
     fn object_helper_type_error() -> MustardError {
         MustardError::runtime(
             "TypeError: Object helpers currently only support plain objects and arrays",
@@ -22,6 +63,8 @@ impl Runtime {
                 .kind
             {
                 ObjectKind::Plain
+                | ObjectKind::NullPrototype
+                | ObjectKind::Error(_)
                 | ObjectKind::FunctionPrototype(_)
                 | ObjectKind::NumberObject(_)
                 | ObjectKind::StringObject(_)
@@ -53,7 +96,7 @@ impl Runtime {
                 .ok_or_else(|| MustardError::runtime("object missing"))?
                 .kind
             {
-                ObjectKind::Plain => Ok(()),
+                ObjectKind::Plain | ObjectKind::NullPrototype | ObjectKind::Error(_) => Ok(()),
                 _ => Err(Self::object_spread_type_error()),
             },
             Value::Array(array) => {
@@ -65,7 +108,7 @@ impl Runtime {
             _ => Err(Self::object_spread_type_error()),
         }
     }
-    fn enumerable_keys(&mut self, value: Value) -> MustardResult<Vec<String>> {
+    pub(super) fn enumerable_keys(&mut self, value: Value) -> MustardResult<Vec<String>> {
         match value {
             Value::Object(object) => {
                 let (count, keys) = {
@@ -80,6 +123,22 @@ impl Runtime {
                                 .collect::<Vec<_>>();
                             keys.extend(object.properties.ordered_keys());
                             (keys.len(), keys)
+                        }
+                        ObjectKind::Error(error) => (
+                            object.properties.len(),
+                            object
+                                .properties
+                                .ordered_keys_filtered(|key, _| error.is_enumerable(key)),
+                        ),
+                        ObjectKind::FunctionPrototype(Value::BuiltinFunction(function))
+                            if Self::builtin_error_name(*function).is_some() =>
+                        {
+                            (
+                                object.properties.len(),
+                                object.properties.ordered_keys_filtered(|key, _| {
+                                    !matches!(key, "name" | "message" | "toString")
+                                }),
+                            )
                         }
                         _ => (object.properties.len(), object.properties.ordered_keys()),
                     }
@@ -358,6 +417,11 @@ impl Runtime {
 
     pub(crate) fn call_object_has_own(&self, args: &[Value]) -> MustardResult<Value> {
         let target = args.first().cloned().unwrap_or(Value::Undefined);
+        if matches!(target, Value::Null | Value::Undefined) {
+            return Err(MustardError::runtime(
+                "TypeError: cannot convert nullish value to object",
+            ));
+        }
         let key = self.to_property_key(args.get(1).cloned().unwrap_or(Value::Undefined))?;
         let has_key = match target {
             Value::Object(object) => {
@@ -366,6 +430,13 @@ impl Runtime {
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
                 object.properties.contains_key(&key)
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::NumberCtor)) if key == "toLocaleString")
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::DateCtor)) if Self::date_prototype_method(&key).is_some())
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::SetCtor)) if Self::set_prototype_method(&key).is_some())
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::BigIntCtor)) if Self::bigint_prototype_method(&key).is_some())
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::StringCtor)) if Self::string_extension_method(&key).is_some())
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::ObjectCtor)) if Self::object_prototype_method(&key).is_some())
+                    || matches!(&object.kind, ObjectKind::FunctionPrototype(Value::BuiltinFunction(BuiltinFunction::ArrayCtor)) if Self::array_prototype_method(&key).is_some())
                     || matches!(&object.kind, ObjectKind::FunctionPrototype(_) if key == "constructor")
                     || matches!(&object.kind, ObjectKind::StringObject(_) if key == "length")
                     || matches!(&object.kind, ObjectKind::StringObject(value)
@@ -394,8 +465,88 @@ impl Runtime {
                     .is_some()
                     || matches!(key.as_str(), "name" | "length")
             }
-            _ => return Err(Self::object_helper_type_error()),
+            Value::String(value) => {
+                key == "length"
+                    || array_index_from_property_key(&key)
+                        .is_some_and(|index| value.chars().nth(index).is_some())
+            }
+            _ => false,
         };
         Ok(Value::Bool(has_key))
+    }
+
+    pub(crate) fn call_object_value_of(&mut self, value: Value) -> MustardResult<Value> {
+        if matches!(value, Value::Null | Value::Undefined) {
+            return Err(MustardError::runtime(
+                "TypeError: Object.valueOf requires a non-nullish receiver",
+            ));
+        }
+        self.call_object_ctor(&[value])
+    }
+
+    pub(crate) fn call_function_to_string(&mut self, value: Value) -> MustardResult<Value> {
+        if !self.is_callable_value(&value)? {
+            return Err(MustardError::runtime(
+                "TypeError: Function.toString requires a callable receiver",
+            ));
+        }
+        let text = self.callable_display_string(&value)?;
+        self.charge_native_helper_work(text.len())?;
+        self.ensure_heap_capacity(text.len())?;
+        Ok(Value::String(text))
+    }
+
+    pub(crate) fn call_regexp_to_string(&mut self, value: Value) -> MustardResult<Value> {
+        if value.is_primitive() {
+            return Err(MustardError::runtime(
+                "TypeError: RegExp.toString requires an object receiver",
+            ));
+        }
+        let source = self.get_property_static(value.clone(), "source", false)?;
+        let flags = self.get_property_static(value, "flags", false)?;
+        let text = format!("/{}/{}", self.to_string(source)?, self.to_string(flags)?);
+        self.charge_native_helper_work(text.len())?;
+        self.ensure_heap_capacity(text.len())?;
+        Ok(Value::String(text))
+    }
+
+    pub(crate) fn call_object_to_string(&self, value: Value) -> MustardResult<Value> {
+        let tag = match value {
+            Value::Undefined => "Undefined",
+            Value::Null => "Null",
+            Value::Bool(_) => "Boolean",
+            Value::Number(_) => "Number",
+            Value::BigInt(_) => "BigInt",
+            Value::String(_) => "String",
+            Value::Array(_) => "Array",
+            Value::Map(_) => "Map",
+            Value::Set(_) => "Set",
+            Value::Iterator(_) => "Iterator",
+            Value::Promise(_) => "Promise",
+            Value::Closure(_) | Value::BuiltinFunction(_) | Value::HostFunction(_) => "Function",
+            Value::Object(id) => match &self
+                .objects
+                .get(id)
+                .ok_or_else(|| MustardError::runtime("object missing"))?
+                .kind
+            {
+                ObjectKind::Date(_) => "Date",
+                ObjectKind::RegExp(_) => "RegExp",
+                ObjectKind::Error(_) => "Error",
+                ObjectKind::NumberObject(_) => "Number",
+                ObjectKind::StringObject(_) => "String",
+                ObjectKind::BooleanObject(_) => "Boolean",
+                ObjectKind::BoundFunction(_) => "Function",
+                ObjectKind::FunctionPrototype(Value::BuiltinFunction(
+                    BuiltinFunction::BigIntCtor,
+                )) => "BigInt",
+                ObjectKind::Math => "Math",
+                ObjectKind::Json => "JSON",
+                ObjectKind::IntlDateTimeFormat(_) => "Intl.DateTimeFormat",
+                ObjectKind::IntlNumberFormat(_) => "Intl.NumberFormat",
+                _ => "Object",
+            },
+        };
+        Ok(Value::String(format!("[object {tag}]")))
     }
 }

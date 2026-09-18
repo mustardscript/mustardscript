@@ -7,6 +7,23 @@ impl Runtime {
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
+        let roots = args
+            .iter()
+            .chain(std::iter::once(&this_value))
+            .filter(|value| Self::needs_temporary_root(value))
+            .cloned()
+            .collect::<Vec<_>>();
+        self.with_temporary_roots(&roots, |runtime| {
+            runtime.call_builtin_rooted(function, this_value, args)
+        })
+    }
+
+    fn call_builtin_rooted(
+        &mut self,
+        function: BuiltinFunction,
+        this_value: Value,
+        args: &[Value],
+    ) -> MustardResult<Value> {
         match function {
             BuiltinFunction::FunctionCtor => Err(MustardError::runtime(
                 "TypeError: Function constructor is unavailable in the supported surface",
@@ -18,6 +35,12 @@ impl Runtime {
             )),
             BuiltinFunction::ArrayCtor => self.call_array_ctor(args),
             BuiltinFunction::ArrayFrom => self.call_array_from(args),
+            BuiltinFunction::ArrayFromAsync => self.call_array_from_async(args),
+            BuiltinFunction::PromiseWithResolvers => self.call_promise_with_resolvers(this_value),
+            BuiltinFunction::PromiseResolveOnce(guard) => {
+                self.call_promise_once(guard, false, args)
+            }
+            BuiltinFunction::PromiseRejectOnce(guard) => self.call_promise_once(guard, true, args),
             BuiltinFunction::ArrayOf => self.call_array_of(args),
             BuiltinFunction::ArrayIsArray => {
                 Ok(Value::Bool(matches!(args.first(), Some(Value::Array(_)))))
@@ -63,6 +86,25 @@ impl Runtime {
             BuiltinFunction::ObjectValues => self.call_object_values(args),
             BuiltinFunction::ObjectEntries => self.call_object_entries(args),
             BuiltinFunction::ObjectHasOwn => self.call_object_has_own(args),
+            BuiltinFunction::ObjectHasOwnProperty => self.call_object_has_own(&[
+                this_value,
+                args.first().cloned().unwrap_or(Value::Undefined),
+            ]),
+            BuiltinFunction::ObjectIs => {
+                let left = args.first().cloned().unwrap_or(Value::Undefined);
+                let right = args.get(1).cloned().unwrap_or(Value::Undefined);
+                Ok(Value::Bool(match (&left, &right) {
+                    (Value::Number(a), Value::Number(b)) if *a == 0.0 && *b == 0.0 => {
+                        a.is_sign_negative() == b.is_sign_negative()
+                    }
+                    _ => same_value_zero(&left, &right),
+                }))
+            }
+            BuiltinFunction::ObjectToString => self.call_object_to_string(this_value),
+            BuiltinFunction::ObjectValueOf => self.call_object_value_of(this_value),
+            BuiltinFunction::FunctionToString => self.call_function_to_string(this_value),
+            BuiltinFunction::RegExpToString => self.call_regexp_to_string(this_value),
+            BuiltinFunction::ArrayToString => self.call_array_to_string(this_value),
             BuiltinFunction::MapCtor => Err(MustardError::runtime(
                 "TypeError: Map constructor must be called with new",
             )),
@@ -86,6 +128,15 @@ impl Runtime {
             BuiltinFunction::SetKeys => self.call_set_keys(this_value),
             BuiltinFunction::SetValues => self.call_set_values(this_value),
             BuiltinFunction::SetForEach => self.call_set_for_each(this_value, args),
+            BuiltinFunction::SetUnion
+            | BuiltinFunction::SetIntersection
+            | BuiltinFunction::SetDifference
+            | BuiltinFunction::SetSymmetricDifference
+            | BuiltinFunction::SetIsSubsetOf
+            | BuiltinFunction::SetIsSupersetOf
+            | BuiltinFunction::SetIsDisjointFrom => {
+                self.call_set_algebra(function, this_value, args)
+            }
             BuiltinFunction::IteratorNext => self.call_iterator_next(this_value),
             BuiltinFunction::PromiseCtor => Err(MustardError::runtime(
                 "TypeError: Promise constructor must be called with new",
@@ -136,16 +187,62 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor => self.call_error_ctor(args, "ReferenceError"),
             BuiltinFunction::RangeErrorCtor => self.call_error_ctor(args, "RangeError"),
             BuiltinFunction::SyntaxErrorCtor => self.call_error_ctor(args, "SyntaxError"),
+            BuiltinFunction::EvalErrorCtor => self.call_error_ctor(args, "EvalError"),
+            BuiltinFunction::URIErrorCtor => self.call_error_ctor(args, "URIError"),
+            BuiltinFunction::AggregateErrorCtor => self.call_aggregate_error_ctor(args),
+            BuiltinFunction::ErrorToString => self.call_error_to_string(this_value),
             BuiltinFunction::NumberCtor => self.call_number_ctor(args),
+            BuiltinFunction::BigIntCtor => self.call_bigint_conversion(args),
+            BuiltinFunction::BigIntToString => self.call_bigint_to_string(this_value, args),
+            BuiltinFunction::BigIntValueOf => self.call_bigint_value_of(this_value),
             BuiltinFunction::NumberParseInt => self.call_number_parse_int(args),
             BuiltinFunction::NumberParseFloat => self.call_number_parse_float(args),
             BuiltinFunction::NumberIsNaN => Ok(self.call_number_is_nan(args)),
             BuiltinFunction::NumberIsFinite => Ok(self.call_number_is_finite(args)),
             BuiltinFunction::NumberIsInteger => Ok(self.call_number_is_integer(args)),
             BuiltinFunction::NumberIsSafeInteger => Ok(self.call_number_is_safe_integer(args)),
-            BuiltinFunction::DateCtor => Err(MustardError::runtime(
-                "TypeError: Date constructor must be called with new",
-            )),
+            BuiltinFunction::DateCtor => Ok(Value::String(Self::date_default_string(
+                current_time_millis(),
+            ))),
+            BuiltinFunction::DateUTC
+            | BuiltinFunction::DateParse
+            | BuiltinFunction::DateGetFullYear
+            | BuiltinFunction::DateGetMonth
+            | BuiltinFunction::DateGetDate
+            | BuiltinFunction::DateGetDay
+            | BuiltinFunction::DateGetHours
+            | BuiltinFunction::DateGetMinutes
+            | BuiltinFunction::DateGetSeconds
+            | BuiltinFunction::DateGetMilliseconds
+            | BuiltinFunction::DateGetUTCDay
+            | BuiltinFunction::DateGetUTCMilliseconds
+            | BuiltinFunction::DateGetTimezoneOffset
+            | BuiltinFunction::DateGetYear
+            | BuiltinFunction::DateSetFullYear
+            | BuiltinFunction::DateSetMonth
+            | BuiltinFunction::DateSetDate
+            | BuiltinFunction::DateSetHours
+            | BuiltinFunction::DateSetMinutes
+            | BuiltinFunction::DateSetSeconds
+            | BuiltinFunction::DateSetMilliseconds
+            | BuiltinFunction::DateSetUTCFullYear
+            | BuiltinFunction::DateSetUTCMonth
+            | BuiltinFunction::DateSetUTCDate
+            | BuiltinFunction::DateSetUTCHours
+            | BuiltinFunction::DateSetUTCMinutes
+            | BuiltinFunction::DateSetUTCSeconds
+            | BuiltinFunction::DateSetUTCMilliseconds
+            | BuiltinFunction::DateSetTime
+            | BuiltinFunction::DateSetYear
+            | BuiltinFunction::DateToString
+            | BuiltinFunction::DateToDateString
+            | BuiltinFunction::DateToTimeString
+            | BuiltinFunction::DateToUTCString
+            | BuiltinFunction::DateToLocaleString
+            | BuiltinFunction::DateToLocaleDateString
+            | BuiltinFunction::DateToLocaleTimeString => {
+                self.call_date_completion(function, this_value, args)
+            }
             BuiltinFunction::DateNow => Ok(Value::Number(current_time_millis())),
             BuiltinFunction::DateGetTime => self.call_date_get_time(this_value),
             BuiltinFunction::DateValueOf => self.call_date_value_of(this_value),
@@ -181,6 +278,15 @@ impl Runtime {
             BuiltinFunction::StringIndexOf => self.call_string_index_of(this_value, args),
             BuiltinFunction::StringLastIndexOf => self.call_string_last_index_of(this_value, args),
             BuiltinFunction::StringCharAt => self.call_string_char_at(this_value, args),
+            BuiltinFunction::StringCharCodeAt => self.call_string_code_at(this_value, args, false),
+            BuiltinFunction::StringCodePointAt => self.call_string_code_at(this_value, args, true),
+            BuiltinFunction::StringFromCharCode => self.call_string_from_codes(args, false),
+            BuiltinFunction::StringFromCodePoint => self.call_string_from_codes(args, true),
+            BuiltinFunction::StringLocaleCompare => {
+                self.call_string_locale_compare(this_value, args)
+            }
+            BuiltinFunction::StringNormalize => self.call_string_normalize(this_value, args),
+            BuiltinFunction::StringIsWellFormed => self.call_string_is_well_formed(this_value),
             BuiltinFunction::StringAt => self.call_string_at(this_value, args),
             BuiltinFunction::StringSlice => self.call_string_slice(this_value, args),
             BuiltinFunction::StringSubstring => self.call_string_substring(this_value, args),
@@ -202,6 +308,9 @@ impl Runtime {
             BuiltinFunction::BooleanToString => self.call_boolean_to_string(this_value),
             BuiltinFunction::BooleanValueOf => self.call_boolean_value_of(this_value),
             BuiltinFunction::NumberToString => self.call_number_to_string(this_value, args),
+            BuiltinFunction::NumberToLocaleString => {
+                self.call_number_to_locale_string(this_value, args)
+            }
             BuiltinFunction::NumberValueOf => self.call_number_value_of(this_value),
             BuiltinFunction::NumberToFixed => self.call_number_to_fixed(this_value, args),
             BuiltinFunction::NumberToExponential => {
@@ -228,8 +337,36 @@ impl Runtime {
             BuiltinFunction::MathHypot => self.call_math_hypot(args),
             BuiltinFunction::MathCbrt => self.call_math_cbrt(args),
             BuiltinFunction::MathRandom => Ok(self.call_math_random()),
+            BuiltinFunction::MathTan
+            | BuiltinFunction::MathAsin
+            | BuiltinFunction::MathAcos
+            | BuiltinFunction::MathAtan
+            | BuiltinFunction::MathSinh
+            | BuiltinFunction::MathCosh
+            | BuiltinFunction::MathTanh
+            | BuiltinFunction::MathAsinh
+            | BuiltinFunction::MathAcosh
+            | BuiltinFunction::MathAtanh
+            | BuiltinFunction::MathClz32
+            | BuiltinFunction::MathImul
+            | BuiltinFunction::MathFround
+            | BuiltinFunction::MathLog1p
+            | BuiltinFunction::MathExpm1 => self.call_math_completion(function, args),
             BuiltinFunction::JsonStringify => self.call_json_stringify(args),
             BuiltinFunction::JsonParse => self.call_json_parse(args),
+            BuiltinFunction::EncodeURI => self.call_uri_codec(args, true, false),
+            BuiltinFunction::EncodeURIComponent => self.call_uri_codec(args, true, true),
+            BuiltinFunction::DecodeURI => self.call_uri_codec(args, false, false),
+            BuiltinFunction::DecodeURIComponent => self.call_uri_codec(args, false, true),
+            BuiltinFunction::ObjectGroupBy => self.call_group_by(args, false),
+            BuiltinFunction::MapGroupBy => self.call_group_by(args, true),
+            BuiltinFunction::ArrayShift => self.call_array_shift(this_value),
+            BuiltinFunction::ArrayUnshift => self.call_array_unshift(this_value, args),
+            BuiltinFunction::ArrayToSorted
+            | BuiltinFunction::ArrayToReversed
+            | BuiltinFunction::ArrayToSpliced
+            | BuiltinFunction::ArrayWith => self.call_array_copy(this_value, args, function),
+            BuiltinFunction::ArrayCopyWithin => self.call_array_copy_within(this_value, args),
         }
     }
 
@@ -250,7 +387,11 @@ impl Runtime {
             BuiltinFunction::ReferenceErrorCtor,
             BuiltinFunction::RangeErrorCtor,
             BuiltinFunction::SyntaxErrorCtor,
+            BuiltinFunction::EvalErrorCtor,
+            BuiltinFunction::URIErrorCtor,
+            BuiltinFunction::AggregateErrorCtor,
             BuiltinFunction::NumberCtor,
+            BuiltinFunction::BigIntCtor,
             BuiltinFunction::BooleanCtor,
             BuiltinFunction::IntlDateTimeFormatCtor,
             BuiltinFunction::IntlNumberFormatCtor,
@@ -260,6 +401,31 @@ impl Runtime {
         self.define_global_binding(
             "globalThis".to_string(),
             Value::Object(global_object),
+            false,
+        )?;
+        self.define_global(
+            "encodeURI".into(),
+            Value::BuiltinFunction(BuiltinFunction::EncodeURI),
+            false,
+        )?;
+        self.define_global(
+            "encodeURIComponent".into(),
+            Value::BuiltinFunction(BuiltinFunction::EncodeURIComponent),
+            false,
+        )?;
+        self.define_global(
+            "decodeURI".into(),
+            Value::BuiltinFunction(BuiltinFunction::DecodeURI),
+            false,
+        )?;
+        self.define_global(
+            "decodeURIComponent".into(),
+            Value::BuiltinFunction(BuiltinFunction::DecodeURIComponent),
+            false,
+        )?;
+        self.define_global(
+            "BigInt".into(),
+            Value::BuiltinFunction(BuiltinFunction::BigIntCtor),
             false,
         )?;
         self.define_global(
@@ -328,6 +494,21 @@ impl Runtime {
             false,
         )?;
         self.define_global(
+            "EvalError".into(),
+            Value::BuiltinFunction(BuiltinFunction::EvalErrorCtor),
+            false,
+        )?;
+        self.define_global(
+            "URIError".into(),
+            Value::BuiltinFunction(BuiltinFunction::URIErrorCtor),
+            false,
+        )?;
+        self.define_global(
+            "AggregateError".into(),
+            Value::BuiltinFunction(BuiltinFunction::AggregateErrorCtor),
+            false,
+        )?;
+        self.define_global(
             "Number".to_string(),
             Value::BuiltinFunction(BuiltinFunction::NumberCtor),
             false,
@@ -376,6 +557,66 @@ impl Runtime {
 
         let math = self.insert_object(
             IndexMap::from([
+                (
+                    "tan".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathTan),
+                ),
+                (
+                    "asin".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAsin),
+                ),
+                (
+                    "acos".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAcos),
+                ),
+                (
+                    "atan".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAtan),
+                ),
+                (
+                    "sinh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathSinh),
+                ),
+                (
+                    "cosh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathCosh),
+                ),
+                (
+                    "tanh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathTanh),
+                ),
+                (
+                    "asinh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAsinh),
+                ),
+                (
+                    "acosh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAcosh),
+                ),
+                (
+                    "atanh".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathAtanh),
+                ),
+                (
+                    "clz32".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathClz32),
+                ),
+                (
+                    "imul".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathImul),
+                ),
+                (
+                    "fround".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathFround),
+                ),
+                (
+                    "log1p".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathLog1p),
+                ),
+                (
+                    "expm1".into(),
+                    Value::BuiltinFunction(BuiltinFunction::MathExpm1),
+                ),
                 ("E".to_string(), Value::Number(std::f64::consts::E)),
                 ("LN2".to_string(), Value::Number(std::f64::consts::LN_2)),
                 ("LN10".to_string(), Value::Number(std::f64::consts::LN_10)),
@@ -496,8 +737,20 @@ impl Runtime {
     }
 
     fn register_builtin_prototype(&mut self, function: BuiltinFunction) -> MustardResult<()> {
+        let properties = if let Some(name) = Self::builtin_error_name(function) {
+            IndexMap::from([
+                ("name".into(), Value::String(name.into())),
+                ("message".into(), Value::String(String::new())),
+                (
+                    "toString".into(),
+                    Value::BuiltinFunction(BuiltinFunction::ErrorToString),
+                ),
+            ])
+        } else {
+            IndexMap::new()
+        };
         let prototype = self.insert_object(
-            IndexMap::new(),
+            properties,
             ObjectKind::FunctionPrototype(Value::BuiltinFunction(function)),
         )?;
         self.builtin_prototypes.insert(function, prototype);

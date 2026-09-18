@@ -3,6 +3,18 @@
 module.exports = {
   pass: [
     {
+      id: 'language/expressions/assignment/bitwise-and.js',
+      file: 'cases/pass/language/expressions/assignment/bitwise-and.js',
+      expected: 2,
+      contractId: 'validation.unsupported-assignment',
+    },
+    {
+      id: 'language/expressions/unary/bitwise-not.js',
+      file: 'cases/pass/language/expressions/unary/bitwise-not.js',
+      expected: -2,
+      contractId: 'validation.unsupported-unary',
+    },
+    {
       id: 'language/expressions/coalesce/basic.js',
       file: 'cases/pass/language/expressions/coalesce/basic.js',
       expected: [3, 7, 9],
@@ -242,6 +254,11 @@ module.exports = {
       file: 'cases/pass/language/statements/function/rest-parameters.js',
       expected: [1, 2, 2, 3],
     },
+    {
+      id: 'language/expressions/delete/property.js',
+      file: 'cases/pass/language/expressions/delete/property.js',
+      expected: [true, false, true, 2, false, '[null,2]'],
+    },
   ],
   unsupported: [
     {
@@ -262,8 +279,8 @@ module.exports = {
       id: 'language/expressions/delete/basic.js',
       file: 'cases/unsupported/language/expressions/delete/basic.js',
       errorKind: 'Validation',
-      messageIncludes: 'delete is not supported in v1',
-      reason: 'Plain-object and array deletion stay out of scope until absence, sparse-array, and descriptor semantics are explicit.',
+      messageIncludes: 'delete of an identifier is not supported in strict mode',
+      reason: 'Deleting an identifier is forbidden in the strict-mode contract.',
     },
     {
       id: 'language/statements/with/basic.js',
@@ -292,13 +309,6 @@ module.exports = {
       errorKind: 'Validation',
       messageIncludes: 'debugger statements are not supported',
       reason: 'Debugger hooks are excluded from the guest surface.',
-    },
-    {
-      id: 'language/expressions/assignment/bitwise-and.js',
-      file: 'cases/unsupported/language/expressions/assignment/bitwise-and.js',
-      errorKind: 'Validation',
-      messageIncludes: 'unsupported assignment operator in v1',
-      reason: 'Bitwise assignment remains outside the supported assignment surface.',
     },
     {
       id: 'language/expressions/object/accessor-basic.js',

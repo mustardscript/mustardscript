@@ -67,13 +67,34 @@ where
     for value in &frame.stack {
         visit(value)?;
     }
+    if let Some(state) = &frame.pending_equality {
+        visit(&state.primitive)?;
+        for work in &state.work {
+            visit(&work.root())?;
+            match work {
+                CoercionWork::ArrayJoin {
+                    text, separator, ..
+                } => {
+                    visit(&Value::String(text.clone()))?;
+                    if let Some(separator) = separator {
+                        visit(&Value::String(separator.clone()))?;
+                    }
+                }
+                CoercionWork::RegExpString {
+                    source: Some(source),
+                    ..
+                } => visit(&Value::String(source.clone()))?,
+                _ => {}
+            }
+        }
+    }
     if let Some(value) = &frame.pending_exception {
         visit(value)?;
     }
     for completion in &frame.pending_completions {
         match completion {
             CompletionRecord::Return(value) | CompletionRecord::Throw(value) => visit(value)?,
-            CompletionRecord::Jump { .. } => {}
+            CompletionRecord::Jump { .. } | CompletionRecord::StructuredJump { .. } => {}
         }
     }
     Ok(())
@@ -113,11 +134,25 @@ where
                 PromiseOutcome::Fulfilled(value) => visit(value)?,
                 PromiseOutcome::Rejected(rejection) => visit(&rejection.value)?,
             },
-            PromiseReaction::Combinator { .. } => {}
+            PromiseReaction::Combinator { .. } | PromiseReaction::ArrayFromAsync { .. } => {}
         }
     }
     if let Some(driver) = &promise.driver {
         match driver {
+            PromiseDriver::ArrayFromAsync(state) => {
+                visit(&state.source)?;
+                visit(&state.this_arg)?;
+                visit(&Value::Array(state.result))?;
+                if let Some(mapper) = &state.mapper {
+                    visit(mapper)?;
+                }
+                if let Some(iterator) = state.iterator {
+                    visit(&Value::Iterator(iterator))?;
+                }
+                if let Some(waiting) = state.waiting {
+                    visit(&Value::Promise(waiting))?;
+                }
+            }
             PromiseDriver::Thenable { value } => visit(value)?,
             PromiseDriver::All { values, .. } => {
                 for value in values.iter().flatten() {
@@ -198,7 +233,7 @@ where
                 PromiseOutcome::Fulfilled(value) => visit_value(value)?,
                 PromiseOutcome::Rejected(rejection) => visit_value(&rejection.value)?,
             },
-            PromiseReaction::Combinator { .. } => {}
+            PromiseReaction::Combinator { .. } | PromiseReaction::ArrayFromAsync { .. } => {}
         },
         MicrotaskJob::PromiseCombinator { input, .. } => {
             if let PromiseCombinatorInput::Fulfilled(value) = input {

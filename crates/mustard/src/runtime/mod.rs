@@ -58,6 +58,10 @@ use crate::{
 
 const INTERNAL_CALLBACK_THROW_MARKER: &str = "\0internal-array-callback-throw";
 
+// Native helpers may reenter the VM. This budget is shared across callbacks
+// and recursive JSON walks, unlike the guest-frame and per-document limits.
+const MAX_NATIVE_DEPTH: usize = 256;
+
 fn runtime_image() -> &'static RuntimeImage {
     static RUNTIME_IMAGE: OnceLock<RuntimeImage> = OnceLock::new();
     RUNTIME_IMAGE.get_or_init(|| {
@@ -142,9 +146,13 @@ impl Runtime {
             operation_counters_enabled: false,
             accounting_recount_required: false,
             cancellation_token,
-            regex_cache: HashMap::new(),
+            regex_cache: IndexMap::new(),
+            collator_cache: IndexMap::new(),
             pending_internal_exception: None,
             pending_sync_callback_result: None,
+            native_callback_host_suspension_message: None,
+            native_temporary_roots: Vec::new(),
+            native_depth: 0,
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         }
@@ -194,9 +202,13 @@ impl Runtime {
             operation_counters_enabled: false,
             accounting_recount_required: false,
             cancellation_token,
-            regex_cache: HashMap::new(),
+            regex_cache: IndexMap::new(),
+            collator_cache: IndexMap::new(),
             pending_internal_exception: None,
             pending_sync_callback_result: None,
+            native_callback_host_suspension_message: None,
+            native_temporary_roots: Vec::new(),
+            native_depth: 0,
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         }
@@ -286,23 +298,78 @@ impl Runtime {
         Ok(())
     }
 
+    pub(super) fn needs_temporary_root(value: &Value) -> bool {
+        // Owned primitives contain no arena references. Copying their strings
+        // or arbitrary-precision integers cannot help the tracing collector.
+        !matches!(
+            value,
+            Value::Undefined
+                | Value::Null
+                | Value::Bool(_)
+                | Value::Number(_)
+                | Value::String(_)
+                | Value::BigInt(_)
+                | Value::HostFunction(_)
+        )
+    }
+
     pub(crate) fn with_temporary_roots<T, F>(&mut self, roots: &[Value], f: F) -> MustardResult<T>
     where
         F: FnOnce(&mut Self) -> MustardResult<T>,
     {
-        let frame_index = self.frames.len().checked_sub(1).ok_or_else(|| {
-            MustardError::runtime("no active frame available for temporary roots")
-        })?;
-        let original_len = self.frames[frame_index].stack.len();
-        self.frames[frame_index].stack.extend(roots.iter().cloned());
+        // Native helper work can run from a microtask with no active frame.
+        // Separate roots also survive nested callback frame pushes/unwinding.
+        let original_len = self.native_temporary_roots.len();
+        self.native_temporary_roots.extend(
+            roots
+                .iter()
+                .filter(|value| Self::needs_temporary_root(value))
+                .cloned(),
+        );
         let result = f(self);
-        if let Some(frame) = self.frames.get_mut(frame_index) {
-            frame.stack.truncate(original_len);
-        }
+        self.native_temporary_roots.truncate(original_len);
         result
     }
 
     pub(crate) fn call_callback(
+        &mut self,
+        callback: Value,
+        this_arg: Value,
+        args: &[Value],
+        options: CallbackCallOptions<'_>,
+    ) -> MustardResult<Value> {
+        self.with_native_depth(16, 256 * 1024, |runtime| {
+            runtime.call_callback_inner(callback, this_arg, args, options)
+        })
+    }
+
+    #[inline(never)]
+    fn with_native_depth<T>(
+        &mut self,
+        cost: usize,
+        stack_reserve: usize,
+        callback: impl FnOnce(&mut Self) -> MustardResult<T>,
+    ) -> MustardResult<T> {
+        if cost > MAX_NATIVE_DEPTH.saturating_sub(self.native_depth) {
+            return Err(limit_error("native recursion depth limit exceeded"));
+        }
+        self.native_depth += cost;
+        // A fixed depth count alone is not sufficient on small host threads or
+        // instrumented builds. Stack growth is bounded by the shared budget.
+        #[cfg(not(target_arch = "wasm32"))]
+        let result = stacker::maybe_grow(stack_reserve, stack_reserve.max(1024 * 1024), || {
+            callback(self)
+        });
+        #[cfg(target_arch = "wasm32")]
+        let result = {
+            let _ = stack_reserve;
+            callback(self)
+        };
+        self.native_depth -= cost;
+        result
+    }
+
+    fn call_callback_inner(
         &mut self,
         callback: Value,
         this_arg: Value,

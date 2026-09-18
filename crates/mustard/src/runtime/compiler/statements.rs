@@ -1,7 +1,7 @@
 use super::super::bytecode::Instruction;
 use super::{
     Compiler,
-    context::{CompileContext, LoopContext},
+    context::{CompileContext, LabelContext, LoopContext},
     pattern_bindings,
 };
 use crate::{
@@ -46,7 +46,11 @@ impl Compiler {
             Stmt::FunctionDecl { .. } => {}
             Stmt::Expression { expression, .. } => {
                 self.compile_expr(context, expression)?;
-                context.code.push(Instruction::Pop);
+                if let Some(name) = context.completion_binding.clone() {
+                    self.emit_store_name_discard(context, &name);
+                } else {
+                    context.code.push(Instruction::Pop);
+                }
             }
             Stmt::If {
                 test,
@@ -54,6 +58,7 @@ impl Compiler {
                 alternate,
                 ..
             } => {
+                self.reset_statement_completion(context);
                 self.compile_expr(context, test)?;
                 let jump_to_else = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
                 context.code.push(Instruction::Pop);
@@ -69,11 +74,13 @@ impl Compiler {
                 self.patch_jump(context, jump_to_end, end_ip);
             }
             Stmt::While { test, body, .. } => {
+                self.reset_statement_completion(context);
                 let loop_start = context.code.len();
                 self.compile_expr(context, test)?;
                 let exit_jump = self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
                 context.code.push(Instruction::Pop);
                 context.loop_stack.push(LoopContext {
+                    finally_depth: context.active_finally.len(),
                     handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
@@ -94,8 +101,10 @@ impl Compiler {
                 }
             }
             Stmt::DoWhile { body, test, .. } => {
+                self.reset_statement_completion(context);
                 let loop_start = context.code.len();
                 context.loop_stack.push(LoopContext {
+                    finally_depth: context.active_finally.len(),
                     handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
@@ -122,27 +131,38 @@ impl Compiler {
                 }
             }
             Stmt::For {
+                span,
                 init,
                 test,
                 update,
                 body,
                 ..
             } => {
+                self.reset_statement_completion(context);
                 self.enter_env_scope(context);
+                let mut per_iteration_names = Vec::new();
                 if let Some(init) = init {
                     match init {
-                        ForInit::VariableDecl {
-                            kind: _,
-                            declarators,
-                        } => {
+                        ForInit::VariableDecl { kind, declarators } => {
+                            // The complete header scope exists (in the TDZ) before any
+                            // initializer, including references from earlier declarators.
+                            for declarator in declarators {
+                                for (name, _) in pattern_bindings(&declarator.pattern) {
+                                    self.emit_declare_name(
+                                        context,
+                                        name.clone(),
+                                        *kind == BindingKind::Let,
+                                    );
+                                    if *kind == BindingKind::Let {
+                                        per_iteration_names.push(name);
+                                    }
+                                }
+                            }
                             for declarator in declarators {
                                 let initializer_kind =
                                     declarator.initializer.as_ref().and_then(|initializer| {
                                         self.expr_known_collection_kind(context, initializer)
                                     });
-                                for (name, mutable) in pattern_bindings(&declarator.pattern) {
-                                    self.emit_declare_name(context, name, mutable);
-                                }
                                 if let Some(initializer) = &declarator.initializer {
                                     self.compile_expr(context, initializer)?;
                                 } else {
@@ -162,6 +182,9 @@ impl Compiler {
                         }
                     }
                 }
+                // Initializer closures retain the original cells. Tests/body closures
+                // capture the first iteration's cells instead.
+                self.copy_iteration_bindings(context, &per_iteration_names, *span);
                 let loop_start = context.code.len();
                 let exit_jump = if let Some(test) = test {
                     self.compile_expr(context, test)?;
@@ -172,6 +195,7 @@ impl Compiler {
                     None
                 };
                 context.loop_stack.push(LoopContext {
+                    finally_depth: context.active_finally.len(),
                     handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
@@ -181,6 +205,8 @@ impl Compiler {
                 if let Some(loop_ctx) = context.loop_stack.last_mut() {
                     loop_ctx.continue_target = Some(update_start);
                 }
+                // Continue runs cleanup, then copies cells before evaluating update.
+                self.copy_iteration_bindings(context, &per_iteration_names, *span);
                 if let Some(update) = update {
                     self.compile_expr(context, update)?;
                     context.code.push(Instruction::Pop);
@@ -210,6 +236,7 @@ impl Compiler {
                 iterable,
                 body,
             } => {
+                self.reset_statement_completion(context);
                 self.enter_env_scope(context);
                 let loop_scope_depth = context.scope_depth;
                 let iterator_binding = self.fresh_internal_name(context, "iter");
@@ -246,6 +273,7 @@ impl Compiler {
                     }
                 }
                 context.loop_stack.push(LoopContext {
+                    finally_depth: context.active_finally.len(),
                     handler_depth: context.active_handlers.len(),
                     scope_depth: loop_scope_depth,
                     ..LoopContext::default()
@@ -305,37 +333,89 @@ impl Compiler {
                     },
                 )?;
             }
-            Stmt::Break { span } => {
-                let Some(loop_ctx) = context.loop_stack.last() else {
-                    return Err(MustardError::runtime_at(
-                        "`break` used outside of a loop",
-                        *span,
+            Stmt::Labeled { span, label, body } => {
+                if context.labels.iter().any(|entry| entry.name == *label) {
+                    return Err(MustardError::validation(
+                        "duplicate active statement label",
+                        Some(*span),
                     ));
-                };
-                let patch =
-                    self.emit_jump_transfer(context, loop_ctx.handler_depth, loop_ctx.scope_depth);
-                context
-                    .loop_stack
-                    .last_mut()
-                    .expect("loop context should still exist")
-                    .break_jumps
-                    .push(patch);
+                }
+                let mut target = body.as_ref();
+                while let Stmt::Labeled { body, .. } = target {
+                    target = body.as_ref();
+                }
+                let iteration = matches!(
+                    target,
+                    Stmt::While { .. }
+                        | Stmt::DoWhile { .. }
+                        | Stmt::For { .. }
+                        | Stmt::ForOf { .. }
+                        | Stmt::ForIn { .. }
+                );
+                context.labels.push(LabelContext {
+                    name: label.clone(),
+                    loop_index: iteration.then_some(context.loop_stack.len()),
+                    break_jumps: Vec::new(),
+                    handler_depth: context.active_handlers.len(),
+                    scope_depth: context.scope_depth,
+                    finally_depth: context.active_finally.len(),
+                });
+                self.compile_stmt(context, body)?;
+                let label = context.labels.pop().expect("active label");
+                let end = context.code.len();
+                for patch in label.break_jumps {
+                    self.patch_control_transfer(context, patch, end);
+                }
             }
-            Stmt::Continue { span } => {
-                let Some(loop_ctx) = context.loop_stack.last() else {
-                    return Err(MustardError::runtime_at(
-                        "`continue` used outside of a loop",
-                        *span,
+            Stmt::LabeledBreak { span, label } => {
+                let index = context
+                    .labels
+                    .iter()
+                    .rposition(|entry| entry.name == *label)
+                    .ok_or_else(|| {
+                        MustardError::validation("unknown statement label", Some(*span))
+                    })?;
+                let target = &context.labels[index];
+                let patch = self.emit_jump_transfer(
+                    context,
+                    target.handler_depth,
+                    target.scope_depth,
+                    target.finally_depth,
+                );
+                context.labels[index].break_jumps.push(patch);
+            }
+            Stmt::Break { span } | Stmt::Continue { span } | Stmt::LabeledContinue { span, .. } => {
+                let continuing = !matches!(statement, Stmt::Break { .. });
+                let index = if let Stmt::LabeledContinue { label, .. } = statement {
+                    context
+                        .labels
+                        .iter()
+                        .rfind(|entry| entry.name == *label)
+                        .and_then(|entry| entry.loop_index)
+                } else {
+                    context
+                        .loop_stack
+                        .iter()
+                        .rposition(|entry| !continuing || !entry.is_switch)
+                };
+                let Some(index) = index else {
+                    return Err(MustardError::validation(
+                        "break/continue has no matching loop, switch or label",
+                        Some(*span),
                     ));
                 };
-                let patch =
-                    self.emit_jump_transfer(context, loop_ctx.handler_depth, loop_ctx.scope_depth);
-                context
-                    .loop_stack
-                    .last_mut()
-                    .expect("loop context should still exist")
-                    .continue_jumps
-                    .push(patch);
+                let target = &context.loop_stack[index];
+                let patch = self.emit_jump_transfer(
+                    context,
+                    target.handler_depth,
+                    target.scope_depth,
+                    target.finally_depth,
+                );
+                if continuing {
+                    context.loop_stack[index].continue_jumps.push(patch);
+                } else {
+                    context.loop_stack[index].break_jumps.push(patch);
+                }
             }
             Stmt::Return { value, .. } => {
                 if let Some(value) = value {
@@ -347,31 +427,36 @@ impl Compiler {
             }
             Stmt::Throw { span, value } => {
                 self.compile_expr(context, value)?;
-                if let Some(active_finally) = context.active_finally.last() {
-                    self.emit_scope_cleanup(context, active_finally.scope_depth);
-                    context.code.push(Instruction::PushPendingThrow);
-                    self.emit_jump_to_active_finally_exit(context);
-                } else {
-                    context.code.push(Instruction::Throw { span: *span });
-                }
+                context.code.push(Instruction::Throw { span: *span });
             }
             Stmt::Try {
+                span,
                 body,
                 catch,
                 finally,
-                ..
             } => {
-                self.compile_try(context, body, catch.as_ref(), finally.as_deref())?;
+                self.compile_try(context, body, catch.as_ref(), finally.as_deref(), *span)?;
             }
             Stmt::Switch {
                 discriminant,
                 cases,
                 ..
             } => {
+                self.reset_statement_completion(context);
                 self.compile_expr(context, discriminant)?;
+                // Case clauses share a lexical scope, but the discriminant is
+                // evaluated outside it. Declarations do not produce completions.
+                self.enter_env_scope(context);
+                let case_statements: Vec<_> = cases
+                    .iter()
+                    .flat_map(|case| case.consequent.iter().cloned())
+                    .collect();
+                self.emit_block_prologue(context, &case_statements, false)?;
                 let mut case_jumps = Vec::new();
                 let mut default_case_index = None;
                 context.loop_stack.push(LoopContext {
+                    is_switch: true,
+                    finally_depth: context.active_finally.len(),
                     handler_depth: context.active_handlers.len(),
                     scope_depth: context.scope_depth,
                     ..LoopContext::default()
@@ -385,7 +470,10 @@ impl Compiler {
                             self.emit_jump(context, Instruction::JumpIfFalse(usize::MAX));
                         context.code.push(Instruction::Pop);
                         context.code.push(Instruction::Pop);
-                        case_jumps.push(self.emit_jump(context, Instruction::Jump(usize::MAX)));
+                        case_jumps.push((
+                            self.emit_jump(context, Instruction::Jump(usize::MAX)),
+                            case_index,
+                        ));
                         let miss_ip = context.code.len();
                         self.patch_jump(context, miss_jump, miss_ip);
                         context.code.push(Instruction::Pop);
@@ -408,16 +496,53 @@ impl Compiler {
                     .and_then(|index| case_offsets.get(index).copied())
                     .unwrap_or(end_ip);
                 self.patch_jump(context, jump_past_cases, default_target);
-                for (jump, target) in case_jumps.into_iter().zip(case_offsets.iter().copied()) {
-                    self.patch_jump(context, jump, target);
+                for (jump, case_index) in case_jumps {
+                    self.patch_jump(context, jump, case_offsets[case_index]);
                 }
                 let loop_ctx = context.loop_stack.pop().unwrap_or_default();
                 for jump in loop_ctx.break_jumps {
                     self.patch_control_transfer(context, jump, end_ip);
                 }
+                self.exit_env_scope(context);
             }
             Stmt::Empty { .. } => {}
         }
         Ok(())
+    }
+
+    pub(super) fn reset_statement_completion(&self, context: &mut CompileContext) {
+        if let Some(name) = context.completion_binding.clone() {
+            context.code.push(Instruction::PushUndefined);
+            self.emit_store_name_discard(context, &name);
+        }
+    }
+
+    fn copy_iteration_bindings(
+        &self,
+        context: &mut CompileContext,
+        names: &[String],
+        span: crate::span::SourceSpan,
+    ) {
+        if names.is_empty() {
+            return;
+        }
+        // Keep values on the operand stack while allocating the sibling scope,
+        // so ordinary GC rooting/accounting and snapshot handling apply.
+        for name in names {
+            self.emit_load_name(context, name);
+        }
+        self.exit_env_scope(context);
+        self.enter_env_scope(context);
+        for name in names {
+            self.emit_declare_name(context, name.clone(), true);
+        }
+        for name in names.iter().rev() {
+            context
+                .code
+                .push(Instruction::InitializePattern(Pattern::Identifier {
+                    span,
+                    name: name.clone(),
+                }));
+        }
     }
 }

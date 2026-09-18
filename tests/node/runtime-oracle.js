@@ -13,7 +13,7 @@ const DIAGNOSTIC_CATEGORY_MATCHERS = Object.freeze({
   [DIAGNOSTIC_CATEGORY.UNSUPPORTED_BINDING]:
     /(only let and const are supported|for\.\.\.of binding initializers are not supported)/,
   [DIAGNOSTIC_CATEGORY.UNSUPPORTED_OPERATOR]:
-    /(unsupported (unary|binary|assignment) operator in v1|delete is not supported in v1)/,
+    /(unsupported (unary|binary|assignment) operator in v1|delete (of an identifier|with a compound optional chain))/,
   [DIAGNOSTIC_CATEGORY.UNSUPPORTED_RUNTIME_SURFACE]:
     /(supported surface|Object helpers currently only support plain objects and arrays|prototype semantics are deferred|property descriptor semantics are deferred)/,
   [DIAGNOSTIC_CATEGORY.UNSUPPORTED_GLOBAL_BUILTIN]: /ReferenceError: `[^`]+` is not defined/,

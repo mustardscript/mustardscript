@@ -182,4 +182,23 @@ pub enum Instruction {
     ConstructWithArray,
     Return,
     PushBigInt(String),
+    LoadNameForTypeof(String),
+    DeletePropComputed,
+    AbruptJump {
+        target: usize,
+        target_handler_depth: usize,
+        target_scope_depth: usize,
+        target_finally_depth: usize,
+    },
+    PushCompletionJump {
+        target: usize,
+        target_handler_depth: usize,
+        target_scope_depth: usize,
+        target_finally_depth: usize,
+    },
+    ContinuePendingRegion {
+        handler_depth: usize,
+        scope_depth: usize,
+    },
+    AbruptReturn,
 }

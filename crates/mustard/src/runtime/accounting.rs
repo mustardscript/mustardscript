@@ -887,6 +887,14 @@ impl Runtime {
         index: usize,
         value: Value,
     ) -> MustardResult<()> {
+        let old_length = self.array_length(key)?;
+        if index >= old_length {
+            let added = index
+                .checked_add(1)
+                .and_then(|end| end.checked_sub(old_length))
+                .ok_or_else(|| limit_error("heap limit exceeded"))?;
+            self.ensure_array_slot_capacity(added)?;
+        }
         let empty_slot_bytes = Self::array_slot_bytes(None);
         let new_slot_bytes = Self::array_slot_bytes(Some(&value));
         let (old_component_bytes, new_component_bytes) = {
@@ -1018,8 +1026,17 @@ impl Runtime {
             accounted_bytes: 0,
         };
         array.accounted_bytes = measure_array_bytes(&array);
-        self.account_new_allocation(array.accounted_bytes)?;
-        Ok(self.arrays.insert(array))
+        let roots = array
+            .elements
+            .iter()
+            .flatten()
+            .chain(array.properties.values())
+            .cloned()
+            .collect::<Vec<_>>();
+        self.with_temporary_roots(&roots, |runtime| {
+            runtime.account_new_allocation(array.accounted_bytes)?;
+            Ok(runtime.arrays.insert(array))
+        })
     }
 
     pub(super) fn insert_map(&mut self, entries: Vec<MapEntry>) -> MustardResult<MapKey> {
@@ -1050,25 +1067,6 @@ impl Runtime {
 
     pub(super) fn insert_set(&mut self, entries: Vec<Value>) -> MustardResult<SetKey> {
         let mut set = SetObject::from_entries(entries);
-        set.accounted_bytes = measure_set_bytes(&set);
-        self.account_new_allocation(set.accounted_bytes)?;
-        Ok(self.sets.insert(set))
-    }
-
-    pub(super) fn insert_set_slots(
-        &mut self,
-        entries: Vec<Option<Value>>,
-    ) -> MustardResult<SetKey> {
-        let mut set = SetObject {
-            entries,
-            live_len: 0,
-            string_key_live_len: 0,
-            clear_epoch: 0,
-            lookup: CollectionLookup::default(),
-            lookup_accounted_bytes: 0,
-            accounted_bytes: 0,
-        };
-        set.rebuild_lookup();
         set.accounted_bytes = measure_set_bytes(&set);
         self.account_new_allocation(set.accounted_bytes)?;
         Ok(self.sets.insert(set))
@@ -1402,7 +1400,7 @@ fn measure_object_bytes(object: &PlainObject) -> usize {
                     + extra_value_bytes(&bound.this_value)
                     + bound.args.iter().map(extra_value_bytes).sum::<usize>()
             }
-            ObjectKind::Error(name) => name.len(),
+            ObjectKind::Error(error) => error.name.len(),
             ObjectKind::RegExp(regex) => regex.pattern.len() + regex.flags.len(),
             ObjectKind::StringObject(value) => value.len(),
             _ => 0,
@@ -1547,7 +1545,7 @@ fn measure_promise_reaction_entry_bytes(reaction: &PromiseReaction) -> usize {
             PromiseReaction::FinallyPassThrough {
                 original_outcome, ..
             } => measure_promise_outcome_payload_bytes(original_outcome),
-            PromiseReaction::Combinator { .. } => 0,
+            PromiseReaction::Combinator { .. } | PromiseReaction::ArrayFromAsync { .. } => 0,
         }
 }
 
@@ -1568,6 +1566,12 @@ fn measure_promise_settled_result_bytes(result: &PromiseSettledResult) -> usize 
 
 fn measure_promise_driver_bytes(driver: &Option<PromiseDriver>) -> usize {
     match driver {
+        Some(PromiseDriver::ArrayFromAsync(state)) => {
+            std::mem::size_of::<ArrayFromAsyncState>()
+                + extra_value_bytes(&state.source)
+                + extra_value_bytes(&state.this_arg)
+                + state.mapper.as_ref().map_or(0, extra_value_bytes)
+        }
         Some(PromiseDriver::Thenable { value }) => extra_value_bytes(value),
         Some(PromiseDriver::All { values, .. }) => values
             .iter()

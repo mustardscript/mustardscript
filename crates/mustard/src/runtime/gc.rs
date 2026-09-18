@@ -154,6 +154,15 @@ impl Runtime {
         if let Some(root_result) = &self.root_result {
             self.mark_value(root_result, &mut marks, &mut worklist);
         }
+        for value in &self.native_temporary_roots {
+            self.mark_value(value, &mut marks, &mut worklist);
+        }
+        if let Some(value) = &self.pending_sync_callback_result {
+            self.mark_value(value, &mut marks, &mut worklist);
+        }
+        if let Some(rejection) = &self.pending_internal_exception {
+            self.mark_value(&rejection.value, &mut marks, &mut worklist);
+        }
         for frame in &self.frames {
             self.mark_frame_roots(frame, &mut marks, &mut worklist);
         }
@@ -203,7 +212,8 @@ impl Runtime {
                                 self.mark_value(&rejection.value, &mut marks, &mut worklist);
                             }
                         },
-                        PromiseReaction::Combinator { .. } => {}
+                        PromiseReaction::Combinator { .. }
+                        | PromiseReaction::ArrayFromAsync { .. } => {}
                     }
                 }
                 MicrotaskJob::PromiseCombinator { target, input, .. } => {
@@ -417,11 +427,30 @@ impl Runtime {
                                 self.mark_value(&rejection.value, &mut marks, &mut worklist);
                             }
                         },
-                        PromiseReaction::Combinator { .. } => {}
+                        PromiseReaction::Combinator { .. }
+                        | PromiseReaction::ArrayFromAsync { .. } => {}
                     }
                 }
                 if let Some(driver) = &promise.driver {
                     match driver {
+                        PromiseDriver::ArrayFromAsync(state) => {
+                            self.mark_value(&state.source, &mut marks, &mut worklist);
+                            self.mark_value(&state.this_arg, &mut marks, &mut worklist);
+                            self.mark_value(&Value::Array(state.result), &mut marks, &mut worklist);
+                            if let Some(mapper) = &state.mapper {
+                                self.mark_value(mapper, &mut marks, &mut worklist);
+                            }
+                            if let Some(iterator) = state.iterator {
+                                self.mark_value(
+                                    &Value::Iterator(iterator),
+                                    &mut marks,
+                                    &mut worklist,
+                                );
+                            }
+                            if let Some(waiting) = state.waiting {
+                                self.mark_promise(waiting, &mut marks, &mut worklist);
+                            }
+                        }
                         PromiseDriver::Thenable { value } => {
                             self.mark_value(value, &mut marks, &mut worklist);
                         }
@@ -488,6 +517,12 @@ impl Runtime {
         for value in &frame.stack {
             self.mark_value(value, marks, worklist);
         }
+        if let Some(state) = &frame.pending_equality {
+            self.mark_value(&state.primitive, marks, worklist);
+            for work in &state.work {
+                self.mark_value(&work.root(), marks, worklist);
+            }
+        }
         if let Some(value) = &frame.pending_exception {
             self.mark_value(value, marks, worklist);
         }
@@ -496,7 +531,7 @@ impl Runtime {
         }
         for completion in &frame.pending_completions {
             match completion {
-                CompletionRecord::Jump { .. } => {}
+                CompletionRecord::Jump { .. } | CompletionRecord::StructuredJump { .. } => {}
                 CompletionRecord::Return(value) | CompletionRecord::Throw(value) => {
                     self.mark_value(value, marks, worklist);
                 }
@@ -545,6 +580,10 @@ impl Runtime {
                 }
             }
             Value::Promise(key) => self.mark_promise(*key, marks, worklist),
+            Value::BuiltinFunction(BuiltinFunction::PromiseResolveOnce(guard))
+            | Value::BuiltinFunction(BuiltinFunction::PromiseRejectOnce(guard)) => {
+                self.mark_value(&Value::Object(*guard), marks, worklist)
+            }
             Value::BuiltinFunction(BuiltinFunction::PromiseResolveFunction(key))
             | Value::BuiltinFunction(BuiltinFunction::PromiseRejectFunction(key)) => {
                 self.mark_promise(*key, marks, worklist)
@@ -807,6 +846,7 @@ fn instruction_may_allocate(instruction: &Instruction) -> bool {
             | Instruction::SetPropStaticDiscard { .. }
             | Instruction::SetPropComputed
             | Instruction::SetPropComputedDiscard
+            | Instruction::Binary(BinaryOp::Eq | BinaryOp::NotEq)
             | Instruction::Call { .. }
             | Instruction::CallWithArray { .. }
             | Instruction::Await

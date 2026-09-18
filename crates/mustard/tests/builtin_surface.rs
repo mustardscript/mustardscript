@@ -702,13 +702,13 @@ fn regex_helpers_cover_patterns_callbacks_and_state() {
 
 #[test]
 fn regex_helpers_fail_closed_for_unsupported_flags_and_sync_host_replacements() {
-    let invalid_flags = compile(r#"new RegExp("a", "dg");"#).expect("source should compile");
+    let invalid_flags = compile(r#"new RegExp("a", "vg");"#).expect("source should compile");
     let error =
         execute(&invalid_flags, ExecutionOptions::default()).expect_err("execution should fail");
     assert!(
         error
             .to_string()
-            .contains("unsupported regular expression flag `d`")
+            .contains("unsupported regular expression flag `v`")
     );
 
     let replace_all = compile(r#""abc".replaceAll(/a/, "z");"#).expect("source should compile");
@@ -1593,13 +1593,13 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
             .contains("Object helpers currently only support plain objects and arrays")
     );
 
-    let array_from = compile("Array.from({ length: 1, 0: 'a' });").expect("source should compile");
+    let array_from = compile("Array.from(null);").expect("source should compile");
     let error =
-        execute(&array_from, ExecutionOptions::default()).expect_err("execution should fail");
+        execute(&array_from, ExecutionOptions::default()).expect_err("nullish source should fail");
     assert!(
         error
             .to_string()
-            .contains("value is not iterable in the supported surface")
+            .contains("cannot read properties of nullish value")
     );
 
     let from_entries = compile("Object.fromEntries([1]);").expect("source should compile");
@@ -1689,22 +1689,21 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
 
     for (source, message) in [
         (
-            r#""x".normalize();"#,
-            "String.prototype.normalize is not supported",
+            r#""x".normalize("unsupported");"#,
+            "normalization form must be NFC, NFD, NFKC, or NFKD",
         ),
         (
-            "(1).toLocaleString();",
-            "Number.prototype.toLocaleString is not supported",
+            "(1).toLocaleString(\"fr-FR\");",
+            "Intl currently supports only the `en-US` locale",
         ),
         ("[].groupBy();", "Array.prototype.groupBy is not supported"),
         (
-            "new Date(0).toLocaleString();",
-            "Date.prototype.toLocaleString is not supported",
+            "new Date(0).toLocaleString(\"fr-FR\");",
+            "Intl currently supports only the `en-US` locale",
         ),
-        ("Array.fromAsync([]);", "Array.fromAsync is not supported"),
         (
-            "Object.groupBy([], value => value);",
-            "Object.groupBy is not supported",
+            "Array.fromAsync([], 1);",
+            "Array.fromAsync expects a callable map function",
         ),
         (
             "({}).missing();",
@@ -1779,13 +1778,10 @@ fn new_builtins_fail_closed_for_unsupported_inputs() {
             .contains("String.prototype.matchAll requires a global RegExp")
     );
 
-    let date_call = compile("Date();").expect("source should compile");
-    let error =
-        execute(&date_call, ExecutionOptions::default()).expect_err("execution should fail");
-    assert!(
-        error
-            .to_string()
-            .contains("Date constructor must be called with new")
+    let date_call = compile("typeof Date();").expect("source should compile");
+    assert_eq!(
+        execute(&date_call, ExecutionOptions::default()).unwrap(),
+        StructuredValue::String("string".to_string())
     );
 
     let date_result = compile("new Date(0);").expect("source should compile");

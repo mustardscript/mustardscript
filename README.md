@@ -41,8 +41,8 @@ The current implementation already supports:
 - `async` functions, top-level `await`, guest promises, `new Promise(...)`,
   Promise combinators and instance methods, basic thenable adoption, and
   internal microtask scheduling for the supported subset
-- guest-internal `BigInt` literals with exact-integer arithmetic,
-  comparison, keyed-collection membership, and string/property-key coercion
+- guest-internal `BigInt` literals and `BigInt(value)` conversion with exact-integer
+  arithmetic, comparison, keyed-collection membership, and string/property-key coercion
 - conservative array, string, object, and Math helper methods, including
   callback-driven array helpers, iterable normalization helpers, and
   string-pattern search/replacement helpers
@@ -51,7 +51,10 @@ The current implementation already supports:
   freshness checks
 - narrow `Intl.DateTimeFormat` and `Intl.NumberFormat` support for explicit
   `en-US` / `UTC` formatting without widening the ambient runtime surface
-- `throw`, `try`/`catch`/`finally`, and guest-visible `Error` objects
+- property deletion, Number bitwise operators, labeled control flow, per-iteration
+  `for (let ...)` bindings, abstract equality (`==`/`!=`), and compound-statement
+  script completion values
+- `throw`, `try`/`catch`/`finally`, and the eight standard guest error constructors
 - `Math` and `JSON` built-ins
 - explicit named host capabilities with `start()` / `resume()` suspension,
   including async guest fan-out across host capability calls
@@ -84,6 +87,11 @@ The current implementation already supports:
 - [Architecture ADRs](docs/ADRs/0001-core-architecture.md)
 
 ## Installation
+
+The published package requires **Node.js >=20.0.0**. The wrapper uses
+`String.prototype.isWellFormed` to reject malformed UTF-16 at the host boundary.
+CI tests installed packages on Node 20.0.0 and 22 and the full suite on Node 24.
+Use Node 24 for the maintainer/source-build commands below.
 
 The release package name is `mustardscript`. The published npm package is now
 prebuilt-only: `npm install mustardscript` succeeds only when npm can install a
@@ -408,6 +416,9 @@ JavaScript and should be treated as such.
 
 The initial built-in surface should be conservative and explicit.
 
+The detailed [Language Contract](docs/LANGUAGE.md) is authoritative for method
+options, string indexing, and explicit subset restrictions.
+
 Currently implemented built-ins:
 
 - `globalThis`
@@ -423,11 +434,17 @@ Currently implemented built-ins:
 - `TypeError`
 - `ReferenceError`
 - `RangeError`
+- `SyntaxError`
+- `URIError`
+- `EvalError`
+- `AggregateError`
 - `Number`
+- `BigInt`
 - `Boolean`
 - `Intl`
 - `Math`
 - `JSON`
+- `encodeURI`, `decodeURI`, `encodeURIComponent`, `decodeURIComponent`
 - A placeholder `console` global object
 
 Current Promise support is intentionally narrow:
@@ -437,7 +454,7 @@ Current Promise support is intentionally narrow:
   completes synchronously from the runtime's perspective
 - `Promise.resolve(...)`, `Promise.reject(...)`, `Promise.all(...)`,
   `Promise.race(...)`, `Promise.any(...)`, and `Promise.allSettled(...)` are
-  supported
+  supported; `Promise.withResolvers()` supplies snapshot-safe one-shot resolvers
 - promise instance methods `then(...)`, `catch(...)`, and `finally(...)` are
   supported
 - promise resolution and `await` adopt guest promises plus guest object or
@@ -454,8 +471,8 @@ Current Promise support is intentionally narrow:
 
 Current BigInt support is intentionally conservative:
 
-- guest code supports `123n` literals plus exact-integer `+`, `-`, `*`, `/`,
-  `%`, truthiness, `typeof`, string coercion, and property-key coercion
+- guest code supports `123n` literals and `BigInt(value)` conversion plus exact-integer
+  `+`, `-`, `*`, `/`, `%`, `**`, truthiness, `typeof`, string coercion, and property-key coercion
 - `Map` and `Set` treat `BigInt` values as stable guest keys using the same
   equality surface as other guest values
 - mixed `BigInt` / `Number` arithmetic and relational comparisons fail closed
@@ -466,14 +483,17 @@ Current BigInt support is intentionally conservative:
 
 Current built-in helper support is intentionally conservative:
 
-- arrays support `push`, `pop`, `slice`, `join`, `includes`, `indexOf`,
-  `values`, `keys`, `entries`, `forEach`, `map`, `filter`, `find`,
-  `findIndex`, `findLast`, `findLastIndex`, `some`, `every`, `reduce`, and
-  `reduceRight`
+- arrays support queue, mutation, and copying helpers including `shift`,
+  `unshift`, `copyWithin`, `toSorted`, `toReversed`, `toSpliced`, and `with`,
+  alongside the existing iteration, search, reduction, and transformation APIs.
+  `Array.from` accepts supported iterables and array-like objects;
+  `Array.fromAsync` consumes the supported surface sequentially
 - strings support `trim`, `trimStart`, `trimEnd`, `includes`, `startsWith`,
   `endsWith`, `slice`, `substring`, `toLowerCase`, `toUpperCase`,
   `padStart`, `padEnd`, `split`, `replace`, `replaceAll`, `search`, and
-  `match`
+  `match`, plus `normalize`, `localeCompare`, character-code constructors/
+  accessors and well-formedness helpers. Existing indexing uses Unicode scalars;
+  `charCodeAt`/`codePointAt` use UTF-16 offsets as specified in the language contract
 - `Array(...)` and `new Array(...)` follow JavaScript's single-length
   constructor behavior for one numeric argument and reject invalid lengths
   with `RangeError`
@@ -482,13 +502,20 @@ Current built-in helper support is intentionally conservative:
 - `Object.keys`, `Object.values`, `Object.entries`, and `Object.hasOwn`
   support plain objects, arrays, supported callables, and conservative boxed
   strings
-- `Math.pow`, `Math.sqrt`, `Math.trunc`, and `Math.sign` are supported
-- `Date.now()`, `new Date(value).getTime()`, `Date.prototype.toISOString()`,
-  `Date.prototype.toJSON()`, and the documented UTC field accessors are
-  supported
+- `Object.groupBy` and `Map.groupBy` group supported iterable values;
+  `Object.is`, `hasOwnProperty` and object/array string conversions are supported
+- `Math` includes `imul`, `clz32`, `fround`, `log1p`, `expm1`, and the documented
+  trigonometric/hyperbolic helpers
+- `JSON.parse(text, reviver)` and `JSON.stringify(value, replacer, space)` support
+  synchronous callbacks, `toJSON`, filtering and indentation with shared native
+  recursion, instruction and heap limits
+- `Date` includes `parse`, `UTC`, component construction, getters/setters and
+  formatting wrappers under a fixed UTC local-time policy. `Date.now()` remains
+  wall-clock based
 - `Number.parseInt`, `Number.parseFloat`, `Number.isNaN`,
   `Number.isFinite`, and the documented number formatting helpers are
-  supported
+  supported, including `Number.prototype.toLocaleString` and CLDR-backed currency
+  formatting beyond USD
 - `Intl.DateTimeFormat` and `Intl.NumberFormat` are available in a narrow
   `en-US` / `UTC` subset with explicit fail-closed behavior for unsupported
   locales and options
@@ -498,10 +525,10 @@ Current built-in helper support is intentionally conservative:
 - string pattern helpers accept string-coercible patterns and real `RegExp`
   instances, including callback replacements for `replace` and `replaceAll`
 - string replacement callbacks are synchronous-only; host suspensions fail
-  closed, and only `g`, `i`, `m`, `s`, `u`, and `y` flags are supported
+  closed, and only `d`, `g`, `i`, `m`, `s`, `u`, and `y` flags are supported
 - full `RegExp` parity and symbol-based match/replace protocol hooks remain
   unsupported
-- descriptor/prototype helpers remain unsupported
+- property descriptor and prototype-mutation helpers remain unsupported
 - proxy-backed host values, accessor-backed handler registries, and cyclic host
   values fail closed at the JavaScript wrapper boundary before guest execution
 
@@ -515,16 +542,16 @@ Current function-call support is intentionally narrow:
 - implicit free `arguments` is rejected with a validation diagnostic
 - `new` remains limited to the documented conservative built-in constructors
 
-Current legacy-binding and prototype-related exclusions are deliberate:
+Current legacy-binding, deletion, and prototype boundaries are explicit:
 
 - `var` is intentionally not part of the v1 contract. The runtime keeps only
   lexical `let` / `const` bindings and does not emulate function/global
   hoisting or legacy redeclaration rules.
-- the `delete` operator is intentionally unavailable for plain objects and
-  arrays. Supporting it would require explicit rules for own-property absence,
-  sparse arrays, and descriptor/configurability semantics; until then guest
-  code must rebuild values instead. This does not affect the supported
-  `Map.prototype.delete` and `Set.prototype.delete` methods.
+- `delete` removes plain-object and Error properties and creates array holes without
+  shifting entries or changing length. Missing properties return `true`;
+  deleting bindings is rejected, and deleting non-configurable properties such
+  as array `length` throws. Single optional members are supported; compound
+  optional-chain deletion remains explicitly rejected.
 - full prototype inheritance remains unavailable, but conservative
   `instanceof` checks work for the documented built-in constructors,
   primitive-wrapper objects, and `Object` checks over supported callables.
@@ -533,7 +560,9 @@ Current keyed-collection support is intentionally narrow:
 
 - `new Map()` and `new Set()` accept the supported iterable surface
 - `Map` supports `get`, `set`, `has`, `delete`, `clear`, and `size`
-- `Set` supports `add`, `has`, `delete`, `clear`, and `size`
+- `Set` supports `add`, `has`, `delete`, `clear`, and `size`, plus `union`,
+  `intersection`, `difference`, `symmetricDifference`, `isSubsetOf`,
+  `isSupersetOf`, and `isDisjointFrom`
 - `Map` keys and `Set` membership use SameValueZero semantics, so `NaN`
   matches `NaN` and `-0` is treated the same as `0`
 - `Map` and `Set` preserve first-in insertion order internally
@@ -577,6 +606,8 @@ The host boundary should be narrowly defined and documented as its own contract.
 - maps, sets, typed arrays, buffers, and array buffers
 - cycles
 - objects with accessors or custom prototypes
+- strings or object keys containing lone UTF-16 surrogates (valid surrogate
+  pairs, including emoji, are accepted)
 
 This is intentionally narrower than general JavaScript values.
 

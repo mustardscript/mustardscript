@@ -7,8 +7,11 @@ use super::*;
 
 mod boundary;
 mod coercions;
+mod equality;
 mod errors;
 mod operators;
 
 #[allow(unused_imports)]
 pub(super) use boundary::structured_to_json;
+
+pub(super) use coercions::is_ecmascript_whitespace;

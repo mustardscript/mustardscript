@@ -7,7 +7,7 @@ pub(crate) struct PromiseSetupPolicy<'a> {
 }
 
 impl Runtime {
-    fn reject_promise_from_setup_error(
+    pub(in crate::runtime) fn reject_promise_from_setup_error(
         &mut self,
         target: PromiseKey,
         error: MustardError,
@@ -25,14 +25,6 @@ impl Runtime {
             }
             other => self.reject_promise_from_error(target, other),
         }
-    }
-
-    pub(crate) fn promise_settler(&self, target: PromiseKey, rejected: bool) -> Value {
-        Value::BuiltinFunction(if rejected {
-            BuiltinFunction::PromiseRejectFunction(target)
-        } else {
-            BuiltinFunction::PromiseResolveFunction(target)
-        })
     }
 
     pub(crate) fn promise_thenable_handler(
@@ -53,6 +45,21 @@ impl Runtime {
     }
 
     pub(crate) fn call_promise_setup_callback(
+        &mut self,
+        target: PromiseKey,
+        callback: Value,
+        this_arg: Value,
+        args: &[Value],
+        policy: PromiseSetupPolicy<'_>,
+    ) -> MustardResult<()> {
+        let mut roots = args.to_vec();
+        roots.extend([Value::Promise(target), callback.clone(), this_arg.clone()]);
+        self.with_temporary_roots(&roots, |runtime| {
+            runtime.call_promise_setup_callback_rooted(target, callback, this_arg, args, policy)
+        })
+    }
+
+    fn call_promise_setup_callback_rooted(
         &mut self,
         target: PromiseKey,
         callback: Value,
@@ -85,11 +92,11 @@ impl Runtime {
                         self.frames.truncate(base_depth);
                         self.suspended_host_call = None;
                         self.pending_resume_behavior = ResumeBehavior::Value;
-                        return self.reject_promise_from_setup_error(target, error);
+                        return self.reject_promise_callback_setup_error(target, error, args);
                     }
                     match self.promise_outcome(outcome)? {
                         Some(PromiseOutcome::Rejected(rejection)) => {
-                            self.reject_promise(target, rejection)
+                            self.reject_promise_callback_setup_rejection(target, rejection, args)
                         }
                         Some(PromiseOutcome::Fulfilled(_)) | None => Ok(()),
                     }
@@ -114,8 +121,48 @@ impl Runtime {
         };
         match result {
             Ok(()) => Ok(()),
-            Err(error) => self.reject_promise_from_setup_error(target, error),
+            Err(error) => self.reject_promise_callback_setup_error(target, error, args),
         }
+    }
+
+    fn reject_promise_callback_setup_rejection(
+        &mut self,
+        target: PromiseKey,
+        rejection: PromiseRejection,
+        args: &[Value],
+    ) -> MustardResult<()> {
+        if let Some(Value::BuiltinFunction(BuiltinFunction::PromiseRejectOnce(guard))) = args.get(1)
+        {
+            if matches!(
+                self.get_property_static(Value::Object(*guard), "resolved", false)?,
+                Value::Bool(true)
+            ) {
+                return Ok(());
+            }
+            self.set_property_static(Value::Object(*guard), "resolved", Value::Bool(true))?;
+        }
+        self.reject_promise(target, rejection)
+    }
+
+    fn reject_promise_callback_setup_error(
+        &mut self,
+        target: PromiseKey,
+        error: MustardError,
+        args: &[Value],
+    ) -> MustardResult<()> {
+        let rejection = match error {
+            MustardError::Message {
+                kind: DiagnosticKind::Runtime,
+                ref message,
+                ..
+            } if message == super::super::INTERNAL_CALLBACK_THROW_MARKER => {
+                self.pending_internal_exception.take().ok_or_else(|| {
+                    MustardError::runtime("missing internal callback exception state")
+                })?
+            }
+            other => self.runtime_error_to_promise_rejection(other)?,
+        };
+        self.reject_promise_callback_setup_rejection(target, rejection, args)
     }
 
     pub(crate) fn construct_promise(&mut self, args: &[Value]) -> MustardResult<Value> {
@@ -126,8 +173,7 @@ impl Runtime {
             ));
         }
         let target = self.insert_promise(PromiseState::Pending)?;
-        let resolve = self.promise_settler(target, false);
-        let reject = self.promise_settler(target, true);
+        let (resolve, reject) = self.promise_resolvers(target)?;
         self.call_promise_setup_callback(
             target,
             executor,

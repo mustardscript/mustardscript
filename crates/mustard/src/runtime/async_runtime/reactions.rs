@@ -64,7 +64,8 @@ impl Runtime {
             PromiseReaction::Then { target, .. }
             | PromiseReaction::Finally { target, .. }
             | PromiseReaction::FinallyPassThrough { target, .. }
-            | PromiseReaction::Combinator { target, .. } => *target,
+            | PromiseReaction::Combinator { target, .. }
+            | PromiseReaction::ArrayFromAsync { target, .. } => *target,
         }
     }
 
@@ -192,16 +193,20 @@ impl Runtime {
         &mut self,
         reasons: Vec<Value>,
     ) -> MustardResult<Value> {
-        let error = self.make_error_object(
-            "AggregateError",
-            &[Value::String("All promises were rejected".to_string())],
-            None,
-            None,
-            None,
-        )?;
-        let errors = Value::Array(self.insert_array(reasons, IndexMap::new())?);
-        self.set_property_static(error.clone(), "errors", errors)?;
-        Ok(error)
+        self.with_temporary_roots(&reasons, |runtime| {
+            let error = runtime.make_error_object(
+                "AggregateError",
+                &[Value::String("All promises were rejected".to_string())],
+                None,
+                None,
+                None,
+            )?;
+            runtime.with_temporary_roots(std::slice::from_ref(&error), |runtime| {
+                let errors = Value::Array(runtime.insert_array(reasons.clone(), IndexMap::new())?);
+                runtime.set_error_hidden_property(error.clone(), "errors", errors)?;
+                Ok(error.clone())
+            })
+        })
     }
 
     pub(in crate::runtime) fn activate_promise_combinator(
@@ -479,6 +484,9 @@ impl Runtime {
     ) -> MustardResult<()> {
         let target = self.promise_reaction_target(&reaction);
         let result = (|| match reaction {
+            PromiseReaction::ArrayFromAsync { target, phase } => {
+                self.activate_array_from_async(target, phase, outcome)
+            }
             PromiseReaction::Then {
                 target,
                 on_fulfilled,

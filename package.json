@@ -6,6 +6,7 @@
   "types": "mustard.d.ts",
   "files": [
     "LICENSE",
+    "UNICODE-LICENSE",
     "SECURITY.md",
     "README.md",
     "dist",
@@ -102,5 +103,8 @@
   "homepage": "https://github.com/mustardscript/mustardscript#readme",
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

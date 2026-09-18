@@ -108,6 +108,8 @@ fn validate_function(
             | Instruction::JumpIfNullish(target)
             | Instruction::EnterFinally { exit: target }
             | Instruction::PushPendingJump { target, .. }
+            | Instruction::PushCompletionJump { target, .. }
+            | Instruction::AbruptJump { target, .. }
                 if *target >= code_len =>
             {
                 return Err(MustardError::validation(
@@ -182,6 +184,28 @@ fn validate_function(
                     ));
                 }
             }
+            Instruction::PushCompletionJump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+                target_finally_depth,
+            }
+            | Instruction::AbruptJump {
+                target,
+                target_handler_depth,
+                target_scope_depth,
+                target_finally_depth,
+            } => {
+                work.push_back((
+                    *target,
+                    ValidationState {
+                        scope_depth: *target_scope_depth,
+                        handler_depth: *target_handler_depth,
+                        pending_depth: *target_finally_depth,
+                        ..state
+                    },
+                ));
+            }
             Instruction::PushPendingJump {
                 target,
                 target_handler_depth,
@@ -234,6 +258,7 @@ fn apply_validation_effect(
         | Instruction::LoadSlotGetPropStatic { .. }
         | Instruction::LoadSlotLoadSlotGetPropComputed { .. }
         | Instruction::LoadName(_)
+        | Instruction::LoadNameForTypeof(_)
         | Instruction::LoadGlobal(_)
         | Instruction::LoadGlobalObject
         | Instruction::MakeClosure { .. }
@@ -293,7 +318,10 @@ fn apply_validation_effect(
         }
         Instruction::ArrayPush => {
             require_stack(2)?;
-            state
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                ..state
+            }
         }
         Instruction::ArrayPushHole => {
             require_stack(1)?;
@@ -342,7 +370,7 @@ fn apply_validation_effect(
                 ..state
             }
         }
-        Instruction::GetPropComputed { .. } => {
+        Instruction::GetPropComputed { .. } | Instruction::DeletePropComputed => {
             require_stack(2)?;
             ValidationState {
                 stack_depth: state.stack_depth - 1,
@@ -432,6 +460,42 @@ fn apply_validation_effect(
             require_stack(1)?;
             state
         }
+        Instruction::PushCompletionJump {
+            target_handler_depth,
+            target_scope_depth,
+            target_finally_depth,
+            ..
+        }
+        | Instruction::AbruptJump {
+            target_handler_depth,
+            target_scope_depth,
+            target_finally_depth,
+            ..
+        } => {
+            if *target_handler_depth > state.handler_depth
+                || *target_scope_depth > state.scope_depth
+                || *target_finally_depth > state.pending_depth
+            {
+                return Err(MustardError::validation(
+                    format!(
+                        "bytecode validation failed: function {function_id} instruction {ip} targets missing control-transfer depth"
+                    ),
+                    None,
+                ));
+            }
+            ValidationState {
+                pending_depth: state.pending_depth
+                    + usize::from(matches!(
+                        instruction,
+                        Instruction::PushCompletionJump { .. }
+                    )),
+                ..state
+            }
+        }
+        Instruction::AbruptReturn => {
+            require_stack(1)?;
+            state
+        }
         Instruction::PushPendingJump {
             target_handler_depth,
             target_scope_depth,
@@ -476,7 +540,7 @@ fn apply_validation_effect(
                 ..state
             }
         }
-        Instruction::ContinuePending => {
+        Instruction::ContinuePending | Instruction::ContinuePendingRegion { .. } => {
             if state.pending_depth == 0 {
                 return Err(MustardError::validation(
                     format!(
@@ -560,9 +624,12 @@ fn validation_successors(ip: usize, instruction: &Instruction, code_len: usize) 
             }
             successors
         }
-        Instruction::ContinuePending | Instruction::Throw { .. } | Instruction::Return => {
-            Vec::new()
-        }
+        Instruction::ContinuePending
+        | Instruction::ContinuePendingRegion { .. }
+        | Instruction::AbruptJump { .. }
+        | Instruction::AbruptReturn
+        | Instruction::Throw { .. }
+        | Instruction::Return => Vec::new(),
         _ if ip + 1 < code_len => vec![ip + 1],
         _ => Vec::new(),
     }

@@ -66,6 +66,11 @@ impl Runtime {
                 .to_string(),
             )),
             UnaryOp::Void => Ok(Value::Undefined),
+            UnaryOp::Delete => Ok(Value::Bool(true)),
+            UnaryOp::BitNot => {
+                reject_bigint_bitwise(&value)?;
+                Ok(Value::Number(!(self.coerce_uint32(value)? as i32) as f64))
+            }
         }
     }
 
@@ -76,6 +81,27 @@ impl Runtime {
         right: Value,
     ) -> MustardResult<Value> {
         match operator {
+            BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::ShiftLeft
+            | BinaryOp::ShiftRight
+            | BinaryOp::ShiftRightUnsigned => {
+                reject_bigint_bitwise(&left)?;
+                reject_bigint_bitwise(&right)?;
+                let left = self.coerce_uint32(left)?;
+                let right = self.coerce_uint32(right)?;
+                let result = match operator {
+                    BinaryOp::BitAnd => (left & right) as i32 as f64,
+                    BinaryOp::BitOr => (left | right) as i32 as f64,
+                    BinaryOp::BitXor => (left ^ right) as i32 as f64,
+                    BinaryOp::ShiftLeft => (left << (right & 31)) as i32 as f64,
+                    BinaryOp::ShiftRight => ((left as i32) >> (right & 31)) as f64,
+                    BinaryOp::ShiftRightUnsigned => (left >> (right & 31)) as f64,
+                    _ => unreachable!(),
+                };
+                Ok(Value::Number(result))
+            }
             BinaryOp::Add => {
                 if matches!(left, Value::String(_)) || matches!(right, Value::String(_)) {
                     Ok(Value::String(format!(
@@ -117,10 +143,15 @@ impl Runtime {
             BinaryOp::Instanceof => {
                 Ok(Value::Bool(self.instanceof_supported_surface(left, right)?))
             }
-            BinaryOp::Eq | BinaryOp::StrictEq => Ok(Value::Bool(strict_equal(&left, &right))),
-            BinaryOp::NotEq | BinaryOp::StrictNotEq => {
-                Ok(Value::Bool(!strict_equal(&left, &right)))
+            // Object coercion is handled by the resumable Binary instruction.
+            BinaryOp::Eq | BinaryOp::NotEq => {
+                let equal = self.loose_equality(&left, &right)?.ok_or_else(|| {
+                    MustardError::runtime("object equality requires a VM continuation")
+                })?;
+                Ok(Value::Bool(equal != matches!(operator, BinaryOp::NotEq)))
             }
+            BinaryOp::StrictEq => Ok(Value::Bool(strict_equal(&left, &right))),
+            BinaryOp::StrictNotEq => Ok(Value::Bool(!strict_equal(&left, &right))),
             BinaryOp::LessThan
             | BinaryOp::LessThanEq
             | BinaryOp::GreaterThan
@@ -180,6 +211,9 @@ impl Runtime {
                     _ => false,
                 }),
                 BuiltinFunction::ArrayCtor => Ok(matches!(left, Value::Array(_))),
+                BuiltinFunction::ObjectCtor if matches!(left, Value::Object(object) if self.objects.get(object).is_some_and(|object| matches!(object.kind, ObjectKind::NullPrototype))) => {
+                    Ok(false)
+                }
                 BuiltinFunction::ObjectCtor => Ok(matches!(
                     left,
                     Value::Object(_)
@@ -240,6 +274,7 @@ impl Runtime {
                             .get(object)
                             .is_some_and(|object| matches!(object.kind, ObjectKind::Error(_)))
                 )),
+                BuiltinFunction::BigIntCtor => Ok(false),
                 BuiltinFunction::TypeErrorCtor => Ok(self.error_kind_matches(left, "TypeError")),
                 BuiltinFunction::ReferenceErrorCtor => {
                     Ok(self.error_kind_matches(left, "ReferenceError"))
@@ -247,6 +282,11 @@ impl Runtime {
                 BuiltinFunction::RangeErrorCtor => Ok(self.error_kind_matches(left, "RangeError")),
                 BuiltinFunction::SyntaxErrorCtor => {
                     Ok(self.error_kind_matches(left, "SyntaxError"))
+                }
+                BuiltinFunction::EvalErrorCtor => Ok(self.error_kind_matches(left, "EvalError")),
+                BuiltinFunction::URIErrorCtor => Ok(self.error_kind_matches(left, "URIError")),
+                BuiltinFunction::AggregateErrorCtor => {
+                    Ok(self.error_kind_matches(left, "AggregateError"))
                 }
                 _ => Err(MustardError::runtime(
                     "TypeError: right-hand side of instanceof must be a supported constructor",
@@ -266,7 +306,7 @@ impl Runtime {
                 if self
                     .objects
                     .get(object)
-                    .is_some_and(|object| matches!(&object.kind, ObjectKind::Error(name) if name == expected))
+                    .is_some_and(|object| matches!(&object.kind, ObjectKind::Error(error) if error.name == expected))
         )
     }
 }
@@ -331,4 +371,14 @@ fn mixed_bigint_number_error() -> MustardError {
 
 fn mixed_bigint_comparison_error() -> MustardError {
     MustardError::runtime("TypeError: cannot compare BigInt and Number values")
+}
+
+fn reject_bigint_bitwise(value: &Value) -> MustardResult<()> {
+    if matches!(value, Value::BigInt(_)) {
+        Err(MustardError::runtime(
+            "TypeError: BigInt bitwise operators are unsupported",
+        ))
+    } else {
+        Ok(())
+    }
 }
