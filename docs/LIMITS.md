@@ -75,6 +75,16 @@ Cooperative cancellation is controlled separately through:
 - Call-depth limits are enforced before each new guest frame is pushed, so
   recursive or deeply nested guest calls fail with a guest-safe limit error
   once the configured depth budget is exhausted.
+- Native recursion has an additional fixed, shared budget of 256 units:
+  each JSON property traversal or parse entry costs one, and each synchronous
+  native-to-guest callback entry costs sixteen. Reentrant revivers, replacers,
+  `toJSON`, and collection callbacks cannot reset this budget by starting a new
+  helper. Exits refund their units, including errors. Exhaustion reports
+  `native recursion depth limit exceeded` as a non-catchable limit error.
+  Native builds use `stacker` at these guarded entries to reserve stack space
+  on small threads and debug/ASan builds; the fixed recursion budget bounds
+  stack-segment growth independently of guest heap limits. WebAssembly uses
+  the same depth budget without native stack switching.
 - Cooperative cancellation is implemented and checked before each instruction,
   before idle microtask or queued-host-call checkpoints, on every resume
   entry, and inside long-running native helper loops.

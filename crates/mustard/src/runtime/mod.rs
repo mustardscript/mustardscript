@@ -58,6 +58,10 @@ use crate::{
 
 const INTERNAL_CALLBACK_THROW_MARKER: &str = "\0internal-array-callback-throw";
 
+// Native helpers may reenter the VM. This budget is shared across callbacks
+// and recursive JSON walks, unlike the guest-frame and per-document limits.
+const MAX_NATIVE_DEPTH: usize = 256;
+
 fn runtime_image() -> &'static RuntimeImage {
     static RUNTIME_IMAGE: OnceLock<RuntimeImage> = OnceLock::new();
     RUNTIME_IMAGE.get_or_init(|| {
@@ -147,6 +151,7 @@ impl Runtime {
             pending_sync_callback_result: None,
             native_callback_host_suspension_message: None,
             native_temporary_roots: Vec::new(),
+            native_depth: 0,
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         }
@@ -201,6 +206,7 @@ impl Runtime {
             pending_sync_callback_result: None,
             native_callback_host_suspension_message: None,
             native_temporary_roots: Vec::new(),
+            native_depth: 0,
             snapshot_policy_required: false,
             pending_resume_behavior: ResumeBehavior::Value,
         }
@@ -304,6 +310,44 @@ impl Runtime {
     }
 
     pub(crate) fn call_callback(
+        &mut self,
+        callback: Value,
+        this_arg: Value,
+        args: &[Value],
+        options: CallbackCallOptions<'_>,
+    ) -> MustardResult<Value> {
+        self.with_native_depth(16, 256 * 1024, |runtime| {
+            runtime.call_callback_inner(callback, this_arg, args, options)
+        })
+    }
+
+    #[inline(never)]
+    fn with_native_depth<T>(
+        &mut self,
+        cost: usize,
+        stack_reserve: usize,
+        callback: impl FnOnce(&mut Self) -> MustardResult<T>,
+    ) -> MustardResult<T> {
+        if cost > MAX_NATIVE_DEPTH.saturating_sub(self.native_depth) {
+            return Err(limit_error("native recursion depth limit exceeded"));
+        }
+        self.native_depth += cost;
+        // A fixed depth count alone is not sufficient on small host threads or
+        // instrumented builds. Stack growth is bounded by the shared budget.
+        #[cfg(not(target_arch = "wasm32"))]
+        let result = stacker::maybe_grow(stack_reserve, stack_reserve.max(1024 * 1024), || {
+            callback(self)
+        });
+        #[cfg(target_arch = "wasm32")]
+        let result = {
+            let _ = stack_reserve;
+            callback(self)
+        };
+        self.native_depth -= cost;
+        result
+    }
+
+    fn call_callback_inner(
         &mut self,
         callback: Value,
         this_arg: Value,

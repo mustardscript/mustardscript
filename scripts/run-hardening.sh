@@ -19,6 +19,7 @@ ensure_toolchain() {
 }
 
 cargo test -p mustard --test security_hostile_inputs
+cargo test -p mustard --test native_stack_safety
 cargo test -p mustard --test property_generated_execution
 cargo test -p mustard --test property_roundtrip
 cargo test -p mustard --test property_snapshot_roundtrip

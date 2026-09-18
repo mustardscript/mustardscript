@@ -221,6 +221,18 @@ impl Runtime {
         state: &mut JsonStringifyTraversalState,
         output: &mut String,
     ) -> MustardResult<bool> {
+        self.with_native_depth(1, 128 * 1024, |runtime| {
+            runtime.json_stringify_property_inner(holder, key, state, output)
+        })
+    }
+
+    fn json_stringify_property_inner(
+        &mut self,
+        holder: Value,
+        key: &str,
+        state: &mut JsonStringifyTraversalState,
+        output: &mut String,
+    ) -> MustardResult<bool> {
         self.charge_native_helper_work(1)?;
         let value = self.get_property_static_at_site(holder.clone(), key, false, None)?;
         self.with_temporary_roots(&[holder.clone(), value.clone()], |runtime| {
@@ -256,6 +268,14 @@ impl Runtime {
     }
 
     pub(crate) fn call_json_parse(&mut self, args: &[Value]) -> MustardResult<Value> {
+        // serde_json and boundary conversion are themselves bounded recursive
+        // walks. Reserve enough native stack before entering either of them.
+        self.with_native_depth(1, 2 * 1024 * 1024, |runtime| {
+            runtime.call_json_parse_inner(args)
+        })
+    }
+
+    fn call_json_parse_inner(&mut self, args: &[Value]) -> MustardResult<Value> {
         self.with_temporary_roots(args, |runtime| {
             let source = runtime.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
             let mut reader = BudgetedJsonReader::new(runtime, source.as_bytes());
@@ -285,6 +305,18 @@ impl Runtime {
     }
 
     fn json_revive_property(
+        &mut self,
+        holder: Value,
+        key: &str,
+        reviver: Value,
+        depth: usize,
+    ) -> MustardResult<Value> {
+        self.with_native_depth(1, 128 * 1024, |runtime| {
+            runtime.json_revive_property_inner(holder, key, reviver, depth)
+        })
+    }
+
+    fn json_revive_property_inner(
         &mut self,
         holder: Value,
         key: &str,

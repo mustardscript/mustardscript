@@ -1640,6 +1640,8 @@ pub(super) struct Runtime {
     #[serde(skip, default)]
     pub(super) native_temporary_roots: Vec<Value>,
     #[serde(skip, default)]
+    pub(super) native_depth: usize,
+    #[serde(skip, default)]
     pub(super) snapshot_policy_required: bool,
     pub(super) pending_resume_behavior: ResumeBehavior,
 }

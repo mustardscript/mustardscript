@@ -114,6 +114,18 @@ It intentionally does not add arbitrary-precision Intl string/BigInt inputs or
 new Intl option families. Formatter fields keep their serialized layout, while
 snapshot validation now bounds digit counts and checks currency configuration.
 
+## Native callback and JSON stack safety
+
+Guest frame depth and per-document JSON depth do not compose into a native stack
+bound: a callback can start another nested traversal while its caller's traversal
+remains on the stack. Use one runtime-local native-depth budget for both paths,
+with weighted callback entries and refundable JSON traversal entries (see
+[Limits](../LIMITS.md)). Do not serialize this transient native-stack state.
+The already-pinned `stacker` dependency also supplies guarded stack segments on
+native targets, so debug and instrumented frames and 1 MiB host threads have
+enough headroom to reach the budget check. Keep recursive crash regressions in
+subprocesses and run them in debug, release, and hardening verification.
+
 ## Pre-parse delimiter nesting
 
 The CI-equivalent sidecar fuzz smoke exposed stack exhaustion inside Oxc on deeply
