@@ -1234,7 +1234,7 @@ impl Runtime {
                     self.prototype_surface_for_constructor(constructor)
                 }
                 ObjectKind::BoundFunction(_) => "Function.prototype".to_string(),
-                ObjectKind::Error(name) => format!("{name}.prototype"),
+                ObjectKind::Error(error) => format!("{}.prototype", error.name),
                 ObjectKind::Date(_) => "Date.prototype".to_string(),
                 ObjectKind::RegExp(_) => "RegExp.prototype".to_string(),
                 ObjectKind::NumberObject(_) => "Number.prototype".to_string(),

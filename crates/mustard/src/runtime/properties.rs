@@ -1184,7 +1184,10 @@ impl Runtime {
                     | ObjectKind::Global
                     | ObjectKind::Math
                     | ObjectKind::Json => key == "constructor",
-                    ObjectKind::Error(_) => matches!(key.as_str(), "constructor" | "toString"),
+                    ObjectKind::Error(_) => matches!(
+                        key.as_str(),
+                        "constructor" | "toString" | "name" | "message"
+                    ),
                     ObjectKind::NullPrototype => false,
                 })
             }
@@ -2029,15 +2032,21 @@ impl Runtime {
                         }
                         return Ok(Value::Undefined);
                     }
-                    ObjectKind::Error(name) => {
+                    ObjectKind::Error(error) => {
                         if let Some(value) = object.properties.get(key) {
                             return Ok(value.clone());
                         }
                         if key == "toString" {
                             return Ok(Value::BuiltinFunction(BuiltinFunction::ErrorToString));
                         }
+                        if key == "name" {
+                            return Ok(Value::String(error.name.clone()));
+                        }
+                        if key == "message" {
+                            return Ok(Value::String(String::new()));
+                        }
                         if key == "constructor" {
-                            let ctor = match name.as_str() {
+                            let ctor = match error.name.as_str() {
                                 "TypeError" => BuiltinFunction::TypeErrorCtor,
                                 "ReferenceError" => BuiltinFunction::ReferenceErrorCtor,
                                 "RangeError" => BuiltinFunction::RangeErrorCtor,
@@ -2616,7 +2625,7 @@ impl Runtime {
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
                 if !matches!(
                     object_ref.kind,
-                    ObjectKind::Plain | ObjectKind::NullPrototype
+                    ObjectKind::Plain | ObjectKind::NullPrototype | ObjectKind::Error(_)
                 ) {
                     return Err(MustardError::runtime(
                         "TypeError: delete only supports plain objects and arrays on the supported surface",
@@ -2633,6 +2642,11 @@ impl Runtime {
                     .materialize()
                     .shift_remove(key);
                 if let Some(value) = removed {
+                    if let ObjectKind::Error(error) =
+                        &mut self.objects.get_mut(object).expect("object checked").kind
+                    {
+                        error.non_enumerable &= !ErrorObject::property_bit(key);
+                    }
                     self.apply_object_component_delta(
                         object,
                         Self::property_entry_bytes(key, &value),

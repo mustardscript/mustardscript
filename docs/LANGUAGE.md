@@ -272,7 +272,7 @@ For example, `try { 42; } finally { 99; }` returns `42`, while
 - `var` is intentionally out of scope for v1. The supported binding surface is
   lexical `let` / `const` only, so the runtime does not emulate function or
   global hoisting, same-scope redeclaration, or legacy loop-scoping behavior.
-- `delete` removes own data properties from plain objects and arrays. Array
+- `delete` removes own data properties from plain objects, Errors, and arrays. Array
   index deletion creates a hole without changing length. Missing properties
   return `true`; delete/reinsert puts non-index keys at the end of enumeration.
   Static/computed references are evaluated once. A single optional member
@@ -717,8 +717,14 @@ All eight standard error constructors are available with call/new, constructor
 metadata, built-in `instanceof`, optional `cause`, and `toString()` behavior.
 `AggregateError(errors, message, options)` copies the supported iterable into its
 `errors` array; non-iterables fail closed. `Promise.any` uses the same visible kind.
-Malformed JSON raises `SyntaxError`. Error metadata (`name`, `message`, `stack`,
-`cause`, `errors`) is excluded from enumerable-key helpers and JSON's default keys.
+Malformed JSON raises `SyntaxError`. `name` is inherited, and `message` is an own
+property only when supplied. Constructor-created `message`, `stack`, `cause`, and
+`errors` properties are non-enumerable. Assigning a new own property (including
+`name` or an absent `message`/`cause`/`errors`) makes it enumerable; overwriting an
+existing hidden property keeps it hidden. Deletion removes the property's
+attributes, so re-adding it is enumerable. Object helpers/spread and default JSON
+keys share this metadata; explicit JSON replacer lists can include hidden fields.
+These attributes are validated and preserved in snapshots.
 
 Every error captures a deterministic guest-only `stack` string at creation:
 `Name: message` followed by guest function names and source-span offsets. It never

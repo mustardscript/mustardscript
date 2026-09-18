@@ -20,6 +20,7 @@ pub(in crate::runtime) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> Mus
     }
 
     validate_intl_number_formats(runtime)?;
+    validate_error_properties(runtime)?;
     validate_envs(runtime)?;
     validate_closures(runtime)?;
     validate_builtin_function_objects(runtime)?;
@@ -63,6 +64,24 @@ pub(in crate::runtime) fn validate_snapshot(snapshot: &ExecutionSnapshot) -> Mus
         validate_runtime_value(runtime, &exception.value)?;
     }
 
+    Ok(())
+}
+
+fn validate_error_properties(runtime: &Runtime) -> MustardResult<()> {
+    for object in runtime.objects.values() {
+        if let ObjectKind::Error(error) = &object.kind {
+            if error.non_enumerable & !15 != 0 {
+                return Err(snapshot_error("invalid Error property attributes"));
+            }
+            for key in ["message", "stack", "cause", "errors"] {
+                if !error.is_enumerable(key) && object.properties.get(key).is_none() {
+                    return Err(snapshot_error(
+                        "Error attributes reference missing property",
+                    ));
+                }
+            }
+        }
+    }
     Ok(())
 }
 

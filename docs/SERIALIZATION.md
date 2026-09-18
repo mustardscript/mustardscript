@@ -29,8 +29,9 @@ the safety rules they are expected to follow.
 ## Versioning
 
 - Serialized data is versioned explicitly.
-- Format version 3 includes resumable equality coercion in frame state. Older
-  formats are not compatible with this frame layout.
+- Format version 4 adds Error own-property enumerability metadata and retains
+  resumable equality coercion in frame state (introduced in version 3). Older
+  formats are not compatible with this snapshot layout.
 - Round-tripping is only guaranteed within the same `mustard` version.
 - Cross-version loads are rejected.
 

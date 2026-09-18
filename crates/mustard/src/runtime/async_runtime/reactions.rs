@@ -203,7 +203,7 @@ impl Runtime {
             )?;
             runtime.with_temporary_roots(std::slice::from_ref(&error), |runtime| {
                 let errors = Value::Array(runtime.insert_array(reasons.clone(), IndexMap::new())?);
-                runtime.set_property_static(error.clone(), "errors", errors)?;
+                runtime.set_error_hidden_property(error.clone(), "errors", errors)?;
                 Ok(error.clone())
             })
         })

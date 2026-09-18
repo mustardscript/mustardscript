@@ -330,3 +330,29 @@ fn rejects_corrupt_equality_continuations_in_snapshots() {
         assert!(error.to_string().contains("continuation"), "{error}");
     }
 }
+
+#[test]
+fn rejects_invalid_error_property_attributes() {
+    for invalid in [0x80, ErrorObject::property_bit("cause")] {
+        let mut suspension =
+            suspend_async_host_wait("const error=new Error(); fetch_data(error.name); error;");
+        let error = suspension
+            .snapshot
+            .runtime
+            .objects
+            .values_mut()
+            .find_map(|object| match &mut object.kind {
+                ObjectKind::Error(error) => Some(error),
+                _ => None,
+            })
+            .expect("guest error exists");
+        error.non_enumerable |= invalid;
+        let bytes = dump_snapshot(&suspension.snapshot).unwrap();
+        assert!(
+            load_snapshot(&bytes)
+                .unwrap_err()
+                .to_string()
+                .contains("Error")
+        );
+    }
+}

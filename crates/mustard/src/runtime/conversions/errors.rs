@@ -28,11 +28,12 @@ impl Runtime {
             ));
             self.ensure_heap_capacity(stack.len())?;
         }
-        let mut properties = IndexMap::from([
-            ("name".to_string(), Value::String(name.to_string())),
-            ("message".to_string(), Value::String(message)),
-            ("stack".to_string(), Value::String(stack)),
-        ]);
+        let mut properties = IndexMap::from([("stack".to_string(), Value::String(stack))]);
+        let mut non_enumerable = ErrorObject::property_bit("stack");
+        if !matches!(args.first(), None | Some(Value::Undefined)) {
+            properties.insert("message".to_string(), Value::String(message));
+            non_enumerable |= ErrorObject::property_bit("message");
+        }
         if let Some(code) = code {
             properties.insert("code".to_string(), Value::String(code));
         }
@@ -40,10 +41,33 @@ impl Runtime {
             properties.insert("details".to_string(), details);
         }
         if let Some(cause) = cause {
+            non_enumerable |= ErrorObject::property_bit("cause");
             properties.insert("cause".to_string(), cause.unwrap_or(Value::Undefined));
         }
-        let object = self.insert_object(properties, ObjectKind::Error(name.to_string()))?;
+        let object = self.insert_object(
+            properties,
+            ObjectKind::Error(ErrorObject {
+                name: name.to_string(),
+                non_enumerable,
+            }),
+        )?;
         Ok(Value::Object(object))
+    }
+
+    pub(in crate::runtime) fn set_error_hidden_property(
+        &mut self,
+        receiver: Value,
+        key: &str,
+        value: Value,
+    ) -> MustardResult<()> {
+        self.set_property_static(receiver.clone(), key, value)?;
+        if let Value::Object(object) = receiver
+            && let ObjectKind::Error(error) =
+                &mut self.objects.get_mut(object).expect("error exists").kind
+        {
+            error.non_enumerable |= ErrorObject::property_bit(key);
+        }
+        Ok(())
     }
 
     pub(in crate::runtime) fn value_from_runtime_message(
@@ -98,10 +122,17 @@ impl Runtime {
             .get(object)
             .ok_or_else(|| MustardError::runtime("object missing"))?;
         let details = object.properties.get("details").cloned();
-        let name = object.properties.get("name").and_then(|value| match value {
-            Value::String(value) => Some(value.as_str()),
-            _ => None,
-        });
+        let name = object
+            .properties
+            .get("name")
+            .and_then(|value| match value {
+                Value::String(value) => Some(value.as_str()),
+                _ => None,
+            })
+            .or(match &object.kind {
+                ObjectKind::Error(error) => Some(error.name.as_str()),
+                _ => None,
+            });
         let message = object
             .properties
             .get("message")
@@ -202,7 +233,7 @@ impl Runtime {
                     runtime.create_iterator(args.first().cloned().unwrap_or(Value::Undefined))?;
                 runtime.with_temporary_roots(std::slice::from_ref(&iterator), |runtime| {
                     let errors = Value::Array(runtime.insert_array(Vec::new(), IndexMap::new())?);
-                    runtime.set_property_static(error.clone(), "errors", errors.clone())?;
+                    runtime.set_error_hidden_property(error.clone(), "errors", errors.clone())?;
                     let Value::Array(array) = errors else {
                         unreachable!()
                     };

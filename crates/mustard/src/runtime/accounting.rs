@@ -1400,7 +1400,7 @@ fn measure_object_bytes(object: &PlainObject) -> usize {
                     + extra_value_bytes(&bound.this_value)
                     + bound.args.iter().map(extra_value_bytes).sum::<usize>()
             }
-            ObjectKind::Error(name) => name.len(),
+            ObjectKind::Error(error) => error.name.len(),
             ObjectKind::RegExp(regex) => regex.pattern.len() + regex.flags.len(),
             ObjectKind::StringObject(value) => value.len(),
             _ => 0,

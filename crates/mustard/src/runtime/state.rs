@@ -973,7 +973,7 @@ pub(super) enum ObjectKind {
     Intl,
     FunctionPrototype(Value),
     BoundFunction(BoundFunctionData),
-    Error(String),
+    Error(ErrorObject),
     Date(DateObject),
     RegExp(RegExpObject),
     NumberObject(f64),
@@ -982,6 +982,30 @@ pub(super) enum ObjectKind {
     IntlDateTimeFormat(IntlDateTimeFormatObject),
     IntlNumberFormat(IntlNumberFormatObject),
     NullPrototype,
+}
+
+// Only constructor-created Error slots need descriptors in this profile.
+// Guest-created properties use ordinary enumerable storage; overwriting an
+// existing hidden slot preserves its attributes, while delete removes them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct ErrorObject {
+    pub(super) name: String,
+    pub(super) non_enumerable: u8,
+}
+
+impl ErrorObject {
+    pub(super) fn property_bit(key: &str) -> u8 {
+        match key {
+            "message" => 1,
+            "stack" => 2,
+            "cause" => 4,
+            "errors" => 8,
+            _ => 0,
+        }
+    }
+    pub(super) fn is_enumerable(&self, key: &str) -> bool {
+        self.non_enumerable & Self::property_bit(key) == 0
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

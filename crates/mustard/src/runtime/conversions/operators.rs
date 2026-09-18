@@ -306,7 +306,7 @@ impl Runtime {
                 if self
                     .objects
                     .get(object)
-                    .is_some_and(|object| matches!(&object.kind, ObjectKind::Error(name) if name == expected))
+                    .is_some_and(|object| matches!(&object.kind, ObjectKind::Error(error) if error.name == expected))
         )
     }
 }

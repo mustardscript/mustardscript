@@ -551,14 +551,14 @@ impl Runtime {
                     .get(object)
                     .ok_or_else(|| MustardError::runtime("object missing"))?;
                 let cause = object.properties.get("cause").cloned();
-                Ok(Some(cause))
+                Ok(cause.map(Some))
             }
             Value::Array(array) => {
                 let array = self
                     .arrays
                     .get(array)
                     .ok_or_else(|| MustardError::runtime("array missing"))?;
-                Ok(Some(array.properties.get("cause").cloned()))
+                Ok(array.properties.get("cause").cloned().map(Some))
             }
             _ => Err(MustardError::runtime(
                 "TypeError: Error options must be an object in the supported surface",

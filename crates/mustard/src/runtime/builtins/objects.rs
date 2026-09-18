@@ -64,6 +64,7 @@ impl Runtime {
             {
                 ObjectKind::Plain
                 | ObjectKind::NullPrototype
+                | ObjectKind::Error(_)
                 | ObjectKind::FunctionPrototype(_)
                 | ObjectKind::NumberObject(_)
                 | ObjectKind::StringObject(_)
@@ -95,7 +96,7 @@ impl Runtime {
                 .ok_or_else(|| MustardError::runtime("object missing"))?
                 .kind
             {
-                ObjectKind::Plain | ObjectKind::NullPrototype => Ok(()),
+                ObjectKind::Plain | ObjectKind::NullPrototype | ObjectKind::Error(_) => Ok(()),
                 _ => Err(Self::object_spread_type_error()),
             },
             Value::Array(array) => {
@@ -107,7 +108,7 @@ impl Runtime {
             _ => Err(Self::object_spread_type_error()),
         }
     }
-    fn enumerable_keys(&mut self, value: Value) -> MustardResult<Vec<String>> {
+    pub(super) fn enumerable_keys(&mut self, value: Value) -> MustardResult<Vec<String>> {
         match value {
             Value::Object(object) => {
                 let (count, keys) = {
@@ -123,11 +124,11 @@ impl Runtime {
                             keys.extend(object.properties.ordered_keys());
                             (keys.len(), keys)
                         }
-                        ObjectKind::Error(_) => (
+                        ObjectKind::Error(error) => (
                             object.properties.len(),
-                            object.properties.ordered_keys_filtered(|key, _| {
-                                !matches!(key, "name" | "message" | "stack" | "cause" | "errors")
-                            }),
+                            object
+                                .properties
+                                .ordered_keys_filtered(|key, _| error.is_enumerable(key)),
                         ),
                         ObjectKind::FunctionPrototype(Value::BuiltinFunction(function))
                             if Self::builtin_error_name(*function).is_some() =>

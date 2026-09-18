@@ -547,7 +547,7 @@ Current legacy-binding, deletion, and prototype boundaries are explicit:
 - `var` is intentionally not part of the v1 contract. The runtime keeps only
   lexical `let` / `const` bindings and does not emulate function/global
   hoisting or legacy redeclaration rules.
-- `delete` removes plain-object properties and creates array holes without
+- `delete` removes plain-object and Error properties and creates array holes without
   shifting entries or changing length. Missing properties return `true`;
   deleting bindings is rejected, and deleting non-configurable properties such
   as array `length` throws. Single optional members are supported; compound

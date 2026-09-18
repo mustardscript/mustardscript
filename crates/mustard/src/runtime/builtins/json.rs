@@ -486,16 +486,7 @@ impl Runtime {
         let keys = if let Some(keys) = &state.property_list {
             keys.clone()
         } else {
-            let object_ref = self
-                .objects
-                .get(object)
-                .ok_or_else(|| MustardError::runtime("object missing"))?;
-            match &object_ref.kind {
-                ObjectKind::Error(_) => object_ref.properties.ordered_keys_filtered(|key, _| {
-                    !matches!(key, "name" | "message" | "stack" | "cause" | "errors")
-                }),
-                _ => object_ref.properties.ordered_keys(),
-            }
+            self.enumerable_keys(Value::Object(object))?
         };
         self.charge_native_helper_work(keys.len())?;
         state.depth += 1;
