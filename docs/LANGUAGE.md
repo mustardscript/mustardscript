@@ -833,7 +833,8 @@ ToInt32/ToUint32 (NaN/infinities become zero); shift counts are modulo 32. `>>>`
 returns an unsigned Number, while the other results are signed 32-bit Numbers.
 Compound property assignments evaluate their receiver and key once. BigInt
 operands, including mixed Number/BigInt operations, throw TypeError in this
-Number-only bitwise profile.
+Number-only bitwise profile, with the explicit message
+`BigInt bitwise operators are unsupported` (also for `~` and compound assignments).
 
 ### Explicit BigInt conversion
 

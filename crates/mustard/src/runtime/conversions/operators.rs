@@ -67,7 +67,10 @@ impl Runtime {
             )),
             UnaryOp::Void => Ok(Value::Undefined),
             UnaryOp::Delete => Ok(Value::Bool(true)),
-            UnaryOp::BitNot => Ok(Value::Number(!(self.coerce_uint32(value)? as i32) as f64)),
+            UnaryOp::BitNot => {
+                reject_bigint_bitwise(&value)?;
+                Ok(Value::Number(!(self.coerce_uint32(value)? as i32) as f64))
+            }
         }
     }
 
@@ -84,6 +87,8 @@ impl Runtime {
             | BinaryOp::ShiftLeft
             | BinaryOp::ShiftRight
             | BinaryOp::ShiftRightUnsigned => {
+                reject_bigint_bitwise(&left)?;
+                reject_bigint_bitwise(&right)?;
                 let left = self.coerce_uint32(left)?;
                 let right = self.coerce_uint32(right)?;
                 let result = match operator {
@@ -366,4 +371,14 @@ fn mixed_bigint_number_error() -> MustardError {
 
 fn mixed_bigint_comparison_error() -> MustardError {
     MustardError::runtime("TypeError: cannot compare BigInt and Number values")
+}
+
+fn reject_bigint_bitwise(value: &Value) -> MustardResult<()> {
+    if matches!(value, Value::BigInt(_)) {
+        Err(MustardError::runtime(
+            "TypeError: BigInt bitwise operators are unsupported",
+        ))
+    } else {
+        Ok(())
+    }
 }
