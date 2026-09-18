@@ -109,23 +109,25 @@ element vector plus string-keyed extra properties. `Map` and `Set` use
 dedicated insertion-ordered entry vectors with SameValueZero key and membership
 semantics.
 
-For the current keyed-collection milestone:
+For keyed collections:
 
-- `Map` updates preserve the original insertion position of an existing key
-- `Set` ignores duplicate adds without changing order
-- `delete` removes the matching entry and compacts the internal order
-- `clear` empties the collection completely
-- iterable constructors and iterator-returning collection APIs remain deferred,
-  so this order is currently an internal guarantee preserved for future
-  expansion and snapshot correctness rather than a general guest iteration
-  surface
+- `Map` updates preserve an existing key's insertion position; duplicate Set
+  adds do not change order.
+- Deletion leaves a tombstone, so live iterators can still observe later adds.
+  Sets compact at 64 or more slots when at least half are dead. Every live Set
+  cursor is rebased to its live-prefix position, including `forEach` and
+  set-algebra callback cursors. Compaction never restarts traversal or revisits
+  surviving entries. Fully exhausted iterators remain exhausted.
+- `clear` empties the collection and advances its clear epoch. Non-exhausted
+  iterators can observe subsequent additions; snapshots preserve their cursors.
+- Set insertion reserves heap growth before changing storage or lookup indexes,
+  so a pressure-triggered GC sees consistent cached accounting and failed
+  allocations leave the collection unchanged.
+- Iterable constructors, `for...of`, and `entries`/`keys`/`values` iterators use
+  these same insertion-order guarantees.
 
-There is no shape or hidden-class layer today. If shapes are introduced later,
-they are an optimization only:
-
-- shapes must not define guest semantics
-- shape absence must not change correctness
-- property get/set behavior must remain centralized
+Plain-object shape metadata and inline caches are optimizations only: property
+get/set/delete semantics remain centralized, and shape changes invalidate caches.
 
 ## Boundary Separation
 

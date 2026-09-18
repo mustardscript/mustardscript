@@ -1477,6 +1477,9 @@ impl Runtime {
                     &mut state.next_index,
                     &mut state.observed_clear_epoch,
                 )?;
+                if value.is_none() {
+                    state.next_index = usize::MAX;
+                }
                 let produced = value
                     .map(|value: Value| {
                         self.insert_array(vec![value.clone(), value], IndexMap::new())
@@ -1491,6 +1494,9 @@ impl Runtime {
                     &mut state.next_index,
                     &mut state.observed_clear_epoch,
                 )?;
+                if value.is_none() {
+                    state.next_index = usize::MAX;
+                }
                 (value, IteratorState::SetValues(state))
             }
         };

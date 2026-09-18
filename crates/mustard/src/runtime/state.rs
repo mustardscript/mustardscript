@@ -1203,9 +1203,13 @@ impl MapObject {
 
 impl SetObject {
     pub(super) fn lookup_promotion_len(&self) -> usize {
+        Self::lookup_promotion_len_for(self.live_len, self.string_key_live_len)
+    }
+
+    pub(super) fn lookup_promotion_len_for(live_len: usize, string_key_live_len: usize) -> usize {
         if string_heavy_collection_lookup_enabled()
-            && self.live_len > 0
-            && self.string_key_live_len == self.live_len
+            && live_len > 0
+            && string_key_live_len == live_len
         {
             COLLECTION_STRING_LOOKUP_PROMOTION_LEN
         } else {

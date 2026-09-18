@@ -167,6 +167,9 @@ impl Runtime {
         next_index: &mut usize,
         observed_clear_epoch: &mut u64,
     ) -> MustardResult<Option<Value>> {
+        if *next_index == usize::MAX {
+            return Ok(None);
+        }
         let set_ref = self
             .sets
             .get(set)
@@ -447,6 +450,44 @@ impl Runtime {
                 .ok_or_else(|| MustardError::runtime("set missing"))?;
             Self::set_slot_by_value(set_ref, &value)
         };
+        if existing_slot.is_some() {
+            return Ok(());
+        }
+        // Reserve growth before mutating. A GC triggered after insertion would
+        // observe stale cached accounting (and an unrooted new value).
+        let additional_bytes = {
+            let set_ref = self
+                .sets
+                .get(set)
+                .ok_or_else(|| MustardError::runtime("set missing"))?;
+            let next_len = set_ref.live_len + 1;
+            let next_strings = set_ref.string_key_live_len + usize::from(string_key);
+            let lookup_bytes =
+                if next_len >= SetObject::lookup_promotion_len_for(next_len, next_strings) {
+                    Self::collection_index_entry_bytes(&index_key)
+                        + if set_ref.lookup.is_empty() {
+                            set_ref
+                                .entries
+                                .iter()
+                                .flatten()
+                                .map(|v| {
+                                    Self::collection_index_entry_bytes(
+                                        &CollectionIndexKey::from_value(v),
+                                    )
+                                })
+                                .sum::<usize>()
+                        } else {
+                            Self::set_lookup_bytes(set_ref)
+                        }
+                } else {
+                    0
+                };
+            (Self::set_slot_bytes(Some(&value)) + lookup_bytes)
+                .saturating_sub(Self::set_lookup_bytes(set_ref))
+        };
+        self.with_temporary_roots(&[Value::Set(set), value.clone()], |runtime| {
+            runtime.ensure_heap_capacity(additional_bytes)
+        })?;
         let (old_bytes, new_bytes) = {
             let set_ref = self
                 .sets
@@ -455,8 +496,8 @@ impl Runtime {
             if existing_slot.is_some() {
                 (0, 0)
             } else {
-                // Deleted slots are never reused: live iterators must observe
-                // newly appended values even after deleting a tail entry.
+                // Append until compaction rebases all live cursors. Reusing a
+                // tail slot directly would make an iterator miss this value.
                 let slot = set_ref.entries.len();
                 let old_slot_bytes = 0;
                 set_ref.entries.push(Some(value));
@@ -612,7 +653,66 @@ impl Runtime {
             (old_slot_bytes + old_lookup_bytes, new_bytes)
         };
         self.apply_set_component_delta(set, old_bytes, new_bytes)?;
+        self.compact_set_slots(set)?;
         Ok(true)
+    }
+
+    fn compact_set_slots(&mut self, set: SetKey) -> MustardResult<()> {
+        let set_ref = self
+            .sets
+            .get(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?;
+        let slots = set_ref.entries.len();
+        if slots < 64 || set_ref.live_len > slots / 2 {
+            return Ok(());
+        }
+        // Every mutable traversal, including forEach and set-like callbacks,
+        // keeps its cursor in the iterator arena. Charge rebasing work before
+        // mutating anything, then map old positions to live-prefix counts.
+        let mut work = slots.saturating_add(self.iterators.len());
+        for (_, iterator) in &self.iterators {
+            if let IteratorState::SetValues(state) | IteratorState::SetEntries(state) =
+                &iterator.state
+                && state.set == set
+                && state.next_index != usize::MAX
+                && state.observed_clear_epoch == set_ref.clear_epoch
+            {
+                work = work.saturating_add(state.next_index.min(slots));
+            }
+        }
+        self.charge_native_helper_work(work)?;
+        let set_ref = self
+            .sets
+            .get(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?;
+        for (_, iterator) in &mut self.iterators {
+            if let IteratorState::SetValues(state) | IteratorState::SetEntries(state) =
+                &mut iterator.state
+                && state.set == set
+                && state.next_index != usize::MAX
+            {
+                state.next_index = if state.observed_clear_epoch == set_ref.clear_epoch {
+                    set_ref.entries[..state.next_index.min(slots)]
+                        .iter()
+                        .filter(|v| v.is_some())
+                        .count()
+                } else {
+                    0
+                };
+                state.observed_clear_epoch = set_ref.clear_epoch;
+            }
+        }
+        let set_ref = self
+            .sets
+            .get_mut(set)
+            .ok_or_else(|| MustardError::runtime("set missing"))?;
+        let old_lookup = Self::set_lookup_bytes(set_ref);
+        let removed_bytes = (slots - set_ref.live_len) * Self::set_slot_bytes(None);
+        set_ref.entries.retain(Option::is_some);
+        set_ref.entries.shrink_to_fit();
+        set_ref.rebuild_lookup();
+        let new_lookup = Self::set_lookup_bytes(set_ref);
+        self.apply_set_component_delta(set, removed_bytes + old_lookup, new_lookup)
     }
 
     fn set_clear(&mut self, set: SetKey) -> MustardResult<()> {
@@ -865,30 +965,26 @@ impl Runtime {
     ) -> MustardResult<Value> {
         let set = self.set_receiver(this_value, "forEach")?;
         let (callback, this_arg) = self.collection_callback("Set.prototype.forEach", args)?;
-        let mut next_index = 0usize;
-        let mut observed_clear_epoch = self
-            .sets
-            .get(set)
-            .ok_or_else(|| MustardError::runtime("set missing"))?
-            .clear_epoch;
-        while let Some(value) =
-            self.next_set_value_from_state(set, &mut next_index, &mut observed_clear_epoch)?
-        {
-            self.charge_native_helper_work(1)?;
-            self.with_temporary_roots(
-                &[Value::Set(set), callback.clone(), this_arg.clone()],
-                |runtime| {
+        let iterator = self.create_iterator(Value::Set(set))?;
+        self.with_temporary_roots(
+            &[iterator.clone(), callback.clone(), this_arg.clone()],
+            |runtime| {
+                loop {
+                    let (value, done) = runtime.iterator_next(iterator.clone())?;
+                    if done {
+                        break;
+                    }
+                    runtime.charge_native_helper_work(1)?;
                     runtime.call_collection_callback(
                         "Set.prototype.forEach",
                         callback.clone(),
                         this_arg.clone(),
                         &[value.clone(), value, Value::Set(set)],
                     )?;
-                    Ok(())
-                },
-            )?;
-        }
-        Ok(Value::Undefined)
+                }
+                Ok(Value::Undefined)
+            },
+        )
     }
 }
 

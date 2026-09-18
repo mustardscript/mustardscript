@@ -1184,3 +1184,45 @@ fn copying_and_sorting_mutations_keep_array_heap_accounting_consistent() {
         })
         .unwrap();
 }
+
+#[test]
+fn set_churn_compacts_slots_without_invalidating_live_cursors() {
+    let mut runtime = test_runtime();
+    let set = runtime.insert_set(vec![Value::Number(-1.0)]).unwrap();
+    let iterator = runtime.create_iterator(Value::Set(set)).unwrap();
+    runtime
+        .define_global("kept_iterator".into(), iterator.clone(), false)
+        .unwrap();
+    assert!(
+        matches!(runtime.iterator_next(iterator.clone()).unwrap(), (Value::Number(n), false) if n == -1.0)
+    );
+    runtime.limits.heap_limit_bytes = runtime.heap_bytes_used + 8192;
+    for index in 0..1000 {
+        let value = Value::Number(index as f64);
+        runtime.set_add(set, value.clone()).unwrap();
+        runtime.set_delete(set, &value).unwrap();
+    }
+    assert!(runtime.sets[set].entries.len() < 64);
+    runtime.set_add(set, Value::Number(1001.0)).unwrap();
+    assert!(
+        matches!(runtime.iterator_next(iterator).unwrap(), (Value::Number(n), false) if n == 1001.0)
+    );
+    runtime.collect_garbage().unwrap();
+}
+
+#[test]
+fn rejected_set_growth_leaves_accounting_and_storage_unchanged() {
+    let mut runtime = test_runtime();
+    let set = runtime.insert_set(vec![Value::Number(1.0)]).unwrap();
+    runtime
+        .define_global("kept_set".into(), Value::Set(set), false)
+        .unwrap();
+    runtime.limits.heap_limit_bytes = runtime.heap_bytes_used + 8;
+    let error = runtime
+        .set_add(set, Value::String("x".repeat(4096)))
+        .unwrap_err();
+    assert!(error.to_string().contains("heap limit exceeded"), "{error}");
+    assert_eq!(runtime.sets[set].live_len, 1);
+    assert_eq!(runtime.sets[set].entries.len(), 1);
+    runtime.collect_garbage().unwrap();
+}
