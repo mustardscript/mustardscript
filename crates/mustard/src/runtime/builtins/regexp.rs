@@ -220,8 +220,9 @@ impl Runtime {
     ) -> MustardResult<(RegExpFlagsState, Regex)> {
         let flags_state = self.validate_regexp_flags(flags)?;
         let cache_key = (pattern.to_string(), flags.to_string());
-        if let Some(regex) = self.regex_cache.get(&cache_key) {
-            return Ok((flags_state, regex.clone()));
+        if let Some(regex) = self.regex_cache.shift_remove(&cache_key) {
+            self.regex_cache.insert(cache_key, regex.clone());
+            return Ok((flags_state, regex));
         }
         let normalized = self.normalize_regexp_pattern(pattern, flags_state)?;
         let mut builder = RegexBuilder::new(&normalized);
@@ -241,8 +242,8 @@ impl Runtime {
         let regex = builder.build().map_err(|error| {
             MustardError::runtime(format!("SyntaxError: invalid regular expression: {error}"))
         })?;
-        if self.regex_cache.len() >= 4 {
-            self.regex_cache.clear();
+        if self.regex_cache.len() >= 8 {
+            self.regex_cache.shift_remove_index(0);
         }
         self.regex_cache.insert(cache_key, regex.clone());
         Ok((flags_state, regex))

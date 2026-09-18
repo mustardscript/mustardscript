@@ -783,9 +783,35 @@ impl Runtime {
                 self.charge_native_helper_work(combining_run.saturating_mul(16))?;
             }
         }
-        let collator = Collator::try_new(prefs, config).map_err(|_| {
-            MustardError::runtime("TypeError: pinned en-US collation data unavailable")
-        })?;
+        // The supported profile has one locale and four semantic option axes.
+        // Revalidate mutable guest options above on every call, then cache only
+        // the immutable ICU configuration. Work/space checks remain per-call.
+        let cache_key = (
+            prefs.numeric_ordering == Some(CollationNumericOrdering::True),
+            match prefs.case_first {
+                Some(CollationCaseFirst::Upper) => 1,
+                Some(CollationCaseFirst::Lower) => 2,
+                _ => 0,
+            },
+            match (strength, case_level) {
+                (Strength::Primary, CaseLevel::Off) => 0,
+                (Strength::Secondary, CaseLevel::Off) => 1,
+                (Strength::Primary, CaseLevel::On) => 2,
+                _ => 3,
+            },
+            config.alternate_handling == Some(AlternateHandling::Shifted),
+        );
+        let collator = if let Some(collator) = self.collator_cache.shift_remove(&cache_key) {
+            collator
+        } else {
+            Arc::new(Collator::try_new(prefs, config).map_err(|_| {
+                MustardError::runtime("TypeError: pinned en-US collation data unavailable")
+            })?)
+        };
+        if self.collator_cache.len() >= 8 {
+            self.collator_cache.shift_remove_index(0);
+        }
+        self.collator_cache.insert(cache_key, Arc::clone(&collator));
         Ok(Value::Number(match collator.compare(&left, &right) {
             std::cmp::Ordering::Less => -1.0,
             std::cmp::Ordering::Equal => 0.0,

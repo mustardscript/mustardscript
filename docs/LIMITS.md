@@ -99,6 +99,12 @@ Cooperative cancellation is controlled separately through:
 - Native helper loops such as `Array.prototype.sort()` and `Object.keys()` now
   charge instruction budget explicitly instead of bypassing the guest budget
   inside opaque Rust work.
+- Native call rooting retains arena handles, not copies of owned strings or
+  BigInts. Each runtime keeps at most eight recently used compiled regexes and
+  eight immutable en-US collator configurations, evicting one least-recently-used
+  entry at a time. Regex programs/DFA caches retain their per-engine size bounds;
+  collators borrow pinned static ICU data. These caches are not serialized, and
+  cache hits do not skip input/option validation or per-call work/space checks.
 - `JSON.parse()`, `JSON.stringify()`, `Number.parseInt()`, and
   `Number.parseFloat()` also meter native helper work instead of bypassing the
   guest instruction budget inside long native scans.

@@ -11,6 +11,12 @@ const snapshotKey = Buffer.from('fuzz-corpus-snapshot-key');
 const SIDECAR_PROTOCOL_VERSION = 2;
 
 const SUPPORTED_SOURCE_SEEDS = Object.freeze([
+  { name: 'global-regexp-cursors.js', source: `const text='a '.repeat(1500);
+    [text.replace(/(a)/g,'b').length, Array.from(text.matchAll(/(a)/dg)).length];` },
+  { name: 'queue-shift.js', source: `const q=Array.from({length:1500},(_,i)=>i);
+    while(q.length) q.shift(); q.length;` },
+  { name: 'error-property-attributes.js', source: `const e=new Error('hidden');
+    e.name='Own';delete e.message;e.message='visible';[Object.keys(e),JSON.stringify(e)];` },
   {
     name: 'reentrant-json-reviver.js',
     source: `const text='['.repeat(120)+'0'+']'.repeat(120);

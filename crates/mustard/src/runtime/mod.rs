@@ -146,7 +146,8 @@ impl Runtime {
             operation_counters_enabled: false,
             accounting_recount_required: false,
             cancellation_token,
-            regex_cache: HashMap::new(),
+            regex_cache: IndexMap::new(),
+            collator_cache: IndexMap::new(),
             pending_internal_exception: None,
             pending_sync_callback_result: None,
             native_callback_host_suspension_message: None,
@@ -201,7 +202,8 @@ impl Runtime {
             operation_counters_enabled: false,
             accounting_recount_required: false,
             cancellation_token,
-            regex_cache: HashMap::new(),
+            regex_cache: IndexMap::new(),
+            collator_cache: IndexMap::new(),
             pending_internal_exception: None,
             pending_sync_callback_result: None,
             native_callback_host_suspension_message: None,
@@ -296,6 +298,21 @@ impl Runtime {
         Ok(())
     }
 
+    pub(super) fn needs_temporary_root(value: &Value) -> bool {
+        // Owned primitives contain no arena references. Copying their strings
+        // or arbitrary-precision integers cannot help the tracing collector.
+        !matches!(
+            value,
+            Value::Undefined
+                | Value::Null
+                | Value::Bool(_)
+                | Value::Number(_)
+                | Value::String(_)
+                | Value::BigInt(_)
+                | Value::HostFunction(_)
+        )
+    }
+
     pub(crate) fn with_temporary_roots<T, F>(&mut self, roots: &[Value], f: F) -> MustardResult<T>
     where
         F: FnOnce(&mut Self) -> MustardResult<T>,
@@ -303,7 +320,12 @@ impl Runtime {
         // Native helper work can run from a microtask with no active frame.
         // Separate roots also survive nested callback frame pushes/unwinding.
         let original_len = self.native_temporary_roots.len();
-        self.native_temporary_roots.extend(roots.iter().cloned());
+        self.native_temporary_roots.extend(
+            roots
+                .iter()
+                .filter(|value| Self::needs_temporary_root(value))
+                .cloned(),
+        );
         let result = f(self);
         self.native_temporary_roots.truncate(original_len);
         result

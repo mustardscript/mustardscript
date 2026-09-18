@@ -7,8 +7,12 @@ impl Runtime {
         this_value: Value,
         args: &[Value],
     ) -> MustardResult<Value> {
-        let mut roots = args.to_vec();
-        roots.push(this_value.clone());
+        let roots = args
+            .iter()
+            .chain(std::iter::once(&this_value))
+            .filter(|value| Self::needs_temporary_root(value))
+            .cloned()
+            .collect::<Vec<_>>();
         self.with_temporary_roots(&roots, |runtime| {
             runtime.call_builtin_rooted(function, this_value, args)
         })

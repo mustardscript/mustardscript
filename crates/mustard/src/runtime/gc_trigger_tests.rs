@@ -1226,3 +1226,115 @@ fn rejected_set_growth_leaves_accounting_and_storage_unchanged() {
     assert_eq!(runtime.sets[set].entries.len(), 1);
     runtime.collect_garbage().unwrap();
 }
+
+#[test]
+fn native_roots_skip_owned_primitives_but_keep_arena_values_alive() {
+    let mut runtime = test_runtime();
+    let object = runtime
+        .insert_object(
+            IndexMap::from([("kept".into(), Value::Number(42.0))]),
+            ObjectKind::Plain,
+        )
+        .unwrap();
+    let roots = [
+        Value::String("large".repeat(20000)),
+        Value::BigInt(num_bigint::BigInt::from(42)),
+        Value::Object(object),
+    ];
+    runtime
+        .with_temporary_roots(&roots, |runtime| {
+            assert_eq!(runtime.native_temporary_roots.len(), 1);
+            runtime.collect_garbage()?;
+            assert!(runtime.objects.contains_key(object));
+            Ok(())
+        })
+        .unwrap();
+    assert!(runtime.native_temporary_roots.is_empty());
+    runtime.collect_garbage().unwrap();
+    assert!(!runtime.objects.contains_key(object));
+}
+
+#[test]
+fn regex_cache_retains_five_alternating_patterns_and_evicts_only_the_oldest() {
+    let mut runtime = test_runtime();
+    for i in 0..5 {
+        runtime
+            .construct_regexp(&[Value::String(format!("a{i}"))])
+            .unwrap();
+    }
+    let retained = runtime
+        .regex_cache
+        .get(&("a0".into(), String::new()))
+        .unwrap()
+        .clone();
+    for _ in 0..3 {
+        for i in 0..5 {
+            runtime
+                .construct_regexp(&[Value::String(format!("a{i}"))])
+                .unwrap();
+        }
+    }
+    assert_eq!(runtime.regex_cache.len(), 5);
+    assert_eq!(
+        retained.as_str().as_ptr(),
+        runtime
+            .regex_cache
+            .get(&("a0".into(), String::new()))
+            .unwrap()
+            .as_str()
+            .as_ptr()
+    );
+    for i in 5..9 {
+        runtime
+            .construct_regexp(&[Value::String(format!("a{i}"))])
+            .unwrap();
+    }
+    assert_eq!(runtime.regex_cache.len(), 8);
+    assert!(
+        !runtime
+            .regex_cache
+            .contains_key(&("a0".into(), String::new()))
+    );
+    assert!(
+        runtime
+            .regex_cache
+            .contains_key(&("a1".into(), String::new()))
+    );
+}
+
+#[test]
+fn collation_cache_reuses_configuration_but_revalidates_options() {
+    let mut runtime = test_runtime();
+    runtime
+        .call_string_locale_compare(Value::String("a".into()), &[Value::String("B".into())])
+        .unwrap();
+    let cached = Arc::clone(runtime.collator_cache.values().next().unwrap());
+    for _ in 0..10 {
+        runtime
+            .call_string_locale_compare(Value::String("z".into()), &[Value::String("a".into())])
+            .unwrap();
+    }
+    assert!(Arc::ptr_eq(
+        &cached,
+        runtime.collator_cache.values().next().unwrap()
+    ));
+    let options = runtime
+        .insert_object(
+            IndexMap::from([("sensitivity".into(), Value::String("invalid".into()))]),
+            ObjectKind::Plain,
+        )
+        .unwrap();
+    assert!(
+        runtime
+            .call_string_locale_compare(
+                Value::String("a".into()),
+                &[
+                    Value::String("B".into()),
+                    Value::Undefined,
+                    Value::Object(options)
+                ]
+            )
+            .is_err()
+    );
+    assert_eq!(runtime.collator_cache.len(), 1);
+}

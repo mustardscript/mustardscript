@@ -160,3 +160,25 @@ offset to the lexer's reset operation.
 The hardening runner also bounds each fuzz input to five seconds by default
 (`MUSTARD_FUZZ_TIMEOUT_SECONDS`), so a hung helper produces a failing saved input
 instead of outliving the whole smoke-test budget. This tightens the checks.
+
+## Follow-up work budgets and property metadata
+
+Global RegExp helpers maintain byte and scalar cursors across matches. Charge
+consumed search spans and capture output rather than multiplying full input size
+by every attempt/capture. Convert capture endpoints in one ordered scan of each
+match, and advance empty matches past the final position exactly once. Keep the
+hostile-regex deadline test at both low and sufficient budgets.
+
+`shift` removes the first backing-vector slot directly, avoiding discarded guest
+arrays and full-suffix helper charges. It still performs a native slot move; the
+profile does not claim a constant-time deque representation.
+
+Error enumerability is per constructed property, not a blacklist of names.
+Constructor-owned message/stack/cause/errors slots carry a compact hidden mask;
+new guest properties are enumerable, overwrites preserve attributes, and deletion
+removes them. `name` is inherited by default. Share this metadata between Object
+helpers/spread and JSON, validate it on restore, and bump serialization to v4.
+
+Native roots need only arena references, not owned primitive copies. Immutable
+compiled regexes and pinned ICU collators use runtime-local eight-entry LRU caches.
+Restore rebuilds them; option validation and input work limits remain per call.

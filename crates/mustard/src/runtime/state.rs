@@ -1658,7 +1658,10 @@ pub(super) struct Runtime {
     #[serde(skip, default)]
     pub(super) cancellation_token: Option<CancellationToken>,
     #[serde(skip, default)]
-    pub(super) regex_cache: HashMap<(String, String), Regex>,
+    pub(super) regex_cache: IndexMap<(String, String), Regex>,
+    #[serde(skip, default)]
+    pub(super) collator_cache:
+        IndexMap<(bool, u8, u8, bool), Arc<icu_collator::CollatorBorrowed<'static>>>,
     #[serde(skip, default)]
     pub(super) pending_internal_exception: Option<PromiseRejection>,
     #[serde(skip, default)]
