@@ -126,15 +126,25 @@ native targets, so debug and instrumented frames and 1 MiB host threads have
 enough headroom to reach the budget check. Keep recursive crash regressions in
 subprocesses and run them in debug, release, and hardening verification.
 
-## Pre-parse delimiter nesting
+## Pre-parse nesting and chain complexity
 
 The CI-equivalent sidecar fuzz smoke exposed stack exhaustion inside Oxc on deeply
 nested source before runtime limits could apply. Oxc 0.124 does not expose a
 nesting option (nor does the audited 0.150 parser); enabling its benchmark-only
 lexer backdoor would bypass safety invariants. Use the public, pinned SWC 44.0.0
-lexer for a 64-level delimiter/template preflight, retaining Oxc for parsing
-and language validation. Scanning errors fail closed; punctuation in lexical
-literals/comments cannot hide or consume code nesting. Preserve the discovered
+lexer for a 64-level delimiter/template and 128-token uninterrupted-chain
+preflight, retaining Oxc for parsing and language validation. Delimiters alone
+do not bound recursion: arrow, label, operator and unbraced `if`/`else` chains
+also require a bound. Statement/list boundaries reset local chain counts, but
+commas retain enclosing unbraced statements and an attaching `else` retains
+its preceding chain. Native builds reserve stack headroom for the bounded parse
+and lowering path, including on 1 MiB embedder threads.
+
+Scanning errors fail closed, but Oxc parses only the already-checked prefix
+through the failed token to produce its precise lexical diagnostic; an unchecked
+suffix is never passed to the recursive parser. There is no raw-opener-byte
+fast path that changes error messages based on script size. Punctuation in
+lexical literals/comments cannot hide or consume code nesting. Preserve the discovered
 request family in protocol tests and both relevant fuzz corpora, and replay the
 actual saved crash under ASan before claiming the fix verified. RESS 0.11.7 was
 rejected during validation after fuzzing exposed an infinite loop on malformed

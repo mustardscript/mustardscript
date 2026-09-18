@@ -977,9 +977,13 @@ are validated before they can allocate buffers.
 ### Source nesting guard
 
 Before the recursive parser runs, a tokenizing preflight rejects more than 64
-nested delimiters/template substitutions with a parse diagnostic. This applies
+nested delimiters/template substitutions, or more than 128 tokens in an
+uninterrupted syntactic chain, with a parse diagnostic. The conservative chain
+bound includes delimiter-free arrows, labels, operators and unbraced control
+flow. Independent statements and list elements reset their local chain count;
+an attaching `else` does not. This applies
 to all compile entry points, including malformed/unterminated sidecar source.
-String, comment and RegExp contents do not count as code delimiters; template
+String, comment and RegExp contents do not count as code tokens; template
 substitutions do. This source-syntax guard is separate from runtime call depth,
 JSON nesting, heap and instruction budgets. It is not a general compilation
 CPU/memory quota or a replacement for the documented process-isolation policy.

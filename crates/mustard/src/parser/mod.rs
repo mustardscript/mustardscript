@@ -49,9 +49,27 @@ pub fn compile_with_options(
     source: &str,
     options: CompileOptions,
 ) -> MustardResult<CompiledProgram> {
-    nesting::check_source_nesting(source)?;
+    let lexical_failure = nesting::check_source_nesting(source)?;
+    // The token limits bound recursion. Reserve room for that bounded parser
+    // and lowering work even when the embedder supplies a small native stack.
+    #[cfg(not(target_arch = "wasm32"))]
+    return stacker::maybe_grow(2 * 1024 * 1024, 8 * 1024 * 1024, || {
+        compile_checked(source, options, lexical_failure)
+    });
+    #[cfg(target_arch = "wasm32")]
+    compile_checked(source, options, lexical_failure)
+}
+
+fn compile_checked(
+    source: &str,
+    options: CompileOptions,
+    lexical_failure: Option<nesting::LexicalFailure>,
+) -> MustardResult<CompiledProgram> {
+    let parse_text = &source[..lexical_failure
+        .as_ref()
+        .map_or(source.len(), |e| e.prefix_end)];
     let allocator = Allocator::default();
-    let parsed = parse_source(&allocator, source, options);
+    let parsed = parse_source(&allocator, parse_text, options);
     let mut diagnostics = Vec::new();
     diagnostics.extend(
         parsed
@@ -59,6 +77,12 @@ pub fn compile_with_options(
             .into_iter()
             .map(|error| Diagnostic::parse(error.to_string(), None)),
     );
+    if let Some(failure) = lexical_failure {
+        if diagnostics.is_empty() {
+            diagnostics.push(Diagnostic::parse(failure.message, None));
+        }
+        return Err(MustardError::Diagnostics(diagnostics));
+    }
     if parsed.panicked {
         return Err(MustardError::Diagnostics(diagnostics));
     }
