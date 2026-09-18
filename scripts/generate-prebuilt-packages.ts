@@ -49,6 +49,7 @@ function bindingManifest(rootPackage, target) {
   const manifest = {
     name: target.packageName,
     version: rootPackage.version,
+    engines: rootPackage.engines,
     cpu: target.cpu,
     main: target.localFile,
     files: [target.localFile, 'UNICODE-LICENSE'],

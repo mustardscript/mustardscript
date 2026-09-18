@@ -36,6 +36,32 @@ jobs:
       - name: Node tests
         run: npm test
 
+  package-compatibility:
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20.0.0', '22']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Capture consumer Node executable
+        id: consumer-node
+        run: node -p '"node=" + process.execPath' >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install maintainer dependencies
+        run: npm install
+      - name: Test installed package on supported Node versions
+        env:
+          MUSTARD_PACKAGE_SMOKE_NODE: ${{ steps.consumer-node.outputs.node }}
+        run: npm run test:package-smoke
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -64,5 +90,5 @@ jobs:
       - name: Hardening smoke
         env:
           MUSTARD_FUZZ_SECONDS: 10
-          MUSTARD_FUZZ_TARGETS: parser snapshot_load sidecar_protocol
+          MUSTARD_FUZZ_TARGETS: parser snapshot_load sidecar_protocol bytecode_execution
         run: scripts/run-hardening.sh

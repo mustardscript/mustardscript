@@ -103,5 +103,8 @@
   "homepage": "https://github.com/mustardscript/mustardscript#readme",
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

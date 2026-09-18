@@ -15,6 +15,11 @@ maintainers should run before publishing anything.
 ## Current Release Shape
 
 - The primary release artifact is the npm package `mustardscript`.
+- Published packages require Node.js >=20.0.0 (including the wrapper's
+  `String.prototype.isWellFormed` boundary checks). Root and generated binding
+  manifests declare the same floor. CI runs installed-tarball smoke tests on
+  Node 20.0.0 and 22, plus the full source/API suite on Node 24. Maintainer
+  dependency installation and release tooling use Node 24.
 - The published npm install path is prebuilt-only. If no matching optional
   native binding package is installed for the current platform, the root
   package fails closed at runtime instead of compiling locally.

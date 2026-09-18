@@ -239,6 +239,24 @@ const DOCUMENTED_BUILTIN_COVERAGE = Object.freeze({
       pattern: 'primitive and error constructors expose the documented built-in surface',
     },
   ],
+  '`SyntaxError`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'error constructors, AggregateError, and guest-only stacks are complete'},
+  ],
+  '`URIError`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'error constructors, AggregateError, and guest-only stacks are complete'},
+  ],
+  '`EvalError`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'error constructors, AggregateError, and guest-only stacks are complete'},
+  ],
+  '`AggregateError`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'error constructors, AggregateError, and guest-only stacks are complete'},
+  ],
+  '`BigInt`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'BigInt conversion and explicit radix formatting match Node for supported inputs'},
+  ],
+  '`encodeURI`, `decodeURI`, `encodeURIComponent`, `decodeURIComponent`': [
+    {file: 'tests/node/language-completion.test.js', pattern: 'URI codecs match Node and reject malformed percent/UTF-8 sequences'},
+  ],
   '`RangeError`': [
     {
       file: 'tests/node/coverage-audit.test.js',
