@@ -88,6 +88,14 @@ Cooperative cancellation is controlled separately through:
 - Cooperative cancellation is implemented and checked before each instruction,
   before idle microtask or queued-host-call checkpoints, on every resume
   entry, and inside long-running native helper loops.
+- Global RegExp helpers carry byte/scalar cursors forward and charge consumed
+  search spans plus capture materialization, not the entire input for every
+  match. Capture-index conversion scans each matched span once. Exhausted
+  searches still charge the remaining span; each attempt checks cancellation.
+- `Array.prototype.shift` moves slots in place and charges one native removal,
+  without allocating a discarded splice-result array or copying guest values.
+  The backing vector still performs a bounded native slot move; this is not a
+  claim of constant-time physical queue storage.
 - Native helper loops such as `Array.prototype.sort()` and `Object.keys()` now
   charge instruction budget explicitly instead of bypassing the guest budget
   inside opaque Rust work.

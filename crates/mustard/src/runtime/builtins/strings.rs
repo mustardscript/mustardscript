@@ -552,9 +552,19 @@ impl Runtime {
             Some(StringSearchPattern::RegExp { regex, .. }) => {
                 self.record_regex_search_or_replacement();
                 let matches = self.collect_regexp_matches_from_state(&regex, &value, true)?;
+                if value.is_empty() && !matches.is_empty() {
+                    return Ok(Value::Array(
+                        self.insert_array(Vec::new(), IndexMap::new())?,
+                    ));
+                }
                 let mut elements = Vec::new();
                 let mut last_end = 0usize;
                 for matched in matches {
+                    if matched.start_byte == matched.end_byte
+                        && (matched.start_byte == last_end || matched.end_byte == value.len())
+                    {
+                        continue;
+                    }
                     if elements.len() >= limit {
                         break;
                     }

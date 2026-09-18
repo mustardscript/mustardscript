@@ -302,13 +302,19 @@ impl Runtime {
         text: &str,
         captures: &Captures<'_>,
         has_indices: bool,
+        start_byte: usize,
+        start_index: usize,
     ) -> MustardResult<RegExpMatchData> {
-        self.charge_native_helper_work(captures.len().saturating_mul(text.len()))?;
         let capture_bytes = captures
             .iter()
             .flatten()
             .map(|capture| capture.len())
             .sum::<usize>();
+        self.charge_native_helper_work(
+            capture_bytes
+                .saturating_mul(2)
+                .saturating_add(captures.len()),
+        )?;
         self.ensure_heap_capacity(
             capture_bytes
                 .saturating_mul(2)
@@ -317,6 +323,56 @@ impl Runtime {
         let matched = captures
             .get(0)
             .ok_or_else(|| MustardError::runtime("regex match missing full capture"))?;
+        let match_start_index = start_index + text[start_byte..matched.start()].chars().count();
+        let match_end_index = match_start_index + matched.as_str().chars().count();
+        let indices = if has_indices {
+            // Capture ranges can overlap or be nested. Sort their byte endpoints
+            // and count each character in the match only once, never from the
+            // beginning of the full input for each capture/match.
+            let mut endpoints = captures
+                .iter()
+                .flatten()
+                .flat_map(|capture| [capture.start(), capture.end()])
+                .collect::<Vec<_>>();
+            self.charge_native_helper_work(
+                matched.len().saturating_add(
+                    endpoints
+                        .len()
+                        .saturating_mul(endpoints.len().max(1).ilog2() as usize + 1),
+                ),
+            )?;
+            endpoints.sort_unstable();
+            endpoints.dedup();
+            let mut byte = matched.start();
+            let mut index = match_start_index;
+            let positions = endpoints
+                .iter()
+                .map(|&end| {
+                    index += text[byte..end].chars().count();
+                    byte = end;
+                    index
+                })
+                .collect::<Vec<_>>();
+            Some(
+                captures
+                    .iter()
+                    .map(|capture| {
+                        capture.map(|capture| {
+                            (
+                                positions[endpoints
+                                    .binary_search(&capture.start())
+                                    .expect("capture endpoint")],
+                                positions[endpoints
+                                    .binary_search(&capture.end())
+                                    .expect("capture endpoint")],
+                            )
+                        })
+                    })
+                    .collect(),
+            )
+        } else {
+            None
+        };
         let named_groups = compiled
             .capture_names()
             .enumerate()
@@ -335,8 +391,8 @@ impl Runtime {
         Ok(RegExpMatchData {
             start_byte: matched.start(),
             end_byte: matched.end(),
-            start_index: byte_index_to_char_index(text, matched.start()),
-            end_index: byte_index_to_char_index(text, matched.end()),
+            start_index: match_start_index,
+            end_index: match_end_index,
             captures: (1..captures.len())
                 .map(|index| {
                     captures
@@ -345,19 +401,7 @@ impl Runtime {
                 })
                 .collect(),
             named_groups,
-            indices: has_indices.then(|| {
-                captures
-                    .iter()
-                    .map(|capture| {
-                        capture.map(|capture| {
-                            (
-                                byte_index_to_char_index(text, capture.start()),
-                                byte_index_to_char_index(text, capture.end()),
-                            )
-                        })
-                    })
-                    .collect()
-            }),
+            indices,
             named_indices: compiled
                 .capture_names()
                 .enumerate()
@@ -366,61 +410,106 @@ impl Runtime {
         })
     }
 
+    fn validate_regexp_input(
+        &mut self,
+        compiled: &Regex,
+        flags: RegExpFlagsState,
+        text: &str,
+    ) -> MustardResult<()> {
+        if flags.unicode
+            && flags.ignore_case
+            && (compiled.as_str().contains(r"(?-u:\b)") || compiled.as_str().contains(r"(?-u:\B)"))
+        {
+            self.charge_native_helper_work(text.len())?;
+            if text.contains(['ſ', 'K']) {
+                return Err(MustardError::runtime(
+                    "TypeError: iu word boundaries on long-s or Kelvin-sign input are not supported by the linear regexp profile",
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn regexp_start_byte(&mut self, text: &str, start_index: usize) -> MustardResult<usize> {
+        if start_index > text.len() {
+            return Ok(text.len().saturating_add(1));
+        }
+        let mut index = 0;
+        for (byte, _) in text.char_indices() {
+            if index == start_index {
+                self.charge_native_helper_work(byte)?;
+                return Ok(byte);
+            }
+            index += 1;
+        }
+        self.charge_native_helper_work(text.len())?;
+        Ok(if index == start_index {
+            text.len()
+        } else {
+            text.len().saturating_add(1)
+        })
+    }
+
     fn first_regexp_match_with_compiled(
         &mut self,
         compiled: &Regex,
         flags: RegExpFlagsState,
         text: &str,
+        start_byte: usize,
         start_index: usize,
     ) -> MustardResult<Option<RegExpMatchData>> {
-        self.charge_native_helper_work(text.len())?;
-        if flags.unicode
-            && flags.ignore_case
-            && text.contains(['ſ', 'K'])
-            && (compiled.as_str().contains(r"(?-u:\b)") || compiled.as_str().contains(r"(?-u:\B)"))
-        {
-            return Err(MustardError::runtime(
-                "TypeError: iu word boundaries on long-s or Kelvin-sign input are not supported by the linear regexp profile",
-            ));
-        }
-        if start_index > text.chars().count() {
+        self.charge_native_helper_work(1)?;
+        if start_byte > text.len() {
             return Ok(None);
         }
-        let start_byte = char_index_to_byte_index(text, start_index);
         if compiled.captures_len() == 1 {
-            let Some(matched) = compiled.find_at(text, start_byte) else {
+            let matched = compiled.find_at(text, start_byte);
+            self.charge_native_helper_work(
+                matched.as_ref().map_or(text.len(), |m| m.end()) - start_byte,
+            )?;
+            let Some(matched) = matched else {
                 return Ok(None);
             };
             if flags.sticky && matched.start() != start_byte {
                 return Ok(None);
             }
+            let match_start_index = start_index + text[start_byte..matched.start()].chars().count();
+            let match_end_index = match_start_index + matched.as_str().chars().count();
             return Ok(Some(RegExpMatchData {
                 start_byte: matched.start(),
                 end_byte: matched.end(),
-                start_index: byte_index_to_char_index(text, matched.start()),
-                end_index: byte_index_to_char_index(text, matched.end()),
+                start_index: match_start_index,
+                end_index: match_end_index,
                 captures: Vec::new(),
                 named_groups: IndexMap::new(),
-                indices: flags.has_indices.then(|| {
-                    vec![Some((
-                        byte_index_to_char_index(text, matched.start()),
-                        byte_index_to_char_index(text, matched.end()),
-                    ))]
-                }),
+                indices: flags
+                    .has_indices
+                    .then(|| vec![Some((match_start_index, match_end_index))]),
                 named_indices: IndexMap::new(),
             }));
         }
-        let Some(captures) = compiled.captures_at(text, start_byte) else {
+        let captures = compiled.captures_at(text, start_byte);
+        let matched = captures.as_ref().and_then(|captures| captures.get(0));
+        self.charge_native_helper_work(
+            matched.as_ref().map_or(text.len(), |m| m.end()) - start_byte,
+        )?;
+        let Some(captures) = captures else {
             return Ok(None);
         };
-        let matched = captures
-            .get(0)
-            .ok_or_else(|| MustardError::runtime("regex match missing full capture"))?;
+        let matched =
+            matched.ok_or_else(|| MustardError::runtime("regex match missing full capture"))?;
         if flags.sticky && matched.start() != start_byte {
             return Ok(None);
         }
-        self.regexp_match_data_from_captures(compiled, text, &captures, flags.has_indices)
-            .map(Some)
+        self.regexp_match_data_from_captures(
+            compiled,
+            text,
+            &captures,
+            flags.has_indices,
+            start_byte,
+            start_index,
+        )
+        .map(Some)
     }
 
     pub(crate) fn first_regexp_match_from_state(
@@ -430,7 +519,9 @@ impl Runtime {
         start_index: usize,
     ) -> MustardResult<Option<RegExpMatchData>> {
         let (flags, compiled) = self.compiled_regexp(&regex.pattern, &regex.flags)?;
-        self.first_regexp_match_with_compiled(&compiled, flags, text, start_index)
+        self.validate_regexp_input(&compiled, flags, text)?;
+        let start_byte = self.regexp_start_byte(text, start_index)?;
+        self.first_regexp_match_with_compiled(&compiled, flags, text, start_byte, start_index)
     }
 
     pub(super) fn first_regexp_match(
@@ -470,18 +561,33 @@ impl Runtime {
         mut start_index: usize,
     ) -> MustardResult<Vec<RegExpMatchData>> {
         let (flags, compiled) = self.compiled_regexp(&regex.pattern, &regex.flags)?;
+        self.validate_regexp_input(&compiled, flags, text)?;
+        let mut start_byte = self.regexp_start_byte(text, start_index)?;
         let mut matches = Vec::new();
         loop {
-            let Some(matched) =
-                self.first_regexp_match_with_compiled(&compiled, flags, text, start_index)?
+            let Some(matched) = self.first_regexp_match_with_compiled(
+                &compiled,
+                flags,
+                text,
+                start_byte,
+                start_index,
+            )?
             else {
                 break;
             };
-            let next_index = if matched.start_byte == matched.end_byte {
-                advance_char_index(text, matched.start_index)
-            } else {
-                matched.end_index
-            };
+            let empty = matched.start_byte == matched.end_byte;
+            let at_end = matched.end_byte == text.len();
+            start_index = matched.end_index;
+            start_byte = matched.end_byte;
+            if empty && !at_end {
+                start_byte += text[start_byte..]
+                    .chars()
+                    .next()
+                    .expect("remaining character")
+                    .len_utf8();
+                start_index += 1;
+                self.charge_native_helper_work(1)?;
+            }
             self.ensure_heap_capacity(
                 matches
                     .len()
@@ -489,13 +595,9 @@ impl Runtime {
                     .saturating_mul(std::mem::size_of::<RegExpMatchData>()),
             )?;
             matches.push(matched);
-            if !all {
+            if !all || (empty && at_end) {
                 break;
             }
-            if next_index < start_index {
-                break;
-            }
-            start_index = next_index;
         }
         Ok(matches)
     }

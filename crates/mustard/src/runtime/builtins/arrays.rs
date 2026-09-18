@@ -1363,18 +1363,25 @@ impl Runtime {
 
 impl Runtime {
     pub(crate) fn call_array_shift(&mut self, receiver: Value) -> MustardResult<Value> {
-        let array = self.array_receiver(receiver.clone(), "shift")?;
-        if self.array_length(array)? == 0 {
-            return Ok(Value::Undefined);
-        }
-        self.with_temporary_roots(std::slice::from_ref(&receiver), |runtime| {
-            let removed = runtime
-                .call_array_splice(receiver.clone(), &[Value::Number(0.0), Value::Number(1.0)])?;
-            let Value::Array(removed) = removed else {
-                unreachable!()
-            };
-            runtime.array_value_at(removed, 0)
-        })
+        let array = self.array_receiver(receiver, "shift")?;
+        self.charge_native_helper_work(1)?;
+        let (removed, bytes) = {
+            let elements = &mut self
+                .arrays
+                .get_mut(array)
+                .ok_or_else(|| MustardError::runtime("array missing"))?
+                .elements;
+            if elements.is_empty() {
+                return Ok(Value::Undefined);
+            }
+            // Move the remaining slots in place. No guest values are cloned and
+            // no throwaway splice-result array is allocated or rooted.
+            let removed = elements.remove(0);
+            let bytes = Self::array_slot_bytes(removed.as_ref());
+            (removed, bytes)
+        };
+        self.apply_array_component_delta(array, bytes, 0)?;
+        Ok(removed.unwrap_or(Value::Undefined))
     }
 
     pub(crate) fn call_array_unshift(
