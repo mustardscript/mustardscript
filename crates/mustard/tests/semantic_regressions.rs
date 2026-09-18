@@ -124,3 +124,27 @@ fn compound_statements_supply_script_completion_values() {
         StructuredValue::String("directive result".into())
     );
 }
+
+#[test]
+fn sparse_builders_validate_at_control_flow_merges_and_reject_underflows() {
+    for source in [
+        "1 ? [1,,3] : 0;",
+        "0 || [...[1,,3]];",
+        "true ? {x:[1,,3]} : null;",
+    ] {
+        let bytecode = lower_to_bytecode(&compile(source).unwrap()).unwrap();
+        let loaded = load_program(&dump_program(&bytecode).unwrap()).unwrap();
+        start_bytecode(&loaded, ExecutionOptions::default()).unwrap();
+    }
+    let mut invalid = lower_to_bytecode(&compile("0;").unwrap()).unwrap();
+    invalid.functions[invalid.root].code = vec![
+        Instruction::MakeArray { count: 0 },
+        Instruction::PushNumber(1.0),
+        Instruction::ArrayPush,
+        Instruction::Pop,
+        Instruction::Pop,
+        Instruction::Return,
+    ];
+    let error = start_bytecode(&invalid, ExecutionOptions::default()).unwrap_err();
+    assert!(error.to_string().contains("stack"), "{error}");
+}

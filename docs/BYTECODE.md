@@ -33,6 +33,10 @@ syntactically final expression retains the direct operand-stack return path.
 - Each frame owns an operand stack.
 - Literal loads, name loads, and closure creation push values.
 - Arithmetic and comparison operations pop their operands and push one result.
+- Array builders keep the array on the stack: `ArrayPush` and `ArrayExtend`
+  consume an additional element/iterable (net minus one); `ArrayPushHole`
+  needs only the array (net zero). Validation uses these same effects at
+  branch merges and when checking untrusted bytecode for stack underflow.
 - Loose equality may run guest coercion methods. A bounded, GC-rooted frame
   continuation tracks method order and default array element string conversion
   across calls and host suspensions; exceptions discard that continuation.

@@ -318,7 +318,10 @@ fn apply_validation_effect(
         }
         Instruction::ArrayPush => {
             require_stack(2)?;
-            state
+            ValidationState {
+                stack_depth: state.stack_depth - 1,
+                ..state
+            }
         }
         Instruction::ArrayPushHole => {
             require_stack(1)?;
