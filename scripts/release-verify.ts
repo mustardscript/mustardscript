@@ -99,7 +99,7 @@ function verifyPackedFiles() {
 }
 
 const steps = [
-  ['Install dependencies', npmCommand, ['install']],
+  ['Install dependencies', npmCommand, ['ci']],
   ['Run Rust tests', 'cargo', ['test', '--workspace']],
   ['Run Node, types, and package smoke tests', npmCommand, ['test']],
   ['Run lint', npmCommand, ['run', 'lint']],
