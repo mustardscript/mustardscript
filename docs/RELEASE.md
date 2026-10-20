@@ -33,13 +33,16 @@ maintainers should run before publishing anything.
 - Start from a clean checkout or an isolated release worktree.
 - Confirm the version in `package.json` and the Cargo workspace metadata is the
   release candidate you intend to publish.
-- After a version bump, update `package-lock.json` and verify `npm ci` with
-  the CI npm version in a clean checkout. Keep the unresolved
-  `{ "optional": true }` entries for binding versions that are not published
-  yet: deleting them makes `npm ci` reject the lockfile before any build runs.
-  CI uses `npm ci` to preserve this committed metadata; `npm install` with
-  npm 11.19 can remove those entries while resolving unavailable bindings.
-  Do not substitute an older binding version just to satisfy installation.
+- After publishing binding versions, resolve them in `package-lock.json` and
+  verify `npm ci` with the CI npm version in a clean checkout. Each binding
+  entry must include the matching release version, registry tarball URL, and
+  integrity hash. Unresolved `{ "optional": true }` placeholders are rejected
+  by `npm ci` once the version is published. To replace existing placeholders,
+  remove only those binding entries from the lockfile and run
+  `npm install --package-lock-only --ignore-scripts`; retain unrelated locks.
+  CI uses `npm ci` to preserve the committed resolutions. A new version's
+  bindings must be published before this resolved-lockfile check can pass;
+  do not substitute an older binding version to satisfy installation.
 - Wait for the normal CI matrix to pass on Linux, macOS, and Windows before
   starting the release checklist.
 
