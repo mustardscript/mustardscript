@@ -1,5 +1,6 @@
 use super::*;
 use regex::{Captures, Regex, RegexBuilder};
+use std::borrow::Cow;
 
 impl Runtime {
     pub(crate) fn construct_regexp(&mut self, args: &[Value]) -> MustardResult<Value> {
@@ -136,12 +137,24 @@ impl Runtime {
         args: &[Value],
     ) -> MustardResult<Value> {
         let regex = self.regexp_receiver(this_value, "exec")?;
-        let input = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        let input = self.regexp_subject(args)?;
         self.record_regex_search_or_replacement();
         let Some(matched) = self.first_regexp_match(regex, &input)? else {
             return Ok(Value::Null);
         };
         self.regexp_match_array_value(&input, &matched)
+    }
+
+    /// The subject string for `exec` / `test`. A string argument is borrowed
+    /// rather than cloned: a global-regex loop over a multi-megabyte subject
+    /// otherwise copies the whole subject on every iteration.
+    fn regexp_subject<'a>(&mut self, args: &'a [Value]) -> MustardResult<Cow<'a, str>> {
+        match args.first() {
+            Some(Value::String(value)) => Ok(Cow::Borrowed(value.as_str())),
+            other => Ok(Cow::Owned(
+                self.to_string(other.cloned().unwrap_or(Value::Undefined))?,
+            )),
+        }
     }
 
     pub(crate) fn call_regexp_test(
@@ -150,7 +163,7 @@ impl Runtime {
         args: &[Value],
     ) -> MustardResult<Value> {
         let regex = self.regexp_receiver(this_value, "test")?;
-        let input = self.to_string(args.first().cloned().unwrap_or(Value::Undefined))?;
+        let input = self.regexp_subject(args)?;
         self.record_regex_search_or_replacement();
         Ok(Value::Bool(
             self.first_regexp_match(regex, &input)?.is_some(),
@@ -435,20 +448,21 @@ impl Runtime {
         if start_index > text.len() {
             return Ok(text.len().saturating_add(1));
         }
-        let mut index = 0;
-        for (byte, _) in text.char_indices() {
-            if index == start_index {
+        // `lastIndex` is a char index while the engine searches by byte
+        // offset. Resolving it with the block-counting helper keeps the cost
+        // of a global-regex loop over a large subject proportional to the
+        // vectorized char count rather than a per-char walk on every call.
+        // The work charged matches the bytes that walk would have covered.
+        match nth_char_byte_offset(text, start_index) {
+            Some(byte) => {
                 self.charge_native_helper_work(byte)?;
-                return Ok(byte);
+                Ok(byte)
             }
-            index += 1;
+            None => {
+                self.charge_native_helper_work(text.len())?;
+                Ok(text.len().saturating_add(1))
+            }
         }
-        self.charge_native_helper_work(text.len())?;
-        Ok(if index == start_index {
-            text.len()
-        } else {
-            text.len().saturating_add(1)
-        })
     }
 
     fn first_regexp_match_with_compiled(

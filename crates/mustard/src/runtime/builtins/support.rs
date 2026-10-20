@@ -726,18 +726,42 @@ pub(super) fn collect_literal_matches(value: &str, needle: &str) -> Vec<RegExpMa
     matches
 }
 
-pub(super) fn char_index_to_byte_index(value: &str, index: usize) -> usize {
+/// Byte offset where the `index`-th char of `value` starts.
+///
+/// Returns `Some(value.len())` when `index` equals the char count and `None`
+/// when it exceeds it. Chars are counted one block at a time with the
+/// standard library's vectorized `chars().count()`, so locating a boundary
+/// deep inside a large non-ASCII string costs a fraction of stepping every
+/// char with `char_indices()`. Only the final block is walked char by char.
+pub(super) fn nth_char_byte_offset(value: &str, index: usize) -> Option<usize> {
     if value.is_ascii() {
-        return index.min(value.len());
+        return (index <= value.len()).then_some(index);
     }
-    if index == 0 {
-        return 0;
+    const BLOCK_BYTES: usize = 32 * 1024;
+    let mut byte = 0;
+    let mut remaining = index;
+    while remaining > 0 && byte < value.len() {
+        let mut end = byte.saturating_add(BLOCK_BYTES).min(value.len());
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        let block = &value[byte..end];
+        let count = block.chars().count();
+        if count <= remaining {
+            remaining -= count;
+            byte = end;
+        } else {
+            return block
+                .char_indices()
+                .nth(remaining)
+                .map(|(offset, _)| byte + offset);
+        }
     }
-    value
-        .char_indices()
-        .nth(index)
-        .map(|(byte, _)| byte)
-        .unwrap_or_else(|| value.len())
+    (remaining == 0).then_some(byte)
+}
+
+pub(super) fn char_index_to_byte_index(value: &str, index: usize) -> usize {
+    nth_char_byte_offset(value, index).unwrap_or(value.len())
 }
 
 pub(super) fn byte_index_to_char_index(value: &str, byte_index: usize) -> usize {

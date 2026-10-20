@@ -691,3 +691,44 @@ fn sparse_array_find_helpers_match_documented_hole_visitation() {
         ]))
     );
 }
+
+#[test]
+fn global_regexp_exec_resolves_last_index_across_char_counting_blocks() {
+    // Each `é`/`ü` is two bytes, so both hits sit past the 32 KiB block the
+    // char-index resolver counts at a time, and the slice crosses the first
+    // hit so `char_index_to_byte_index` is exercised on the same path.
+    let program = compile(
+        r#"
+        const text = "é".repeat(20000) + " alpha.ts " + "ü".repeat(20000) + " beta.ts ";
+        const re = /[a-z]+\.ts/g;
+        const out = [];
+        let m;
+        while ((m = re.exec(text)) !== null) {
+          out.push(m.index, re.lastIndex);
+        }
+        re.lastIndex = text.length;
+        out.push(re.exec(text), re.lastIndex);
+        re.lastIndex = text.length + 1;
+        out.push(re.exec(text), re.lastIndex);
+        out.push(text.slice(20004, 20012));
+        out;
+        "#,
+    )
+    .expect("source should compile");
+
+    let result = execute(&program, ExecutionOptions::default()).expect("program should run");
+    assert_eq!(
+        result,
+        StructuredValue::Array(vec![
+            number(20001.0),
+            number(20009.0),
+            number(40011.0),
+            number(40018.0),
+            StructuredValue::Null,
+            number(0.0),
+            StructuredValue::Null,
+            number(0.0),
+            StructuredValue::String("ha.ts üü".to_string()),
+        ])
+    );
+}
