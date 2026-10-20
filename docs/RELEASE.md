@@ -33,16 +33,21 @@ maintainers should run before publishing anything.
 - Start from a clean checkout or an isolated release worktree.
 - Confirm the version in `package.json` and the Cargo workspace metadata is the
   release candidate you intend to publish.
-- After publishing binding versions, resolve them in `package-lock.json` and
-  verify `npm ci` with the CI npm version in a clean checkout. Each binding
-  entry must include the matching release version, registry tarball URL, and
-  integrity hash. Unresolved `{ "optional": true }` placeholders are rejected
-  by `npm ci` once the version is published. To replace existing placeholders,
-  remove only those binding entries from the lockfile and run
+- After a version bump, update the npm manifest, Rust workspace version, and
+  `package-lock.json`, then verify `npm ci` with the CI npm version in a clean
+  checkout. Before binding publication, use versioned optional entries such as
+  `{ "version": "0.3.1", "optional": true }`, without a tarball URL or integrity
+  hash. This allows source builds to proceed without a published prebuilt.
+  Versionless `{ "optional": true }` placeholders are rejected by `npm ci`
+  once the version is published.
+- After publishing binding versions, resolve them in `package-lock.json` with
+  the matching release version, registry tarball URL, and real integrity hash.
+  To replace existing version-only entries, remove only those binding entries
+  from the lockfile and run
   `npm install --package-lock-only --ignore-scripts`; retain unrelated locks.
-  CI uses `npm ci` to preserve the committed resolutions. A new version's
-  bindings must be published before this resolved-lockfile check can pass;
-  do not substitute an older binding version to satisfy installation.
+  CI and `verify:release` use `npm ci` to preserve the committed entries.
+  Do not substitute an older binding version or carry forward its integrity
+  hash after a bump.
 - Wait for the normal CI matrix to pass on Linux, macOS, and Windows before
   starting the release checklist.
 
@@ -64,7 +69,7 @@ scoped package name, the packed file list, and the default `npm publish
 ### 1. Build, test, and lint the release candidate
 
 ```sh
-npm install
+npm ci
 cargo test --workspace
 npm test
 npm run lint
